@@ -1,0 +1,98 @@
+// Fluxo oficial do Embedded Signup — Meta Graph API v25.0 (Tech Provider)
+// Docs: https://developers.facebook.com/docs/whatsapp/embedded-signup
+// Todas as chamadas usam as credenciais da PLATAFORMA (App ID/Secret do dono do SaaS);
+// o token de cada cliente é obtido trocando o authorization_code devolvido pelo popup.
+const db = require('./db');
+
+function p() { return db.get().platform; }
+function base() { return `https://graph.facebook.com/${p().graphVersion || 'v25.0'}`; }
+
+const CFG_LABELS = {
+  appId: 'App ID',
+  appSecret: 'App Secret',
+  configId: 'Config ID do Embedded Signup'
+};
+
+function requirePlatform(...keys) {
+  for (const k of keys) {
+    if (!p()[k]) {
+      const e = new Error(`Configuração da plataforma ausente: ${CFG_LABELS[k] || k}. O administrador precisa preenchê-la em Configurações.`);
+      e.status = 400;
+      throw e;
+    }
+  }
+}
+
+async function graph(path, { method = 'GET', token, body, formParams } = {}) {
+  const opts = { method, headers: {} };
+  if (token) opts.headers.Authorization = `Bearer ${token}`;
+  if (formParams) {
+    opts.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+    opts.body = new URLSearchParams(formParams).toString();
+  } else if (body !== undefined) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(base() + path, opts);
+  const text = await res.text();
+  let data;
+  try { data = JSON.parse(text); } catch { data = { raw: text }; }
+  if (!res.ok) {
+    const err = new Error((data.error && data.error.message) || `Graph API retornou ${res.status}`);
+    err.status = res.status;
+    err.meta = data.error || data;
+    throw err;
+  }
+  return data;
+}
+
+// Passo 3 — troca o authorization_code pelo access token do cliente
+// POST /oauth/access_token  (client_id, client_secret, redirect_uri, code)
+// redirect_uri só entra quando o code veio do diálogo OAuth com redirect (não do SDK).
+function exchangeCode(code, redirectUri) {
+  requirePlatform('appId', 'appSecret');
+  const params = { client_id: p().appId, client_secret: p().appSecret, code };
+  if (redirectUri) params.redirect_uri = redirectUri;
+  return graph('/oauth/access_token', { method: 'POST', formParams: params });
+}
+
+// Passo 4 — GET /me/businesses
+const getBusinesses = (token) =>
+  graph('/me/businesses?fields=id,name', { token });
+
+// Passo 5 — GET /{business_id}/owned_whatsapp_business_accounts
+const getOwnedWabas = (token, businessId) =>
+  graph(`/${encodeURIComponent(businessId)}/owned_whatsapp_business_accounts?fields=id,name`, { token });
+
+// Passo 6 — GET /{waba_id}/phone_numbers
+const getPhoneNumbers = (token, wabaId) =>
+  graph(`/${encodeURIComponent(wabaId)}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status`, { token });
+
+// Passo 7 — POST /{waba_id}/subscribed_apps (assina o app da plataforma na WABA do cliente)
+const subscribeApp = (token, wabaId) =>
+  graph(`/${encodeURIComponent(wabaId)}/subscribed_apps`, { method: 'POST', token, body: {} });
+
+const unsubscribeApp = (token, wabaId) =>
+  graph(`/${encodeURIComponent(wabaId)}/subscribed_apps`, { method: 'DELETE', token });
+
+// Validação do token — GET /debug_token (usa app access token APP_ID|APP_SECRET)
+function debugToken(inputToken) {
+  requirePlatform('appId', 'appSecret');
+  const appToken = `${p().appId}|${p().appSecret}`;
+  return graph(`/debug_token?input_token=${encodeURIComponent(inputToken)}`, { token: appToken });
+}
+
+// Passo 11 — health check: GET /{phone_number_id}
+const phoneHealth = (token, phoneNumberId) =>
+  graph(`/${encodeURIComponent(phoneNumberId)}?fields=verified_name,display_phone_number,quality_rating,code_verification_status,platform_type`, { token });
+
+module.exports = {
+  exchangeCode,
+  getBusinesses,
+  getOwnedWabas,
+  getPhoneNumbers,
+  subscribeApp,
+  unsubscribeApp,
+  debugToken,
+  phoneHealth
+};

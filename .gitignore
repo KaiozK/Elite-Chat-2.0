@@ -1,0 +1,24 @@
+# Dependências
+node_modules/
+
+# Dados e SEGREDOS (nunca versionar — contém tokens do WhatsApp, senha admin, VAPID, etc.)
+data/
+*.bak
+db.json
+db.backup*.json
+
+# Ambiente
+.env
+.env.*
+!.env.example
+
+# Logs / temporários
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Build / deploy
+.vercel
+.cache/
+dist/
