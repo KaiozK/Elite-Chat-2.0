@@ -86,6 +86,80 @@ function debugToken(inputToken) {
 const phoneHealth = (token, phoneNumberId) =>
   graph(`/${encodeURIComponent(phoneNumberId)}?fields=verified_name,display_phone_number,quality_rating,code_verification_status,platform_type`, { token });
 
+// ---------------------------------------------------------------------------
+// META ADS (permissão ads_read) — usado pelo módulo de Tracking.
+//
+// Reaproveita o MESMO app da plataforma já configurado para o WhatsApp: o
+// cliente clica em "Conectar Meta Ads", autoriza no popup e o token vem por
+// aqui. Ninguém precisa gerar token no Graph API Explorer.
+// ---------------------------------------------------------------------------
+
+// App usado pelo OAuth de Meta Ads: o dedicado (platform.metaAds), se
+// preenchido; senão o mesmo app do WhatsApp. Assim quem tem um app só não
+// configura nada, e quem tem um app separado para anúncios aponta para ele.
+function adsApp() {
+  const m = p().metaAds || {};
+  const usarProprio = m.appId && m.appSecret;
+  const id = usarProprio ? m.appId : p().appId;
+  const secret = usarProprio ? m.appSecret : p().appSecret;
+  if (!id) {
+    const e = new Error('Configuração da plataforma ausente: App ID da Meta. O administrador precisa preenchê-la em Configurações.');
+    e.status = 400; throw e;
+  }
+  return { id, secret, dedicated: usarProprio };
+}
+
+// Diz se o OAuth de Meta Ads está pronto para uso (o admin já pôs as credenciais).
+function adsConfigured() {
+  const m = p().metaAds || {};
+  return !!((m.appId && m.appSecret) || (p().appId && p().appSecret));
+}
+
+// URL do diálogo de autorização. `state` protege contra CSRF.
+function adsAuthUrl(redirectUri, state) {
+  const app = adsApp();
+  const ver = p().graphVersion || 'v25.0';
+  const q = new URLSearchParams({
+    client_id: app.id,
+    redirect_uri: redirectUri,
+    state,
+    response_type: 'code',
+    scope: 'ads_read'
+  });
+  return `https://www.facebook.com/${ver}/dialog/oauth?${q}`;
+}
+
+// Troca o authorization_code do diálogo de Meta Ads pelo access token.
+// Usa o app de anúncios (dedicado ou o do WhatsApp), não o exchangeCode do
+// Embedded Signup, que é sempre o app do WhatsApp.
+function exchangeAdsCode(code, redirectUri) {
+  const app = adsApp();
+  return graph('/oauth/access_token', {
+    method: 'POST',
+    formParams: { client_id: app.id, client_secret: app.secret, redirect_uri: redirectUri, code }
+  });
+}
+
+// O token que volta do diálogo dura ~1h. Trocamos por um de LONGA duração
+// (60 dias), senão a sincronização quebraria no mesmo dia.
+function longLivedToken(shortToken) {
+  const app = adsApp();
+  return graph('/oauth/access_token', {
+    method: 'POST',
+    formParams: {
+      grant_type: 'fb_exchange_token',
+      client_id: app.id,
+      client_secret: app.secret,
+      fb_exchange_token: shortToken
+    }
+  });
+}
+
+// Contas de anúncio que o usuário autorizou, para ele escolher numa lista em
+// vez de digitar o "act_..." de cabeça.
+const getAdAccounts = (token) =>
+  graph('/me/adaccounts?fields=account_id,name,currency,account_status&limit=100', { token });
+
 module.exports = {
   exchangeCode,
   getBusinesses,
@@ -94,5 +168,10 @@ module.exports = {
   subscribeApp,
   unsubscribeApp,
   debugToken,
-  phoneHealth
+  phoneHealth,
+  adsAuthUrl,
+  adsConfigured,
+  exchangeAdsCode,
+  longLivedToken,
+  getAdAccounts
 };

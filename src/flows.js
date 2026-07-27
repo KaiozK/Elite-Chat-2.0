@@ -251,6 +251,40 @@ async function execNode(acc, node, ctx, deliver) {
     }
     return { ok: true, detail: 'opt-out registrado' };
   }
+  // ---- ELITE PAY: gerar cobrança Pix e enviar na conversa ----
+  // Disponibiliza as variáveis {{pagamento.link}}, {{pagamento.valor}},
+  // {{pagamento.codigo}} e {{pagamento.id}} para os nós seguintes do fluxo.
+  if (node.type === 'payment') {
+    need();
+    const elitepay = require('./elitepay');
+    const reais = Number(String(interpolate(String(node.value || ''), ctx)).replace(/[^\d,.]/g, '').replace(',', '.')) || 0;
+    const c = store.findContact(acc, to);
+    const ch = await elitepay.createCharge(acc, {
+      valueCents: Math.round(reais * 100),
+      comment: interpolate(node.description || '', ctx),
+      waId: to, contactName: (c && c.name) || ctx.contactName || '',
+      origin: 'flow', byName: 'Automação'
+    });
+    ctx.vars = {
+      ...(ctx.vars || {}),
+      'pagamento.link': ch.payUrl || ch.paymentLinkUrl, 'pagamento.valor': elitepay.fmtBRL(ch.value),
+      'pagamento.codigo': ch.brCode, 'pagamento.id': ch.id,
+      'pagamento.qrcode': ch.qrCodeImage || ''   // imagem do QR Code Pix (URL) p/ um nó de mídia
+    };
+    if (node.sendMessage !== false) {
+      const text = elitepay.chargeMessage(acc, ch);
+      const r = await wa.sendText(acc, to, text);
+      if (deliver) deliver(acc, to, { type: 'text', text }, r);
+    }
+    // Envia o QR Code como imagem quando marcado no nó (fica "top" no chat)
+    if (node.sendQr && ch.qrCodeImage) {
+      try {
+        const r2 = await wa.sendMedia(acc, to, 'image', { link: ch.qrCodeImage, caption: 'Escaneie o QR Code para pagar' });
+        if (deliver) deliver(acc, to, { type: 'image', text: '[QR Code Pix]', media: { link: ch.qrCodeImage, caption: 'Escaneie o QR Code para pagar' } }, r2);
+      } catch (e) { /* segue mesmo se a imagem falhar */ }
+    }
+    return { ok: true, detail: `cobrança ${elitepay.fmtBRL(ch.value)}` };
+  }
   if (node.type === 'ai') {
     // Responder com IA — placeholder (requer configuração de provedor de IA)
     return { ok: true, detail: 'IA (não configurada)' };
@@ -332,4 +366,42 @@ async function onInbound(acc, contact, text, kind, deliver) {
   return flow;
 }
 
-module.exports = { runFlow, onInbound, findFlowByHook, triggerMatches, interpolate };
+// Espelha a validação do Flow Builder: um nó que pede orientação ao cliente
+// (botões, lista, CTA de link ou condição) precisa ter o desfecho definido.
+// Roda no servidor para que nenhuma automação incompleta entre no ar — nem pelo
+// toggle da listagem, nem por chamada direta à API.
+// Opção pode ser string ("Sim") ou objeto ({ title: 'Sim' }).
+function optTitle(o) { return typeof o === 'string' ? o : String((o && o.title) || ''); }
+function validateGraph(flow) {
+  const g = (flow && flow.graph) || {};
+  const nodes = Array.isArray(g.nodes) ? g.nodes : [];
+  const edges = Array.isArray(g.edges) ? g.edges : [];
+  if (!nodes.some(n => n.type === 'trigger')) return 'A automação precisa de um gatilho.';
+  const from = (id, branch) => edges.some(e => e.from === id && (branch ? e.branch === branch : !e.branch));
+
+  for (const n of nodes) {
+    if (n.type === 'trigger') continue;
+    const opts = (n.type === 'text' || n.type === 'buttons') ? (n.buttons || [])
+      : n.type === 'list' ? (n.items || []) : [];
+    const palavra = n.type === 'list' ? 'item da lista' : 'botão de resposta';
+
+    if (opts.length) {
+      const vazio = opts.findIndex(o => !optTitle(o).trim());
+      if (vazio >= 0) return `Há um ${palavra} sem texto (opção ${vazio + 1}).`;
+      if (!from(n.id)) return `Um passo pergunta ao cliente mas não tem resposta — conecte a saída ao próximo passo.`;
+    }
+    if (n.type === 'text') {
+      const url = String(n.url || '').trim(), urlText = String(n.urlText || '').trim();
+      if (urlText && !url) return `O botão de link "${urlText}" está sem redirecionamento.`;
+      if (url && !/^https?:\/\/\S+\.\S+/i.test(url)) return 'A URL de um botão de link é inválida.';
+      if (url && !urlText) return 'Um botão de link está sem texto.';
+    }
+    if (n.type === 'condition') {
+      if (!from(n.id, 'yes')) return 'A saída "Sim" de uma condição não leva a lugar nenhum.';
+      if (!from(n.id, 'no')) return 'A saída "Não" de uma condição não leva a lugar nenhum.';
+    }
+  }
+  return null;
+}
+
+module.exports = { runFlow, onInbound, findFlowByHook, triggerMatches, interpolate, validateGraph };

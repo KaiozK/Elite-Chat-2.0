@@ -28,19 +28,101 @@ const DEFAULTS = {
       pixAutomatic: true,     // tenta assinatura recorrente (Pix Automático) quando disponível
       sandbox: false
     },
-    billing: { trialDays: 7, enforce: false }, // enforce: bloquear envio quando expirado
+    // ---- Integração Nuvemshop (app único da plataforma) ----
+    // O ADMIN cria um app no Portal de Parceiros da Nuvemshop e preenche aqui.
+    // Os clientes só clicam em "Conectar loja" — não veem nem informam credenciais.
+    // Enquanto `enabled` for false, a integração nem aparece para os clientes.
+    nuvemshop: { enabled: false, appId: '', appSecret: '' },
+    // ---- Meta Ads (Tracking, permissão ads_read) ----
+    // O OAuth de Meta Ads usa o MESMO app da Meta do WhatsApp por padrão (App ID
+    // e Secret acima). Só preencha aqui se você usa um APP SEPARADO para anúncios
+    // — nesse caso, estes campos têm prioridade. Vazio = reaproveita o do WhatsApp.
+    metaAds: { appId: '', appSecret: '' },
+    // enforce: bloquear envio quando expirado
+    // extras: preço mensal (centavos) de cada unidade EXCEDENTE ao que o plano já inclui.
+    //         O admin define aqui; o cliente compra na tela de Assinatura.
+    billing: {
+      trialDays: 7, enforce: false,
+      extras: { whatsappPrice: 0, linkPrice: 0 }
+    },
     affiliate: { percentFirst: 30, percentRenewal: 15 }, // % de comissão do afiliado
     landing: { ctaText: '' } // copy do botão principal da landing (vazio = automático pelos dias de teste)
   },
-  plans: [],             // planos de assinatura { id, name, price(centavos), periodDays, features[] }
+  plans: [],             // planos de assinatura { id, name, price(centavos), periodDays, features[], limits{} }
   withdrawals: [],       // pedidos de saque { id, accountId, amount, pixKey, status, ts }
   revenue: [],           // pagamentos confirmados { ts, accountId, planId, amount, kind: first|renewal|topup, chargeId }
-  accounts: [],          // tenants (clientes) — ver newAccount()
+  accounts: [],          // tenants (clientes), ver newAccount()
   sessions: {},          // token -> { kind:'account'|'admin', accountId }
   webhookLog: []
 };
 
 const DEFAULT_STAGES = ['Novo', 'Em atendimento', 'Qualificado', 'Negociação', 'Ganho', 'Perdido'];
+
+// ---------------------------------------------------------------------------
+// LIMITES DE PLANO
+// Cada plano define quanto o cliente pode usar de cada recurso.
+//   -1  = ilimitado
+//    0  = recurso bloqueado
+//   N   = teto
+// `whatsapps` e `links` são os INCLUSOS no plano; acima disso o cliente compra
+// unidades extras (preço em platform.billing.extras).
+const LIMIT_KEYS = ['sends', 'contacts', 'flows', 'pixels', 'links', 'whatsapps'];
+function defaultLimits() {
+  return { sends: -1, contacts: -1, flows: -1, pixels: -1, links: 1, whatsapps: 1 };
+}
+// Normaliza os limites vindos do body/banco: aceita '' (ilimitado) e números.
+function normLimits(src, base) {
+  const out = Object.assign(defaultLimits(), base || {});
+  for (const k of LIMIT_KEYS) {
+    if (!src || src[k] === undefined) continue;
+    const raw = String(src[k]).trim();
+    if (raw === '' || /^(ilimitado|unlimited|-1|∞)$/i.test(raw)) { out[k] = -1; continue; }
+    const n = Math.floor(Number(raw));
+    out[k] = Number.isFinite(n) && n >= 0 ? n : -1;
+  }
+  return out;
+}
+
+// Um CANAL é uma conexão WhatsApp independente: conversas e contatos ficam
+// separados por canal para não misturar atendimentos de números diferentes.
+function emptyChannel(label) {
+  return {
+    id: genId('ch'),
+    label: label || 'WhatsApp',
+    createdAt: Date.now(),
+    archived: false,
+    wa: emptyWa(),
+    // Os MODELOS aprovados pertencem à WABA, e cada canal tem a sua. Guardar o
+    // cache por canal evita mostrar (e disparar) um template que não existe no
+    // número que vai enviar.
+    templatesCache: { fetchedAt: 0, list: [] }
+  };
+}
+
+// Contexto de uma conta "visto pelo canal X": `ctx.wa` é o wa DAQUELE canal, e
+// todo o resto continua vindo da conta (herança por protótipo). Permite reusar
+// src/whatsapp.js — que lê acc.wa — sem reescrever as 50+ chamadas.
+function chanCtx(acc, ch) {
+  if (!ch || !acc || ch === (acc.channels || [])[0]) return acc;
+  return Object.create(acc, {
+    wa: { value: ch.wa, enumerable: false },
+    // os modelos aprovados são da WABA daquele canal
+    templatesCache: { value: ch.templatesCache, enumerable: false }
+  });
+}
+
+// Canal pelo id (ou o padrão quando não informado / inexistente).
+function findChannel(acc, chId) {
+  const list = (acc && acc.channels) || [];
+  return (chId && list.find(c => c.id === chId)) || list[0] || null;
+}
+
+// Canal dono de um phoneNumberId — usado pelo webhook para saber em qual
+// conexão a mensagem chegou.
+function channelByPhoneId(acc, phoneNumberId) {
+  if (!phoneNumberId) return null;
+  return ((acc && acc.channels) || []).find(c => c.wa && c.wa.phoneNumberId === phoneNumberId) || null;
+}
 
 // Estado da conexão WhatsApp de cada conta — preenchido pelo Embedded Signup.
 // Campos persistidos conforme o fluxo oficial da Meta (Cloud API v25.0).
@@ -66,13 +148,13 @@ function emptyWa() {
 }
 
 function newAccount({ name, email, pass }) {
-  return {
+  const acc = {
     id: genId('acc'),
     name: name || email,
     email: String(email || '').toLowerCase().trim(),
     passHash: hash(pass || ''),
     createdAt: Date.now(),
-    wa: { ...emptyWa() },
+    channels: [emptyChannel('WhatsApp principal')],
     stages: [...DEFAULT_STAGES],
     contacts: [],
     messages: [],
@@ -81,22 +163,22 @@ function newAccount({ name, email, pass }) {
       { id: genId('qr'), title: 'Saudação', text: 'Olá! Como posso ajudar você hoje?' },
       { id: genId('qr'), title: 'Aguarde', text: 'Um momento, por favor. Já vou te responder!' }
     ],
-    templatesCache: { fetchedAt: 0, list: [] },
-    team: [],            // ATENDENTES (login próprio, permissões, presença) — ver src/agents.js
+    team: [],            // ATENDENTES (login próprio, permissões, presença), ver src/agents.js
     logs: [],            // ações dos atendentes (login, transferências, alterações…)
-    schedules: [],       // agendamentos (calendário + lembretes) — ver src/schedule.js
+    schedules: [],       // agendamentos (calendário + lembretes), ver src/schedule.js
     sectors: [],         // setores/departamentos (canais)
     chatThreads: {},     // threadId -> [ { id, from, fromId, text, ts } ]
     chatReads: {},       // threadId -> ts da última leitura
-    teamChat: [],        // legado (canal geral) — migrado para chatThreads.group
+    teamChat: [],        // legado (canal geral), migrado para chatThreads.group
     flows: [],           // automações (Flow Builder)
     links: [],           // links rastreáveis encurtados { id, slug, title, dest, clicks[] }
-    webhooks: [],        // webhooks de entrada { id, name, token, mapping, lastPayload, hits } — aba Webhooks
+    webhooks: [],        // webhooks de entrada { id, name, token, mapping, lastPayload, hits }, aba Integrações
+    nuvemshop: null,     // loja Nuvemshop conectada, inicializado sob demanda por src/nuvemshop.js (cfg)
     pixels: [],          // pixels de rastreamento { id, type: meta|gtag|tiktok, pixelId, name }
     linkDomain: '',      // domínio personalizado exibido nos links curtos
-    tracking: { metaPixelId: '', gtagId: '' },  // legado — migrado para pixels[]
+    tracking: { metaPixelId: '', gtagId: '' },  // legado, migrado para pixels[]
     billing: emptyBilling(),
-    wallet: { balance: 0, transactions: [] },   // saldo em centavos + extrato
+    wallet: emptyWallet(),                      // saldo, recebíveis e extrato
     affiliate: { code: genRefCode(), refBy: '', earned: 0 }, // indicação: código próprio + quem indicou
     service: {                                   // Configurações → Atendimento / Finalização
       autoClose: { enabled: false, minutes: 60 },
@@ -104,6 +186,33 @@ function newAccount({ name, email, pass }) {
     },
     consent: require('./consent-defaults')()     // Opt-in & Opt-out
   };
+  attachWaAlias(acc);
+  attachTplAlias(acc);
+  return acc;
+}
+
+// `acc.wa` deixou de existir no banco: virou um APELIDO (não serializado) para o
+// wa do canal padrão. Todo o código legado que lê/escreve acc.wa continua válido
+// e passa a operar sobre channels[0].wa — sem duplicar dados no db.json.
+function attachWaAlias(acc) {
+  delete acc.wa;
+  Object.defineProperty(acc, 'wa', {
+    configurable: true,
+    enumerable: false,          // fora do JSON.stringify → nada duplicado
+    get() { return ((acc.channels || [])[0] || {}).wa || {}; }
+  });
+}
+
+// Mesma ideia para os MODELOS: `acc.templatesCache` vira apelido do cache do
+// canal padrão, então o código legado continua funcionando e o db.json não
+// guarda duas cópias da mesma lista.
+function attachTplAlias(acc) {
+  delete acc.templatesCache;
+  Object.defineProperty(acc, 'templatesCache', {
+    configurable: true,
+    enumerable: false,
+    get() { return ((acc.channels || [])[0] || {}).templatesCache || { fetchedAt: 0, list: [] }; }
+  });
 }
 
 // Pesquisa de satisfação: modelo da mensagem + notas.
@@ -131,7 +240,29 @@ function emptyBilling() {
     wooviSubId: '',        // globalID da assinatura na Woovi (Pix Automático)
     subCorrelationID: '',  // correlationID da assinatura (casa cobranças de renovação)
     pendingCharge: null,   // { correlationID, kind, planId, amount, brCode, qrCodeImage, paymentLinkUrl, ts }
-    startedAt: 0, canceledAt: 0
+    startedAt: 0, canceledAt: 0,
+    // ---- Meio de pagamento da assinatura ----
+    method: 'pix',         // pix | credit | debit, como o cliente paga o EliteChat
+    card: {                // cartão tokenizado para renovar automaticamente
+      token: '', brand: '', last4: '', holderName: '', gatewayCustomerId: ''
+    },
+    // ---- Unidades EXTRAS compradas (além do que o plano inclui) ----
+    extras: { whatsapps: 0, links: 0 }
+  };
+}
+
+// CARTEIRA do cliente dentro do EliteChat.
+// As vendas no cartão caem aqui: primeiro como `pending` (a liberar, porque o
+// adquirente só repassa em D+30/D+32) e, vencido o prazo, viram `balance`.
+// O saldo disponível paga coisas na plataforma (plano, conexão WhatsApp extra,
+// links…) ou é sacado — o saque de dinheiro de cartão tem taxa própria.
+function emptyWallet() {
+  return {
+    balance: 0,        // disponível para usar/sacar (centavos)
+    pending: 0,        // vendas no cartão ainda dentro do prazo de liberação
+    cardAvailable: 0,  // quanto do `balance` veio de cartão (define a taxa de saque)
+    receivables: [],   // { id, amount, availableAt, chargeId, kind, released }
+    transactions: []
   };
 }
 
@@ -150,11 +281,16 @@ function load() {
   for (const k of Object.keys(DEFAULTS)) if (db[k] === undefined) db[k] = JSON.parse(JSON.stringify(DEFAULTS[k]));
   for (const k of Object.keys(DEFAULTS.platform)) if (db.platform[k] === undefined) db.platform[k] = JSON.parse(JSON.stringify(DEFAULTS.platform[k]));
   // merge raso dos sub-objetos da plataforma (woovi/billing/affiliate ganham chaves novas)
-  for (const k of ['woovi', 'billing', 'affiliate', 'landing']) {
+  for (const k of ['woovi', 'billing', 'affiliate', 'landing', 'metaAds', 'nuvemshop']) {
     for (const kk of Object.keys(DEFAULTS.platform[k])) {
       if (db.platform[k][kk] === undefined) db.platform[k][kk] = DEFAULTS.platform[k][kk];
     }
   }
+  // preço dos extras (WhatsApp / links avulsos) — planos e config antigos
+  if (!db.platform.billing.extras || typeof db.platform.billing.extras !== 'object') {
+    db.platform.billing.extras = { whatsappPrice: 0, linkPrice: 0 };
+  }
+  for (const p of db.plans) p.limits = normLimits(p.limits, p.limits);
   migrateLegacy();
   for (const a of db.accounts) ensureAccountShape(a);
   flush();
@@ -203,20 +339,44 @@ function migrateLegacy() {
 
 // Garante que contas antigas ganhem os campos novos (wa do Embedded Signup etc.)
 function ensureAccountShape(acc) {
-  if (!acc.wa) acc.wa = emptyWa();
-  const base = emptyWa();
-  for (const k of Object.keys(base)) if (acc.wa[k] === undefined) acc.wa[k] = base[k];
-  // compat: shape antiga usava token/phoneNumber
-  if (acc.wa.token && !acc.wa.accessToken) acc.wa.accessToken = acc.wa.token;
-  if (acc.wa.phoneNumber && !acc.wa.displayPhoneNumber) acc.wa.displayPhoneNumber = acc.wa.phoneNumber;
-  delete acc.wa.token;
-  delete acc.wa.phoneNumber;
+  // ---- MULTI-CANAL: a conexão única (acc.wa) vira o canal padrão ----
+  if (!Array.isArray(acc.channels) || !acc.channels.length) {
+    const ch = emptyChannel('WhatsApp principal');
+    // adota o objeto wa existente para não perder token/wabaId da conta antiga
+    if (acc.wa && typeof acc.wa === 'object') ch.wa = acc.wa;
+    acc.channels = [ch];
+  }
+  for (const ch of acc.channels) {
+    if (!ch.id) ch.id = genId('ch');
+    if (typeof ch.label !== 'string' || !ch.label) ch.label = 'WhatsApp';
+    if (typeof ch.archived !== 'boolean') ch.archived = false;
+    if (!ch.createdAt) ch.createdAt = acc.createdAt || Date.now();
+    if (!ch.wa || typeof ch.wa !== 'object') ch.wa = emptyWa();
+    const base = emptyWa();
+    for (const k of Object.keys(base)) if (ch.wa[k] === undefined) ch.wa[k] = base[k];
+    // compat: shape antiga usava token/phoneNumber
+    if (ch.wa.token && !ch.wa.accessToken) ch.wa.accessToken = ch.wa.token;
+    if (ch.wa.phoneNumber && !ch.wa.displayPhoneNumber) ch.wa.displayPhoneNumber = ch.wa.phoneNumber;
+    delete ch.wa.token;
+    delete ch.wa.phoneNumber;
+    // cache de modelos por canal (contas antigas herdam o cache da conta)
+    if (!ch.templatesCache || typeof ch.templatesCache !== 'object') {
+      ch.templatesCache = (acc.templatesCache && acc.channels.indexOf(ch) === 0)
+        ? acc.templatesCache
+        : { fetchedAt: 0, list: [] };
+    }
+    if (!Array.isArray(ch.templatesCache.list)) ch.templatesCache.list = [];
+    if (typeof ch.templatesCache.fetchedAt !== 'number') ch.templatesCache.fetchedAt = 0;
+  }
+  attachWaAlias(acc);
+  attachTplAlias(acc);
+  const defCh = acc.channels[0].id;
   if (!Array.isArray(acc.stages) || !acc.stages.length) acc.stages = [...DEFAULT_STAGES];
   if (!Array.isArray(acc.contacts)) acc.contacts = [];
   if (!Array.isArray(acc.messages)) acc.messages = [];
   if (!Array.isArray(acc.campaigns)) acc.campaigns = [];
   if (!Array.isArray(acc.quickReplies)) acc.quickReplies = [];
-  if (!acc.templatesCache) acc.templatesCache = { fetchedAt: 0, list: [] };
+  // acc.templatesCache agora e apelido do canal padrao (attachTplAlias)
   if (!Array.isArray(acc.team)) acc.team = [];
   if (!Array.isArray(acc.logs)) acc.logs = [];
   if (!Array.isArray(acc.schedules)) acc.schedules = [];
@@ -239,12 +399,22 @@ function ensureAccountShape(acc) {
   if (!acc.billing || typeof acc.billing !== 'object') acc.billing = emptyBilling();
   const eb = emptyBilling();
   for (const k of Object.keys(eb)) if (acc.billing[k] === undefined) acc.billing[k] = eb[k];
+  for (const k of ['card', 'extras']) {
+    if (!acc.billing[k] || typeof acc.billing[k] !== 'object') acc.billing[k] = eb[k];
+    for (const kk of Object.keys(eb[k])) if (acc.billing[k][kk] === undefined) acc.billing[k][kk] = eb[k][kk];
+  }
+  // contatos e mensagens antigos pertencem ao canal padrão
+  for (const c of acc.contacts) if (!c.chId) c.chId = defCh;
+  for (const m of acc.messages) if (!m.chId) m.chId = defCh;
   if (acc.billing.status === 'trial' && !acc.billing.periodEnd) {
     acc.billing.periodEnd = (acc.createdAt || Date.now()) + (get().platform.billing.trialDays || 7) * 86400000;
   }
-  if (!acc.wallet || typeof acc.wallet !== 'object') acc.wallet = { balance: 0, transactions: [] };
+  if (!acc.wallet || typeof acc.wallet !== 'object') acc.wallet = emptyWallet();
   if (!Array.isArray(acc.wallet.transactions)) acc.wallet.transactions = [];
-  if (typeof acc.wallet.balance !== 'number') acc.wallet.balance = 0;
+  if (!Array.isArray(acc.wallet.receivables)) acc.wallet.receivables = [];
+  for (const k of ['balance', 'pending', 'cardAvailable']) {
+    if (typeof acc.wallet[k] !== 'number' || !Number.isFinite(acc.wallet[k])) acc.wallet[k] = 0;
+  }
   if (!acc.affiliate || typeof acc.affiliate !== 'object') acc.affiliate = { code: genRefCode(), refBy: '', earned: 0 };
   if (!acc.affiliate.code) acc.affiliate.code = genRefCode();
   if (typeof acc.affiliate.earned !== 'number') acc.affiliate.earned = 0;
@@ -327,7 +497,12 @@ function genId(prefix = 'id') { return prefix + '_' + crypto.randomBytes(8).toSt
 // Helpers de conta
 function findAccount(id) { return get().accounts.find(a => a.id === id); }
 function findAccountByEmail(email) { return get().accounts.find(a => a.email === String(email || '').toLowerCase().trim()); }
-function findAccountByPhoneId(phoneNumberId) { return get().accounts.find(a => a.wa && a.wa.phoneNumberId === phoneNumberId); }
+// Procura em TODOS os canais da conta — o webhook chega pelo phoneNumberId e é
+// ele que diz em qual conexão (canal) a mensagem entrou.
+function findAccountByPhoneId(phoneNumberId) {
+  if (!phoneNumberId) return undefined;
+  return get().accounts.find(a => (a.channels || []).some(c => c.wa && c.wa.phoneNumberId === phoneNumberId));
+}
 
 function findAccountByRefCode(code) {
   const c = String(code || '').toUpperCase().trim();
@@ -368,4 +543,4 @@ function findAdminAccount() {
 
 process.on('exit', () => { try { if (db) flush(); } catch {} });
 
-module.exports = { get, save, load, flush, genId, hash, newAccount, emptyWa, emptyBilling, defaultSurvey, findAccount, findAccountByEmail, findAccountByPhoneId, findAccountByRefCode, findAdminAccount, findLinkBySlug, findWebhookByToken, DEFAULT_STAGES };
+module.exports = { get, save, load, flush, genId, hash, newAccount, emptyWa, emptyBilling, defaultSurvey, findAccount, findAccountByEmail, findAccountByPhoneId, findAccountByRefCode, findAdminAccount, findLinkBySlug, findWebhookByToken, DEFAULT_STAGES, emptyWallet, attachTplAlias, LIMIT_KEYS, defaultLimits, normLimits, emptyChannel, chanCtx, findChannel, channelByPhoneId, ensureAccountShape };

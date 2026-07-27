@@ -23,6 +23,8 @@ module.exports = function (broadcast, clients) {
   });
 
   function auth(req, res, next) {
+    // Registra a URL pública da instalação (usada no link do checkout /pay/:id)
+    try { require('./elitepay').noteBaseUrl(`${req.protocol}://${req.get('host')}`); } catch {}
     const token = ((req.get('authorization') || '').replace(/^Bearer\s+/i, '')) || req.query.token;
     const sess = token && db.get().sessions[token];
     if (!sess) return res.status(401).json({ error: 'Não autenticado' });
@@ -40,7 +42,7 @@ module.exports = function (broadcast, clients) {
       if (!agent || !agent.active) {
         delete db.get().sessions[token];
         db.save();
-        return res.status(401).json({ error: 'Atendente desativado — fale com o administrador' });
+        return res.status(401).json({ error: 'Atendente desativado. Fale com o administrador' });
       }
       agent.lastSeenAt = Date.now();      // heartbeat de presença a cada requisição
       if (agent.status === 'offline') agent.status = 'online';
@@ -50,6 +52,13 @@ module.exports = function (broadcast, clients) {
     req.acc = acc;
     req.agent = agent;
     req.who = { agentId: agent ? agent.id : null, name: agent ? agent.name : (sess.user || acc.name) };
+    // ---- CANAL ativo desta requisição ----
+    // Cada conexão WhatsApp é um canal com conversas e contatos próprios. O
+    // painel manda o canal escolhido no header `x-channel` (ou ?ch=).
+    // `req.wctx` é a conta vista por esse canal — é o que vai para src/whatsapp.js.
+    req.ch = db.findChannel(acc, req.get('x-channel') || req.query.ch || '');
+    req.chId = req.ch ? req.ch.id : '';
+    req.wctx = db.chanCtx(acc, req.ch);
     next();
   }
 
@@ -103,19 +112,20 @@ module.exports = function (broadcast, clients) {
   }
 
   // `stamp` = { agentId, agentName } — carimba quem enviou (métricas por atendente)
-  function storeOutbound(acc, to, content, apiResp, stamp) {
+  function storeOutbound(acc, to, content, apiResp, stamp, chId) {
     const waId = store.normalizeWaId(to);
-    const contact = store.upsertContact(acc, waId);
+    const ch = chId || store.defChId(acc);
+    const contact = store.upsertContact(acc, waId, undefined, undefined, ch);
     const id = (apiResp && apiResp.messages && apiResp.messages[0] && apiResp.messages[0].id) || db.genId('local');
     const msg = {
-      id, waId, direction: 'out', timestamp: Date.now(), status: 'accepted',
+      id, waId, chId: ch, direction: 'out', timestamp: Date.now(), status: 'accepted',
       ...(stamp ? { agentId: stamp.agentId || null, agentName: stamp.agentName || null } : {}),
       ...content
     };
     store.addMessage(acc, msg);
     contact.lastMessageAt = msg.timestamp;
     db.save();
-    broadcast('message', { accountId: acc.id, waId });
+    broadcast('message', { accountId: acc.id, waId, chId: ch });
     return msg;
   }
 
@@ -215,7 +225,7 @@ module.exports = function (broadcast, clients) {
       allowedViews: agents.allowedViews(ag),
       mustChangePassword: ag ? !!ag.mustChangePassword
         : (req.session.kind === 'admin' && p.adminPassHash === db.hash('admin')),
-      wa: waPublic(req.acc)
+      wa: waPublic(req.wctx)
     });
   });
 
@@ -518,46 +528,116 @@ module.exports = function (broadcast, clients) {
 
   router.get('/wa/status', auth, h(async (req, res) => {
     let health = null;
-    if (req.query.health === '1' && req.acc.wa.connected) {
+    if (req.query.health === '1' && req.wctx.wa.connected) {
       try {
-        health = await wa.getPhoneInfo(req.acc);
-        req.acc.wa.lastHealth = { at: Date.now(), ...health };
+        health = await wa.getPhoneInfo(req.wctx);
+        req.wctx.wa.lastHealth = { at: Date.now(), ...health };
         db.save();
       } catch (e) {
         health = { error: e.message };
       }
     }
-    res.json({ wa: waPublic(req.acc), health });
+    res.json({ wa: waPublic(req.wctx), health });
   }));
 
   router.post('/wa/disconnect', auth, h(async (req, res) => {
-    const w = req.acc.wa;
+    const w = req.wctx.wa;
     try {
       if (w.wabaId && w.accessToken) await meta.unsubscribeApp(w.accessToken, w.wabaId);
     } catch {}
     Object.assign(w, db.emptyWa(), { updatedAt: Date.now() });
     db.save();
     broadcast('wa_status', { accountId: req.acc.id, connected: false });
-    res.json({ ok: true, wa: waPublic(req.acc) });
+    res.json({ ok: true, wa: waPublic(req.wctx) });
   }));
+
+  // ============ CANAIS (conexões WhatsApp) ============
+  // Cada canal é um número conectado, com conversas e contatos próprios.
+  // O plano define quantos vêm inclusos; acima disso o cliente compra extras.
+  const limits = require('./limits');
+
+  function channelPublic(acc, ch) {
+    const w = ch.wa || {};
+    const dflt = (acc.channels[0] || {}).id;
+    return {
+      id: ch.id, label: ch.label, isDefault: ch.id === dflt, createdAt: ch.createdAt,
+      connected: !!w.connected,
+      phoneNumberId: w.phoneNumberId || '',
+      displayPhoneNumber: w.displayPhoneNumber || '',
+      verifiedName: w.verifiedName || '',
+      profilePictureUrl: w.profilePictureUrl || '',
+      unread: acc.contacts.filter(c => (c.chId || dflt) === ch.id).reduce((s, c) => s + (c.unread || 0), 0),
+      contacts: acc.contacts.filter(c => (c.chId || dflt) === ch.id).length
+    };
+  }
+
+  router.get('/channels', auth, (req, res) => {
+    const acc = req.acc;
+    const rep = limits.report(acc);
+    res.json({
+      channels: acc.channels.filter(c => !c.archived).map(c => channelPublic(acc, c)),
+      current: req.chId,
+      limit: rep.whatsapps
+    });
+  });
+
+  router.post('/channels', auth, h(async (req, res) => {
+    const acc = req.acc;
+    limits.enforce(acc, 'whatsapps', 1);      // 402 quando estoura o plano + extras
+    const label = String((req.body || {}).label || '').trim() || `WhatsApp ${acc.channels.length + 1}`;
+    const ch = db.emptyChannel(label.slice(0, 40));
+    acc.channels.push(ch);
+    db.save();
+    agents.log(acc, req.who, 'channel_create', `Criou o canal ${ch.label}`);
+    res.json({ channel: channelPublic(acc, ch) });
+  }));
+
+  router.put('/channels/:id', auth, (req, res) => {
+    const ch = (req.acc.channels || []).find(c => c.id === req.params.id);
+    if (!ch) return res.status(404).json({ error: 'Canal não encontrado' });
+    const label = String((req.body || {}).label || '').trim();
+    if (label) ch.label = label.slice(0, 40);
+    db.save();
+    res.json({ channel: channelPublic(req.acc, ch) });
+  });
+
+  router.delete('/channels/:id', auth, h(async (req, res) => {
+    const acc = req.acc;
+    const idx = acc.channels.findIndex(c => c.id === req.params.id);
+    if (idx < 0) return res.status(404).json({ error: 'Canal não encontrado' });
+    if (idx === 0) return res.status(400).json({ error: 'O canal principal não pode ser removido' });
+    const ch = acc.channels[idx];
+    // desconecta o número na Meta antes de sumir com o canal
+    try {
+      const w = ch.wa || {};
+      if (w.wabaId && w.accessToken) await meta.unsubscribeApp(w.accessToken, w.wabaId);
+    } catch {}
+    // as conversas do canal ficam preservadas no histórico, apenas arquivadas
+    acc.channels.splice(idx, 1);
+    db.save();
+    agents.log(acc, req.who, 'channel_delete', `Removeu o canal ${ch.label}`);
+    res.json({ ok: true });
+  }));
+
+  // ============ USO x LIMITES DO PLANO ============
+  router.get('/limits', auth, (req, res) => {
+    res.json({ limits: limits.report(req.acc), extraPrices: limits.extraPrices() });
+  });
 
   // ============ CONFIGURAÇÕES ============
 
   router.get('/settings', auth, (req, res) => {
     const out = {
       settings: { stages: req.acc.stages, graphVersion: db.get().platform.graphVersion },
-      wa: waPublic(req.acc),
+      wa: waPublic(req.wctx),
       pixels: req.acc.pixels,
       linkDomain: req.acc.linkDomain,
       kind: req.session.kind,
       webhookPath: '/webhook'
     };
-    if (req.session.kind === 'admin') {
-      const { adminPassHash, ...platform } = db.get().platform;
-      out.platform = platform;
-      // credenciais manuais (avançado) da conta admin
-      out.manual = { accessToken: req.acc.wa.accessToken, wabaId: req.acc.wa.wabaId, phoneNumberId: req.acc.wa.phoneNumberId };
-    }
+    // A configuração da plataforma (app da Meta, webhook, Meta Ads) e a conexão
+    // manual NÃO saem por aqui: elas vivem só em GET /admin/saas, que é adminOnly.
+    // Esta rota é a tela de Configurações do cliente.
     res.json(out);
   });
 
@@ -577,14 +657,19 @@ module.exports = function (broadcast, clients) {
       for (const k of ['graphVersion', 'appId', 'appSecret', 'configId', 'systemToken', 'verifyToken']) {
         if (typeof req.body[k] === 'string') p[k] = req.body[k].trim();
       }
+      // App SEPARADO de Meta Ads (opcional). Vazio = reaproveita o do WhatsApp.
+      if (req.body.metaAds && typeof req.body.metaAds === 'object') {
+        if (typeof req.body.metaAds.appId === 'string') p.metaAds.appId = req.body.metaAds.appId.trim();
+        if (typeof req.body.metaAds.appSecret === 'string') p.metaAds.appSecret = req.body.metaAds.appSecret.trim();
+      }
       // credenciais manuais (avançado) — conecta a conta do admin sem Embedded Signup
-      const w = req.acc.wa;
+      const w = req.wctx.wa;
       let manualTouched = false;
       for (const [bodyKey, waKey] of [['accessToken', 'accessToken'], ['wabaId', 'wabaId'], ['phoneNumberId', 'phoneNumberId']]) {
         if (typeof req.body[bodyKey] === 'string') { w[waKey] = req.body[bodyKey].trim(); manualTouched = true; }
       }
       if (manualTouched) {
-        w.connected = !!(wa.tokenOf(req.acc) && w.phoneNumberId);
+        w.connected = !!(wa.tokenOf(req.wctx) && w.phoneNumberId);
         w.updatedAt = Date.now();
       }
     }
@@ -617,23 +702,23 @@ module.exports = function (broadcast, clients) {
 
   // ============ DIAGNÓSTICO / META ============
 
-  router.get('/settings/test', auth, h(async (req, res) => res.json(await wa.getPhoneInfo(req.acc))));
-  router.get('/debug-token', auth, h(async (req, res) => res.json(await wa.debugToken(req.acc))));
+  router.get('/settings/test', auth, h(async (req, res) => res.json(await wa.getPhoneInfo(req.wctx))));
+  router.get('/debug-token', auth, h(async (req, res) => res.json(await wa.debugToken(req.wctx))));
   router.get('/waba', auth, h(async (req, res) => {
-    const [waba, phones] = await Promise.all([wa.getWaba(req.acc), wa.getWabaPhones(req.acc)]);
+    const [waba, phones] = await Promise.all([wa.getWaba(req.wctx), wa.getWabaPhones(req.wctx)]);
     res.json({ waba, phones: phones.data || [] });
   }));
-  router.post('/waba/subscribe', auth, h(async (req, res) => res.json(await wa.subscribeApp(req.acc))));
-  router.get('/waba/subscriptions', auth, h(async (req, res) => res.json(await wa.getSubscriptions(req.acc))));
-  router.delete('/waba/subscribe', auth, h(async (req, res) => res.json(await wa.unsubscribeApp(req.acc))));
+  router.post('/waba/subscribe', auth, h(async (req, res) => res.json(await wa.subscribeApp(req.wctx))));
+  router.get('/waba/subscriptions', auth, h(async (req, res) => res.json(await wa.getSubscriptions(req.wctx))));
+  router.delete('/waba/subscribe', auth, h(async (req, res) => res.json(await wa.unsubscribeApp(req.wctx))));
 
   // ============ PERFIL COMERCIAL ============
 
   router.get('/profile', auth, h(async (req, res) => {
-    const r = await wa.getProfile(req.acc);
+    const r = await wa.getProfile(req.wctx);
     const p = (r.data && r.data[0]) || {};
     // guarda a foto do perfil conectado p/ exibir no painel (topo + preview)
-    req.acc.wa.profilePictureUrl = p.profile_picture_url || '';
+    req.wctx.wa.profilePictureUrl = p.profile_picture_url || '';
     db.save();
     res.json(p);
   }));
@@ -642,7 +727,7 @@ module.exports = function (broadcast, clients) {
     const allowed = ['about', 'address', 'description', 'email', 'vertical', 'websites'];
     const fields = {};
     for (const k of allowed) if (req.body[k] !== undefined) fields[k] = req.body[k];
-    res.json(await wa.updateProfile(req.acc, fields));
+    res.json(await wa.updateProfile(req.wctx, fields));
   }));
 
   // Troca a foto do perfil conectado: sobe o binário pela Resumable Upload API
@@ -652,34 +737,34 @@ module.exports = function (broadcast, clients) {
     if (!data || !/^image\/(jpeg|png)$/.test(mime || '')) return res.status(400).json({ error: 'Envie uma imagem JPG ou PNG' });
     const buffer = Buffer.from(String(data).replace(/^data:[^;]+;base64,/, ''), 'base64');
     if (buffer.length > 5 * 1024 * 1024) return res.status(400).json({ error: 'Imagem muito grande (máx. 5 MB)' });
-    const handle = await wa.uploadTemplateExample(req.acc, filename || 'perfil.jpg', mime, buffer);
-    await wa.updateProfile(req.acc, { profile_picture_handle: handle });
-    const r = await wa.getProfile(req.acc); // recarrega a URL nova
+    const handle = await wa.uploadTemplateExample(req.wctx, filename || 'perfil.jpg', mime, buffer);
+    await wa.updateProfile(req.wctx, { profile_picture_handle: handle });
+    const r = await wa.getProfile(req.wctx); // recarrega a URL nova
     const p = (r.data && r.data[0]) || {};
-    req.acc.wa.profilePictureUrl = p.profile_picture_url || '';
+    req.wctx.wa.profilePictureUrl = p.profile_picture_url || '';
     db.save();
-    res.json({ ok: true, url: req.acc.wa.profilePictureUrl });
+    res.json({ ok: true, url: req.wctx.wa.profilePictureUrl });
   }));
 
   // ============ CHAMADAS (WhatsApp Business Calling API) ============
 
   router.get('/settings/calling', auth, h(async (req, res) => {
-    const r = await wa.getCallingSettings(req.acc);
+    const r = await wa.getCallingSettings(req.wctx);
     res.json({ calling: r.calling || null });
   }));
 
   router.put('/settings/calling', auth, h(async (req, res) => {
-    const r = await wa.setCallingSettings(req.acc, !!(req.body || {}).enabled);
+    const r = await wa.setCallingSettings(req.wctx, !!(req.body || {}).enabled);
     res.json({ ok: true, result: r });
   }));
 
   // ============ REGISTRO / VERIFICAÇÃO DO NÚMERO ============
 
   router.post('/phone/request-code', auth, h(async (req, res) =>
-    res.json(await wa.requestCode(req.acc, req.body.method || 'SMS', req.body.language || 'pt_BR'))));
-  router.post('/phone/verify-code', auth, h(async (req, res) => res.json(await wa.verifyCode(req.acc, req.body.code))));
-  router.post('/phone/register', auth, h(async (req, res) => res.json(await wa.registerPhone(req.acc, req.body.pin))));
-  router.post('/phone/deregister', auth, h(async (req, res) => res.json(await wa.deregisterPhone(req.acc))));
+    res.json(await wa.requestCode(req.wctx, req.body.method || 'SMS', req.body.language || 'pt_BR'))));
+  router.post('/phone/verify-code', auth, h(async (req, res) => res.json(await wa.verifyCode(req.wctx, req.body.code))));
+  router.post('/phone/register', auth, h(async (req, res) => res.json(await wa.registerPhone(req.wctx, req.body.pin))));
+  router.post('/phone/deregister', auth, h(async (req, res) => res.json(await wa.deregisterPhone(req.wctx))));
 
   // ============ DASHBOARD ============
 
@@ -702,8 +787,19 @@ module.exports = function (broadcast, clients) {
         avgFirstResponseMs: avg(fr), avgHandleTimeMs: avg(ht)
       };
     })() : null;
+    // Elite Pay no dashboard: vendas de hoje + acumulado (Pix e cartão juntos).
+    const pagas = ((acc.elitepay && acc.elitepay.charges) || []).filter(c => c.status === 'paid');
+    const hoje = pagas.filter(c => (c.paidAt || 0) >= t0);
+    const sales = {
+      enabled: !!(acc.elitepay && acc.elitepay.subaccount),
+      todayCount: hoje.length,
+      todayValue: hoje.reduce((s, c) => s + (c.value || 0), 0),
+      totalCount: pagas.length,
+      totalValue: pagas.reduce((s, c) => s + (c.value || 0), 0)
+    };
     res.json({
       contacts: acc.contacts.length,
+      sales,
       unread: acc.contacts.reduce((a, c) => a + (c.unread || 0), 0),
       totalMessages: acc.messages.length,
       todayIn: acc.messages.filter(m => m.direction === 'in' && m.timestamp >= t0).length,
@@ -731,11 +827,42 @@ module.exports = function (broadcast, clients) {
 
   // ============ CONTATOS / CONVERSAS ============
 
+  // Um contato pertence a um canal (conexão WhatsApp). Quando o painel pede um
+  // canal específico, as conversas de outros números não aparecem — é o que
+  // impede o atendimento de dois números de se misturar.
+  // `?ch=all` (ou header x-channel: all) mostra tudo, para quem quiser a visão geral.
+  function chanFilter(req, alvo) {
+    const raw = alvo !== undefined ? alvo : (req.get('x-channel') || req.query.ch || '');
+    if (raw === 'all' || raw === '') return null;         // sem filtro: mostra tudo
+    const dflt = ((req.acc.channels || [])[0] || {}).id || '';
+    const id = (raw && (req.acc.channels || []).some(c => c.id === raw)) ? raw : (req.chId || dflt);
+    return o => (o.chId || dflt) === id;
+  }
+  function chanList(req, arr, alvo) {
+    const f = chanFilter(req, alvo);
+    return f ? arr.filter(f) : arr;
+  }
+  // Telas de LISTA (contatos, funil) usam o parâmetro `?ch=` explícito da tela.
+  // Sem parâmetro, mostram TUDO: é o comportamento pedido, "se não há filtro,
+  // mostre todos os contatos". Já a caixa de entrada segue presa ao canal ativo,
+  // porque responder exige saber por qual número a conversa acontece.
+  function listScope(req) {
+    const q = req.query.ch;
+    return q === undefined ? 'all' : String(q);
+  }
+  // Rótulo do canal de cada registro, para a UI marcar de onde veio o contato.
+  function chanLabels(acc) {
+    const m = {};
+    for (const c of acc.channels || []) m[c.id] = c.label;
+    return m;
+  }
+
   router.get('/conversations', auth, can('inbox', 'view'), (req, res) => {
     const acc = req.acc;
+    const msgs = chanList(req, acc.messages);
     const lastBy = {};
-    for (const m of acc.messages) lastBy[m.waId] = m;
-    const list = acc.contacts.map(c => ({
+    for (const m of msgs) lastBy[m.waId] = m;
+    const list = chanList(req, acc.contacts).map(c => ({
       ...c,
       lastMessage: lastBy[c.waId]
         ? { text: lastBy[c.waId].text, type: lastBy[c.waId].type, direction: lastBy[c.waId].direction, timestamp: lastBy[c.waId].timestamp, status: lastBy[c.waId].status }
@@ -749,7 +876,7 @@ module.exports = function (broadcast, clients) {
 
   router.get('/calls', auth, can('inbox', 'view'), (req, res) => {
     const list = (req.acc.calls || []).slice(-50).reverse().map(c => {
-      const ct = store.findContact(req.acc, c.waId);
+      const ct = store.findContact(req.wctx, c.waId);
       const { sdpOffer, ...pub } = c;
       return { ...pub, name: ct ? ct.name : c.waId };
     });
@@ -760,7 +887,7 @@ module.exports = function (broadcast, clients) {
   router.post('/calls/:id/accept', auth, can('inbox', 'edit'), h(async (req, res) => {
     const sdp = String((req.body || {}).sdp || '');
     if (!sdp) return res.status(400).json({ error: 'SDP answer ausente (WebRTC)' });
-    const r = await wa.callAction(req.acc, { call_id: req.params.id, action: 'accept', session: { sdp_type: 'answer', sdp } });
+    const r = await wa.callAction(req.wctx, { call_id: req.params.id, action: 'accept', session: { sdp_type: 'answer', sdp } });
     const call = (req.acc.calls || []).find(c => c.id === req.params.id);
     if (call) { call.status = 'active'; call.answeredAt = Date.now(); db.save(); }
     agents.log(req.acc, req.who, 'call_answered', 'Atendeu a ligação');
@@ -770,12 +897,12 @@ module.exports = function (broadcast, clients) {
   // Pré-aceitar (opcional na API — acelera o estabelecimento da mídia)
   router.post('/calls/:id/pre-accept', auth, can('inbox', 'edit'), h(async (req, res) => {
     const sdp = String((req.body || {}).sdp || '');
-    const r = await wa.callAction(req.acc, { call_id: req.params.id, action: 'pre_accept', session: { sdp_type: 'answer', sdp } });
+    const r = await wa.callAction(req.wctx, { call_id: req.params.id, action: 'pre_accept', session: { sdp_type: 'answer', sdp } });
     res.json({ ok: true, result: r });
   }));
 
   router.post('/calls/:id/reject', auth, can('inbox', 'edit'), h(async (req, res) => {
-    const r = await wa.callAction(req.acc, { call_id: req.params.id, action: 'reject' });
+    const r = await wa.callAction(req.wctx, { call_id: req.params.id, action: 'reject' });
     const call = (req.acc.calls || []).find(c => c.id === req.params.id);
     if (call) { call.status = 'rejected'; call.endedAt = Date.now(); db.save(); }
     agents.log(req.acc, req.who, 'call_rejected', 'Recusou a ligação');
@@ -783,7 +910,7 @@ module.exports = function (broadcast, clients) {
   }));
 
   router.post('/calls/:id/terminate', auth, can('inbox', 'edit'), h(async (req, res) => {
-    const r = await wa.callAction(req.acc, { call_id: req.params.id, action: 'terminate' });
+    const r = await wa.callAction(req.wctx, { call_id: req.params.id, action: 'terminate' });
     const call = (req.acc.calls || []).find(c => c.id === req.params.id);
     if (call) { call.status = 'ended'; call.endedAt = Date.now(); db.save(); }
     agents.log(req.acc, req.who, 'call_ended', 'Encerrou a ligação');
@@ -795,7 +922,7 @@ module.exports = function (broadcast, clients) {
     const to = store.normalizeWaId((req.body || {}).to);
     const sdp = String((req.body || {}).sdp || '');
     if (!to || !sdp) return res.status(400).json({ error: 'Informe "to" e o SDP offer (WebRTC)' });
-    const r = await wa.callAction(req.acc, { to, action: 'connect', session: { sdp_type: 'offer', sdp } });
+    const r = await wa.callAction(req.wctx, { to, action: 'connect', session: { sdp_type: 'offer', sdp } });
     const callId = (r.calls && r.calls[0] && r.calls[0].id) || null;
     if (callId) {
       req.acc.calls = req.acc.calls || [];
@@ -811,8 +938,8 @@ module.exports = function (broadcast, clients) {
   router.post('/calls/permission', auth, can('inbox', 'edit'), requireConsent, h(async (req, res) => {
     const to = store.normalizeWaId((req.body || {}).to);
     if (!to) return res.status(400).json({ error: 'Informe "to"' });
-    const r = await wa.sendCallPermission(req.acc, to, (req.body || {}).text);
-    storeOutbound(req.acc, to, { type: 'interactive', text: '📞 Pedido de permissão para ligar' }, r);
+    const r = await wa.sendCallPermission(req.wctx, to, (req.body || {}).text);
+    storeOutbound(req.wctx, to, { type: 'interactive', text: '📞 Pedido de permissão para ligar' }, r);
     res.json({ ok: true });
   }));
 
@@ -820,7 +947,7 @@ module.exports = function (broadcast, clients) {
 
   // Assumir a conversa (o próprio atendente) ou atribuir a alguém
   router.post('/conversations/:waId/assign', auth, can('inbox', 'edit'), (req, res) => {
-    const c = store.findContact(req.acc, req.params.waId);
+    const c = store.findContact(req.wctx, req.params.waId);
     if (!c) return res.status(404).json({ error: 'Conversa não encontrada' });
     const toId = String((req.body || {}).agentId || (req.agent ? req.agent.id : '')) || null;
     const to = toId ? agents.findAgent(req.acc, toId) : null;
@@ -835,7 +962,7 @@ module.exports = function (broadcast, clients) {
 
   // Transferir para outro atendente — guarda o histórico completo
   router.post('/conversations/:waId/transfer', auth, can('inbox', 'edit'), (req, res) => {
-    const c = store.findContact(req.acc, req.params.waId);
+    const c = store.findContact(req.wctx, req.params.waId);
     if (!c) return res.status(404).json({ error: 'Conversa não encontrada' });
     const toId = String((req.body || {}).agentId || '');
     const to = agents.findAgent(req.acc, toId);
@@ -924,7 +1051,7 @@ module.exports = function (broadcast, clients) {
 
   // Finalizar atendimento (manual) — registra data, tipo e atendente responsável
   router.post('/conversations/:waId/finish', auth, (req, res) => {
-    const c = store.findContact(req.acc, req.params.waId);
+    const c = store.findContact(req.wctx, req.params.waId);
     if (!c) return res.status(404).json({ error: 'Conversa não encontrada' });
     const by = req.who.name;
     const att = session.finish(req.acc, c, { by, byId: req.who.agentId, type: 'manual' });
@@ -937,7 +1064,7 @@ module.exports = function (broadcast, clients) {
 
   // Reabrir atendimento
   router.post('/conversations/:waId/reopen', auth, (req, res) => {
-    const c = store.findContact(req.acc, req.params.waId);
+    const c = store.findContact(req.wctx, req.params.waId);
     if (!c) return res.status(404).json({ error: 'Conversa não encontrada' });
     const by = req.session.user || req.acc.name || 'Atendente';
     const att = session.reopen(req.acc, c, by);
@@ -997,7 +1124,7 @@ module.exports = function (broadcast, clients) {
       const tooLong = clean.find(n => n.label.length > max);
       if (tooLong) {
         return res.status(400).json({
-          error: `"${tooLong.label}" excede ${max} caracteres — limite da Meta para ${clean.length <= survey.MAX_BUTTONS ? 'botões' : 'itens de lista'}.`
+          error: `"${tooLong.label}" excede ${max} caracteres, limite da Meta para ${clean.length <= survey.MAX_BUTTONS ? 'botões' : 'itens de lista'}.`
         });
       }
       s.notes = clean;
@@ -1008,15 +1135,30 @@ module.exports = function (broadcast, clients) {
 
   router.get('/contacts', auth, can('contacts','view'), (req, res) => {
     const q = (req.query.search || '').toLowerCase();
-    let list = req.acc.contacts;
+    const escopo = listScope(req);
+    let list = chanList(req, req.acc.contacts, escopo);
     if (q) list = list.filter(c => (c.name || '').toLowerCase().includes(q) || c.waId.includes(q) || (c.tags || []).join(',').toLowerCase().includes(q));
-    res.json({ contacts: [...list].sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0)) });
+    const dflt = ((req.acc.channels || [])[0] || {}).id || '';
+    const rotulos = chanLabels(req.acc);
+    res.json({
+      contacts: [...list].sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0))
+        .map(c => ({ ...c, chId: c.chId || dflt, chLabel: rotulos[c.chId || dflt] || '' })),
+      scope: escopo,
+      // contagem por canal para o seletor mostrar quantos leads há em cada número
+      channels: (req.acc.channels || []).map(ch => ({
+        id: ch.id, label: ch.label, connected: !!ch.wa.connected,
+        count: req.acc.contacts.filter(c => (c.chId || dflt) === ch.id).length
+      })),
+      total: req.acc.contacts.length
+    });
   });
 
   router.post('/contacts', auth, can('contacts','create'), (req, res) => {
+    const lim = limits.check(req.acc, "contacts");
+    if (lim) return res.status(402).json({ error: lim, code: "limit", resource: "contacts" });
     const waId = store.normalizeWaId(req.body.phone);
     if (waId.length < 10) return res.status(400).json({ error: 'Telefone inválido. Use o formato internacional, ex.: 5511999998888' });
-    const c = store.upsertContact(req.acc, waId, req.body.name);
+    const c = store.upsertContact(req.wctx, waId, req.body.name);
     if (req.body.name) { c.name = req.body.name; db.save(); }
     res.json({ contact: c });
   });
@@ -1043,7 +1185,7 @@ module.exports = function (broadcast, clients) {
   });
 
   router.put('/contacts/:waId', auth, can('contacts','edit'), (req, res) => {
-    const c = store.findContact(req.acc, req.params.waId);
+    const c = store.findContact(req.wctx, req.params.waId);
     if (!c) return res.status(404).json({ error: 'Contato não encontrado' });
     if (typeof req.body.name === 'string') c.name = req.body.name.trim() || c.waId;
     if (typeof req.body.notes === 'string') c.notes = req.body.notes;
@@ -1065,10 +1207,10 @@ module.exports = function (broadcast, clients) {
   // ============ MENSAGENS ============
 
   router.get('/messages/:waId', auth, (req, res) => {
-    const list = req.acc.messages
+    const list = chanList(req, req.acc.messages)
       .filter(m => m.waId === req.params.waId)
       .sort((a, b) => a.timestamp - b.timestamp);
-    const contact = store.findContact(req.acc, req.params.waId) || null;
+    const contact = store.findContact(req.wctx, req.params.waId) || null;
     res.json({
       messages: list,
       contact,
@@ -1085,7 +1227,7 @@ module.exports = function (broadcast, clients) {
 
   router.post('/messages/:waId/read', auth, h(async (req, res) => {
     const acc = req.acc;
-    const c = store.findContact(acc, req.params.waId);
+    const c = store.findContact(req.wctx, req.params.waId);
     if (c) { c.unread = 0; db.save(); }
     const lastIn = [...acc.messages].reverse().find(m =>
       m.waId === req.params.waId && m.direction === 'in' && String(m.id).startsWith('wamid'));
@@ -1102,11 +1244,15 @@ module.exports = function (broadcast, clients) {
   // Admin da plataforma nunca é bloqueado.
   function requireActive(req, res, next) {
     const p = db.get().platform.billing;
-    if (!p.enforce || req.session.kind === 'admin') return next();
+    if (req.session.kind === 'admin') return next();
+    // Cota de DISPAROS do plano — vale sempre (conta as saídas do ciclo vigente).
+    const lim = limits.check(req.acc, 'sends');
+    if (lim) return res.status(402).json({ error: lim, code: 'limit', resource: 'sends' });
+    if (!p.enforce) return next();
     const b = req.acc.billing || {};
     const ok = (b.status === 'trial' || b.status === 'active' || b.status === 'canceled') && b.periodEnd > Date.now();
     if (ok) return next();
-    res.status(402).json({ error: 'Assinatura expirada — renove em Assinatura & Carteira para continuar enviando' });
+    res.status(402).json({ error: 'Assinatura expirada. Renove em Assinatura & Carteira para continuar enviando' });
   }
 
   // Guard da JANELA DE 24H (validação obrigatória no backend — o front pode até
@@ -1114,7 +1260,7 @@ module.exports = function (broadcast, clients) {
   // atendimento finalizado). Templates passam: são o único caminho para reabrir.
   const requireWindow = kind => (req, res, next) => {
     const to = store.normalizeWaId((req.body || {}).to);
-    const contact = store.findContact(req.acc, to);
+    const contact = store.findContact(req.wctx, to);
     if (!contact) return next(); // 1º contato: a Meta valida do lado dela
     const check = session.canSend(contact, kind);
     if (check.allowed) return next();
@@ -1125,7 +1271,7 @@ module.exports = function (broadcast, clients) {
   // Quem pediu para sair não recebe mais nada até ser reativado.
   function requireConsent(req, res, next) {
     const to = store.normalizeWaId((req.body || {}).to);
-    const contact = store.findContact(req.acc, to);
+    const contact = store.findContact(req.wctx, to);
     const check = consent.canSendTo(req.acc, contact);
     if (check.allowed) return next();
     res.status(409).json({ error: check.error, code: check.code });
@@ -1134,7 +1280,7 @@ module.exports = function (broadcast, clients) {
   // Registra quem foi o último atendente a falar com o contato (coluna da lista de opt-out)
   function markAgent(req, res, next) {
     const to = store.normalizeWaId((req.body || {}).to);
-    const c = store.findContact(req.acc, to);
+    const c = store.findContact(req.wctx, to);
     if (c) {
       c.lastAgent = req.who.name;
       c.lastAgentId = req.who.agentId;
@@ -1153,15 +1299,15 @@ module.exports = function (broadcast, clients) {
   router.post('/send/text', auth, requireActive, requireConsent, requireWindow('text'), markAgent, h(async (req, res) => {
     const { to, text, previewUrl } = req.body;
     if (!to || !text) return res.status(400).json({ error: 'Informe "to" e "text"' });
-    const r = await wa.sendText(req.acc, store.normalizeWaId(to), text, previewUrl);
-    res.json({ ok: true, message: storeOutbound(req.acc, to, { type: 'text', text }, r, req._agentStamp) });
+    const r = await wa.sendText(req.wctx, store.normalizeWaId(to), text, previewUrl);
+    res.json({ ok: true, message: storeOutbound(req.wctx, to, { type: 'text', text }, r, req._agentStamp) });
   }));
 
   router.post('/send/template', auth, requireActive, requireConsent, markAgent, h(async (req, res) => {
     const { to, name, language, components } = req.body;
     if (!to || !name) return res.status(400).json({ error: 'Informe "to" e "name"' });
-    const r = await wa.sendTemplate(req.acc, store.normalizeWaId(to), name, language, components);
-    res.json({ ok: true, message: storeOutbound(req.acc, to, { type: 'template', text: `📋 Template: ${name}` }, r, req._agentStamp) });
+    const r = await wa.sendTemplate(req.wctx, store.normalizeWaId(to), name, language, components);
+    res.json({ ok: true, message: storeOutbound(req.wctx, to, { type: 'template', text: `📋 Template: ${name}` }, r, req._agentStamp) });
   }));
 
   router.post('/send/media', auth, requireActive, requireConsent, requireWindow('media'), markAgent, h(async (req, res) => {
@@ -1173,10 +1319,10 @@ module.exports = function (broadcast, clients) {
     else return res.status(400).json({ error: 'Informe "mediaId" ou "link"' });
     if (caption && kind !== 'audio' && kind !== 'sticker') media.caption = caption;
     if (kind === 'document' && filename) media.filename = filename;
-    const r = await wa.sendMedia(req.acc, store.normalizeWaId(to), kind, media);
+    const r = await wa.sendMedia(req.wctx, store.normalizeWaId(to), kind, media);
     res.json({
       ok: true,
-      message: storeOutbound(req.acc, to, {
+      message: storeOutbound(req.wctx, to, {
         type: kind,
         text: caption || (filename ? `📎 ${filename}` : ''),
         media: { id: mediaId || null, link: link || null, filename: filename || '', caption: caption || '' }
@@ -1199,17 +1345,17 @@ module.exports = function (broadcast, clients) {
         }))
       }
     };
-    const r = await wa.sendInteractive(req.acc, store.normalizeWaId(to), interactive);
+    const r = await wa.sendInteractive(req.wctx, store.normalizeWaId(to), interactive);
     const resumo = buttons.map(b => `[${b.title || b}]`).join(' ');
-    res.json({ ok: true, message: storeOutbound(req.acc, to, { type: 'interactive', text: `${body}\n${resumo}` }, r) });
+    res.json({ ok: true, message: storeOutbound(req.wctx, to, { type: 'interactive', text: `${body}\n${resumo}` }, r) });
   }));
 
   // Payload interactive completo (listas, CTA URL etc.) — passa direto para a Graph API
   router.post('/send/interactive', auth, requireActive, requireConsent, requireWindow('interactive'), markAgent, h(async (req, res) => {
     const { to, interactive } = req.body;
     if (!to || !interactive) return res.status(400).json({ error: 'Informe "to" e "interactive"' });
-    const r = await wa.sendInteractive(req.acc, store.normalizeWaId(to), interactive);
-    res.json({ ok: true, message: storeOutbound(req.acc, to, { type: 'interactive', text: '[mensagem interativa]' }, r) });
+    const r = await wa.sendInteractive(req.wctx, store.normalizeWaId(to), interactive);
+    res.json({ ok: true, message: storeOutbound(req.wctx, to, { type: 'interactive', text: '[mensagem interativa]' }, r) });
   }));
 
   router.post('/send/location', auth, requireActive, requireConsent, requireWindow('location'), h(async (req, res) => {
@@ -1217,22 +1363,22 @@ module.exports = function (broadcast, clients) {
     if (!to || latitude === undefined || longitude === undefined) {
       return res.status(400).json({ error: 'Informe "to", "latitude" e "longitude"' });
     }
-    const r = await wa.sendLocation(req.acc, store.normalizeWaId(to), { latitude, longitude, name, address });
-    res.json({ ok: true, message: storeOutbound(req.acc, to, { type: 'location', text: `📍 ${name || ''} ${address || ''}`.trim() || '📍 Localização' }, r) });
+    const r = await wa.sendLocation(req.wctx, store.normalizeWaId(to), { latitude, longitude, name, address });
+    res.json({ ok: true, message: storeOutbound(req.wctx, to, { type: 'location', text: `📍 ${name || ''} ${address || ''}`.trim() || '📍 Localização' }, r) });
   }));
 
   router.post('/send/contacts', auth, requireActive, requireConsent, requireWindow('contacts'), h(async (req, res) => {
     const { to, contacts } = req.body;
     if (!to || !Array.isArray(contacts) || !contacts.length) return res.status(400).json({ error: 'Informe "to" e "contacts"' });
-    const r = await wa.sendContactCard(req.acc, store.normalizeWaId(to), contacts);
+    const r = await wa.sendContactCard(req.wctx, store.normalizeWaId(to), contacts);
     const names = contacts.map(c => c.name && c.name.formatted_name).filter(Boolean).join(', ');
-    res.json({ ok: true, message: storeOutbound(req.acc, to, { type: 'contacts', text: '👤 ' + (names || 'Contato') }, r) });
+    res.json({ ok: true, message: storeOutbound(req.wctx, to, { type: 'contacts', text: '👤 ' + (names || 'Contato') }, r) });
   }));
 
   router.post('/send/reaction', auth, requireActive, requireConsent, requireWindow('reaction'), h(async (req, res) => {
     const { to, messageId, emoji } = req.body;
     if (!to || !messageId) return res.status(400).json({ error: 'Informe "to" e "messageId"' });
-    const r = await wa.sendReaction(req.acc, store.normalizeWaId(to), messageId, emoji || '👍');
+    const r = await wa.sendReaction(req.wctx, store.normalizeWaId(to), messageId, emoji || '👍');
     res.json({ ok: true, id: (r.messages && r.messages[0] && r.messages[0].id) || null });
   }));
 
@@ -1242,12 +1388,12 @@ module.exports = function (broadcast, clients) {
     const { filename, mime, data } = req.body;
     if (!data) return res.status(400).json({ error: 'Envie "data" (base64), "filename" e "mime"' });
     const buffer = Buffer.from(data, 'base64');
-    const r = await wa.uploadMedia(req.acc, filename, mime || 'application/octet-stream', buffer);
+    const r = await wa.uploadMedia(req.wctx, filename, mime || 'application/octet-stream', buffer);
     res.json({ id: r.id });
   }));
 
   router.get('/media/:id', auth, h(async (req, res) => {
-    const { res: mediaRes, info } = await wa.downloadMedia(req.acc, req.params.id);
+    const { res: mediaRes, info } = await wa.downloadMedia(req.wctx, req.params.id);
     res.set('Content-Type', info.mime_type || 'application/octet-stream');
     if (req.query.dl) res.set('Content-Disposition', `attachment; filename="${String(req.query.dl).replace(/"/g, '')}"`);
     res.send(Buffer.from(await mediaRes.arrayBuffer()));
@@ -1257,16 +1403,37 @@ module.exports = function (broadcast, clients) {
 
   router.get('/templates', auth, can('templates','view'), h(async (req, res) => {
     const acc = req.acc;
-    const cache = acc.templatesCache;
+    // cache do CANAL ativo: cada número tem a sua WABA e os seus modelos
+    const cache = req.wctx.templatesCache;
     const stale = !cache.fetchedAt || (Date.now() - cache.fetchedAt) > 10 * 60 * 1000;
-    if (req.query.sync === '1' || (stale && acc.wa.wabaId && wa.tokenOf(acc))) {
-      const r = await wa.listTemplates(acc);
+    if (req.query.sync === '1' || (stale && req.wctx.wa.wabaId && wa.tokenOf(req.wctx))) {
+      const r = await wa.listTemplates(req.wctx);
       cache.list = r.data || [];
       cache.fetchedAt = Date.now();
       db.save();
     }
-    res.json({ templates: cache.list, fetchedAt: cache.fetchedAt });
+    const ep = elitepay.ensure(acc);
+    res.json({
+      templates: cache.list.map(t => ({ ...t, purpose: (ep.templateRoles || {})[t.name] || '' })),
+      fetchedAt: cache.fetchedAt,
+      // variáveis disponíveis por papel — a tela de criação monta os botões com isso
+      roleVars: elitepay.TPL_VARS,
+      selected: { cobranca: ep.chargeTemplateName || '', confirmacao: ep.confirmTemplateName || '' }
+    });
   }));
+
+  // Marca/desmarca o papel de um modelo já existente (cobrança x confirmação).
+  // Os dois papéis são exclusivos: gravar um substitui o outro.
+  router.put('/templates/:name/role', auth, can('templates', 'edit'), (req, res) => {
+    const nome = req.params.name;
+    const existe = (req.wctx.templatesCache.list || []).some(t => t.name === nome);
+    if (!existe) return res.status(404).json({ error: 'Modelo não encontrado' });
+    const role = String((req.body || {}).purpose || '');
+    if (role && !elitepay.TPL_ROLES.includes(role)) return res.status(400).json({ error: 'Papel inválido' });
+    const tpl = (req.wctx.templatesCache.list || []).find(t => t.name === nome);
+    elitepay.setTemplateRole(req.acc, nome, role, tpl.language || 'pt_BR');
+    res.json({ ok: true, name: nome, purpose: role });
+  });
 
   // Upload do arquivo de exemplo do cabeçalho de mídia (IMAGE/VIDEO/DOCUMENT).
   // Recebe base64, sobe via Resumable Upload API e devolve o handle da Meta.
@@ -1276,7 +1443,7 @@ module.exports = function (broadcast, clients) {
     const buffer = Buffer.from(String(data).replace(/^data:[^;]+;base64,/, ''), 'base64');
     if (!buffer.length) return res.status(400).json({ error: 'Arquivo vazio' });
     if (buffer.length > 16 * 1024 * 1024) return res.status(400).json({ error: 'Arquivo de exemplo muito grande (máx. 16 MB)' });
-    const handle = await wa.uploadTemplateExample(req.acc, filename, mime, buffer);
+    const handle = await wa.uploadTemplateExample(req.wctx, filename, mime, buffer);
     res.json({ handle });
   }));
 
@@ -1300,17 +1467,17 @@ module.exports = function (broadcast, clients) {
       const ht = ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerType) ? headerType : (headerText ? 'TEXT' : '');
       if (ht === 'TEXT') {
         const hv = tplVars(headerText);
-        if (hv.count > 1) return res.status(400).json({ error: 'O cabeçalho aceita no máximo 1 variável ({{1}}) — regra da Meta' });
+        if (hv.count > 1) return res.status(400).json({ error: 'O cabeçalho aceita no máximo 1 variável ({{1}}), regra da Meta' });
         if (hv.count === 1 && !/\{\{1\}\}/.test(headerText)) return res.status(400).json({ error: 'A variável do cabeçalho deve ser {{1}}' });
         const comp = { type: 'HEADER', format: 'TEXT', text: headerText };
         if (hv.count === 1) {
           const ex = String(headerExample || '').trim();
-          if (!ex) return res.status(400).json({ error: 'Informe um valor de exemplo para a variável {{1}} do cabeçalho — a Meta exige na aprovação' });
+          if (!ex) return res.status(400).json({ error: 'Informe um valor de exemplo para a variável {{1}} do cabeçalho, a Meta exige na aprovação' });
           comp.example = { header_text: [ex] };
         }
         components.push(comp);
       } else if (ht) {
-        if (!headerHandle) return res.status(400).json({ error: 'Envie o arquivo de exemplo do cabeçalho — a Meta exige uma amostra da mídia para aprovar o modelo' });
+        if (!headerHandle) return res.status(400).json({ error: 'Envie o arquivo de exemplo do cabeçalho, a Meta exige uma amostra da mídia para aprovar o modelo' });
         components.push({ type: 'HEADER', format: ht, example: { header_handle: [headerHandle] } });
       }
 
@@ -1321,7 +1488,7 @@ module.exports = function (broadcast, clients) {
       if (bv.count > 0) {
         const exs = (Array.isArray(bodyExamples) ? bodyExamples : []).map(s => String(s || '').trim()).slice(0, bv.count);
         if (exs.length < bv.count || exs.some(s => !s)) {
-          return res.status(400).json({ error: `Informe um valor de exemplo para cada variável do corpo ({{1}} a {{${bv.count}}}) — a Meta exige na aprovação` });
+          return res.status(400).json({ error: `Informe um valor de exemplo para cada variável do corpo ({{1}} a {{${bv.count}}}), a Meta exige na aprovação` });
         }
         bComp.example = { body_text: [exs] };
       }
@@ -1355,16 +1522,23 @@ module.exports = function (broadcast, clients) {
         components
       };
     }
-    const r = await wa.createTemplate(req.acc, payload);
-    req.acc.templatesCache.fetchedAt = 0; // força re-sync
+    const r = await wa.createTemplate(req.wctx, payload);
+    req.wctx.templatesCache.fetchedAt = 0; // força re-sync do canal ativo
+    // PAPEL do modelo no Elite Pay: cobrança OU confirmação de pagamento
+    // (nunca os dois) — vazio significa modelo comum, só para campanhas.
+    // `chargeTemplate: true` é o formato antigo do painel; segue aceito.
+    const purpose = req.body.chargeTemplate ? 'cobranca' : String(req.body.purpose || '');
+    if (purpose) require('./elitepay').setTemplateRole(req.acc, payload.name, purpose, payload.language || 'pt_BR');
     db.save();
-    res.json(r);
+    res.json({ ...r, purpose: purpose || '' });
   }));
 
   router.delete('/templates/:name', auth, h(async (req, res) => {
-    const r = await wa.deleteTemplate(req.acc, req.params.name);
-    const cache = req.acc.templatesCache;
+    const r = await wa.deleteTemplate(req.wctx, req.params.name);
+    const cache = req.wctx.templatesCache;
     cache.list = cache.list.filter(t => t.name !== req.params.name);
+    // some também do Elite Pay — se era o modelo selecionado, a seleção é limpa
+    elitepay.setTemplateRole(req.acc, req.params.name, '');
     db.save();
     res.json(r);
   }));
@@ -1457,16 +1631,16 @@ module.exports = function (broadcast, clients) {
     const firstStageCount = (acc.stages[0] && acc.contacts.filter(c => c.stage === acc.stages[0]).length) || 0;
     const totalC = acc.contacts.length;
     if (!acc.wa.connected) sug('warn', 'zap', 'WhatsApp desconectado', 'Conecte seu número para enviar e receber mensagens.', 'Conectar agora', '#/settings');
-    if (unreadTotal >= 5) sug('warn', 'bell', `${unreadTotal} mensagens sem resposta`, 'Clientes esperando retorno esfriam rápido — responda para não perder vendas.', 'Abrir conversas', '#/inbox');
+    if (unreadTotal >= 5) sug('warn', 'bell', `${unreadTotal} mensagens sem resposta`, 'Clientes esperando retorno esfriam rápido, responda para não perder vendas.', 'Abrir conversas', '#/inbox');
     if (avgResponseMin > 30 && respN >= 3) sug('warn', 'clock', 'Tempo de resposta alto', `Sua primeira resposta demora em média ${avgResponseMin} min. Use respostas rápidas e automações de boas-vindas.`, 'Criar automação', '#/flows');
     if (totalC >= 5 && firstStageCount / totalC > 0.6) sug('info', 'columns', 'Funil parado na entrada', `${Math.round(firstStageCount / totalC * 100)}% dos contatos ainda estão em "${acc.stages[0]}". Qualifique e mova os leads pelo funil.`, 'Abrir funil', '#/funnel');
     if (outMsgs.length >= 10 && (delivered / outMsgs.length) < 0.8) sug('warn', 'alert', 'Taxa de entrega baixa', 'Menos de 80% das mensagens entregues. Verifique a qualidade do número e evite disparos para contatos inativos.', 'Ver métricas', '#/dashboard');
     if (!(acc.flows || []).some(f => f.enabled)) sug('info', 'flow', 'Nenhuma automação ativa', 'Crie um fluxo de boas-vindas por palavra-chave para responder na hora, 24/7.', 'Abrir Flow Builder', '#/flows');
     if (totalC >= 5 && !acc.contacts.some(c => (c.tags || []).length)) sug('info', 'tag', 'Contatos sem tags', 'Use tags para segmentar campanhas e disparar automações certeiras.', 'Ver contatos', '#/contacts');
-    if (!(acc.links || []).length) sug('info', 'link', 'Rastreie seus cliques', 'Crie links curtos rastreáveis para bio, anúncios e campanhas — com pixel da Meta e do Google.', 'Criar link', '#/links');
+    if (!(acc.links || []).length) sug('info', 'link', 'Rastreie seus cliques', 'Crie links curtos rastreáveis para bio, anúncios e campanhas, com pixel da Meta e do Google.', 'Criar link', '#/links');
     else if (!(acc.pixels || []).length) sug('info', 'target', 'Pixels não configurados', 'Cadastre seu Meta Pixel, Google tag ou TikTok Pixel para alimentar seus anúncios com os cliques dos links.', 'Configurar pixels', '#/settings');
     if (wonStage && totalC >= 10 && leadsWon / totalC < 0.1) sug('info', 'megaphone', 'Poucos leads fechados', `Apenas ${Math.round(leadsWon / totalC * 100)}% chegaram em "${wonStage}". Reengaje com uma campanha de template para leads parados.`, 'Criar campanha', '#/campaigns');
-    if (!suggestions.length) sug('ok', 'check-circle', 'Tudo em dia!', 'Seu atendimento está saudável — continue acompanhando as métricas.', null, null);
+    if (!suggestions.length) sug('ok', 'check-circle', 'Tudo em dia!', 'Seu atendimento está saudável, continue acompanhando as métricas.', null, null);
 
     // ---- séries para os gráficos do dashboard ----
     const dayIdx = {};
@@ -1612,7 +1786,64 @@ module.exports = function (broadcast, clients) {
 
   router.get('/pixels', auth, can('pixels','view'), (req, res) => res.json({ pixels: req.acc.pixels }));
 
+  // ============ INTEGRAÇÃO NUVEMSHOP (aba Integrações) ============
+  const nuvem = require('./nuvemshop');
+  const origemDe = req => `${req.protocol}://${req.get('host')}`;
+
+  router.get('/integrations/nuvemshop', auth, (req, res) => {
+    res.json({ nuvemshop: nuvem.publicCfg(req.acc, origemDe(req)) });
+  });
+
+  // Preferências (tags aplicadas, criar contato automaticamente).
+  router.put('/integrations/nuvemshop/settings', auth, (req, res) => {
+    const c = nuvem.cfg(req.acc);
+    const { tags, autoContact } = req.body || {};
+    if (Array.isArray(tags)) c.tags = tags.map(t => String(t).trim()).filter(Boolean).slice(0, 10);
+    if (typeof autoContact === 'boolean') c.autoContact = autoContact;
+    db.save();
+    res.json({ nuvemshop: nuvem.publicCfg(req.acc, origemDe(req)) });
+  });
+
+  // Troca o code do OAuth por token e assina os webhooks na loja.
+  router.post('/integrations/nuvemshop/connect', auth, async (req, res) => {
+    if (!nuvem.isAvailable()) return res.status(403).json({ error: 'A integração com a Nuvemshop está indisponível no momento' });
+    const code = String((req.body || {}).code || '').trim();
+    if (!code) return res.status(400).json({ error: 'Autorização não recebida da Nuvemshop' });
+    try {
+      await nuvem.exchangeCode(req.acc, code);
+      await nuvem.fetchStore(req.acc);
+      let aviso = '';
+      try { await nuvem.registerWebhooks(req.acc, origemDe(req)); }
+      catch (e) { aviso = e.message; }   // loja conectada, mas sem eventos automáticos
+      res.json({ nuvemshop: nuvem.publicCfg(req.acc, origemDe(req)), aviso });
+    } catch (e) { res.status(400).json({ error: e.message }); }
+  });
+
+  // Reassina os webhooks (útil se a URL do servidor mudou).
+  router.post('/integrations/nuvemshop/rehook', auth, async (req, res) => {
+    try {
+      await nuvem.registerWebhooks(req.acc, origemDe(req));
+      res.json({ nuvemshop: nuvem.publicCfg(req.acc, origemDe(req)) });
+    } catch (e) { res.status(400).json({ error: e.message }); }
+  });
+
+  // Testa o token buscando os dados da loja.
+  router.get('/integrations/nuvemshop/test', auth, async (req, res) => {
+    try {
+      const loja = await nuvem.apiFetch(req.acc, '/store');
+      await nuvem.fetchStore(req.acc);
+      res.json({ ok: true, store: { id: loja.id, name: nuvem.cfg(req.acc).storeName } });
+    } catch (e) { res.status(400).json({ error: e.message }); }
+  });
+
+  router.delete('/integrations/nuvemshop', auth, async (req, res) => {
+    try { await nuvem.disconnect(req.acc); } catch (e) { /* desconecta local mesmo se falhar lá */ }
+    res.json({ nuvemshop: nuvem.publicCfg(req.acc, origemDe(req)) });
+  });
+
   router.post('/pixels', auth, can('pixels','create'), (req, res) => {
+    const lim = limits.check(req.acc, "pixels");
+    if (lim) return res.status(402).json({ error: lim, code: "limit", resource: "pixels" });
     const { type, pixelId, name, capiToken, testCode, defaultEvent } = req.body || {};
     if (!PIXEL_TYPES[type]) return res.status(400).json({ error: 'Tipo inválido (meta, gtag ou tiktok)' });
     const idv = String(pixelId || '').trim();
@@ -1711,13 +1942,15 @@ module.exports = function (broadcast, clients) {
   });
 
   router.post('/links', auth, can('links','create'), (req, res) => {
+    const lim = limits.check(req.acc, "links");
+    if (lim) return res.status(402).json({ error: lim, code: "limit", resource: "links" });
     const { title, dest, slug, utm, event, value, currency } = req.body || {};
     let url = String(dest || '').trim();
     if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
     try { new URL(url); } catch { return res.status(400).json({ error: 'Informe uma URL de destino válida (https://…)' }); }
     let s = String(slug || '').trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
     if (!s) s = crypto.randomBytes(4).toString('hex').slice(0, 7);
-    if (db.findLinkBySlug(s)) return res.status(409).json({ error: `O apelido "/l/${s}" já está em uso — escolha outro` });
+    if (db.findLinkBySlug(s)) return res.status(409).json({ error: `O apelido "/l/${s}" já está em uso, escolha outro` });
     const link = {
       id: db.genId('lnk'), slug: s, title: String(title || '').trim() || url.slice(0, 40), dest: url,
       utm: cleanUtm(utm), event: LINK_EVENTS.includes(event) ? event : 'PageView',
@@ -1797,6 +2030,8 @@ module.exports = function (broadcast, clients) {
   });
 
   router.post('/flows', auth, can('flows','create'), (req, res) => {
+    const lim = limits.check(req.acc, "flows");
+    if (lim) return res.status(402).json({ error: lim, code: "limit", resource: "flows" });
     const b = req.body || {};
     if (!b.name) return res.status(400).json({ error: 'Dê um nome à automação' });
     const trigger = b.trigger || { type: 'keyword', keyword: '', match: 'contains' };
@@ -1806,12 +2041,14 @@ module.exports = function (broadcast, clients) {
       name: String(b.name).trim(),
       enabled: b.enabled !== false,
       trigger,
-      waPhone: (req.acc.wa.displayPhoneNumber || '').replace(/\D/g, ''),
+      waPhone: (req.wctx.wa.displayPhoneNumber || '').replace(/\D/g, ''),
       nodes: Array.isArray(b.nodes) ? b.nodes : [],
       graph: b.graph && Array.isArray(b.graph.nodes) ? b.graph : { nodes: [], edges: [] },
       runs: 0, lastRun: null, lastResult: null,
       createdAt: Date.now(), updatedAt: Date.now()
     };
+    // Nasce pausada se ainda estiver incompleta (rascunho do Flow Builder).
+    if (flow.enabled && require('./flows').validateGraph(flow)) flow.enabled = false;
     req.acc.flows.push(flow);
     db.save();
     const origin = `${req.protocol}://${req.get('host')}`;
@@ -1830,7 +2067,12 @@ module.exports = function (broadcast, clients) {
     }
     if (Array.isArray(b.nodes)) f.nodes = b.nodes;
     if (b.graph && Array.isArray(b.graph.nodes)) f.graph = b.graph;
-    f.waPhone = (req.acc.wa.displayPhoneNumber || '').replace(/\D/g, '');
+    // Automação incompleta pode ficar salva como rascunho, mas não entra no ar.
+    if (f.enabled) {
+      const problema = require('./flows').validateGraph(f);
+      if (problema) return res.status(400).json({ error: problema });
+    }
+    f.waPhone = (req.wctx.wa.displayPhoneNumber || '').replace(/\D/g, '');
     f.updatedAt = Date.now();
     db.save();
     const origin = `${req.protocol}://${req.get('host')}`;
@@ -1864,7 +2106,7 @@ module.exports = function (broadcast, clients) {
     if (!f) return res.status(404).json({ error: 'Automação não encontrada' });
     const flows = require('./flows');
     const log = await flows.runFlow(req.acc, f, {
-      to: (req.body || {}).to || req.acc.wa.displayPhoneNumber || '',
+      to: (req.body || {}).to || req.wctx.wa.displayPhoneNumber || '',
       contactName: 'Teste',
       text: (req.body || {}).text || '',
       vars: (req.body || {}).vars || {}
@@ -1966,7 +2208,7 @@ module.exports = function (broadcast, clients) {
 
   // Ações manuais
   router.post('/consent/:waId/optout', auth, (req, res) => {
-    const c = store.findContact(req.acc, req.params.waId);
+    const c = store.findContact(req.wctx, req.params.waId);
     if (!c) return res.status(404).json({ error: 'Contato não encontrado' });
     const by = req.session.user || req.acc.name;
     consent.optOut(req.acc, c, { source: 'manual', reason: String((req.body || {}).reason || '').trim() || 'Opt-out manual', by });
@@ -1976,7 +2218,7 @@ module.exports = function (broadcast, clients) {
 
   // Reativação manual
   router.post('/consent/:waId/reactivate', auth, (req, res) => {
-    const c = store.findContact(req.acc, req.params.waId);
+    const c = store.findContact(req.wctx, req.params.waId);
     if (!c) return res.status(404).json({ error: 'Contato não encontrado' });
     const by = req.session.user || req.acc.name;
     consent.reactivate(req.acc, c, { by, reason: String((req.body || {}).reason || '').trim() || null });
@@ -2087,8 +2329,12 @@ module.exports = function (broadcast, clients) {
 
   // Público da campanha: todas, várias etapas do funil e/ou várias tags.
   // aud.values (array) é o formato atual; aud.value (string) é compat legado.
-  function resolveAudience(acc, aud) {
-    let list = acc.contacts;
+  // `chId` é obrigatório na prática: a campanha sai por UM número, e mandar
+  // template para um contato de outro canal criaria uma conversa duplicada
+  // (e a janela de 24h daquele contato não vale para este número).
+  function resolveAudience(acc, aud, chId) {
+    const dflt = ((acc.channels || [])[0] || {}).id || '';
+    let list = chId ? acc.contacts.filter(c => (c.chId || dflt) === chId) : acc.contacts;
     // OPT-OUT: quem pediu para sair nunca entra em disparo (regra do módulo de consentimento)
     if (consent.cfgOf(acc).enabled) list = list.filter(c => !consent.isOptedOut(c));
     if (!aud || aud.type === 'all') return list.map(c => c.waId);
@@ -2137,10 +2383,23 @@ module.exports = function (broadcast, clients) {
     if (!acc) return;
     const camp = acc.campaigns.find(c => c.id === campId);
     if (!camp) return;
+    // A campanha sai pelo CANAL em que foi criada. Sem isso, ela usaria sempre
+    // o número padrão e os contatos de outro número receberiam pelo número errado.
+    const canal = db.findChannel(acc, camp.chId);
+    const ctx = db.chanCtx(acc, canal);
+    const chId = canal ? canal.id : '';
+    if (!canal || !canal.wa.connected) {
+      camp.status = 'done';
+      camp.finishedAt = Date.now();
+      for (const r of camp.recipients) if (r.status === 'pending') { r.status = 'failed'; r.error = 'Canal desconectado'; }
+      db.save();
+      broadcast('campaign', { accountId: acc.id, id: camp.id });
+      return;
+    }
     for (const r of camp.recipients) {
       if (r.status !== 'pending') continue;
       try {
-        const contact = acc.contacts.find(c => c.waId === r.waId) || null;
+        const contact = store.findContact(ctx, r.waId) || null;
         // OPT-OUT durante o disparo (o cliente pode pedir para sair no meio da fila)
         if (contact && !consent.canSendTo(acc, contact).allowed) {
           r.status = 'skipped';
@@ -2151,11 +2410,11 @@ module.exports = function (broadcast, clients) {
         const components = camp.vars && camp.vars.length
           ? [{ type: 'body', parameters: camp.vars.map(v => ({ type: 'text', text: resolveVarTokens(acc, v, contact) || '-' })) }]
           : undefined;
-        const resp = await wa.sendTemplate(acc, r.waId, camp.templateName, camp.language, components);
+        const resp = await wa.sendTemplate(ctx, r.waId, camp.templateName, camp.language, components);
         if (contact) { contact.lastCampaignId = camp.id; contact.lastCampaignName = camp.name; contact.lastCampaignAt = Date.now(); }
         r.msgId = (resp && resp.messages && resp.messages[0] && resp.messages[0].id) || null;
         r.status = 'sent';
-        storeOutbound(acc, r.waId, { type: 'template', text: `📋 Template: ${camp.templateName}` }, resp);
+        storeOutbound(acc, r.waId, { type: 'template', text: `📋 Template: ${camp.templateName}` }, resp, null, chId);
       } catch (e) {
         r.status = 'failed';
         r.error = e.message;
@@ -2197,11 +2456,22 @@ module.exports = function (broadcast, clients) {
   router.post('/campaigns', auth, requireActive, h(async (req, res) => {
     const { name, templateName, language, vars, audience } = req.body || {};
     if (!name || !templateName) return res.status(400).json({ error: 'Informe "name" e "templateName"' });
-    const waIds = resolveAudience(req.acc, audience);
-    if (!waIds.length) return res.status(400).json({ error: 'Nenhum contato no público selecionado' });
+    if (!req.ch || !req.ch.wa.connected) {
+      return res.status(400).json({ error: 'Conecte o número deste canal antes de disparar' });
+    }
+    // o público é sempre do canal ativo: é ele que vai enviar
+    const waIds = resolveAudience(req.acc, audience, req.chId);
+    if (!waIds.length) return res.status(400).json({ error: 'Nenhum contato deste canal no público selecionado' });
+    // o modelo precisa existir e estar aprovado NA WABA deste canal
+    const aprovado = (req.ch.templatesCache.list || [])
+      .some(t => t.name === templateName && /APPROVED/i.test(t.status || ''));
+    if (!aprovado && (req.ch.templatesCache.list || []).length) {
+      return res.status(400).json({ error: `O modelo "${templateName}" não está aprovado no número ${req.ch.label}` });
+    }
     const camp = {
       id: db.genId('camp'),
       name, templateName,
+      chId: req.chId, chLabel: req.ch.label,   // canal que dispara
       language: language || 'pt_BR',
       vars: Array.isArray(vars) ? vars.map(v => String(v)) : [],
       audience: audience || { type: 'all' },
@@ -2242,6 +2512,7 @@ module.exports = function (broadcast, clients) {
 
   // ============ ASSINATURA & CARTEIRA (SaaS via Woovi — Pix / Pix Automático) ============
   const woovi = require('./woovi');
+  const saas = require('./saasbilling');   // planos do EliteChat no cartão
 
   function billingPublic(acc) {
     const b = acc.billing;
@@ -2271,9 +2542,56 @@ module.exports = function (broadcast, clients) {
         referrals: myRefs.map(a => ({ name: a.name, createdAt: a.createdAt, status: billingPublic(a).status }))
       },
       withdrawals: db.get().withdrawals.filter(w => w.accountId === req.acc.id).slice(-10).reverse(),
-      wooviReady: woovi.configured()
+      wooviReady: woovi.configured(),
+      // carteira detalhada: disponível, a liberar e a próxima liberação
+      walletDetail: (() => {
+        const w = req.acc.wallet;
+        const prox = (w.receivables || []).filter(r => !r.released).sort((a, b) => a.availableAt - b.availableAt)[0] || null;
+        return {
+          balance: w.balance, pending: w.pending, cardAvailable: w.cardAvailable,
+          nextRelease: prox ? { amount: prox.amount, at: prox.availableAt } : null,
+          receivables: (w.receivables || []).filter(r => !r.released)
+            .sort((a, b) => a.availableAt - b.availableAt).slice(0, 12)
+            .map(r => ({ amount: r.amount, at: r.availableAt, kind: r.kind, installment: r.installment, installments: r.installments }))
+        };
+      })(),
+      cardAccount: elitepay.cardCapability(req.acc),   // modo (carteira/split) + prazos
+      // meios de pagamento do PRÓPRIO EliteChat (Pix + cartão), uso x limites e
+      // preço das unidades extras — tudo que a tela de Assinatura precisa.
+      card: saas.methods(),
+      usage: limits.report(req.acc),
+      extraPrices: limits.extraPrices(),
+      extras: req.acc.billing.extras,
+      extrasCost: limits.extrasCost(req.acc),
+      savedCard: {
+        last4: req.acc.billing.card.last4 || '',
+        brand: req.acc.billing.card.brand || '',
+        method: req.acc.billing.method || 'pix'
+      }
     });
   });
+
+  // ---- Assinar o plano pagando no CARTÃO (crédito/débito) ----
+  // Diferente do Pix, o cartão é síncrono: aprovou, a assinatura já ativa.
+  router.post('/billing/subscribe-card', auth, h(async (req, res) => {
+    const b = req.body || {};
+    const plan = db.get().plans.find(p => p.id === b.planId && !p.archived);
+    if (!plan) return res.status(400).json({ error: 'Plano não encontrado' });
+    res.json(await saas.subscribe(req.acc, plan, b, broadcast));
+  }));
+
+  // ---- Assinar usando o SALDO da carteira (vendas no cartão viram plano) ----
+  router.post('/billing/subscribe-wallet', auth, h(async (req, res) => {
+    const plan = db.get().plans.find(p => p.id === (req.body || {}).planId && !p.archived);
+    if (!plan) return res.status(400).json({ error: 'Plano não encontrado' });
+    res.json(saas.subscribeWallet(req.acc, plan, broadcast));
+  }));
+
+  // ---- Comprar unidades EXTRAS (WhatsApp / links rastreáveis adicionais) ----
+  router.post('/billing/extras', auth, h(async (req, res) => {
+    const b = req.body || {};
+    res.json(await saas.buyExtra(req.acc, String(b.key || ''), b.qty, b, broadcast));
+  }));
 
   // Assinar um plano: cria assinatura recorrente (Pix Automático) quando habilitado
   // e a cobrança Pix do 1º pagamento — QR exibido inline na página (sem pop-up).
@@ -2289,7 +2607,7 @@ module.exports = function (broadcast, clients) {
       try {
         const sub = await woovi.createSubscription({
           correlationID: cid, value: plan.price, customer,
-          comment: `EliteChat — ${plan.name} (mensal)`
+          comment: `EliteChat: ${plan.name} (mensal)`
         });
         acc.billing.wooviSubId = sub.globalID || sub.id || '';
         acc.billing.subCorrelationID = cid;
@@ -2301,7 +2619,7 @@ module.exports = function (broadcast, clients) {
 
     const charge = await woovi.createCharge({
       correlationID: cid, value: plan.price, customer,
-      comment: `EliteChat — assinatura ${plan.name}`
+      comment: `EliteChat: assinatura ${plan.name}`
     });
     acc.billing.pendingCharge = {
       correlationID: cid, kind: 'sub', planId: plan.id, amount: plan.price,
@@ -2320,7 +2638,7 @@ module.exports = function (broadcast, clients) {
     const charge = await woovi.createCharge({
       correlationID: cid, value: amount,
       customer: { name: req.acc.name, email: req.acc.email },
-      comment: 'EliteChat — recarga de saldo'
+      comment: 'EliteChat: recarga de saldo'
     });
     req.acc.billing.pendingCharge = {
       correlationID: cid, kind: 'topup', planId: '', amount,
@@ -2368,11 +2686,31 @@ module.exports = function (broadcast, clients) {
     if (!pixKey) return res.status(400).json({ error: 'Informe sua chave Pix' });
     if (!amount || amount < 2000) return res.status(400).json({ error: 'Saque mínimo: R$ 20,00' });
     if (amount > req.acc.wallet.balance) return res.status(400).json({ error: 'Saldo insuficiente' });
-    req.acc.wallet.balance -= amount;
-    req.acc.wallet.transactions.push({ id: db.genId('tx'), ts: Date.now(), amount: -amount, type: 'withdraw', label: 'Saque solicitado — ' + pixKey });
-    db.get().withdrawals.push({ id: db.genId('wd'), accountId: req.acc.id, accountName: req.acc.name, amount, pixKey, status: 'pending', ts: Date.now() });
+    // A taxa depende da ORIGEM do dinheiro: venda no cartão tem taxa própria,
+    // o resto (Pix, comissões) usa a taxa de PIX Out.
+    const f = elitepay.computeWithdrawFee(req.acc, amount);
+    elitepay.debitWithdraw(req.acc, amount);
+    const detalhe = f.fee
+      ? ` · taxa ${elitepay.fmtBRL(f.fee)}${f.fromCard ? ` (cartão ${elitepay.fmtBRL(f.cardFee)}` + (f.pixFee ? ` + Pix ${elitepay.fmtBRL(f.pixFee)})` : ')') : ''}`
+      : '';
+    req.acc.wallet.transactions.push({
+      id: db.genId('tx'), ts: Date.now(), amount: -amount, type: 'withdraw',
+      label: `Saque para ${pixKey}${detalhe}`
+    });
+    db.get().withdrawals.push({
+      id: db.genId('wd'), accountId: req.acc.id, accountName: req.acc.name,
+      amount, fee: f.fee, net: f.net, fromCard: f.fromCard, fromPix: f.fromPix,
+      pixKey, status: 'pending', ts: Date.now()
+    });
     db.save();
-    res.json({ ok: true, balance: req.acc.wallet.balance });
+    res.json({ ok: true, balance: req.acc.wallet.balance, fee: f.fee, net: f.net });
+  });
+
+  // Prévia da taxa antes de confirmar o saque (a UI mostra o líquido ao digitar).
+  router.get('/wallet/withdraw/quote', auth, (req, res) => {
+    const amount = Math.round(Number(String(req.query.amount || '0').replace(',', '.')) * 100);
+    if (!amount || amount < 0) return res.json({ amount: 0, fee: 0, net: 0 });
+    res.json({ amount, ...elitepay.computeWithdrawFee(req.acc, amount) });
   });
 
   // ============ ADMIN SaaS (métricas, contas, planos, afiliados, saques) ============
@@ -2383,16 +2721,57 @@ module.exports = function (broadcast, clients) {
     const accs = data.accounts.filter(a => !a.isAdmin);
     const active = accs.filter(a => a.billing.status === 'active' && a.billing.periodEnd > now);
     const mrr = active.reduce((s, a) => { const p = data.plans.find(x => x.id === a.billing.planId); return s + (p ? p.price : 0); }, 0);
-    const rev30 = data.revenue.filter(r => r.ts >= now - 30 * 86400000 && r.kind !== 'topup').reduce((s, r) => s + r.amount, 0);
+    // Receita inclui TUDO que entrou: assinaturas, renovações E recargas (depósitos na carteira).
+    const rev30 = data.revenue.filter(r => r.ts >= now - 30 * 86400000).reduce((s, r) => s + r.amount, 0);
+
+    // ---- Série mensal (12 meses): receita por tipo + novas contas ----
+    const base = new Date(); base.setHours(0, 0, 0, 0);
+    const series = [];
+    for (let i = 11; i >= 0; i--) {
+      const s = new Date(base.getFullYear(), base.getMonth() - i, 1);
+      const e = new Date(base.getFullYear(), base.getMonth() - i + 1, 1);
+      const rows = data.revenue.filter(r => r.ts >= s.getTime() && r.ts < e.getTime());
+      const kSum = k => rows.filter(r => r.kind === k).reduce((a, r) => a + r.amount, 0);
+      series.push({
+        label: s.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', ''),
+        ym: s.toISOString().slice(0, 7),
+        total: rows.reduce((a, r) => a + r.amount, 0),
+        first: kSum('first'), renewal: kSum('renewal'), topup: kSum('topup'),
+        newAccounts: accs.filter(a => a.createdAt >= s.getTime() && a.createdAt < e.getTime()).length
+      });
+    }
+    // ---- Receita recorrente por plano ----
+    const byPlan = data.plans.filter(p => !p.archived).map(p => {
+      const subs = active.filter(a => a.billing.planId === p.id);
+      return { id: p.id, name: p.name, price: p.price, subscribers: subs.length, mrr: subs.length * p.price };
+    }).sort((a, b) => b.mrr - a.mrr);
+    // ---- Métricas avançadas ----
+    const paidRev = data.revenue.filter(r => r.kind !== 'topup');
+    const first30 = data.revenue.filter(r => r.ts >= now - 30 * 86400000 && r.kind === 'first').length;
+    const renew30 = data.revenue.filter(r => r.ts >= now - 30 * 86400000 && r.kind === 'renewal').length;
+    const curM = series[11].total, prevM = series[10] ? series[10].total : 0;
+    const trialsCount = accs.filter(a => a.billing.status === 'trial' && a.billing.periodEnd > now).length;
+    const advanced = {
+      arpu: active.length ? Math.round(mrr / active.length) : 0,                 // receita média por assinante ativo
+      avgTicket: paidRev.length ? Math.round(paidRev.reduce((a, r) => a + r.amount, 0) / paidRev.length) : 0,
+      conversion: accs.length ? Math.round(active.length / accs.length * 100) : 0, // % de contas que viraram assinantes
+      newSubs30d: first30, renewals30d: renew30,
+      momGrowth: prevM ? Math.round((curM - prevM) / prevM * 100) : (curM ? 100 : 0),
+      ltv: active.length && mrr ? Math.round((paidRev.reduce((a, r) => a + r.amount, 0) / Math.max(1, active.length))) : 0,
+      walletFloat: accs.reduce((a, x) => a + (x.wallet ? x.wallet.balance : 0), 0)
+    };
+
     res.json({
       metrics: {
         accounts: accs.length,
         activeSubs: active.length,
-        trials: accs.filter(a => a.billing.status === 'trial' && a.billing.periodEnd > now).length,
+        trials: trialsCount,
         mrr, revenue30d: rev30,
-        totalRevenue: data.revenue.filter(r => r.kind !== 'topup').reduce((s, r) => s + r.amount, 0),
+        totalRevenue: data.revenue.reduce((s, r) => s + r.amount, 0),   // inclui recargas da carteira
+        deposits: data.revenue.filter(r => r.kind === 'topup').reduce((s, r) => s + r.amount, 0),
         pendingWithdrawals: data.withdrawals.filter(w => w.status === 'pending').length
       },
+      series, byPlan, advanced,
       accounts: accs.map(a => ({
         id: a.id, name: a.name, email: a.email, createdAt: a.createdAt,
         waConnected: !!(a.wa && a.wa.connected),
@@ -2405,6 +2784,22 @@ module.exports = function (broadcast, clients) {
       withdrawals: data.withdrawals.slice(-50).reverse(),
       revenue: data.revenue.slice(-100).reverse(),
       config: { woovi: { appId: data.platform.woovi.appId ? '••••' + data.platform.woovi.appId.slice(-6) : '', configured: woovi.configured(), pixAutomatic: data.platform.woovi.pixAutomatic }, billing: data.platform.billing, affiliate: data.platform.affiliate, landing: data.platform.landing },
+      // Credenciais do app da Meta (Tech Provider). Rota já é adminOnly, então
+      // o cliente nunca recebe isto: a configuração vive só no Admin SaaS.
+      platform: {
+        appId: data.platform.appId || '', appSecret: data.platform.appSecret || '',
+        configId: data.platform.configId || '', systemToken: data.platform.systemToken || '',
+        verifyToken: data.platform.verifyToken || '', graphVersion: data.platform.graphVersion || 'v25.0',
+        metaAds: { appId: (data.platform.metaAds || {}).appId || '', appSecret: (data.platform.metaAds || {}).appSecret || '' }
+      },
+      // conexão manual do PRÓPRIO admin (testes/desenvolvimento)
+      manual: { accessToken: req.wctx.wa.accessToken || '', wabaId: req.wctx.wa.wabaId || '', phoneNumberId: req.wctx.wa.phoneNumberId || '' },
+      // adquirente de cartão — configurável aqui na aba Pagamentos
+      card: {
+        ...require('./cardgateways').adminCard(elitepay.cardConfig()),
+        webhookUrl: `${req.protocol}://${req.get('host')}/card-webhook`,
+        webhookToken: elitepay.cardWebhookToken()
+      },
       seo: data.platform.seo || {}
     });
   });
@@ -2440,6 +2835,8 @@ module.exports = function (broadcast, clients) {
       id: db.genId('pl'), name: String(name).trim(), price: cents,
       periodDays: Number(periodDays) || 30,
       features: String(features || '').split('\n').map(s => s.trim()).filter(Boolean),
+      // tetos do plano: disparos, contatos, fluxos, pixels, links e WhatsApps
+      limits: db.normLimits((req.body || {}).limits),
       createdAt: Date.now(), archived: false
     };
     db.get().plans.push(plan);
@@ -2458,6 +2855,7 @@ module.exports = function (broadcast, clients) {
     }
     if (b.periodDays) plan.periodDays = Number(b.periodDays) || plan.periodDays;
     if (b.features !== undefined) plan.features = String(b.features).split('\n').map(s => s.trim()).filter(Boolean);
+    if (b.limits !== undefined) plan.limits = db.normLimits(b.limits, plan.limits);
     if (b.archived !== undefined) plan.archived = !!b.archived;
     db.save();
     res.json({ plan });
@@ -2476,11 +2874,31 @@ module.exports = function (broadcast, clients) {
     if (b.pixAutomatic !== undefined) p.woovi.pixAutomatic = !!b.pixAutomatic;
     if (b.trialDays !== undefined) p.billing.trialDays = Math.max(0, Number(b.trialDays) || 0);
     if (b.enforce !== undefined) p.billing.enforce = !!b.enforce;
+    // preço mensal de cada unidade EXCEDENTE ao que o plano já inclui
+    const cents = v => Math.max(0, Math.round(Number(String(v).replace(',', '.')) * 100) || 0);
+    if (b.whatsappPrice !== undefined) p.billing.extras.whatsappPrice = cents(b.whatsappPrice);
+    if (b.linkPrice !== undefined) p.billing.extras.linkPrice = cents(b.linkPrice);
     if (b.ctaText !== undefined) p.landing.ctaText = String(b.ctaText).slice(0, 40);
     if (b.percentFirst !== undefined) p.affiliate.percentFirst = Math.min(90, Math.max(0, Number(b.percentFirst) || 0));
     if (b.percentRenewal !== undefined) p.affiliate.percentRenewal = Math.min(90, Math.max(0, Number(b.percentRenewal) || 0));
     db.save();
     res.json({ ok: true });
+  });
+
+  // ---- Integração Nuvemshop (app único da plataforma) ----
+  router.get('/admin/nuvemshop', auth, adminOnly, (req, res) => {
+    res.json({ nuvemshop: nuvem.adminCfg(`${req.protocol}://${req.get('host')}`) });
+  });
+
+  router.put('/admin/nuvemshop', auth, adminOnly, (req, res) => {
+    const p = nuvem.platformCfg();
+    const b = req.body || {};
+    if (typeof b.appId === 'string') p.appId = b.appId.trim();
+    // secret vazio = manter o que já está salvo (o painel nunca recebe o valor)
+    if (typeof b.appSecret === 'string' && b.appSecret.trim()) p.appSecret = b.appSecret.trim();
+    if (typeof b.enabled === 'boolean') p.enabled = b.enabled;
+    db.save();
+    res.json({ nuvemshop: nuvem.adminCfg(`${req.protocol}://${req.get('host')}`) });
   });
 
   // Testa a conexão com a Woovi (lista 1 cobrança qualquer)
@@ -2499,7 +2917,7 @@ module.exports = function (broadcast, clients) {
       const acc = db.findAccount(wd.accountId);
       if (acc) { // devolve o valor à carteira
         acc.wallet.balance += wd.amount;
-        acc.wallet.transactions.push({ id: db.genId('tx'), ts: Date.now(), amount: wd.amount, type: 'refund', label: 'Saque recusado — valor devolvido' });
+        acc.wallet.transactions.push({ id: db.genId('tx'), ts: Date.now(), amount: wd.amount, type: 'refund', label: 'Saque recusado, valor devolvido' });
       }
     }
     db.save();
@@ -2554,6 +2972,598 @@ module.exports = function (broadcast, clients) {
   });
 
   // ============ SSE (atualizações em tempo real no painel) ============
+
+  // ==================== ELITE PAY — pagamentos Pix do cliente ====================
+  const elitepay = require('./elitepay');
+
+  // Captura a URL pública (usada para montar o link do checkout /pay/:id,
+  // inclusive em cobranças criadas por Flows, onde não há request).
+  router.use((req, res, next) => {
+    try { elitepay.noteBaseUrl(`${req.protocol}://${req.get('host')}`); } catch {}
+    next();
+  });
+
+  // ---- CHECKOUT PÚBLICO (sem autenticação): dados da cobrança p/ a página /pay/:id ----
+  router.get('/public/pay/:id', (req, res) => {
+    const view = elitepay.publicChargeView(req.params.id);
+    if (!view) return res.status(404).json({ error: 'Cobrança não encontrada' });
+    // tags de navegador do lojista, para o checkout marcar InitiateCheckout
+    const dono = elitepay.findChargeAnywhere ? elitepay.findChargeAnywhere(req.params.id) : null;
+    if (dono && dono.acc) {
+      try { view.tags = require('./tracking').clientTags(dono.acc, { event: 'InitiateCheckout' }); } catch {}
+    }
+    res.json(view);
+  });
+
+  // Etapa 1 do checkout: pagador preenche os dados → cria o cliente na Woovi,
+  // cadastra o contato no EliteChat e registra os eventos na pipeline.
+  router.post('/public/pay/:id/identify', h(async (req, res) => {
+    const b = req.body || {};
+    await elitepay.identifyPayer(req.params.id, {
+      name: b.name, taxID: b.taxID, email: b.email, phone: b.phone, trk: b.trk
+    }, broadcast);
+    res.json({ ok: true, view: elitepay.publicChargeView(req.params.id) });
+  }));
+
+  // Pagamento com CARTÃO da cobrança (crédito/débito), quando o admin habilitou.
+  // Os dados do cartão só transitam: nada de número completo ou CVV é gravado.
+  router.post('/public/pay/:id/card', h(async (req, res) => {
+    const r = await elitepay.payWithCard(req.params.id, req.body || {}, broadcast);
+    res.json(r);
+  }));
+
+  // Reconsulta o adquirente quando o pagamento ficou em análise.
+  router.get('/public/pay/:id/card-status', h(async (req, res) => {
+    const status = await elitepay.refreshCardStatus(req.params.id, broadcast);
+    res.json({ status, view: elitepay.publicChargeView(req.params.id) });
+  }));
+
+  // ==================== TRACKING — atribuição + métricas de marketing ====================
+  const tracking = require('./tracking');
+
+  // captura pública de eventos (checkout /pay e snippet /t.js) — sem autenticação
+  router.post('/public/track/:accId', (req, res) => {
+    const acc = db.findAccount(req.params.accId);
+    if (!acc) return res.status(404).json({ error: 'Conta não encontrada' });
+    const b = req.body || {};
+    tracking.trackEvent(acc, {
+      name: b.name, source: b.source, sid: b.sid, url: b.url, pixel: b.pixel,
+      fbclid: b.fbclid, gclid: b.gclid, ttclid: b.ttclid, utm: b.utm, value: b.value
+    });
+    res.json({ ok: true });
+  });
+
+  router.get('/tracking', auth, can('tracking'), (req, res) => res.json(tracking.overview(req.acc)));
+  router.get('/tracking/campaigns', auth, can('tracking'), (req, res) => res.json({ campaigns: tracking.campaignReport(req.acc) }));
+  router.get('/tracking/funnel', auth, can('tracking'), (req, res) => res.json({ funnel: tracking.funnel(req.acc) }));
+  router.get('/tracking/compare', auth, can('tracking'), (req, res) => res.json({ compare: tracking.compare(req.acc) }));
+  router.get('/tracking/events', auth, can('tracking'), (req, res) => {
+    const t = tracking.ensure(req.acc);
+    res.json({ events: t.events.slice(0, 150) });
+  });
+  router.get('/tracking/customer/:waId', auth, can('tracking'), (req, res) => {
+    res.json(tracking.customerTimeline(req.acc, store.normalizeWaId(req.params.waId)));
+  });
+
+  // conexões (Meta Pixel, CAPI, GA4, TikTok, GTM…)
+  router.put('/tracking/connections/:key', auth, can('tracking', 'edit'), (req, res) => {
+    const t = tracking.ensure(req.acc);
+    const c = t.connections[req.params.key];
+    if (!c) return res.status(404).json({ error: 'Conexão desconhecida' });
+    const b = req.body || {};
+    if (typeof b.enabled === 'boolean') c.enabled = b.enabled;
+    if (typeof b.id === 'string') c.id = b.id.trim().slice(0, 120);
+    if (typeof b.token === 'string' && b.token && b.token !== '••••') c.token = b.token.trim().slice(0, 400);
+    db.save();
+    res.json({ ok: true });
+  });
+
+  // Meta Ads (gasto automático das campanhas)
+  router.put('/tracking/meta', auth, can('tracking', 'edit'), (req, res) => {
+    const t = tracking.ensure(req.acc);
+    const b = req.body || {};
+    if (typeof b.adAccountId === 'string') t.meta.adAccountId = b.adAccountId.trim().slice(0, 60);
+    if (typeof b.token === 'string' && b.token) t.meta.token = b.token.trim().slice(0, 500);
+    db.save();
+    res.json({ ok: true });
+  });
+  router.post('/tracking/meta/sync', auth, can('tracking', 'edit'), h(async (req, res) => {
+    const m = await tracking.syncMetaAds(req.acc);
+    broadcast('tracking', { accountId: req.acc.id, kind: 'meta_sync' });
+    res.json({ ok: true, campaigns: m.campaigns.length, lastSync: m.lastSync });
+  }));
+
+  // ---- Conectar Meta Ads por OAuth (permissão ads_read) ----
+  // Reusa o app da plataforma já configurado para o WhatsApp. O cliente
+  // autoriza no popup e nunca precisa gerar token à mão.
+  router.get('/tracking/meta/auth-url', auth, can('tracking', 'edit'), (req, res) => {
+    if (!meta.adsConfigured()) {
+      return res.status(400).json({ error: 'O Meta Ads ainda não foi habilitado pelo administrador. Fale com o suporte.' });
+    }
+    const estado = crypto.randomBytes(16).toString('hex');
+    const t = tracking.ensure(req.acc);
+    t.meta.oauthState = estado;
+    t.meta.oauthAt = Date.now();
+    db.save();
+    const redirectUri = `${req.protocol}://${req.get('host')}/auth/meta-ads/callback`;
+    res.json({ url: meta.adsAuthUrl(redirectUri, estado), redirectUri });
+  });
+
+  router.post('/tracking/meta/connect', auth, can('tracking', 'edit'), h(async (req, res) => {
+    const b = req.body || {};
+    const t = tracking.ensure(req.acc);
+    // o state precisa bater e ser recente: barra troca de token por CSRF
+    if (!b.code || !b.state || b.state !== t.meta.oauthState || Date.now() - (t.meta.oauthAt || 0) > 10 * 60 * 1000) {
+      return res.status(400).json({ error: 'Autorização inválida ou expirada. Tente conectar de novo.' });
+    }
+    t.meta.oauthState = '';
+    const redirectUri = `${req.protocol}://${req.get('host')}/auth/meta-ads/callback`;
+    const curto = await meta.exchangeAdsCode(b.code, redirectUri);
+    // troca por token de 60 dias, senão a sincronização pararia em ~1 hora
+    let token = curto.access_token, expira = 0;
+    try {
+      const longo = await meta.longLivedToken(curto.access_token);
+      if (longo && longo.access_token) {
+        token = longo.access_token;
+        expira = Date.now() + (Number(longo.expires_in) || 60 * 86400) * 1000;
+      }
+    } catch { expira = Date.now() + 3600 * 1000; }
+
+    t.meta.token = token;
+    t.meta.expiresAt = expira;
+    t.meta.expired = false;
+    t.meta.error = '';
+    db.save();
+
+    // já devolve as contas de anúncio para o cliente escolher numa lista
+    let contas = [];
+    try {
+      const r = await meta.getAdAccounts(token);
+      contas = (r.data || []).map(a => ({
+        id: 'act_' + a.account_id, name: a.name, currency: a.currency, status: a.account_status
+      }));
+    } catch (e) { t.meta.error = e.message; db.save(); }
+    t.meta.adAccounts = contas;
+    if (contas.length === 1 && !t.meta.adAccountId) t.meta.adAccountId = contas[0].id;
+    db.save();
+    res.json({ ok: true, adAccounts: contas, expiresAt: expira, adAccountId: t.meta.adAccountId });
+  }));
+
+  router.get('/tracking/meta/ad-accounts', auth, can('tracking', 'edit'), h(async (req, res) => {
+    const t = tracking.ensure(req.acc);
+    if (!t.meta.token) return res.status(400).json({ error: 'Conecte sua conta Meta Ads primeiro' });
+    const r = await meta.getAdAccounts(t.meta.token);
+    t.meta.adAccounts = (r.data || []).map(a => ({ id: 'act_' + a.account_id, name: a.name, currency: a.currency, status: a.account_status }));
+    db.save();
+    res.json({ adAccounts: (r.data || []).map(a => ({ id: 'act_' + a.account_id, name: a.name, currency: a.currency, status: a.account_status })) });
+  }));
+
+  router.delete('/tracking/meta', auth, can('tracking', 'edit'), (req, res) => {
+    const t = tracking.ensure(req.acc);
+    t.meta.token = ''; t.meta.adAccountId = ''; t.meta.campaigns = [];
+    t.meta.expiresAt = 0; t.meta.expired = false; t.meta.error = '';
+    db.save();
+    res.json({ ok: true });
+  });
+
+  router.put('/tracking/alerts', auth, can('tracking', 'edit'), (req, res) => {
+    const t = tracking.ensure(req.acc);
+    const b = req.body || {};
+    if (b.roasMin !== undefined) t.alerts.cfg.roasMin = Math.max(0, parseFloat(String(b.roasMin).replace(',', '.')) || 0);
+    if (b.cpaMax !== undefined) t.alerts.cfg.cpaMax = Math.max(0, parseFloat(String(b.cpaMax).replace(',', '.')) || 0);
+    db.save();
+    res.json({ ok: true, cfg: t.alerts.cfg });
+  });
+
+  // Envia a cobrança na conversa do WhatsApp e registra no histórico do chat.
+  // A cobrança vai como MENSAGEM DE TEXTO → precisa respeitar a janela de 24h da Meta.
+  // Fora dela (ou atendimento finalizado), o envio é bloqueado e o motivo é informado.
+  async function sendChargeMessage(acc, ch, waId, stamp) {
+    const to = store.normalizeWaId(waId);
+    const ep = acc.elitepay || {};
+
+    // 1) Modelo de COBRANÇA selecionado e APROVADO → envia como template Meta
+    //    (funciona inclusive fora da janela de 24h).
+    //    Variáveis: {{1}} nome · {{2}} valor · {{3}} link · {{4}} Pix copia e cola
+    //               {{5}} descrição · {{6}} vencimento
+    const tpl = elitepay.pickTemplate(acc, 'cobranca');
+    if (tpl) {
+      const nVars = tpl.vars.length;
+      const vals = elitepay.tplValues(acc, ch, 'cobranca');
+      const components = nVars ? [{ type: 'body', parameters: vals.slice(0, nVars).map(t => ({ type: 'text', text: String(t || '-') })) }] : [];
+      const r = await wa.sendTemplate(acc, to, tpl.name, tpl.language || ep.chargeTemplateLang || 'pt_BR', components);
+      storeOutbound(acc, to, { type: 'template', text: `📋 Cobrança (${tpl.name}) · ${elitepay.fmtBRL(ch.value)}` }, r, stamp);
+      elitepay.log(acc, { type: 'charge_sent', chargeId: ch.id, amount: ch.value, detail: `Cobrança enviada via template "${tpl.name}"` });
+      db.save();
+      return;
+    }
+
+    // 2) Fallback: mensagem de texto padrão → precisa respeitar a janela de 24h da Meta.
+    const contact = store.findContact(acc, to);
+    const check = contact ? session.canSend(contact, 'text') : { allowed: true };
+    if (!check.allowed) {
+      const e = new Error(check.error || 'A janela de 24h expirou, marque um Template de Cobrança em Modelos para enviar a qualquer momento.');
+      e.status = 409; e.code = check.code || 'window_closed';
+      elitepay.log(acc, { type: 'send_blocked', chargeId: ch.id, amount: ch.value, detail: '24h: ' + e.message });
+      db.save();
+      throw e;
+    }
+    const text = elitepay.chargeMessage(acc, ch);
+    const r = await wa.sendText(acc, to, text);
+    storeOutbound(acc, to, { type: 'text', text }, r, stamp);
+    elitepay.log(acc, { type: 'charge_sent', chargeId: ch.id, amount: ch.value, detail: 'Cobrança enviada no WhatsApp para +' + to });
+    db.save();
+  }
+
+  // Status geral do módulo (gate de onboarding do front)
+  router.get('/elitepay', auth, can('elitepay'), (req, res) => {
+    const ep = elitepay.ensure(req.acc);
+    const cfg = elitepay.platformCfg();
+    res.json({
+      configured: elitepay.configured(),
+      subaccount: ep.subaccount,
+      settings: ep.settings,
+      checkout: ep.checkouts.find(c => c.isDefault) || ep.checkouts[0],   // layout padrão
+      checkouts: ep.checkouts.map(c => ({ id: c.id, name: c.name, isDefault: c.isDefault })),
+      products: ep.products.filter(p => p.active).map(p => ({ id: p.id, name: p.name, price: p.price, checkoutId: p.checkoutId })),
+      // ---- MODELOS de mensagem do Elite Pay ----
+      // Quando existe mais de um modelo do mesmo papel, o usuário escolhe qual
+      // é enviado; com um só, ele já é o padrão.
+      chargeTemplateName: ep.chargeTemplateName || '',
+      confirmTemplateName: ep.confirmTemplateName || '',
+      chargeTemplates: elitepay.templatesByRole(req.acc, 'cobranca'),
+      confirmTemplates: elitepay.templatesByRole(req.acc, 'confirmacao'),
+      roleVars: elitepay.TPL_VARS,
+      feeInPercent: cfg.feeInPercent,       // taxa PIX In (por venda)
+      feeOutPercent: cfg.feeOutPercent,     // taxa PIX Out (por saque)
+      onboardingMode: cfg.onboardingMode,   // 'subaccount' | 'kyc'
+      gateway: elitepay.gateway().label,
+      card: elitepay.cardCapability(req.acc)   // {ready, credit, debit} p/ o Checkout Builder
+    });
+  });
+
+  // Onboarding — cria a subconta do cliente (via API do gateway, sem sair do EliteChat)
+  router.post('/elitepay/subaccount', auth, can('elitepay', 'create'), h(async (req, res) => {
+    // redirectUrl: para onde a Woovi devolve o cliente após concluir o KYC hospedado
+    const redirectUrl = `${req.protocol}://${req.get('host')}/app/#/elitepay`;
+    const sub = await elitepay.registerSubaccount(req.acc, { ...(req.body || {}), redirectUrl });
+    broadcast('elitepay', { accountId: req.acc.id, kind: 'subaccount', status: sub.status });
+    res.json({ ok: true, subaccount: sub, onboardingUrl: sub.kyc ? sub.kyc.onboardingUrl : '' });
+  }));
+
+  // Dashboard financeiro do cliente
+  router.get('/elitepay/dashboard', auth, can('elitepay'), (req, res) => {
+    const ep = elitepay.ensure(req.acc);
+    res.json({ metrics: elitepay.metrics(req.acc), recent: ep.charges.slice(0, 8), logs: ep.logs.slice(0, 20) });
+  });
+
+  // Histórico de cobranças com pesquisa e filtros
+  router.get('/elitepay/charges', auth, can('elitepay'), (req, res) => {
+    const ep = elitepay.ensure(req.acc);
+    const q = String(req.query.q || '').toLowerCase();
+    const status = String(req.query.status || '');
+    let list = ep.charges;
+    if (status) list = list.filter(c => c.status === status);
+    if (q) list = list.filter(c =>
+      (c.contactName || '').toLowerCase().includes(q) ||
+      (c.comment || '').toLowerCase().includes(q) ||
+      (c.waId || '').includes(q.replace(/\D/g, '') || '§') ||
+      c.id.includes(q));
+    res.json({ charges: list.slice(0, 200), total: list.length });
+  });
+
+  // Nova cobrança (Pix + link + QR + copia e cola) — opcionalmente já envia no chat
+  router.post('/elitepay/charges', auth, can('elitepay', 'create'), h(async (req, res) => {
+    const b = req.body || {};
+    const contact = b.waId ? store.findContact(req.wctx, store.normalizeWaId(b.waId)) : null;
+    const ch = await elitepay.createCharge(req.acc, {
+      valueCents: b.valueCents, comment: b.comment,
+      waId: contact ? contact.waId : (b.waId || null),
+      contactName: contact ? contact.name : (b.contactName || null),
+      origin: b.origin || 'manual', byName: req.who.name, expiresMin: b.expiresMin,
+      productId: b.productId, checkoutId: b.checkoutId     // produto + layout escolhidos
+    });
+    let sent = false, sendError = null;
+    if (b.send && ch.waId) {
+      try { await sendChargeMessage(req.wctx, ch, ch.waId, { agentId: req.who.agentId, agentName: req.who.name }); sent = true; }
+      catch (e) { sendError = e.message; if (e.code !== 'window_closed' && e.code !== 'attendance_finished') { elitepay.log(req.acc, { type: 'send_error', chargeId: ch.id, detail: e.message }); db.save(); } }
+    }
+    broadcast('elitepay', { accountId: req.acc.id, kind: 'charge', chargeId: ch.id, status: ch.status });
+    res.json({ ok: true, charge: ch, sent, sendError });
+  }));
+
+  router.post('/elitepay/charges/:id/cancel', auth, can('elitepay', 'edit'), h(async (req, res) => {
+    const ch = await elitepay.cancelCharge(req.acc, req.params.id);
+    broadcast('elitepay', { accountId: req.acc.id, kind: 'charge', chargeId: ch.id, status: 'cancelled' });
+    res.json({ ok: true, charge: ch });
+  }));
+
+  router.post('/elitepay/charges/:id/resend', auth, can('elitepay'), h(async (req, res) => {
+    const ch = elitepay.findCharge(req.acc, req.params.id);
+    if (!ch) return res.status(404).json({ error: 'Cobrança não encontrada' });
+    const waId = req.body.waId || ch.waId;
+    if (!waId) return res.status(400).json({ error: 'Cobrança sem contato vinculado, informe o destinatário' });
+    await sendChargeMessage(req.wctx, ch, waId, { agentId: req.who.agentId, agentName: req.who.name });
+    res.json({ ok: true });
+  }));
+
+  router.post('/elitepay/charges/:id/duplicate', auth, can('elitepay', 'create'), h(async (req, res) => {
+    const old = elitepay.findCharge(req.acc, req.params.id);
+    if (!old) return res.status(404).json({ error: 'Cobrança não encontrada' });
+    const ch = await elitepay.createCharge(req.acc, {
+      valueCents: old.value, comment: old.comment, waId: old.waId, contactName: old.contactName,
+      origin: 'manual', byName: req.who.name
+    });
+    broadcast('elitepay', { accountId: req.acc.id, kind: 'charge', chargeId: ch.id, status: ch.status });
+    res.json({ ok: true, charge: ch });
+  }));
+
+  router.put('/elitepay/settings', auth, can('elitepay', 'edit'), (req, res) => {
+    const ep = elitepay.ensure(req.acc);
+    const b = req.body || {};
+    if (typeof b.autoMessage === 'string') ep.settings.autoMessage = b.autoMessage.slice(0, 1200);
+    if (b.expiresMin !== undefined) ep.settings.expiresMin = Math.max(5, Math.min(43200, Number(b.expiresMin) || 1440));
+    if (typeof b.notifyPaid === 'boolean') ep.settings.notifyPaid = b.notifyPaid;
+    if (typeof b.chargeTemplateEnabled === 'boolean') ep.settings.chargeTemplateEnabled = b.chargeTemplateEnabled;
+    // Escolha do modelo enviado em cada papel (só aceita modelo com aquele papel).
+    for (const [campo, role] of [['chargeTemplateName', 'cobranca'], ['confirmTemplateName', 'confirmacao']]) {
+      if (typeof b[campo] !== 'string') continue;
+      const nome = b[campo].trim();
+      if (!nome) { ep[campo] = ''; continue; }
+      const t = elitepay.templatesByRole(req.acc, role).find(x => x.name === nome);
+      if (!t) return res.status(400).json({ error: `"${nome}" não é um modelo de ${role === 'cobranca' ? 'cobrança' : 'confirmação de pagamento'}` });
+      ep[campo] = nome;
+      ep[role === 'cobranca' ? 'chargeTemplateLang' : 'confirmTemplateLang'] = t.language || 'pt_BR';
+    }
+    db.save();
+    res.json({
+      ok: true, settings: ep.settings,
+      chargeTemplateName: ep.chargeTemplateName, confirmTemplateName: ep.confirmTemplateName
+    });
+  });
+
+  // ---- Checkout Builder: personalização da página pública de pagamento ----
+  router.put('/elitepay/checkout', auth, can('elitepay', 'edit'), (req, res) => {
+    const ep = elitepay.ensure(req.acc);
+    const b = req.body || {};
+    // salva no template escolhido (ou no padrão, quando não vier id)
+    const ck = (b.id && ep.checkouts.find(c => c.id === b.id)) || ep.checkouts.find(c => c.isDefault) || ep.checkouts[0];
+    if (!ck) return res.status(404).json({ error: 'Checkout não encontrado' });
+    if (typeof b.name === 'string' && b.name.trim()) ck.name = b.name.trim().slice(0, 60);
+    if (b.isDefault === true) { ep.checkouts.forEach(c => c.isDefault = false); ck.isDefault = true; }
+    const dataUrl = v => (typeof v === 'string' && (/^data:image\/(png|jpe?g|webp);base64,/.test(v) || v === '')) ? v : null;
+    // imagens (desktop + celular): data URL até ~800KB cada
+    const LBL = { banner: 'Capa (desktop)', bannerMobile: 'Capa (celular)', logo: 'Logo (desktop)', logoMobile: 'Logo (celular)' };
+    for (const k of ['banner', 'bannerMobile', 'logo', 'logoMobile']) {
+      if (dataUrl(b[k]) === null) continue;
+      if (b[k].length > 800 * 1024) return res.status(400).json({ error: `${LBL[k]}: imagem muito grande (máx. ~800KB), use uma menor` });
+      ck[k] = b[k];
+    }
+    // ordem dos blocos (arrastar e soltar) — só chaves conhecidas, sem duplicar
+    if (Array.isArray(b.blocks)) {
+      const valid = ['banner', 'timer', 'product', 'notice', 'benefits', 'testimonial', 'guarantee', 'faq'];
+      const ordered = b.blocks.filter(x => valid.includes(x)).filter((x, i, a) => a.indexOf(x) === i);
+      if (ordered.length) ck.blocks = valid.filter(v => !ordered.includes(v)).length ? ordered.concat(valid.filter(v => !ordered.includes(v))) : ordered;
+    }
+    // blocos opcionais
+    const str = (v, n) => typeof v === 'string' ? v.slice(0, n) : undefined;
+    if (b.timer && typeof b.timer === 'object') {
+      ck.timer = { on: !!b.timer.on, minutes: Math.max(1, Math.min(1440, +b.timer.minutes || 15)), text: str(b.timer.text, 120) || ck.timer.text || '' };
+    }
+    if (b.benefits && typeof b.benefits === 'object') {
+      ck.benefits = { on: !!b.benefits.on, title: str(b.benefits.title, 80) || '', items: (Array.isArray(b.benefits.items) ? b.benefits.items : []).slice(0, 10).map(x => String(x).slice(0, 120)) };
+    }
+    if (b.testimonial && typeof b.testimonial === 'object') {
+      ck.testimonial = { on: !!b.testimonial.on, name: str(b.testimonial.name, 60) || '', role: str(b.testimonial.role, 60) || '', text: str(b.testimonial.text, 400) || '' };
+    }
+    if (b.guarantee && typeof b.guarantee === 'object') {
+      ck.guarantee = { on: !!b.guarantee.on, days: Math.max(1, Math.min(365, +b.guarantee.days || 7)), text: str(b.guarantee.text, 240) || '' };
+    }
+    if (b.faq && typeof b.faq === 'object') {
+      ck.faq = { on: !!b.faq.on, items: (Array.isArray(b.faq.items) ? b.faq.items : []).slice(0, 8).map(i => ({ q: String(i.q || '').slice(0, 140), a: String(i.a || '').slice(0, 500) })) };
+    }
+    if (b.notice && typeof b.notice === 'object') ck.notice = { on: !!b.notice.on, text: str(b.notice.text, 200) || '' };
+    if (b.badges && typeof b.badges === 'object') ck.badges = { on: !!b.badges.on };
+    // formas de pagamento aceitas neste checkout. Garante ao menos uma ativa:
+    // se o lojista desligar tudo, o Pix permanece (não dá para vender sem meio).
+    if (b.methods && typeof b.methods === 'object') {
+      const m = { pix: !!b.methods.pix, credit: !!b.methods.credit, debit: !!b.methods.debit };
+      if (!m.pix && !m.credit && !m.debit) m.pix = true;
+      ck.methods = m;
+    }
+    if (typeof b.title === 'string') ck.title = b.title.slice(0, 80);
+    if (typeof b.description === 'string') ck.description = b.description.slice(0, 600);
+    if (typeof b.color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(b.color)) ck.color = b.color;
+    if (typeof b.successMsg === 'string') ck.successMsg = b.successMsg.slice(0, 300);
+    if (typeof b.supportText === 'string') ck.supportText = b.supportText.slice(0, 200);
+    db.save();
+    elitepay.log(req.acc, { type: 'checkout_updated', detail: 'Checkout personalizado atualizado' });
+    res.json({ ok: true, checkout: ck });
+  });
+
+  // ---- PRODUTOS (o que é vendido; entra como variável no checkout) ----
+  router.get('/elitepay/products', auth, can('elitepay'), (req, res) => {
+    const ep = elitepay.ensure(req.acc);
+    res.json({ products: ep.products, checkouts: ep.checkouts.map(c => ({ id: c.id, name: c.name, isDefault: c.isDefault })) });
+  });
+  router.post('/elitepay/products', auth, can('elitepay', 'create'), (req, res) => {
+    const ep = elitepay.ensure(req.acc);
+    const b = req.body || {};
+    if (!String(b.name || '').trim()) return res.status(400).json({ error: 'Informe o nome do produto' });
+    const p = { ...elitepay.defaultProduct(), id: db.genId('prd'), createdAt: Date.now() };
+    applyProduct(p, b, res); if (res.headersSent) return;
+    ep.products.unshift(p);
+    db.save();
+    res.json({ ok: true, product: p });
+  });
+  router.put('/elitepay/products/:id', auth, can('elitepay', 'edit'), (req, res) => {
+    const ep = elitepay.ensure(req.acc);
+    const p = ep.products.find(x => x.id === req.params.id);
+    if (!p) return res.status(404).json({ error: 'Produto não encontrado' });
+    applyProduct(p, req.body || {}, res); if (res.headersSent) return;
+    db.save();
+    res.json({ ok: true, product: p });
+  });
+  router.delete('/elitepay/products/:id', auth, can('elitepay', 'edit'), (req, res) => {
+    const ep = elitepay.ensure(req.acc);
+    const i = ep.products.findIndex(x => x.id === req.params.id);
+    if (i < 0) return res.status(404).json({ error: 'Produto não encontrado' });
+    ep.products.splice(i, 1);
+    db.save();
+    res.json({ ok: true });
+  });
+  function applyProduct(p, b, res) {
+    const img = v => (typeof v === 'string' && (/^data:image\/(png|jpe?g|webp);base64,/.test(v) || v === '')) ? v : null;
+    if (typeof b.name === 'string') p.name = b.name.slice(0, 80);
+    if (typeof b.description === 'string') p.description = b.description.slice(0, 600);
+    if (b.price !== undefined) p.price = Math.max(0, Math.round(Number(b.price) || 0));
+    if (typeof b.checkoutId === 'string') p.checkoutId = b.checkoutId.slice(0, 40);
+    if (typeof b.active === 'boolean') p.active = b.active;
+    for (const k of ['banner', 'bannerMobile', 'logo', 'logoMobile']) {
+      if (img(b[k]) === null) continue;
+      if (b[k].length > 800 * 1024) { res.status(400).json({ error: 'Imagem muito grande (máx. ~800KB)' }); return; }
+      p[k] = b[k];
+    }
+  }
+
+  // ---- CHECKOUTS (templates de layout) ----
+  router.get('/elitepay/checkouts', auth, can('elitepay'), (req, res) => {
+    res.json({ checkouts: elitepay.ensure(req.acc).checkouts });
+  });
+  router.post('/elitepay/checkouts', auth, can('elitepay', 'create'), (req, res) => {
+    const ep = elitepay.ensure(req.acc);
+    const base = ep.checkouts.find(c => c.isDefault) || ep.checkouts[0] || elitepay.defaultCheckout();
+    const c = JSON.parse(JSON.stringify(base));        // duplica o layout atual
+    c.id = db.genId('ckt');
+    c.name = String((req.body || {}).name || 'Novo checkout').slice(0, 60);
+    c.isDefault = false;
+    ep.checkouts.push(c);
+    db.save();
+    res.json({ ok: true, checkout: c });
+  });
+  router.delete('/elitepay/checkouts/:id', auth, can('elitepay', 'edit'), (req, res) => {
+    const ep = elitepay.ensure(req.acc);
+    if (ep.checkouts.length <= 1) return res.status(400).json({ error: 'É preciso manter ao menos um checkout' });
+    const i = ep.checkouts.findIndex(c => c.id === req.params.id);
+    if (i < 0) return res.status(404).json({ error: 'Checkout não encontrado' });
+    const era = ep.checkouts[i].isDefault;
+    ep.checkouts.splice(i, 1);
+    if (era) ep.checkouts[0].isDefault = true;
+    db.save();
+    res.json({ ok: true });
+  });
+
+  router.get('/elitepay/logs', auth, can('elitepay'), (req, res) => {
+    res.json({ logs: elitepay.ensure(req.acc).logs.slice(0, 200) });
+  });
+
+  // ---- Admin SaaS: gestão financeira da plataforma ----
+  router.get('/admin/elitepay', auth, adminOnly, (req, res) => {
+    // `card` vem junto porque as taxas de Pix e de CARTÃO moram no mesmo painel
+    res.json({ ...elitepay.adminOverview(), card: require('./cardgateways').adminCard(elitepay.cardConfig()) });
+  });
+  router.put('/admin/elitepay/config', auth, adminOnly, (req, res) => {
+    const cfg = elitepay.platformCfg();
+    const b = req.body || {};
+    const pct = v => Math.max(0, Math.min(50, Number(String(v).replace(',', '.')) || 0));
+    if (b.feeInPercent !== undefined) cfg.feeInPercent = pct(b.feeInPercent);
+    if (b.feeOutPercent !== undefined) cfg.feeOutPercent = pct(b.feeOutPercent);
+    if (typeof b.splitPixKey === 'string') cfg.splitPixKey = b.splitPixKey.trim().slice(0, 140);
+    if (typeof b.requireApproval === 'boolean') cfg.requireApproval = b.requireApproval;
+    if (b.onboardingMode === 'kyc' || b.onboardingMode === 'subaccount') cfg.onboardingMode = b.onboardingMode;
+    db.save();
+    elitepay.plog({ type: 'config_updated', detail: `Modo ${cfg.onboardingMode} · PIX In ${cfg.feeInPercent}% · PIX Out ${cfg.feeOutPercent}% · aprovação ${cfg.requireApproval ? 'manual' : 'automática'}` });
+    res.json({ ok: true, config: cfg });
+  });
+
+  // ---- Conta de recebimento no cartão (recebedor/subconta do CLIENTE) ----
+  router.get('/elitepay/card-account', auth, h(async (req, res) => {
+    // reconsulta o adquirente quando ainda está em análise
+    if (elitepay.cardAccount(req.acc).status === 'pending') await elitepay.syncCardAccount(req.acc);
+    res.json({ account: elitepay.cardAccountView(req.acc) });
+  }));
+
+  router.post('/elitepay/card-account', auth, h(async (req, res) => {
+    await elitepay.registerCardAccount(req.acc, req.body || {});
+    res.json({ account: elitepay.cardAccountView(req.acc) });
+  }));
+
+  // ---- Adquirente de cartão (Pagar.me / Asaas) ----
+  const cards = require('./cardgateways');
+
+  router.get('/admin/elitepay/card', auth, adminOnly, (req, res) => {
+    const origin = `${req.protocol}://${req.get('host')}`;
+    res.json({
+      card: {
+        ...cards.adminCard(elitepay.cardConfig()),
+        webhookUrl: `${origin}/card-webhook`,
+        webhookToken: elitepay.cardWebhookToken()   // o admin precisa colar no painel do adquirente
+      }
+    });
+  });
+
+  router.put('/admin/elitepay/card', auth, adminOnly, (req, res) => {
+    const card = elitepay.cardConfig();
+    const b = req.body || {};
+    const pct = v => Math.max(0, Math.min(50, Number(String(v).replace(',', '.')) || 0));
+
+    if (typeof b.enabled === 'boolean') card.enabled = b.enabled;
+    if (b.provider === 'pagarme' || b.provider === 'asaas') card.provider = b.provider;
+    if (typeof b.credit === 'boolean') card.credit = b.credit;
+    if (typeof b.debit === 'boolean') card.debit = b.debit;
+    if (b.maxInstallments !== undefined) card.maxInstallments = Math.max(1, Math.min(12, Number(b.maxInstallments) || 1));
+    if (b.feeCardPercent !== undefined) card.feeCardPercent = pct(b.feeCardPercent);
+    if (b.feeCardFixed !== undefined) card.feeCardFixed = Math.max(0, Math.round(Number(b.feeCardFixed) || 0));
+    if (typeof b.softDescriptor === 'string') card.softDescriptor = b.softDescriptor.trim().slice(0, 13);
+    if (typeof b.platformRecipientId === 'string') card.platformRecipientId = b.platformRecipientId.trim();
+    if (typeof b.requireApproval === 'boolean') card.requireApproval = b.requireApproval;
+    // ---- taxa de SAQUE das vendas no cartão + prazo de liberação ----
+    if (b.feeOutCardPercent !== undefined) card.feeOutCardPercent = pct(b.feeOutCardPercent);
+    if (b.feeOutCardFixed !== undefined) card.feeOutCardFixed = Math.max(0, Math.round(Number(b.feeOutCardFixed) || 0));
+    if (b.settleMode === 'wallet' || b.settleMode === 'split') card.settleMode = b.settleMode;
+    // Os PRAZOS de liquidação não são editáveis: valem os da adquirente
+    // (cards.SETTLE_RULES). Trocar de adquirente já troca o prazo junto.
+    delete card.settleCredit;
+    delete card.settleDebit;
+    // chaves: vazio = manter a que já está salva (o painel nunca recebe o valor)
+    if (b.pagarme) {
+      if (typeof b.pagarme.secretKey === 'string' && b.pagarme.secretKey.trim()) card.pagarme.secretKey = b.pagarme.secretKey.trim();
+      if (typeof b.pagarme.publicKey === 'string') card.pagarme.publicKey = b.pagarme.publicKey.trim();
+    }
+    if (b.asaas) {
+      if (typeof b.asaas.apiKey === 'string' && b.asaas.apiKey.trim()) card.asaas.apiKey = b.asaas.apiKey.trim();
+      if (typeof b.asaas.sandbox === 'boolean') card.asaas.sandbox = b.asaas.sandbox;
+      // carteira da PLATAFORMA no Asaas — recebe a taxa no split
+      if (typeof b.asaas.walletId === 'string') card.asaas.walletId = b.asaas.walletId.trim();
+    }
+    // O Asaas não processa débito — evita config impossível.
+    if (card.provider === 'asaas') card.debit = false;
+    db.save();
+    elitepay.plog({ type: 'card_config', detail: `Cartão ${card.enabled ? 'ON' : 'OFF'} · ${card.provider} · taxa ${card.feeCardPercent}% + ${elitepay.fmtBRL(card.feeCardFixed)}` });
+    res.json({ card: cards.adminCard(card) });
+  });
+
+  // Testa as credenciais do adquirente ativo com uma chamada real de leitura.
+  router.get('/admin/elitepay/card/test', auth, adminOnly, h(async (req, res) => {
+    const card = elitepay.cardConfig();
+    if (!cards.isConfigured(card)) return res.status(400).json({ error: 'Informe a chave do adquirente antes de testar' });
+    const cfg = cards.creds(card);
+    if (card.provider === 'pagarme') {
+      await cards.DRIVERS.pagarme.call(cfg, 'GET', '/charges?size=1');
+      return res.json({ ok: true, provider: 'pagarme', ambiente: String(cfg.secretKey).startsWith('sk_test') ? 'teste' : 'produção' });
+    }
+    await cards.DRIVERS.asaas.call(cfg, 'GET', '/customers?limit=1');
+    res.json({ ok: true, provider: 'asaas', ambiente: cfg.sandbox ? 'sandbox' : 'produção' });
+  }));
+  router.put('/admin/elitepay/subaccounts/:accId', auth, adminOnly, h(async (req, res) => {
+    const acc = db.findAccount(req.params.accId);
+    if (!acc) return res.status(404).json({ error: 'Conta não encontrada' });
+    const status = ['active', 'suspended', 'pending', 'rejected'].includes(req.body.status) ? req.body.status : null;
+    if (!status) return res.status(400).json({ error: 'Status inválido' });
+    const sub = await elitepay.setSubaccountStatus(acc, status);
+    broadcast('elitepay', { accountId: acc.id, kind: 'subaccount', status: sub.status });
+    res.json({ ok: true, subaccount: sub });
+  }));
 
   // ---- Web Push (PWA) ----
   router.get('/push/vapid', auth, (req, res) => {

@@ -3,10 +3,46 @@ const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 
 let TOKEN = localStorage.getItem('wacrm_token') || '';
-// Link de afiliado: /app/?ref=CODIGO — guarda o código p/ o cadastro
+
+// ---------------------------------------------------------------------------
+// ATRIBUIÇÃO DE AFILIADO (janela de 7 dias)
+// Quem chega por /app/?ref=CODIGO fica marcado por 7 dias. Guardamos em cookie
+// E em localStorage: o cookie expira sozinho na data certa e sobrevive a
+// navegações entre subdomínios; o localStorage cobre quem bloqueia cookie.
+// Assim o afiliado continua recebendo a comissão mesmo se a pessoa só voltar
+// para assinar dias depois.
+// ---------------------------------------------------------------------------
+const REF_DIAS = 7;
+
+function setRefCookie(code) {
+  const exp = new Date(Date.now() + REF_DIAS * 86400000).toUTCString();
+  document.cookie = 'ec_ref=' + encodeURIComponent(code) + '; expires=' + exp + '; path=/; SameSite=Lax';
+}
+function getRefCookie() {
+  const m = document.cookie.match(/(?:^|;\s*)ec_ref=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : '';
+}
+// Código de indicação válido agora: cookie primeiro; o localStorage só vale
+// enquanto estiver dentro dos 7 dias (ele não expira sozinho).
+function refAtivo() {
+  const c = getRefCookie();
+  if (c) return c;
+  try {
+    const salvo = localStorage.getItem('ec_ref');
+    const quando = Number(localStorage.getItem('ec_ref_ts') || 0);
+    if (salvo && quando && Date.now() - quando < REF_DIAS * 86400000) return salvo;
+    if (salvo) { localStorage.removeItem('ec_ref'); localStorage.removeItem('ec_ref_ts'); }
+  } catch {}
+  return '';
+}
 try {
   const refParam = new URLSearchParams(location.search).get('ref');
-  if (refParam) localStorage.setItem('ec_ref', refParam.toUpperCase());
+  if (refParam) {
+    const code = refParam.toUpperCase().trim().slice(0, 16);
+    setRefCookie(code);
+    localStorage.setItem('ec_ref', code);
+    localStorage.setItem('ec_ref_ts', String(Date.now()));
+  }
 } catch {}
 const state = {
   user: null,
@@ -36,7 +72,7 @@ function onReminder(d) {
   const body = `${ev.title} · ${when}${ev.contact ? ' · ' + ev.contact.name : ''}`;
   if (window.ECNotify) {
     ECNotify.notify({
-      type: 'reminder', title: 'Lembrete — ' + d.label, body,
+      type: 'reminder', title: 'Lembrete, ' + d.label, body,
       waId: ev.contact ? ev.contact.waId : null,
       url: ev.contact ? '/app/#/inbox' : '/app/#/schedule',
       tag: 'ev-' + ev.id, requireInteraction: true
@@ -58,6 +94,38 @@ function maybeNotifyMessage(d) {
     type: 'message', title: d.notify.name || 'Nova mensagem', body: d.notify.text || '',
     waId: d.waId, url: '/app/#/inbox', tag: 'msg:' + d.waId
   });
+}
+
+// ---------- Tema (claro / escuro estilo Simplify) ----------
+const THEME_IC = {
+  // lua (modo escuro ativo → oferece voltar ao claro) e sol (modo claro ativo)
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  sun: '<circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"/>'
+};
+function currentTheme() { return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'; }
+function setTheme(t) {
+  t = t === 'dark' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', t);
+  try { localStorage.setItem('ec_theme', t); } catch (e) {}
+  const ic = $('#theme-ic'); if (ic) ic.innerHTML = t === 'dark' ? THEME_IC.sun : THEME_IC.moon;
+  const btn = $('#theme-btn'); if (btn) btn.title = t === 'dark' ? 'Mudar para claro' : 'Mudar para escuro';
+  const card = $('#appearance-card'); if (card) card.innerHTML = renderThemeSettings();
+  const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', t === 'dark' ? '#080a08' : '#34D399');
+}
+function toggleTheme() { setTheme(currentTheme() === 'dark' ? 'light' : 'dark'); }
+function renderThemeSettings() {
+  const t = currentTheme();
+  return `
+    <h2>${ico('sparkles')} Aparência</h2>
+    <p class="muted" style="margin:0 0 14px;font-size:13px">Escolha como o painel aparece para você. A preferência fica salva neste dispositivo.</p>
+    <div class="seg-theme">
+      <button class="${t === 'light' ? 'on' : ''}" onclick="setTheme('light')">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${THEME_IC.sun}</svg> Claro
+      </button>
+      <button class="${t === 'dark' ? 'on' : ''}" onclick="setTheme('dark')">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${THEME_IC.moon}</svg> Escuro
+      </button>
+    </div>`;
 }
 
 // ---------- Centro de Notificações (sino no topbar) ----------
@@ -163,7 +231,7 @@ function notifEnable() {
   ECNotify.requestPermission().then(() => { const c = $('#notif-card'); if (c) c.innerHTML = renderNotifSettings(); });
 }
 function notifTestFire() {
-  ECNotify.notify({ type: 'message', title: 'EliteChat', body: 'Notificação de teste — está funcionando! 🎉', url: '/app/#/settings', tag: 'test' });
+  ECNotify.notify({ type: 'message', title: 'EliteChat', body: 'Notificação de teste, está funcionando! 🎉', url: '/app/#/settings', tag: 'test' });
   toast('Notificação de teste enviada');
 }
 
@@ -189,10 +257,23 @@ function setMyStatus(st) {
 }
 
 // ---------- infra ----------
+// ---------- CANAL ATIVO (conexão WhatsApp) ----------
+// Cada número conectado é um canal com conversas e contatos próprios. O canal
+// escolhido viaja em TODA requisição no header `x-channel`, então o backend já
+// devolve só o que pertence àquele número — nada se mistura.
+let CHANNELS = [];
+let CH_ID = localStorage.getItem('ec_channel') || '';
+function chActive() { return CHANNELS.find(c => c.id === CH_ID) || CHANNELS[0] || null; }
+function chName(id) { const c = CHANNELS.find(x => x.id === id); return c ? c.label : ''; }
+
 async function api(path, opts = {}) {
   const res = await fetch('/api' + path, {
     method: opts.method || (opts.body ? 'POST' : 'GET'),
-    headers: { 'Content-Type': 'application/json', ...(TOKEN ? { Authorization: 'Bearer ' + TOKEN } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(CH_ID ? { 'x-channel': CH_ID } : {}),
+      ...(TOKEN ? { Authorization: 'Bearer ' + TOKEN } : {})
+    },
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined
   });
   const data = await res.json().catch(() => ({}));
@@ -208,6 +289,7 @@ async function api(path, opts = {}) {
 // ---------- ícones (SVG inline, traço fino — estilo Feather) ----------
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
+  'chevron-down': '<path d="m6 9 6 6 6-6"/>',
   message: '<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-3-.4-4.2-1L3 20l1.1-4.3A8.5 8.5 0 1 1 21 11.5z"/>',
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.2 3.4-5 6.5-5s5.7 1.8 6.5 5"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 15.2c2.4.3 4.2 1.9 4.9 4.3"/>',
   bell: '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
@@ -245,12 +327,16 @@ const ICONS = {
   x: '<path d="M18 6 6 18M6 6l12 12"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.2 9.5a2.8 2.8 0 0 1 5.4 1c0 1.8-2.6 2.5-2.6 2.5"/><path d="M12 17h.01"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
-  flow: '<rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="15" y="15" width="6" height="6" rx="1.5"/><path d="M9 6h5a4 4 0 0 1 4 4v5"/>',
+  cart: '<circle cx="9" cy="20" r="1.6"/><circle cx="18" cy="20" r="1.6"/><path d="M2 3h3l2.6 12.4a1.6 1.6 0 0 0 1.6 1.3h8.5a1.6 1.6 0 0 0 1.6-1.3L21 7H6"/>',
+  funnel: '<path d="M3 4.5h18l-7.2 8.4V20l-3.6 1.6v-8.7L3 4.5Z" stroke-linejoin="round"/>',
+  flow: '<path d="M3 4.5h18l-7.2 8.4V20l-3.6 1.6v-8.7L3 4.5Z" stroke-linejoin="round"/>',
   http: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   calendar: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/>',
   hash: '<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',
   copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+  pix: '<path d="M12 2.5 21.5 12 12 21.5 2.5 12z"/><path d="M8.6 10.2 12 6.8l3.4 3.4M8.6 13.8 12 17.2l3.4-3.4"/>',
   play: '<path d="M6 4l14 8-14 8z"/>',
   power: '<path d="M18.4 6.6a9 9 0 1 1-12.8 0M12 2v10"/>',
   webhook: '<path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2"/><path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06"/><path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8"/>',
@@ -258,6 +344,12 @@ const ICONS = {
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
   clock2: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+  monitor: '<rect x="2.5" y="4" width="19" height="12.5" rx="2"/><path d="M8.5 20.5h7M12 16.5v4"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  card: '<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/>',
+  code: '<path d="m8 7-5 5 5 5M16 7l5 5-5 5"/>',
+  trend: '<path d="M3 17l5-5 4 4 6.5-7"/><path d="M14.5 9H19v4.5"/>',
+  smartphone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.6h2"/>',
   mousepointer: '<path d="M5 3.5 11 20l2.3-6.4L20 11 5 3.5z"/>',
   list: '<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>',
   image: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="8.5" cy="9.5" r="1.8"/><path d="m4 18 5-5 4 4 3-3 4 4"/>',
@@ -298,6 +390,8 @@ function ecSelect(id, options, value, onpick, cls) {
     <div class="ecsel-menu">${options.map(o => `<div class="ecsel-opt ${String(o.value) === String(val) ? 'on' : ''}" data-val="${esc(o.value)}" onclick="ecSelPick('${id}',this.dataset.val,event)">${esc(o.label)}${String(o.value) === String(val) ? ecChk : ''}</div>`).join('')}</div>
   </div>`;
 }
+// valor atual de um ecSelect (guardado em data-val)
+function ecVal(id) { const el = document.getElementById(id); return el ? el.dataset.val : ''; }
 function ecSelToggle(id) {
   const el = document.getElementById(id); if (!el) return;
   document.querySelectorAll('.ecsel.open').forEach(x => { if (x !== el) x.classList.remove('open'); });
@@ -437,12 +531,31 @@ function toggleRegister(e) {
   const rw = $('#reg-ref-wrap');
   if (rw) {
     rw.classList.toggle('hidden', !registerMode);
-    // ?ref=CODIGO na URL (link de afiliado) pré-preenche o código
-    const saved = localStorage.getItem('ec_ref') || '';
-    if (registerMode && saved && !$('#reg-ref').value) $('#reg-ref').value = saved;
+    // Veio de link de afiliado: o campo já vem preenchido e TRAVADO, para que
+    // ninguém apague por engano (ou de propósito) a comissão de quem indicou.
+    const inp = $('#reg-ref'), nota = $('#reg-ref-note');
+    const code = refAtivo();
+    if (registerMode && code) {
+      inp.value = code;
+      inp.readOnly = true;
+      inp.classList.add('locked');
+      inp.tabIndex = -1;
+      if (nota) {
+        nota.textContent = 'Você chegou pela indicação de ' + code + '. O código fica travado.';
+        nota.classList.remove('hidden');
+      }
+    } else if (inp) {
+      // Sem indicação ativa: se o campo estava travado, o código veio de uma
+      // janela que já expirou. Limpa, senão o cadastro levaria um código velho.
+      if (inp.classList.contains('locked')) inp.value = '';
+      inp.readOnly = false;
+      inp.classList.remove('locked');
+      inp.removeAttribute('tabindex');
+      if (nota) nota.classList.add('hidden');
+    }
   }
   $('#auth-title').textContent = registerMode ? 'Crie sua conta' : 'Acesse sua conta';
-  $('#auth-sub').textContent = registerMode ? 'Conecte seu WhatsApp em minutos — sem configuração técnica' : 'Painel de atendimento e vendas';
+  $('#auth-sub').textContent = registerMode ? 'Conecte seu WhatsApp em minutos, sem configuração técnica' : 'Painel de atendimento e vendas';
   $('#auth-btn').textContent = registerMode ? 'Criar conta' : 'Entrar';
   $('#auth-toggle').innerHTML = registerMode
     ? 'Já tem conta? <a href="#" onclick="toggleRegister(event)">Entrar</a>'
@@ -457,7 +570,8 @@ async function doLogin(e) {
     const user = $('#login-user').value.trim();
     const pass = $('#login-pass').value;
     const r = registerMode
-      ? await api('/register', { body: { name: $('#reg-name').value.trim(), email: user, pass, refCode: ($('#reg-ref')?.value || '').trim() } })
+      // o código da janela de 7 dias tem prioridade sobre o que estiver no campo
+      ? await api('/register', { body: { name: $('#reg-name').value.trim(), email: user, pass, refCode: refAtivo() || ($('#reg-ref')?.value || '').trim() } })
       : await api('/login', { body: { user, pass } });
     TOKEN = r.token;
     localStorage.setItem('wacrm_token', TOKEN);
@@ -496,8 +610,10 @@ async function enterApp() {
   applyNavPermissions();   // esconde do menu os módulos sem permissão de visualizar
   startPresence();         // heartbeat de presença (atendente)
   if (window.ECNotify) { ECNotify.setHooks({ onOpen: notifOpenFromData, onResync: notifResync, onChange: paintNotifBell }); paintNotifBell(); }
+  setTheme(currentTheme());   // sincroniza o ícone de tema do topbar
   askNotifPermission();    // permissão + push do WebApp
   initSearch();
+  await loadChannels();    // canais (conexões WhatsApp) antes de qualquer listagem
   try { const st = await api('/settings'); state.settings = st.settings; state.wa = st.wa; } catch {}
   connectSSE();
   refreshBadge();
@@ -505,6 +621,189 @@ async function enterApp() {
   pollTimer = setInterval(refreshBadge, 30000);
   if (state.mustChangePassword) toast('Troque a senha padrão em Configurações → Segurança', 'error');
   route();
+}
+
+// Card de gestão das conexões (Configurações → Conexão & API).
+// Cada linha é um número; a linha marcada é o canal que o painel está usando.
+function channelsCard() {
+  if (CHANNELS.length < 1) return '';
+  const lim = CH_LIMIT || {};
+  const cheio = !podeMaisCanais();
+  const at = chActive() || {};
+  return `<div class="card">
+    <div class="row" style="align-items:center;margin-bottom:6px">
+      <h2 style="margin:0;flex:1">${ico('smartphone')} Contas do WhatsApp conectadas</h2>
+      <span class="pill ${cheio ? 'pending' : 'done'}">${fmtN(lim.used || CHANNELS.length)}${lim.unlimited ? '' : ' / ' + fmtN(lim.limit)} conexões</span>
+    </div>
+    <p class="muted" style="margin:0 0 14px;font-size:13px">
+      Cada número é um <b>canal separado</b>: as conversas e os contatos de um não aparecem no outro.
+      Use o seletor no topo da tela para alternar entre eles.
+    </p>
+    <div class="ch-list">
+      ${CHANNELS.map(c => `<div class="ch-row ${c.id === at.id ? 'sel' : ''}">
+        <i class="ch-dot ${c.connected ? 'on' : 'off'}"></i>
+        <div style="flex:1;min-width:0">
+          <b>${esc(c.label)}</b>${c.isDefault ? ' <span class="pill" style="font-size:10px">principal</span>' : ''}
+          <div class="muted" style="font-size:12px;margin-top:2px">
+            ${c.displayPhoneNumber ? esc(c.displayPhoneNumber) : '<b style="color:var(--amber)">não conectado</b>'}
+            · ${fmtN(c.contacts)} contato(s)${c.unread ? ` · ${fmtN(c.unread)} não lida(s)` : ''}
+          </div>
+        </div>
+        ${c.id === at.id
+          ? '<span class="pill done">em uso</span>'
+          : `<button class="btn small no-grow" onclick="switchChannel('${c.id}')">Usar</button>`}
+        <button class="icon-btn" title="Renomear" onclick="renameChannel('${c.id}')">${ico('edit', 14)}</button>
+        ${c.isDefault ? '' : `<button class="icon-btn danger" title="Remover" onclick="removeChannel('${c.id}')">${ico('trash', 14)}</button>`}
+      </div>`).join('')}
+    </div>
+    <div class="row" style="margin-top:14px;align-items:flex-end">
+      <label style="flex:1;max-width:280px">Nome do novo canal<input id="ch-new" placeholder="ex.: Vendas · Suporte · Filial SP"></label>
+      <button class="btn primary no-grow" ${cheio ? 'disabled' : ''} onclick="createChannel()">${ico('plus', 14)} Adicionar conexão</button>
+    </div>
+    ${cheio ? `<p class="hint" style="margin-top:10px">${ico('alert', 12)} Você atingiu o limite de <b>${fmtN(lim.limit)}</b> conexão(ões) do seu plano.
+      ${lim.extraPrice ? `Compre uma conexão adicional por <b>${fmtBRL(lim.extraPrice)}/mês</b> em <a href="#/billing"><b>Assinatura</b></a>.` : 'Faça upgrade de plano para conectar mais números.'}</p>`
+    : '<p class="hint" style="margin-top:10px">Depois de criar o canal, selecione-o no topo e clique em <b>Conectar WhatsApp</b> abaixo para vincular o número.</p>'}
+  </div>`;
+}
+
+async function createChannel() {
+  const el = $('#ch-new');
+  try {
+    const r = await api('/channels', { body: { label: el ? el.value : '' } });
+    await loadChannels();
+    await switchChannel(r.channel.id);   // já entra no canal novo para conectar o número
+    toast('Canal criado, agora conecte o número');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function renameChannel(id) {
+  const atual = chName(id);
+  const novo = prompt('Nome do canal:', atual);
+  if (novo === null || novo.trim() === atual) return;
+  try {
+    await api('/channels/' + id, { method: 'PUT', body: { label: novo.trim() } });
+    await loadChannels(); route();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function removeChannel(id) {
+  const ok = await confirmModal({
+    title: 'Remover conexão?',
+    text: `O número "${chName(id)}" será desconectado. As conversas ficam no histórico, mas somem do painel.`,
+    ok: 'Remover', danger: true
+  });
+  if (!ok) return;
+  try {
+    await api('/channels/' + id, { method: 'DELETE' });
+    if (CH_ID === id) CH_ID = '';
+    await loadChannels(); route();
+    toast('Conexão removida');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ============ CANAIS — seleção da conta do WhatsApp ============
+// Trocar de canal troca TUDO que é conversa/contato: o header x-channel vai em
+// toda chamada e o backend devolve só o que é daquele número.
+let CH_LIMIT = null;
+
+async function loadChannels() {
+  try {
+    const d = await api('/channels');
+    CHANNELS = d.channels || [];
+    CH_LIMIT = d.limit || null;
+    if (!CHANNELS.find(c => c.id === CH_ID)) CH_ID = (CHANNELS[0] || {}).id || '';
+    localStorage.setItem('ec_channel', CH_ID);
+  } catch { CHANNELS = []; }
+  paintChannelPicker();
+}
+
+// O avatar do topo é o seletor de conta: clicar abre a lista de números
+// conectados, com atalho para conectar mais um e para gerenciar todos.
+function paintChannelPicker() {
+  const menu = $('#ch-menu'); if (!menu) return;
+  const at = chActive() || {};
+
+  // nome do canal ativo embaixo do usuário, para nunca haver dúvida de por qual
+  // número a pessoa está atendendo
+  const nome = $('#tb-chname');
+  if (nome) nome.textContent = CHANNELS.length ? (at.label || 'WhatsApp') : 'Nenhum número conectado';
+
+  // aviso de não lidas em OUTROS canais (o do canal ativo já aparece no menu)
+  const outras = CHANNELS.reduce((s, c) => s + (c.id === at.id ? 0 : (c.unread || 0)), 0);
+  const badge = $('#tb-chbadge');
+  if (badge) {
+    badge.textContent = outras > 99 ? '99+' : outras;
+    badge.classList.toggle('hidden', !outras);
+    badge.title = outras ? `${outras} não lida(s) em outros números` : '';
+  }
+
+  const cabe = podeMaisCanais();
+  menu.innerHTML = `
+    <div class="ch-menu-head">Contas de WhatsApp${CH_LIMIT && !CH_LIMIT.unlimited
+      ? ` <span class="ch-lim">${fmtN(CH_LIMIT.used)} de ${fmtN(CH_LIMIT.limit)}</span>` : ''}</div>
+    ${CHANNELS.length ? CHANNELS.map(c => `
+      <button class="ch-item ${c.id === at.id ? 'sel' : ''}" onclick="switchChannel('${c.id}')">
+        <i class="ch-dot ${c.connected ? 'on' : 'off'}"></i>
+        <span class="ch-item-txt">
+          <b>${esc(c.label)}</b>
+          <em>${c.displayPhoneNumber ? esc(c.displayPhoneNumber) : 'número não conectado'} · ${fmtN(c.contacts)} contato(s)</em>
+        </span>
+        ${c.unread ? `<b class="ch-badge">${c.unread > 99 ? '99+' : c.unread}</b>` : ''}
+        ${c.id === at.id ? ico('check', 14) : ''}
+      </button>`).join('')
+    : '<p class="ch-empty">Nenhuma conta conectada ainda.</p>'}
+    <div class="ch-menu-sep"></div>
+    <button class="ch-item add" onclick="closeChannelMenu();goChannels(1)">
+      ${ico('plus', 14)}
+      <span class="ch-item-txt"><b>Conectar outra conta</b>
+        <em>${cabe ? 'Adicione um novo número de WhatsApp' : 'Limite do plano atingido, veja os extras'}</em></span>
+    </button>
+    <button class="ch-item" onclick="closeChannelMenu();goChannels()">
+      ${ico('gear', 14)}
+      <span class="ch-item-txt"><b>Gerenciar contas</b>
+        <em>Renomear, trocar de número ou remover</em></span>
+    </button>`;
+}
+
+// Leva direto para a aba de contas em Configurações. `novo` já abre o campo de
+// criação, porque o caminho mais pedido é "quero mais um número".
+function goChannels(novo) {
+  PENDING_TAB = 'contas';
+  PENDING_CH_NEW = !!novo;
+  if (state.view === 'settings') { renderSettings(); }
+  else location.hash = '#/settings';
+}
+let PENDING_TAB = '', PENDING_CH_NEW = false;
+
+function podeMaisCanais() {
+  return !CH_LIMIT || CH_LIMIT.unlimited || CH_LIMIT.used < CH_LIMIT.limit;
+}
+
+function toggleChannelMenu(e) {
+  if (e) e.stopPropagation();
+  const m = $('#ch-menu'); if (!m) return;
+  m.classList.toggle('hidden');
+  const aberto = !m.classList.contains('hidden');
+  const btn = $('#tb-user');
+  if (btn) btn.setAttribute('aria-expanded', String(aberto));
+  if (aberto) setTimeout(() => document.addEventListener('click', closeChannelMenu, { once: true }), 0);
+}
+function closeChannelMenu() {
+  const m = $('#ch-menu'); if (m) m.classList.add('hidden');
+  const btn = $('#tb-user'); if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+async function switchChannel(id) {
+  if (id === CH_ID) return closeChannelMenu();
+  CH_ID = id;
+  localStorage.setItem('ec_channel', id);
+  closeChannelMenu();
+  state.currentWaId = null;          // a conversa aberta é de outro número
+  await loadChannels();
+  try { const st = await api('/settings'); state.wa = st.wa; } catch {}
+  refreshBadge();
+  route();                            // repinta a tela atual já filtrada
+  toast(`Canal: ${chName(id)}`);
 }
 
 function connectSSE() {
@@ -537,6 +836,21 @@ function connectSSE() {
   });
   // ligações (Calling API) — tela de chamada estilo WhatsApp
   es.addEventListener('call', e => onCallEvent(JSON.parse(e.data || '{}')));
+  // Elite Pay — status das cobranças em tempo real (pago/cancelado/subconta)
+  es.addEventListener('elitepay', e => {
+    const d = JSON.parse(e.data || '{}');
+    if (d.status === 'paid' && window.ECNotify) {
+      ECNotify.notify({
+        type: 'message', title: '💸 Pagamento recebido!',
+        body: `${fmtBRL(d.amount || 0)}${d.contactName ? ', ' + d.contactName : ''}`,
+        waId: d.waId || null, url: '/app/#/elitepay', tag: 'ep:' + (d.chargeId || '')
+      });
+    }
+    if (state.view === 'elitepay') { epPaintTab(); }
+    if (state.view === 'admin') { const p = $('[data-pane="adm-ep"]'); if (p && p.classList.contains('show')) admEpPaint(); }
+  });
+  // Tracking: vendas atribuídas / sync de campanhas atualizam o painel ao vivo
+  es.addEventListener('tracking', () => { if (state.view === 'tracking') trkPaintTab(); });
   // presença de atendentes
   es.addEventListener('presence', () => {
     if (state.view === 'team') paintTeamSide();
@@ -566,6 +880,9 @@ function connectSSE() {
 
 function onLive(d) {
   refreshBadge();
+  // Mensagem de OUTRO número conectado: não mexe na conversa aberta; só atualiza
+  // o contador do seletor de canal para o atendente saber que chegou algo lá.
+  if (d && d.chId && CH_ID && d.chId !== CH_ID) { loadChannels(); return; }
   if (state.view === 'inbox') {
     loadConversations();
     if (state.currentWaId && (!d.waId || d.waId === state.currentWaId)) loadChat(state.currentWaId, true);
@@ -593,18 +910,23 @@ const views = {
   dashboard: renderDashboard, inbox: renderInbox, contacts: renderContacts,
   funnel: renderFunnel, campaigns: renderCampaigns, templates: renderTemplates, quick: renderQuick,
   logs: renderLogs, settings: renderSettings, team: renderTeam, flows: renderFlows, links: renderLinks,
-  pixels: renderPixels, billing: renderBilling, admin: renderAdmin, webhooks: renderWebhooks,
+  pixels: renderPixels, billing: renderBilling, admin: renderAdmin,
+  integrations: renderIntegrations, webhooks: renderIntegrations, // #/webhooks continua funcionando
+  elitepay: renderElitePay, tracking: renderTracking,
   consent: renderConsent, agents: renderAgents, 'agents/perf': renderAgentPerf,
   'agents/logs': renderAgentLogs, schedule: renderSchedule,
   reports: () => { location.hash = '#/dashboard'; }, // aba Relatórios foi absorvida pelo Dashboard
   'templates/new': renderTemplateNew, 'campaigns/new': renderCampaignNew,
-  'links/new': renderLinkForm, 'links/edit': renderLinkForm, 'links/stats': renderLinkStats
+  'links/new': renderLinkForm, 'links/edit': renderLinkForm, 'links/stats': renderLinkStats,
+  'elitepay/checkout': renderCheckoutBuilder,
+  checkouts: renderCheckoutList
 };
 // qual item da sidebar destacar para cada view (rotas com "/" caem no pai)
 const NAV_OF = {
   'templates/new': 'templates', 'campaigns/new': 'campaigns',
   'links/new': 'links', 'links/edit': 'links', 'links/stats': 'links',
-  'agents/perf': 'agents', 'agents/logs': 'agents'
+  'agents/perf': 'agents', 'agents/logs': 'agents',
+  'elitepay/checkout': 'checkouts'
 };
 
 // ---------- permissões (front) ----------
@@ -619,6 +941,7 @@ const VIEW_MODULE = {
   'templates/new': 'templates', 'campaigns/new': 'campaigns',
   'links/new': 'links', 'links/edit': 'links', 'links/stats': 'links',
   'agents/perf': 'agents', 'agents/logs': 'agents',
+  'elitepay/checkout': 'elitepay', checkouts: 'elitepay',
   billing: null, admin: null, logs: null   // sempre acessíveis (donos/config próprios)
 };
 function moduleOfView(v) {
@@ -646,11 +969,26 @@ function applyNavPermissions() {
   });
 }
 
+// ---------- menu lateral em gaveta (celular) ----------
+// No celular a sidebar sai do fluxo e desliza por cima, devolvendo a largura
+// inteira para o conteúdo. Fecha ao navegar, no backdrop ou com Esc.
+function toggleNav(force) {
+  const app = document.getElementById('app'); if (!app) return;
+  const abrir = force === undefined ? !app.classList.contains('nav-open') : !!force;
+  app.classList.toggle('nav-open', abrir);
+}
+document.addEventListener('click', e => {
+  if (e.target.closest('.sidebar .nav-item')) toggleNav(false);
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') toggleNav(false); });
+
 window.addEventListener('hashchange', route);
 function route() {
   if (!TOKEN) return;
   if (window._fbMove) cleanupBuilder();  // sai do canvas do Flow Builder
-  const v = (location.hash || '#/dashboard').replace('#/', '') || 'dashboard';
+  // o hash pode trazer query (#/elitepay/checkout?c=<id>) — ela NÃO faz parte
+  // do nome da view; sem separar, a rota não é encontrada e cai no dashboard.
+  const v = ((location.hash || '#/dashboard').replace('#/', '') || 'dashboard').split('?')[0];
   let target = views[v] ? v : 'dashboard';
   // guard de permissão no front (o backend valida de novo em cada rota)
   const mod = moduleOfView(target);
@@ -660,6 +998,9 @@ function route() {
     target = home;
   }
   state.view = target;
+  // EliteBuilder é uma página FOCADA: esconde a sidebar e o topo do app
+  const appEl = document.getElementById('app');
+  if (appEl) appEl.classList.toggle('builder-mode', target === 'elitepay/checkout');
   const navKey = NAV_OF[state.view] || state.view;
   $$('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === navKey));
   updateTopbar();
@@ -709,26 +1050,13 @@ async function renderDashboard() {
     const pend = Math.max(0, t.out - t.delivered - t.failed);
     const clicksPeriod = (rep.advanced || {}).linkClicks || 0;
     const topFlows = rep.topFlows || [], topLinks = rep.topLinks || [];
+    const sl = d.sales || { todayCount: 0, todayValue: 0, totalCount: 0, totalValue: 0 };
     $('#dash').innerHTML = `
       <div class="dash-kpis">
         <div class="stat"><span class="stat-ico">${ico('users', 17)}</span><div class="num">${fmtN(d.contacts)}</div><div class="lbl">Contatos</div></div>
-        <div class="stat"><span class="stat-ico">${ico('bell', 17)}</span><div class="num ${d.unread ? 'bad' : ''}">${fmtN(d.unread)}</div><div class="lbl">Não lidas</div></div>
-        <div class="stat"><span class="stat-ico">${ico('arrow-up', 17)}</span><div class="num">${fmtN(t.out)}</div><div class="lbl">Enviadas · ${dd}d</div>${spark(rep.days.map(x => x.out), '#10B981', 96, 22)}</div>
-        <div class="stat"><span class="stat-ico">${ico('arrow-down', 17)}</span><div class="num">${fmtN(t.in)}</div><div class="lbl">Recebidas · ${dd}d</div>${spark(rep.days.map(x => x.in), '#53BDEB', 96, 22)}</div>
-      </div>
-      ${dashScheduleCard(d.schedule)}
-      ${d.agents ? dashAgentsCard(d.agents) : ''}
-      <div class="card svc-card">
-        <div class="row" style="align-items:center;margin-bottom:12px">
-          <h2 style="margin:0;flex:1">${ico('clock')} Janela de atendimento (24h)</h2>
-          <a class="btn small no-grow" href="#/inbox">Ver conversas</a>
-        </div>
-        <div class="svc-kpis">
-          <a class="svc-kpi warn" href="#/inbox"><span class="svc-ic">${ico('alert', 16)}</span><b>${fmtN((d.service || {}).expiringSoon)}</b><span>Próximas de expirar</span></a>
-          <a class="svc-kpi crit" href="#/inbox"><span class="svc-ic">${ico('clock', 16)}</span><b>${fmtN((d.service || {}).expired)}</b><span>Com janela encerrada</span></a>
-          <a class="svc-kpi ok" href="#/inbox"><span class="svc-ic">${ico('check-circle', 16)}</span><b>${fmtN((d.service || {}).finishedToday)}</b><span>Finalizadas hoje</span></a>
-          <a class="svc-kpi" href="#/settings"><span class="svc-ic">${ico('zap', 16)}</span><b>${fmtN((d.service || {}).autoClosedToday)}</b><span>Encerradas automaticamente</span></a>
-        </div>
+        <a class="stat" href="#/elitepay"><span class="stat-ico">${ico('zap', 17)}</span><div class="num">${fmtBRL(sl.todayValue)}</div><div class="lbl">Vendas hoje${sl.todayCount ? ` · ${fmtN(sl.todayCount)} venda${sl.todayCount > 1 ? 's' : ''}` : ''}</div></a>
+        <a class="stat" href="#/elitepay"><span class="stat-ico">${ico('card', 17)}</span><div class="num">${fmtBRL(sl.totalValue)}</div><div class="lbl">Total em vendas</div></a>
+        <a class="stat" href="#/elitepay"><span class="stat-ico">${ico('activity', 17)}</span><div class="num">${fmtN(sl.totalCount)}</div><div class="lbl">Quantidade de vendas</div></a>
       </div>
       <div class="two-col">
         <div class="card chart-card">
@@ -781,7 +1109,7 @@ async function renderDashboard() {
       </div>
       <div class="card map-card">
         <div class="row" style="align-items:center;margin-bottom:10px">
-          <h2 style="margin:0;flex:1">${ico('target')} Mapa de leads — Brasil</h2>
+          <h2 style="margin:0;flex:1">${ico('target')} Mapa de leads. Brasil</h2>
           <span class="pill" id="geo-total"></span>
         </div>
         <div id="geo-box" class="geo-box">${skel(4)}</div>
@@ -815,7 +1143,21 @@ async function renderDashboard() {
           </ul>
           <p class="muted" style="margin:12px 0 0">Configure tudo em <a href="#/settings">Configurações</a>.</p>
         </div>
-      </div>`;
+      </div>
+      <div class="card svc-card">
+        <div class="row" style="align-items:center;margin-bottom:12px">
+          <h2 style="margin:0;flex:1">${ico('clock')} Janela de atendimento (24h)</h2>
+          <a class="btn small no-grow" href="#/inbox">Ver conversas</a>
+        </div>
+        <div class="svc-kpis">
+          <a class="svc-kpi warn" href="#/inbox"><span class="svc-ic">${ico('alert', 16)}</span><b>${fmtN((d.service || {}).expiringSoon)}</b><span>Próximas de expirar</span></a>
+          <a class="svc-kpi crit" href="#/inbox"><span class="svc-ic">${ico('clock', 16)}</span><b>${fmtN((d.service || {}).expired)}</b><span>Com janela encerrada</span></a>
+          <a class="svc-kpi ok" href="#/inbox"><span class="svc-ic">${ico('check-circle', 16)}</span><b>${fmtN((d.service || {}).finishedToday)}</b><span>Finalizadas hoje</span></a>
+          <a class="svc-kpi" href="#/settings"><span class="svc-ic">${ico('zap', 16)}</span><b>${fmtN((d.service || {}).autoClosedToday)}</b><span>Encerradas automaticamente</span></a>
+        </div>
+      </div>
+      ${dashScheduleCard(d.schedule)}
+      ${d.agents ? dashAgentsCard(d.agents) : ''}`;
     loadGeo();
   } catch (e) {
     $('#dash').innerHTML = `<div class="card err">${esc(e.message)}</div>`;
@@ -829,7 +1171,33 @@ async function loadGeo() {
     const tot = $('#geo-total');
     if (tot) tot.textContent = `${fmtN(g.brTotal)} lead(s) localizados`;
     box.innerHTML = brazilMap3D(g);
+    geoBindTooltip();
   } catch (e) { box.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+}
+
+// Tooltip que segue o cursor sobre o mapa: nome do estado + nº de leads.
+// Custom (não o <title> nativo) para aparecer na hora e casar com o tema.
+function geoBindTooltip() {
+  const map = $('.geo-map'); if (!map) return;
+  const svg = map.querySelector('svg'), tip = map.querySelector('#geo-tip');
+  if (!svg || !tip) return;
+  let atual = null;
+  svg.addEventListener('mousemove', e => {
+    const g = e.target.closest('.geo-tile');
+    if (!g) { tip.classList.remove('on'); atual = null; return; }
+    if (g !== atual) {
+      atual = g;
+      const n = +g.getAttribute('data-n');
+      tip.innerHTML = `<b>${esc(g.getAttribute('data-name'))}</b><i>${fmtN(n)} lead${n === 1 ? '' : 's'}</i>`;
+    }
+    const r = map.getBoundingClientRect();
+    // fixa dentro da largura do mapa para não vazar nas bordas
+    const x = Math.max(46, Math.min(r.width - 46, e.clientX - r.left));
+    tip.style.left = x + 'px';
+    tip.style.top = (e.clientY - r.top) + 'px';
+    tip.classList.add('on');
+  });
+  svg.addEventListener('mouseleave', () => { tip.classList.remove('on'); atual = null; });
 }
 
 // ---------- inbox ----------
@@ -941,6 +1309,7 @@ async function loadChat(waId, keepScroll) {
           <button class="btn small" id="tool-file" onclick="attachFile()">${ico('paperclip', 13)} Anexo</button>
           <button class="btn small" id="tool-tpl" onclick="templateModal('${c.waId}')">${ico('file', 13)} Template</button>
           <button class="btn small" id="tool-btns" onclick="buttonsModal('${c.waId}')">${ico('buttons', 13)} Botões</button>
+          <button class="btn small" id="tool-pay" onclick="chatChargeModal('${c.waId}')">${ico('pix', 13)} Cobrança</button>
           <span id="qr-wrap" class="qr-wrap"></span>
         </div>
         <div class="line">
@@ -1037,9 +1406,9 @@ function paintSession() {
   if (ta) {
     ta.disabled = locked;
     ta.placeholder = optedOut
-      ? 'Contato em opt-out — reative para voltar a enviar'
+      ? 'Contato em opt-out, reative para voltar a enviar'
       : locked
-        ? (finished ? 'Atendimento finalizado — reabra para enviar mensagens' : 'Janela de 24h expirada — envie um Template para reabrir')
+        ? (finished ? 'Atendimento finalizado, reabra para enviar mensagens' : 'Janela de 24h expirada, envie um Template para reabrir')
         : 'Digite uma mensagem... (Enter envia, Shift+Enter quebra linha)';
   }
   if (sendBtn) sendBtn.disabled = locked;
@@ -1054,7 +1423,7 @@ function paintSession() {
   if (optedOut) {
     notice.innerHTML = `<div class="sess-notice expired">
       ${ico('slash', 15)}
-      <div><b>Contato em opt-out.</b> Ele pediu para não receber mais mensagens, então <b>nenhum envio é permitido</b> — nem template, nem campanha. Reative para voltar a conversar.</div>
+      <div><b>Contato em opt-out.</b> Ele pediu para não receber mais mensagens, então <b>nenhum envio é permitido</b>, nem template, nem campanha. Reative para voltar a conversar.</div>
       <button class="btn small primary no-grow" onclick="coReactivateFromChat('${state.currentWaId}')">${ico('refresh', 12)} Reativar contato</button>
     </div>`;
     return;
@@ -1376,11 +1745,49 @@ async function renderContacts() {
         <button class="btn primary no-grow" onclick="newContactModal()">${ico('plus', 14)} Novo contato</button>
       </div>
       <div class="card">
-        <input id="ct-search" placeholder="Buscar por nome, telefone ou tag..." oninput="loadContactsTable()" style="margin-bottom:12px">
+        <div class="ct-tools">
+          <input id="ct-search" placeholder="Buscar por nome, telefone ou tag..." oninput="loadContactsTable()">
+          <div id="ct-scope"></div>
+        </div>
         <div id="ct-table"></div>
       </div>
     </div>`;
   loadContactsTable();
+}
+
+// ---------------------------------------------------------------------------
+// FILTRO POR CONTA (contatos e funil)
+// Sem filtro escolhido, mostra TODOS os contatos de todas as contas. Escolhendo
+// uma conta, a lista fica só com os leads daquele número, que é o que interessa
+// antes de disparar, editar ou excluir em massa.
+// ---------------------------------------------------------------------------
+let CT_SCOPE = localStorage.getItem('ec_ct_scope') || 'all';
+
+function scopeQuery() { return CT_SCOPE && CT_SCOPE !== 'all' ? '&ch=' + encodeURIComponent(CT_SCOPE) : '&ch=all'; }
+
+function paintScopePicker(boxId, canais, total, onPick) {
+  const box = document.getElementById(boxId); if (!box) return;
+  if (!canais || canais.length < 2) { box.innerHTML = ''; return; }   // uma conta só: filtro não faz sentido
+  box.innerHTML = `
+    <div class="scope-pick">
+      <span class="scope-lbl">${ico('smartphone', 13)} Conta</span>
+      <button class="scope-btn ${CT_SCOPE === 'all' ? 'on' : ''}" onclick="${onPick}('all')">
+        Todas <b>${fmtN(total)}</b></button>
+      ${canais.map(c => `
+        <button class="scope-btn ${CT_SCOPE === c.id ? 'on' : ''}" onclick="${onPick}('${c.id}')" title="${c.connected ? 'Conectado' : 'Número não conectado'}">
+          <i class="ch-dot ${c.connected ? 'on' : 'off'}"></i>${esc(c.label)} <b>${fmtN(c.count)}</b></button>`).join('')}
+    </div>`;
+}
+
+function setContactScope(id) {
+  CT_SCOPE = id;
+  localStorage.setItem('ec_ct_scope', id);
+  loadContactsTable();
+}
+function setFunnelScope(id) {
+  CT_SCOPE = id;
+  localStorage.setItem('ec_ct_scope', id);
+  renderFunnel();
 }
 
 // Badge de origem do lead (anúncio Click-to-WhatsApp capturado pelo webhook)
@@ -1395,13 +1802,17 @@ function sourceBadge(c) {
 async function loadContactsTable() {
   try {
     const q = encodeURIComponent($('#ct-search')?.value || '');
-    const { contacts } = await api('/contacts?search=' + q);
+    const d = await api('/contacts?search=' + q + scopeQuery());
+    const contacts = d.contacts || [];
+    paintScopePicker('ct-scope', d.channels, d.total, 'setContactScope');
     const stages = state.settings?.stages || [];
+    const varios = (d.channels || []).length > 1;
     $('#ct-table').innerHTML = contacts.length ? `
-      <table><thead><tr><th>Contato</th><th>Etapa</th><th>Tags</th><th>Última atividade</th><th></th></tr></thead>
+      <table><thead><tr><th>Contato</th>${varios ? '<th>Conta</th>' : ''}<th>Etapa</th><th>Tags</th><th>Última atividade</th><th></th></tr></thead>
       <tbody>${contacts.map(c => `
         <tr>
           <td><div class="cell-user">${avatarHtml(c, 'sm')}<div><b>${esc(c.name)}</b>${sourceBadge(c)}<div class="muted" style="font-size:11.5px">+${esc(c.waId)}</div></div></div></td>
+          ${varios ? `<td><span class="ch-tag">${esc(c.chLabel || '')}</span></td>` : ''}
           <td>${ecSelect('qs-' + c.waId, stages.map(s => ({ value: s, label: s })), c.stage, `quickStage('${c.waId}', val)`, 'sm')}</td>
           <td>${(c.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('') || '<span class="muted">—</span>'}</td>
           <td class="muted">${timeAgo(c.lastMessageAt)}</td>
@@ -1498,10 +1909,14 @@ async function renderFunnel() {
   $('#view').innerHTML = `
     <div class="page">
       <div class="page-head"><h1>Funil de vendas</h1><p>Arraste os cards entre as etapas</p></div>
+      <div id="fn-scope"></div>
       <div class="kanban" id="kanban"></div>
     </div>`;
   try {
-    const { contacts } = await api('/contacts');
+    const d = await api('/contacts?ch=' + (CT_SCOPE || 'all'));
+    const contacts = d.contacts || [];
+    paintScopePicker('fn-scope', d.channels, d.total, 'setFunnelScope');
+    const varios = (d.channels || []).length > 1;
     const stages = state.settings?.stages || [];
     $('#kanban').innerHTML = stages.map(st => {
       const cards = contacts.filter(c => c.stage === st);
@@ -1512,6 +1927,7 @@ async function renderFunnel() {
             <div class="kcard" draggable="true" data-waid="${c.waId}" onclick="editContactModal('${c.waId}')">
               <b>${esc(c.name)}</b>
               <div class="sub">+${esc(c.waId)} · ${fmtTime(c.lastMessageAt)}</div>
+              ${varios && c.chLabel ? `<span class="ch-tag">${esc(c.chLabel)}</span>` : ''}
               ${(c.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('')}
             </div>`).join('')}
         </div>
@@ -1548,7 +1964,7 @@ async function renderTemplates() {
   $('#view').innerHTML = `
     <div class="page">
       <div class="page-head row">
-        <div style="flex:1"><h1>Modelos (Templates)</h1><p>Mensagens aprovadas pela Meta — obrigatórias fora da janela de 24h</p></div>
+        <div style="flex:1"><h1>Modelos (Templates)</h1><p>Mensagens aprovadas pela Meta, obrigatórias fora da janela de 24h</p></div>
         <button class="btn no-grow" onclick="syncTemplates()">${ico('refresh', 14)} Sincronizar</button>
         <a class="btn primary no-grow" href="#/templates/new">${ico('plus', 14)} Criar modelo</a>
       </div>
@@ -1559,18 +1975,29 @@ async function renderTemplates() {
 
 async function paintTemplates(sync) {
   try {
-    const { templates } = await api('/templates' + (sync ? '?sync=1' : ''));
+    const d = await api('/templates' + (sync ? '?sync=1' : ''));
+    const templates = d.templates || [];
+    const sel = d.selected || {};
     $('#tpl-table').innerHTML = templates.length ? `
-      <table><thead><tr><th>Nome</th><th>Categoria</th><th>Idioma</th><th>Status</th><th>Corpo</th><th></th></tr></thead>
+      <table><thead><tr><th>Nome</th><th>Uso no Elite Pay</th><th>Idioma</th><th>Status</th><th>Corpo</th><th></th></tr></thead>
       <tbody>${templates.map(t => `
         <tr>
-          <td><b>${esc(t.name)}</b></td>
-          <td>${esc(t.category || '')}</td>
+          <td><b>${esc(t.name)}</b><div class="muted" style="font-size:11px">${esc(t.category || '')}</div></td>
+          <td>${ecSelect('tplrole-' + t.name, [
+            { value: '', label: 'Campanha comum' },
+            { value: 'cobranca', label: 'Cobrança' },
+            { value: 'confirmacao', label: 'Confirmação de pagamento' }
+          ], t.purpose || '', `setTplRole('${esc(t.name)}',val)`)}
+          ${t.purpose && sel[t.purpose] === t.name ? '<span class="pill done" style="margin-top:5px">em uso</span>' : ''}</td>
           <td>${esc(t.language || '')}</td>
           <td><span class="pill ${esc(t.status)}">${esc(t.status)}</span>${t.rejected_reason && t.rejected_reason !== 'NONE' ? `<div class="muted" style="font-size:11px">${esc(t.rejected_reason)}</div>` : ''}</td>
-          <td class="muted" style="max-width:320px;font-size:12.5px">${esc(tplBody(t)).slice(0, 140)}</td>
+          <td class="muted" style="max-width:280px;font-size:12.5px">${esc(tplBody(t)).slice(0, 120)}</td>
           <td><button class="btn small danger" title="Excluir" onclick="removeTemplate('${esc(t.name)}')">${ico('trash', 14)}</button></td>
-        </tr>`).join('')}</tbody></table>`
+        </tr>`).join('')}</tbody></table>
+      <p class="hint" style="margin-top:12px;text-align:left">${ico('info', 12)}
+        Um modelo é <b>cobrança</b> ou <b>confirmação de pagamento</b>, nunca os dois.
+        Sem papel, ele é um modelo comum de campanha. Com mais de um do mesmo papel,
+        você escolhe qual é enviado em <a href="#/elitepay">Elite Pay → Mensagens</a>.</p>`
       : '<p class="muted">Nenhum modelo. Clique em Sincronizar (exige WABA ID + token) ou crie um novo.</p>';
   } catch (e) {
     $('#tpl-table').innerHTML = `<p class="err">${esc(e.message)}</p><p class="muted">Verifique WABA ID e Access Token em Configurações.</p>`;
@@ -1578,6 +2005,15 @@ async function paintTemplates(sync) {
 }
 
 async function syncTemplates() { toast('Sincronizando com a Meta...'); paintTemplates(true); }
+
+// Troca o papel de um modelo já criado (cobrança x confirmação x nenhum).
+async function setTplRole(name, purpose) {
+  try {
+    await api(`/templates/${encodeURIComponent(name)}/role`, { method: 'PUT', body: { purpose } });
+    toast(purpose ? `"${name}" agora é modelo de ${purpose === 'cobranca' ? 'cobrança' : 'confirmação de pagamento'}` : `"${name}" voltou a ser modelo comum`);
+    paintTemplates();
+  } catch (e) { toast(e.message, 'error'); paintTemplates(); }
+}
 
 // ============ PREVIEW DE CELULAR (estilo WhatsApp) ============
 // Formata *negrito*, _itálico_, ~tachado~ e realça variáveis {{n}}.
@@ -1666,8 +2102,7 @@ function phonePreview(data, opts = {}) {
         <svg class="wa-back" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m15 19-7-7 7-7"/></svg>
         <span class="wa-av">${state.wa && state.wa.profilePictureUrl ? `<img src="${esc(state.wa.profilePictureUrl)}" alt="">` : waInitials(name)}</span>
         <div class="wa-top-info"><b>${esc(name)} <svg class="wa-verified" viewBox="0 0 24 24" width="13" height="13" fill="#00A884"><path d="M12 1.8 14.8 4l3.5-.4 1 3.4 3 1.8-1.4 3.2 1.4 3.2-3 1.8-1 3.4-3.5-.4L12 22.2 9.2 20l-3.5.4-1-3.4-3-1.8L3.1 12 1.7 8.8l3-1.8 1-3.4L9.2 4 12 1.8z"/><path d="m8.6 12.2 2.3 2.3 4.6-4.8" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></b><span>conta comercial</span></div>
-        <svg class="wa-hicon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m23 7-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="3"/></svg>
-        <svg class="wa-hicon" viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 20.5a13 13 0 0 1-8.4-4A13 13 0 0 1 3 8V6.3A1.3 1.3 0 0 1 4.3 5H7l1.4 3.5-1.8 1.4a10.5 10.5 0 0 0 4.5 4.5l1.4-1.8L16 18v2.7c0 .9-.9 1.5-1.8 1.4z"/></svg>
+        <svg class="wa-hicon" viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.9.36 1.79.7 2.63a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.45-1.27a2 2 0 0 1 2.11-.45c.84.34 1.73.57 2.63.7A2 2 0 0 1 22 16.92z"/></svg>
       </div>
       <div class="wa-chat">
         <div class="wa-daychip">HOJE</div>
@@ -1746,7 +2181,13 @@ function renderTplVarExamples() {
     <div class="var-ex-head">${ico('sparkles', 13)} Exemplos das variáveis <span class="capi-tag">exigido pela Meta</span></div>
     <p class="muted" style="font-size:11.5px;margin:4px 0 10px">A Meta usa esses valores para avaliar e aprovar o modelo. No disparo, você define os valores reais.</p>
     ${hVars ? `<label style="margin-bottom:8px">Cabeçalho · {{1}}<input value="${esc(tplEx.header)}" oninput="tplEx.header=this.value;renderTplPreview()" placeholder="ex.: Maria"></label>` : ''}
-    ${bVars ? Array.from({ length: bVars }, (_, i) => `<label style="margin-bottom:6px">Corpo · {{${i + 1}}}<input value="${esc(tplEx.body[i] || '')}" oninput="tplEx.body[${i}]=this.value;renderTplPreview()" placeholder="ex.: ${['Maria', '20% OFF', 'sexta-feira', 'R$ 97'][i] || 'valor ' + (i + 1)}"></label>`).join('') : ''}
+    ${bVars ? Array.from({ length: bVars }, (_, i) => {
+      // Com um papel marcado, o rótulo mostra o que a variável significa de fato.
+      const rv = (TPL_ROLE_INFO[tplRole()] || {}).vars;
+      const lbl = rv && rv[i] ? ` · ${esc(rv[i][0])}` : '';
+      const ph = (rv && rv[i] ? rv[i][1] : ['Maria', '20% OFF', 'sexta-feira', 'R$ 97'][i]) || 'valor ' + (i + 1);
+      return `<label style="margin-bottom:6px">Corpo · {{${i + 1}}}${lbl}<input value="${esc(tplEx.body[i] || '')}" oninput="tplEx.body[${i}]=this.value;renderTplPreview()" placeholder="ex.: ${esc(ph)}"></label>`;
+    }).join('') : ''}
   </div>`;
 }
 const TPL_HDR_TYPES = [
@@ -1767,7 +2208,7 @@ function paintTplHeader() {
   const box = $('#nt-hd-extra'); if (!box) return;
   const t = tplHeader.type;
   if (t === 'TEXT') {
-    box.innerHTML = `<label style="margin-top:9px">Texto do cabeçalho — aceita 1 variável {{1}}<input id="nt-header" maxlength="60" oninput="tplHeader.text=this.value;renderTplVarExamples();renderTplPreview()" value="${esc(tplHeader.text)}" placeholder="Oferta especial para {{1}}! 🎉"></label>
+    box.innerHTML = `<label style="margin-top:9px">Texto do cabeçalho, aceita 1 variável {{1}}<input id="nt-header" maxlength="60" oninput="tplHeader.text=this.value;renderTplVarExamples();renderTplPreview()" value="${esc(tplHeader.text)}" placeholder="Oferta especial para {{1}}! 🎉"></label>
       <div class="row" style="margin-top:7px"><button type="button" class="btn small ghost no-grow" onclick="tplInsertVar('header')">${ico('plus', 12)} Inserir variável {{1}}</button></div>`;
   } else if (t === 'IMAGE' || t === 'VIDEO' || t === 'DOCUMENT') {
     const lbl = { IMAGE: 'Imagem (JPG/PNG)', VIDEO: 'Vídeo (MP4)', DOCUMENT: 'PDF' }[t];
@@ -1776,7 +2217,7 @@ function paintTplHeader() {
         <input type="file" id="nt-hd-file" accept="${TPL_HDR_ACCEPT[t]}" hidden onchange="tplHdrFile(this)">
         <button class="btn no-grow" onclick="$('#nt-hd-file').click()">${ico('image', 14)} Escolher ${lbl}</button>
         <span class="muted" id="nt-hd-status" style="font-size:12px">${tplHeader.filename
-          ? (tplHeader.handle ? `✓ ${esc(tplHeader.filename)} — exemplo enviado à Meta` : esc(tplHeader.filename))
+          ? (tplHeader.handle ? `✓ ${esc(tplHeader.filename)}, exemplo enviado à Meta` : esc(tplHeader.filename))
           : 'A Meta exige um arquivo de exemplo para aprovar o modelo.'}</span>
       </div>`;
   } else box.innerHTML = '';
@@ -1798,9 +2239,9 @@ function tplHdrFile(input) {
     try {
       const r = await api('/templates/example-upload', { body: { filename: f.name, mime: f.type, data: reader.result } });
       tplHeader.handle = r.handle;
-      if (st) st.textContent = `✓ ${f.name} — exemplo enviado à Meta`;
+      if (st) st.textContent = `✓ ${f.name}, exemplo enviado à Meta`;
     } catch (e) {
-      if (st) st.textContent = `⚠ ${f.name} — falha no envio: ${e.message}`;
+      if (st) st.textContent = `⚠ ${f.name}, falha no envio: ${e.message}`;
       toast(e.message, 'error');
     }
   };
@@ -1813,7 +2254,7 @@ function renderTemplateNew() {
   tplEx = { header: '', body: [] };
   $('#view').innerHTML = `<div class="page editor-page">
     <div class="page-head row" style="align-items:center">
-      <a class="btn no-grow" href="#/templates">${ico('arrow-up', 14)} Voltar</a>
+      <a class="btn no-grow" href="#/templates">${ico('arrowleft', 14)} Voltar</a>
       <div style="flex:1"><h1>Criar modelo</h1><p>Monte a mensagem, adicione botões e veja o preview em tempo real</p></div>
       <button class="btn primary no-grow" onclick="createTpl()">${ico('send', 14)} Enviar p/ aprovação</button>
     </div>
@@ -1825,6 +2266,14 @@ function renderTemplateNew() {
             <label style="flex:1">Categoria${ecSelect('nt-cat', [{ value: 'MARKETING', label: 'Marketing' }, { value: 'UTILITY', label: 'Utilidade' }, { value: 'AUTHENTICATION', label: 'Autenticação' }], 'MARKETING')}</label>
             <label style="flex:1">Idioma${ecSelect('nt-lang', [{ value: 'pt_BR', label: 'Português (BR)' }, { value: 'en_US', label: 'Inglês (US)' }, { value: 'es', label: 'Espanhol' }], 'pt_BR')}</label>
           </div>
+          <div class="role-box">
+            <div class="role-head">${ico('pix', 13)} Uso no Elite Pay <span class="role-hint">escolha um, ou nenhum, para campanha comum</span></div>
+            <label class="chk"><input type="checkbox" id="nt-role-cobranca" onchange="tplRolePick('cobranca')">
+              É um modelo de <b style="margin:0 4px">Cobrança</b></label>
+            <label class="chk" style="margin-top:9px"><input type="checkbox" id="nt-role-confirmacao" onchange="tplRolePick('confirmacao')">
+              É um modelo de <b style="margin:0 4px">Confirmação de pagamento</b></label>
+            <div id="nt-role-hint" class="var-ex-box hidden" style="margin-top:11px"></div>
+          </div>
         </div>
         <div class="card">
           <label>Cabeçalho${ecSelect('nt-htype', TPL_HDR_TYPES, 'NONE', 'tplHdrTypeChanged(val)')}</label>
@@ -1832,7 +2281,7 @@ function renderTemplateNew() {
           <label style="margin-top:11px">Corpo (use {{1}}, {{2}}… para variáveis, em sequência)<textarea id="nt-body" rows="4" oninput="renderTplVarExamples();renderTplPreview()" placeholder="Olá {{1}}! Temos uma condição exclusiva para você…"></textarea></label>
           <div class="row" style="margin-top:7px"><button type="button" class="btn small ghost no-grow" onclick="tplInsertVar('body')">${ico('plus', 12)} Inserir variável</button></div>
           <div id="nt-var-ex" style="margin-top:11px"></div>
-          <label style="margin-top:11px">Rodapé — opcional<input id="nt-footer" maxlength="60" oninput="renderTplPreview()" placeholder="Responda SAIR para não receber mais"></label>
+          <label style="margin-top:11px">Rodapé, opcional<input id="nt-footer" maxlength="60" oninput="renderTplPreview()" placeholder="Responda SAIR para não receber mais"></label>
         </div>
         <div class="card">
           <div class="tpl-btns-head">
@@ -1912,6 +2361,87 @@ function renderTplPreview() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// PAPEL DO MODELO — cobrança OU confirmação de pagamento, nunca os dois.
+// Sem nenhum marcado, é um modelo comum (campanha).
+// ---------------------------------------------------------------------------
+const TPL_ROLE_INFO = {
+  cobranca: {
+    label: 'Cobrança',
+    desc: 'Enviado quando você gera uma cobrança no Elite Pay, funciona <b>fora da janela de 24h</b>.',
+    vars: [
+      ['nome do cliente', 'Maria Silva'],
+      ['valor da cobrança', 'R$ 149,90'],
+      ['link de pagamento', 'https://pay.elitechat.com.br/abc123'],
+      ['Pix copia e cola', '00020126580014BR.GOV.BCB.PIX...'],
+      ['descrição / produto', 'Plano Premium'],
+      ['vencimento', '31/12/2026']
+    ]
+  },
+  confirmacao: {
+    label: 'Confirmação de pagamento',
+    desc: 'Enviado automaticamente assim que o pagamento é confirmado, também <b>fora da janela de 24h</b>.',
+    vars: [
+      ['nome do cliente', 'Maria Silva'],
+      ['valor pago', 'R$ 149,90'],
+      ['descrição / produto', 'Plano Premium'],
+      ['data e hora', '23/07/2026 14:32'],
+      ['forma de pagamento', 'Pix'],
+      ['código da transação', 'EP-7F3A21']
+    ]
+  }
+};
+
+function tplRole() {
+  for (const r of ['cobranca', 'confirmacao']) {
+    const el = $('#nt-role-' + r);
+    if (el && el.checked) return r;
+  }
+  return '';
+}
+
+// Exclusividade: marcar um desmarca o outro.
+function tplRolePick(role) {
+  const outro = role === 'cobranca' ? 'confirmacao' : 'cobranca';
+  const a = $('#nt-role-' + role), b = $('#nt-role-' + outro);
+  if (a && a.checked && b) b.checked = false;
+  tplRoleHint();
+}
+
+function tplRoleHint() {
+  const box = $('#nt-role-hint'); if (!box) return;
+  const role = tplRole();
+  box.classList.toggle('hidden', !role);
+  if (!role) return;
+  const info = TPL_ROLE_INFO[role];
+  box.innerHTML = `
+    <p class="muted" style="font-size:11.5px;margin:0"><b>${esc(info.label)}:</b> ${info.desc}
+      Clique numa variável para inserir no corpo, elas são preenchidas automaticamente no envio.</p>
+    <div class="var-chips">
+      ${info.vars.map(([lbl], i) => `<button type="button" class="var-chip" onclick="tplInsertVar(${i + 1})">
+        <b>{{${i + 1}}}</b> ${esc(lbl)}</button>`).join('')}
+    </div>
+    <p class="muted" style="font-size:11px;margin:8px 0 0">Use as variáveis em ordem, sem pular números, é regra da Meta para aprovar o modelo.</p>`;
+}
+
+// Insere {{n}} no corpo e já preenche o exemplo daquela variável.
+function tplInsertVar(n) {
+  const ta = $('#nt-body'); if (!ta) return;
+  const tag = `{{${n}}}`;
+  const p = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+  ta.value = ta.value.slice(0, p) + tag + ta.value.slice(ta.selectionEnd != null ? ta.selectionEnd : p);
+  const pos = p + tag.length;
+  ta.focus(); ta.setSelectionRange(pos, pos);
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+  // já preenche o exemplo daquela variável — a Meta exige um para cada
+  const info = TPL_ROLE_INFO[tplRole()];
+  const ex = info && info.vars[n - 1] && info.vars[n - 1][1];
+  if (ex && !(tplEx.body[n - 1] || '').trim()) {
+    tplEx.body[n - 1] = ex;
+    renderTplVarExamples();
+    renderTplPreview();
+  }
+}
 async function createTpl() {
   const buttons = tplBtns
     .map(b => {
@@ -1947,12 +2477,14 @@ async function createTpl() {
         bodyText: $('#nt-body').value.trim(),
         footerText: $('#nt-footer').value.trim(),
         bodyExamples: tplEx.body.map(s => (s || '').trim()),
-        buttons
+        buttons,
+        purpose: tplRole()   // '' | 'cobranca' | 'confirmacao'
       }
     });
-    toast('Modelo enviado para aprovação da Meta!');
+    const papel = TPL_ROLE_INFO[tplRole()];
+    toast(papel ? `Modelo enviado à Meta e marcado como ${papel.label}!` : 'Modelo enviado para aprovação da Meta!');
     location.hash = '#/templates';
-  } catch (e) { toast(e.message + (e.meta && e.meta.error_user_msg ? ' — ' + e.meta.error_user_msg : ''), 'error'); }
+  } catch (e) { toast(e.message + (e.meta && e.meta.error_user_msg ? ', ' + e.meta.error_user_msg : ''), 'error'); }
 }
 
 async function removeTemplate(name) {
@@ -2023,7 +2555,7 @@ async function renderLogs() {
         </summary>
         <pre class="out">${esc(JSON.stringify(e.body || e, null, 2))}</pre>
       </details>`).join('')
-      : '<div class="card"><p class="muted">Nenhum evento ainda. Configure a Callback URL no painel da Meta e clique em "Verificar e salvar" — a tentativa aparecerá aqui.</p></div>';
+      : '<div class="card"><p class="muted">Nenhum evento ainda. Configure a Callback URL no painel da Meta e clique em "Verificar e salvar", a tentativa aparecerá aqui.</p></div>';
   } catch (e) { $('#log-list').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
 }
 
@@ -2033,10 +2565,9 @@ async function renderSettings() {
   try { cfg = await api('/settings'); state.settings = cfg.settings; state.wa = cfg.wa; } catch (e) { return toast(e.message, 'error'); }
   const s = cfg.settings || {};
   const w = cfg.wa || {};
-  const p = cfg.platform || {};
-  const m = cfg.manual || {};
+  // A configuração da PLATAFORMA (app da Meta, webhook, Meta Ads) e a conexão
+  // manual vivem no Admin SaaS, aba Plataforma. Esta tela é a do cliente.
   const isAdmin = cfg.kind === 'admin';
-  const origin = location.origin;
 
   const connCard = w.connected ? `
       <div class="card">
@@ -2068,60 +2599,20 @@ async function renderSettings() {
         <h2 style="justify-content:center">Conecte seu WhatsApp</h2>
         <p class="muted" style="max-width:480px;margin:6px auto 18px;text-align:center">
           Clique no botão abaixo e siga o cadastro oficial da Meta na janela que vai abrir.
-          Número, conta e webhooks são configurados <b>automaticamente</b> — você não precisa copiar nenhum ID ou token.
+          Número, conta e webhooks são configurados <b>automaticamente</b>, você não precisa copiar nenhum ID ou token.
         </p>
         <button class="btn primary lg" onclick="connectWhatsApp()">${ico('zap', 16)} Conectar WhatsApp</button>
         <p class="hint" style="margin-top:12px">Embedded Signup oficial · WhatsApp Business Platform (Cloud API ${esc(s.graphVersion || 'v25.0')})</p>
       </div>`;
 
-  const platformCards = !isAdmin ? '' : `
-      <div class="card">
-        <h2>${ico('key')} Plataforma — Embedded Signup (Tech Provider)</h2>
-        <p class="muted" style="margin:0 0 12px">Credenciais do <b>app da Meta da plataforma</b>. Seus clientes nunca preenchem nada — eles só clicam em "Conectar WhatsApp".</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <label>App ID<input id="pl-appid" value="${esc(p.appId || '')}" placeholder="Painel do app da Meta"></label>
-          <label>App Secret<input id="pl-appsecret" type="password" value="${esc(p.appSecret || '')}" placeholder="Configurações do app → Básico"></label>
-          <label>Config ID (Embedded Signup)<input id="pl-configid" value="${esc(p.configId || '')}" placeholder="Login do Facebook p/ Empresas → Configurações"></label>
-          <label>System User Token (fallback)<input id="pl-systoken" type="password" value="${esc(p.systemToken || '')}" placeholder="Opcional"></label>
-          <label>Versão da Graph API${ecSelect('pl-version', ['v25.0', 'v24.0', 'v23.0', 'v22.0', 'v21.0'].map(v => ({ value: v, label: v })), p.graphVersion || 'v25.0')}</label>
-        </div>
-        <div class="row" style="margin-top:14px">
-          <button class="btn primary no-grow" onclick="savePlatform()">${ico('save', 14)} Salvar plataforma</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>${ico('link')} Webhook (cole no painel da Meta)</h2>
-        <p class="muted" style="margin:0 0 10px">No app da Meta: <b>WhatsApp → Configuração → Webhook</b>. A URL precisa ser <b>pública com HTTPS</b>. Assine os campos: <code>messages</code>, <code>message_template_status_update</code>, <code>phone_number_quality_update</code>, <code>account_update</code>.</p>
-        <label>Callback URL</label>
-        <div class="copy-box"><code id="wh-url">${esc(origin)}/webhook</code><button class="btn small" onclick="copyText($('#wh-url').textContent)">Copiar</button></div>
-        <label style="margin-top:10px">Verify Token</label>
-        <div class="copy-box"><code id="wh-token">${esc(p.verifyToken || '')}</code>
-          <button class="btn small" onclick="copyText($('#wh-token').textContent)">Copiar</button>
-          <button class="btn small" onclick="regenToken()">${ico('refresh', 13)} Gerar novo</button>
-        </div>
-      </div>
-
-      <details class="card adv">
-        <summary><h2>${ico('shield')} Credenciais manuais (avançado)</h2></summary>
-        <p class="muted" style="margin:8px 0 12px">Alternativa ao Embedded Signup para a conta do administrador (testes e desenvolvimento).</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <label>Access Token<textarea id="st-token" rows="2">${esc(m.accessToken || '')}</textarea></label>
-          <label>WABA ID<input id="st-waba" value="${esc(m.wabaId || '')}"></label>
-          <label>Phone Number ID<input id="st-phoneid" value="${esc(m.phoneNumberId || '')}"></label>
-        </div>
-        <div class="row" style="margin-top:12px">
-          <button class="btn primary no-grow" onclick="saveManual()">${ico('save', 14)} Salvar manuais</button>
-          <button class="btn no-grow" onclick="subscribeWaba()">${ico('radio', 14)} Assinar app na WABA</button>
-        </div>
-      </details>`;
 
   $('#view').innerHTML = `
     <div class="page">
       <div class="page-head"><h1>Configurações</h1><p>${isAdmin ? 'Conexão do WhatsApp, plataforma e administração' : 'Conexão do WhatsApp e preferências'}</p></div>
 
       <div class="tabs">
-        <button class="active" data-tab="conexao" onclick="showSettingsTab('conexao')">Conexão & API</button>
+        <button class="active" data-tab="contas" onclick="showSettingsTab('contas')">${ico('smartphone', 14)} Contas de WhatsApp</button>
+        <button data-tab="conexao" onclick="showSettingsTab('conexao')">Conexão & API</button>
         <button data-tab="numero" onclick="showSettingsTab('numero')">Número & Perfil</button>
         <button data-tab="atendimento" onclick="showSettingsTab('atendimento')">Atendimento</button>
         <button data-tab="finalizacao" onclick="showSettingsTab('finalizacao')">Finalização</button>
@@ -2152,14 +2643,17 @@ async function renderSettings() {
         <a class="card link-card" href="#" onclick="showSettingsTab('finalizacao');return false">
           <span class="lc-ic">${ico('sparkles', 22)}</span>
           <div style="flex:1"><h2 style="margin:0 0 3px">Pesquisa de satisfação</h2>
-            <p class="muted" style="margin:0;font-size:13px">Monte a mensagem e as notas enviadas ao cliente quando o atendimento for finalizado — na aba <b>Finalização</b>.</p></div>
+            <p class="muted" style="margin:0;font-size:13px">Monte a mensagem e as notas enviadas ao cliente quando o atendimento for finalizado, na aba <b>Finalização</b>.</p></div>
           <span class="lc-arrow">${ico('arrowright', 18)}</span>
         </a>
       </div>
 
-      <div class="tabpane show" data-pane="conexao">
+      <div class="tabpane show" data-pane="contas">
+      ${channelsCard()}
+      </div>
+
+      <div class="tabpane" data-pane="conexao">
       ${connCard}
-      ${platformCards}
       <div class="card"><h2>${ico('activity')} Diagnóstico</h2>
         <div class="row" style="margin-bottom:10px">
           <button class="btn no-grow" onclick="testConn()">${ico('activity', 14)} Testar conexão</button>
@@ -2206,7 +2700,7 @@ async function renderSettings() {
           <button class="btn small no-grow" onclick="loadCalling()">${ico('refresh', 13)} Ver status</button>
         </div>
         <p class="muted" id="cl-status" style="font-size:12.5px;margin:10px 0 0"></p>
-        <p class="muted" style="font-size:11.5px;margin:10px 0 0">${ico('shield', 12)} Sobre fotos de contatos: a Meta não expõe a foto de perfil dos seus clientes pela API oficial (privacidade) — por isso os avatares deles usam iniciais. A foto do <b>seu</b> perfil conectado aparece normalmente.</p>
+        <p class="muted" style="font-size:11.5px;margin:10px 0 0">${ico('shield', 12)} Sobre fotos de contatos: a Meta não expõe a foto de perfil dos seus clientes pela API oficial (privacidade), por isso os avatares deles usam iniciais. A foto do <b>seu</b> perfil conectado aparece normalmente.</p>
       </div>
 
       <div class="card">
@@ -2228,12 +2722,13 @@ async function renderSettings() {
       </div>
 
       <div class="tabpane" data-pane="prefs">
+      <div class="card" id="appearance-card">${renderThemeSettings()}</div>
       <div class="card" id="notif-card">${renderNotifSettings()}</div>
 
       <a class="card link-card" href="#/pixels">
         <span class="lc-ic">${ico('target', 22)}</span>
         <div style="flex:1"><h2 style="margin:0 0 3px">Pixels &amp; rastreamento</h2>
-          <p class="muted" style="margin:0;font-size:13px">Configure os pixels da Meta, Google e TikTok, a Conversions API e o domínio dos links — agora em página própria.</p></div>
+          <p class="muted" style="margin:0;font-size:13px">Configure os pixels da Meta, Google e TikTok, a Conversions API e o domínio dos links, agora em página própria.</p></div>
         <span class="lc-arrow">${ico('arrowright', 18)}</span>
       </a>
 
@@ -2244,7 +2739,7 @@ async function renderSettings() {
       </div>
 
       <div class="card">
-        <h2>${ico('lock')} Segurança — senha de acesso ${state.mustChangePassword ? '<span class="bad-dot">(troque a senha padrão!)</span>' : ''}</h2>
+        <h2>${ico('lock')} Segurança, senha de acesso ${state.mustChangePassword ? '<span class="bad-dot">(troque a senha padrão!)</span>' : ''}</h2>
         <div class="row">
           <label>Senha atual<input id="pw-cur" type="password"></label>
           <label>Nova senha (mín. 6)<input id="pw-new" type="password"></label>
@@ -2257,6 +2752,15 @@ async function renderSettings() {
   loadService();
   loadSurvey();
   if (state.wa && state.wa.connected) { loadCalling(); loadProfile(true); }
+  // veio do menu do avatar: abre direto a aba certa (e o campo de novo canal)
+  if (PENDING_TAB) {
+    showSettingsTab(PENDING_TAB);
+    if (PENDING_CH_NEW) {
+      const el = $('#ch-new');
+      if (el) { el.focus(); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    }
+    PENDING_TAB = ''; PENDING_CH_NEW = false;
+  }
 }
 
 // ==================== FINALIZAÇÃO → PESQUISA DE SATISFAÇÃO ====================
@@ -2303,7 +2807,7 @@ function paintSurvey() {
         <div class="card">
           <h2>${ico('file')} Modelo da mensagem</h2>
           <label>Mensagem<textarea id="sv-msg" rows="3" maxlength="1024" oninput="svSet('message', this.value)" placeholder="Como você avalia o nosso atendimento?">${esc(svCfg.message || '')}</textarea></label>
-          <label style="margin-top:11px">Rodapé — opcional<input id="sv-ft" maxlength="60" value="${esc(svCfg.footer || '')}" oninput="svSet('footer', this.value)" placeholder="Sua opinião nos ajuda a melhorar"></label>
+          <label style="margin-top:11px">Rodapé, opcional<input id="sv-ft" maxlength="60" value="${esc(svCfg.footer || '')}" oninput="svSet('footer', this.value)" placeholder="Sua opinião nos ajuda a melhorar"></label>
           ${fmt === 'list' ? `<label style="margin-top:11px">Texto do botão que abre a lista<input id="sv-lb" maxlength="${svMeta.limits.btnTitleMax}" value="${esc(svCfg.listButton || '')}" oninput="svSet('listButton', this.value)" placeholder="Avaliar atendimento"></label>` : ''}
         </div>
 
@@ -2406,7 +2910,7 @@ async function saveSurvey() {
     svCfg = d.survey;
     svMeta = { format: d.format, limits: d.limits, metrics: d.metrics };
     paintSurvey();
-    toast(`Pesquisa salva — será enviada como ${d.format === 'buttons' ? 'botões' : 'lista'}`);
+    toast(`Pesquisa salva, será enviada como ${d.format === 'buttons' ? 'botões' : 'lista'}`);
   } catch (e) { toast(e.message, 'error'); }
 }
 
@@ -2418,7 +2922,7 @@ async function loadService() {
     const cb = $('#sv-auto'); if (cb) cb.checked = !!ac.enabled;
     ecSelPick('sv-min', String(ac.minutes || 60));
     const st = $('#sv-status');
-    if (st) st.textContent = ac.enabled ? 'Atendimentos parados serão finalizados automaticamente.' : 'Desativada — os atendimentos só são finalizados manualmente.';
+    if (st) st.textContent = ac.enabled ? 'Atendimentos parados serão finalizados automaticamente.' : 'Desativada, os atendimentos só são finalizados manualmente.';
   } catch {}
 }
 async function saveService() {
@@ -2429,7 +2933,7 @@ async function saveService() {
     });
     const ac = service.autoClose;
     const st = $('#sv-status');
-    if (st) st.textContent = ac.enabled ? 'Atendimentos parados serão finalizados automaticamente.' : 'Desativada — os atendimentos só são finalizados manualmente.';
+    if (st) st.textContent = ac.enabled ? 'Atendimentos parados serão finalizados automaticamente.' : 'Desativada, os atendimentos só são finalizados manualmente.';
     toast('Configuração de atendimento salva');
   } catch (e) { toast(e.message, 'error'); }
 }
@@ -2443,7 +2947,8 @@ async function savePlatform() {
         appSecret: $('#pl-appsecret').value,
         configId: $('#pl-configid').value,
         systemToken: $('#pl-systoken').value,
-        graphVersion: ecSelVal('pl-version')
+        graphVersion: ecSelVal('pl-version'),
+        metaAds: { appId: ($('#pl-ads-appid') || {}).value || '', appSecret: ($('#pl-ads-secret') || {}).value || '' }
       }
     });
     toast('Configurações da plataforma salvas!');
@@ -2462,7 +2967,9 @@ async function saveManual() {
     });
     toast('Credenciais manuais salvas!');
     refreshBadge();
-    renderSettings();
+    // os campos manuais vivem no Admin SaaS, aba Plataforma
+    if (state.view === 'admin') { paintAdmin(); setTimeout(() => showSettingsTab('adm-plat'), 60); }
+    else renderSettings();
   } catch (e) { toast(e.message, 'error'); }
 }
 
@@ -2502,13 +3009,13 @@ async function renderPixels() {
   try { cfg = await api('/settings'); } catch {}
   $('#view').innerHTML = `<div class="page">
     <div class="page-head row">
-      <div style="flex:1"><h1>Pixels &amp; rastreamento</h1><p>Configure os pixels que disparam nos seus links rastreáveis — no navegador e no servidor (Conversions API)</p></div>
+      <div style="flex:1"><h1>Pixels &amp; rastreamento</h1><p>Configure os pixels que disparam nos seus links rastreáveis, no navegador e no servidor (Conversions API)</p></div>
       <button class="btn primary no-grow" onclick="openPixelForm(null)">${ico('plus', 14)} Adicionar pixel</button>
     </div>
     <div id="px-form"></div>
     <div class="card">
       <h2>${ico('target')} Pixels configurados</h2>
-      <p class="muted" style="margin:0 0 14px">Disparados automaticamente nos seus <a href="#/links">links rastreáveis</a> — cada clique vira evento <code>LinkClick</code> (Meta), <code>link_click</code> (Google) e <code>page</code> (TikTok).</p>
+      <p class="muted" style="margin:0 0 14px">Disparados automaticamente nos seus <a href="#/links">links rastreáveis</a>, cada clique vira evento <code>LinkClick</code> (Meta), <code>link_click</code> (Google) e <code>page</code> (TikTok).</p>
       <div id="px-list">${skel(3)}</div>
     </div>
     <div class="card">
@@ -2517,22 +3024,23 @@ async function renderPixels() {
         <label style="flex:1">Domínio dos links curtos<input id="tk-domain" value="${esc(cfg.linkDomain || '')}" placeholder="ex.: link.suaempresa.com.br"></label>
         <button class="btn primary no-grow" onclick="saveLinkDomain()">${ico('save', 14)} Salvar domínio</button>
       </div>
-      <p class="muted" style="font-size:12px;margin:8px 0 0">Aponte o DNS do seu domínio para este servidor — os links curtos passam a sair como <code>https://seu-dominio/l/apelido</code>.</p>
+      <p class="muted" style="font-size:12px;margin:8px 0 0">Aponte o DNS do seu domínio para este servidor, os links curtos passam a sair como <code>https://seu-dominio/l/apelido</code>.</p>
     </div>
     <div class="card px-guide">
       <h2>${ico('help')} Onde encontrar o ID de cada pixel</h2>
       <div class="pxg-grid">
-        <div><b>${ico(PIXEL_ICON.meta, 15)} Meta (Facebook/Instagram)</b><p>Gerenciador de Eventos → seu dataset → <b>ID</b> (15–16 dígitos). O token da CAPI fica em <i>Configurações → Gerar token de acesso</i>.</p></div>
+        <div><b>${ico(PIXEL_ICON.meta, 15)} Meta (Facebook/Instagram)</b><p>Gerenciador de Eventos → seu dataset → <b>ID</b> (15 a 16 dígitos). O token da CAPI fica em <i>Configurações → Gerar token de acesso</i>.</p></div>
         <div><b>${ico(PIXEL_ICON.gtag, 15)} Google Ads / GA4</b><p>Painel do Google → tag <code>G-XXXX</code> (GA4) ou <code>AW-XXXX</code> (Ads). Cole o ID exatamente como aparece.</p></div>
         <div><b>${ico(PIXEL_ICON.tiktok, 15)} TikTok</b><p>TikTok Ads → Ferramentas → Eventos → Web → <b>Pixel ID</b> (código alfanumérico).</p></div>
       </div>
     </div>
   </div>`;
+  openPixelForm(null, true);   // formulário já exposto ao abrir a página
   paintPixels();
 }
 
 // Painel de edição inline (sem popup) — abre acima da lista de pixels
-async function openPixelForm(id) {
+async function openPixelForm(id, silent) {
   let px = { type: 'meta', pixelId: '', name: '', capiToken: '', testCode: '', defaultEvent: '' };
   if (id) { const { pixels } = await api('/pixels'); px = Object.assign(px, pixels.find(p => p.id === id) || {}); }
   window._pxEdit = id || null;
@@ -2540,7 +3048,7 @@ async function openPixelForm(id) {
   box.innerHTML = `<div class="card px-editor">
     <div class="row" style="align-items:center;margin-bottom:6px">
       <h2 style="flex:1;margin:0">${ico(id ? 'edit' : 'plus')} ${id ? 'Editar' : 'Novo'} pixel</h2>
-      <button class="icon-btn" title="Fechar" onclick="closePixelForm()">${ico('x', 16)}</button>
+      ${id ? `<button class="icon-btn" title="Fechar" onclick="closePixelForm()">${ico('x', 16)}</button>` : ''}
     </div>
     <div class="row">
       <label style="flex:1">Plataforma${ecSelect('px-type', Object.entries(PIXEL_LBL).map(([k, v]) => ({ value: k, label: v })), px.type || 'meta', 'pxTypeChanged(val)')}</label>
@@ -2549,14 +3057,14 @@ async function openPixelForm(id) {
     <label style="margin-top:9px">ID do pixel<input id="px-id" value="${esc(px.pixelId)}" placeholder="${PIXEL_ID_PH[px.type] || ''}"></label>
     <div id="px-extra">${pixelExtraHtml(px)}</div>
     <div class="row" style="margin-top:8px;justify-content:flex-end">
-      <button class="btn no-grow" onclick="closePixelForm()">Cancelar</button>
-      ${id ? `<button class="btn no-grow" id="px-test-btn" onclick="testPixel('${id}')">${ico('activity', 14)} Testar evento</button>` : ''}
+      ${id ? `<button class="btn no-grow" onclick="closePixelForm()">Cancelar</button>
+      <button class="btn no-grow" id="px-test-btn" onclick="testPixel('${id}')">${ico('activity', 14)} Testar evento</button>` : ''}
       <button class="btn primary no-grow" onclick="savePixel(${id ? `'${id}'` : 'null'})">${ico('save', 14)} Salvar</button>
     </div>`;
-  box.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  setTimeout(() => $('#px-id')?.focus(), 80);
+  if (!silent) { box.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => $('#px-id')?.focus(), 80); }
 }
-function closePixelForm() { const b = $('#px-form'); if (b) b.innerHTML = ''; }
+// volta ao formulário "novo" em vez de sumir (fica sempre exposto)
+function closePixelForm() { openPixelForm(null, true); }
 function pixelExtraHtml(px) {
   const evOpts = CONV_EVENTS.map(e => ({ value: e, label: e }));
   const evSel = `<label>Evento de conversão padrão${ecSelect('px-event', evOpts, px.defaultEvent || 'PageView')}</label>`;
@@ -2566,7 +3074,7 @@ function pixelExtraHtml(px) {
       <div class="capi-head">${ico('shield', 14)} Conversions API <span class="capi-tag">server-side</span></div>
       <p class="muted" style="font-size:11.5px;margin:2px 0 10px">Rastreamento pelo servidor (à prova de bloqueadores e iOS). Gere o token em Eventos → Configurações do dataset na Meta.</p>
       <label>Access Token (CAPI)<input id="px-capi" type="password" value="${esc(px.capiToken || '')}" placeholder="EAAG… (opcional, mas recomendado)"></label>
-      <label style="margin-top:9px">Código de teste (test_event_code)<input id="px-testcode" value="${esc(px.testCode || '')}" placeholder="TEST12345 — opcional, só p/ validar"></label>
+      <label style="margin-top:9px">Código de teste (test_event_code)<input id="px-testcode" value="${esc(px.testCode || '')}" placeholder="TEST12345, opcional, só p/ validar"></label>
     </div>`;
 }
 function pxTypeChanged(type) {
@@ -2620,7 +3128,12 @@ async function disconnectWa() {
   } catch (e) { toast(e.message, 'error'); }
 }
 
-function diagOut(data) { $('#diag-out').textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2); }
+function diagOut(data) {
+  const el = $('#diag-out');
+  const txt = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  if (el) el.textContent = txt;         // caixa de diagnostico existe so em Configuracoes
+  else console.log('[diag]', txt);      // chamado do Admin: nao quebra
+}
 
 async function runDiag(path) {
   diagOut('Consultando Graph API...');
@@ -2649,7 +3162,8 @@ async function subscribeWaba() {
 async function regenToken() {
   if (!await confirmModal({ title: 'Gerar novo Verify Token', text: 'Você precisará atualizar o token no painel da Meta para o webhook continuar verificado.', ok: 'Gerar novo' })) return;
   const r = await api('/settings/verify-token/regenerate', { body: {} });
-  $('#wh-token').textContent = r.verifyToken;
+  const el = $('#wh-token');
+  if (el) el.textContent = r.verifyToken;
   toast('Novo verify token gerado');
 }
 
@@ -2725,14 +3239,14 @@ async function loadCalling() {
     const c = r.calling;
     const on = c && c.status === 'ENABLED';
     const tg = $('#cl-toggle'); if (tg) tg.checked = on;
-    st.textContent = c ? (on ? 'Ligações habilitadas — seus clientes podem te ligar pelo WhatsApp.' : 'Ligações desabilitadas.') : 'Recurso ainda não configurado neste número.';
+    st.textContent = c ? (on ? 'Ligações habilitadas, seus clientes podem te ligar pelo WhatsApp.' : 'Ligações desabilitadas.') : 'Recurso ainda não configurado neste número.';
   } catch (e) { st.textContent = 'Não foi possível consultar: ' + e.message; }
 }
 async function toggleCalling(enabled) {
   const st = $('#cl-status');
   try {
     await api('/settings/calling', { method: 'PUT', body: { enabled } });
-    if (st) st.textContent = enabled ? 'Ligações habilitadas — seus clientes podem te ligar pelo WhatsApp.' : 'Ligações desabilitadas.';
+    if (st) st.textContent = enabled ? 'Ligações habilitadas, seus clientes podem te ligar pelo WhatsApp.' : 'Ligações desabilitadas.';
     toast(enabled ? 'Ligações habilitadas!' : 'Ligações desabilitadas');
   } catch (e) {
     const tg = $('#cl-toggle'); if (tg) tg.checked = !enabled; // reverte
@@ -2771,6 +3285,8 @@ const TITLES = {
   funnel: 'Funil de vendas', campaigns: 'Campanhas', templates: 'Modelos de mensagem',
   quick: 'Respostas rápidas', logs: 'Webhook & Logs', settings: 'Configurações',
   team: 'Chat interno', flows: 'Flow Builder', links: 'Links rastreáveis',
+  integrations: 'Integrações', webhooks: 'Integrações',
+  elitepay: 'Elite Pay', 'elitepay/checkout': 'Checkout Builder', checkouts: 'Checkout Builder', tracking: 'Tracking',
   'templates/new': 'Criar modelo', 'campaigns/new': 'Nova campanha'
 };
 function updateTopbar() {
@@ -2887,7 +3403,7 @@ function donut(items, size = 168, thick = 22) {
   return `<div class="donut-wrap">
     <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">${arcs}
       <text x="${cx}" y="${cy - 1}" text-anchor="middle" style="font:800 26px 'Inter Tight',sans-serif;letter-spacing:-1px" fill="var(--text)">${pct}%</text>
-      <text x="${cx}" y="${cy + 18}" text-anchor="middle" style="font:700 10px 'Inter Tight',sans-serif;letter-spacing:.8px" fill="#93a092">${esc(main.label.toUpperCase())}</text>
+      <text x="${cx}" y="${cy + 18}" text-anchor="middle" style="font:700 10px 'Inter Tight',sans-serif;letter-spacing:.8px" fill="var(--faint)">${esc(main.label.toUpperCase())}</text>
     </svg>
     <div class="donut-leg">${items.map(x => `
       <div class="dl-row"><span class="dl-name"><i style="background:${x.color}"></i>${esc(x.label)}</span><b>${fmtN(x.value)}</b>
@@ -2926,18 +3442,9 @@ function funnelChart(stages) {
   }).join('')}</div>`;
 }
 
-// ==================== MAPA 3D DO BRASIL (leads por estado) ====================
-// Grade de tiles por UF (col,row) no estilo "statebin", projetada em isométrico
-// com extrusão 3D — a altura da coluna cresce com o nº de leads do estado.
-const BR_GRID = {
-  RR: [2, 0], AP: [4, 0],
-  AM: [1, 1], PA: [3, 1], MA: [4, 1], CE: [5, 1], RN: [6, 1],
-  AC: [0, 2], RO: [1, 2], TO: [3, 2], PI: [4, 2], PE: [5, 2], PB: [6, 2],
-  MT: [2, 3], GO: [3, 3], BA: [4, 3], SE: [5, 3], AL: [6, 3],
-  MS: [2, 4], DF: [3, 4], MG: [4, 4], ES: [5, 4],
-  SP: [3, 5], RJ: [4, 5],
-  PR: [2, 5], SC: [2, 6], RS: [2, 7]
-};
+// ==================== MAPA DO BRASIL (leads por estado) ====================
+// Mapa geográfico real: contornos das 27 UFs vêm da malha oficial do IBGE
+// (public/app/br-uf.js). Coloração choropleth — quanto mais leads, mais escuro.
 const UF_NAME = {
   AC: 'Acre', AL: 'Alagoas', AP: 'Amapá', AM: 'Amazonas', BA: 'Bahia', CE: 'Ceará', DF: 'Distrito Federal',
   ES: 'Espírito Santo', GO: 'Goiás', MA: 'Maranhão', MT: 'Mato Grosso', MS: 'Mato Grosso do Sul', MG: 'Minas Gerais',
@@ -2945,64 +3452,108 @@ const UF_NAME = {
   RS: 'Rio Grande do Sul', RO: 'Rondônia', RR: 'Roraima', SC: 'Santa Catarina', SP: 'São Paulo', SE: 'Sergipe', TO: 'Tocantins'
 };
 
+// Estados pequenos: o rótulo não cabe dentro do contorno e sai numa "perna".
+// Os cinco do litoral nordestino ficam a ~30 unidades um do outro — menos que a
+// altura de linha —, então vão para uma coluna fixa à direita, espaçados em 38.
+// Os demais recebem uma âncora curta na área de oceano ao lado. [x, y] absolutos.
+const UF_LABEL_X = 1022;
+const UF_LEADER = {
+  RN: [UF_LABEL_X, 262], PB: [UF_LABEL_X, 300], PE: [UF_LABEL_X, 338],
+  AL: [UF_LABEL_X, 376], SE: [UF_LABEL_X, 414],
+  ES: [858, 620], RJ: [828, 690], DF: [690, 524]
+};
+
+// Espessura da "placa" 3D, em unidades do viewBox. A parede é desenhada como
+// N cópias da silhueta descendo — o passo precisa ficar abaixo de 1px em tela
+// (escala ~0.45) para as cópias se fundirem numa massa sólida, sem listras.
+const GEO_DEPTH = 19, GEO_STEPS = 13;
+
+// A malha vai de 0 a 1000; a coluna de rótulos do Nordeste fica além disso,
+// e a extrusão precisa de folga embaixo. Derivado do viewBox da malha para
+// não quebrar se ela for regerada.
+function geoViewBox() {
+  const [, , w, h] = BR_UF_VIEWBOX.split(' ').map(Number);
+  return `0 0 ${w + 185} ${h + GEO_DEPTH + 10}`;
+}
+
 function brazilMap3D(g) {
   const counts = g.states || {};
   const max = Math.max(1, ...Object.values(counts));
-  // Projeção oblíqua: norte fica em cima, sul embaixo; a profundidade (SK)
-  // desloca cada linha p/ a esquerda e as colunas extrudam p/ baixo (3D).
-  const TW = 56, TD = 26, SK = 13, GX = 7, GY = 9, HMAX = 58;
-  const pos = (c, r) => ({ x: c * (TW + GX) - r * SK, y: r * (TD + GY) });
 
-  let minX = 1e9, maxX = -1e9, maxY = -1e9;
-  for (const [c, r] of Object.values(BR_GRID)) {
-    const p = pos(c, r);
-    minX = Math.min(minX, p.x - SK); maxX = Math.max(maxX, p.x + TW);
-    maxY = Math.max(maxY, p.y + TD);
+  // Sem a malha carregada não há o que desenhar — avisa em vez de quebrar.
+  if (typeof BR_UF_PATHS === 'undefined') {
+    return '<div class="geo-map"><p class="muted geo-empty">Mapa indisponível: malha das UFs não carregou.</p></div>';
   }
-  const PAD = 26;
-  const ox = -minX + PAD, oy = PAD + HMAX * 0.55;
-  const W = (maxX - minX) + PAD * 2, H = maxY + HMAX * 0.55 + PAD * 2.1;
 
-  // pinta de trás (norte) pra frente (sul) — painter's algorithm
-  const items = Object.entries(BR_GRID)
-    .map(([uf, [c, r]]) => ({ uf, c, r, ...pos(c, r), count: counts[uf] || 0 }))
-    .sort((a, b) => a.r - b.r || a.c - b.c);
+  const ufs = Object.keys(BR_UF_PATHS);
+
+  // A geometria entra UMA vez em <defs>; parede e face de cima são <use>.
+  // Sem isso os ~120KB de path se repetiriam 14x no DOM.
+  const defs = ufs.map(uf => `<path id="geo-p-${uf}" d="${BR_UF_PATHS[uf]}"/>`).join('');
+
+  // Base OPACA entre a parede e as faces. Sem ela a parede aparece através do
+  // preenchimento semitransparente dos estados e contamina a cor de todos eles
+  // — o estado mais fraco (opacidade .14) fica 86% cor-de-parede.
+  const base = ufs.map(uf => `<use href="#geo-p-${uf}"/>`).join('');
+
+  // Parede lateral: como todas as cópias usam a mesma cor chapada, as divisas
+  // internas somem e o conjunto lê como um bloco único de terra.
+  let wall = '';
+  for (let i = 1; i <= GEO_STEPS; i++) {
+    const dy = (GEO_DEPTH * i / GEO_STEPS).toFixed(2);
+    wall += ufs.map(uf => `<use href="#geo-p-${uf}" y="${dy}"/>`).join('');
+  }
 
   let svg = '';
-  for (const it of items) {
-    const x = it.x + ox, y = it.y + oy;
-    const frac = it.count / max;
-    const h = it.count ? 12 + frac * (HMAX - 12) : 5;   // altura da coluna 3D
-    const l = it.count ? (60 - frac * 24) : 87;          // luminância (mais leads = mais escuro)
-    const sat = it.count ? 56 : 22;
-    const top = `hsl(157 ${sat}% ${l}%)`;
-    const front = `hsl(160 ${sat}% ${Math.max(18, l - 16)}%)`;
-    const side = `hsl(162 ${sat}% ${Math.max(14, l - 24)}%)`;
-    const ty = y - h;
-    const cx = x + TW / 2 - SK / 2, cy = ty + TD / 2;
-    // topo (paralelogramo) + face frontal + face lateral direita
-    svg += `<g class="geo-tile${it.count ? ' hot' : ''}">
-      <title>${UF_NAME[it.uf]} — ${fmtN(it.count)} lead(s)</title>
-      <polygon points="${x - SK},${ty + TD} ${x + TW - SK},${ty + TD} ${x + TW - SK},${y + TD} ${x - SK},${y + TD}" fill="${front}"/>
-      <polygon points="${x + TW - SK},${ty + TD} ${x + TW},${ty} ${x + TW},${y} ${x + TW - SK},${y + TD}" fill="${side}"/>
-      <polygon points="${x},${ty} ${x + TW},${ty} ${x + TW - SK},${ty + TD} ${x - SK},${ty + TD}" fill="${top}" stroke="rgba(255,255,255,.5)" stroke-width="1"/>
-      <text x="${cx}" y="${cy + 3.5}" text-anchor="middle" class="geo-uf" fill="${it.count && frac > 0.3 ? '#fff' : '#4c5f53'}">${it.uf}</text>
-      ${it.count ? `<text x="${cx}" y="${ty - 7}" text-anchor="middle" class="geo-n">${fmtN(it.count)}</text>` : ''}
+  for (const uf of ufs) {
+    const count = counts[uf] || 0;
+    // raiz quadrada em vez de razão direta: com um estado dominante (ex.: SP com
+    // 10x o segundo), a escala linear jogaria todo o resto no tom mais claro.
+    const frac = count ? Math.sqrt(count / max) : 0;
+    // MAPA DE CALOR: uma única escala de verde EliteChat, do frio ao quente.
+    // Tudo é opacidade sobre --geo-ink (a cor da marca), então o tema claro
+    // escurece o estado conforme cresce e o escuro o acende — sem JS por tema.
+    //  · 0 leads  = 7%  (verde bem apagado, "frio")
+    //  · 1 lead   = 22% (já visivelmente mais verde que o vazio)
+    //  · máximo   = 92% (verde cheio da marca, "quente")
+    const op = count ? (0.22 + frac * 0.70) : 0.07;
+    const paint = `fill="var(--geo-ink)" fill-opacity="${op.toFixed(3)}"`;
+    const [cx, cy] = BR_UF_CENTROIDS[uf] || [0, 0];
+    const lead = UF_LEADER[uf];
+    const tx = lead ? lead[0] : cx;
+    const ty = lead ? lead[1] : cy + 4;
+    // O halo do CSS (paint-order) separa a sigla do preenchimento, então ela
+    // continua legível tanto sobre o verde mais forte quanto sobre o mais fraco.
+    // O mapa mostra só a SIGLA: a quantidade já é lida pela intensidade do verde
+    // e aparece exata no tooltip ao passar o mouse. Number solto sobre o estado
+    // poluía o desenho e repetia a informação.
+    svg += `<g class="geo-tile${count ? ' hot' : ''}" role="img" aria-label="${UF_NAME[uf]}: ${fmtN(count)} lead(s)"
+      data-name="${UF_NAME[uf]}" data-n="${count}">
+      <use href="#geo-p-${uf}" ${paint} stroke="var(--geo-sep)" stroke-width="2.4" stroke-linejoin="round"/>
+      ${lead ? `<line x1="${cx}" y1="${cy}" x2="${tx - 7}" y2="${ty}" class="geo-lead"/>` : ''}
+      <text x="${tx}" y="${ty}" text-anchor="${lead ? 'start' : 'middle'}" dominant-baseline="middle"
+            class="geo-uf${count ? (frac > 0.65 ? ' strong' : '') : ' off'}">${uf}</text>
     </g>`;
   }
+
+  svg = `<defs>${defs}</defs>
+    <g class="geo-wall">${wall}</g>
+    <g class="geo-base">${base}</g>
+    <g class="geo-faces">${svg}</g>`;
 
   const top5 = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const maxSrc = Math.max(1, ...(g.sources || []).map(s => s.count));
   const maxRef = Math.max(1, ...(g.referrers || []).map(r => r.count));
   return `
     <div class="geo-map">
-      <svg viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" style="width:100%;height:auto">${svg}</svg>
-      ${g.brTotal ? '' : '<p class="muted geo-empty">Sem leads brasileiros localizados ainda — os estados acendem conforme os contatos chegam pelo WhatsApp.</p>'}
+      <svg viewBox="${geoViewBox()}" style="width:100%;height:auto">${svg}</svg>
+      <div class="geo-tip" id="geo-tip" aria-hidden="true"></div>
+      ${g.brTotal ? '' : '<p class="muted geo-empty">Sem leads brasileiros localizados ainda, os estados acendem conforme os contatos chegam pelo WhatsApp.</p>'}
     </div>
     <div class="geo-side">
       <div class="geo-block">
         <span class="fb-sub">Top estados</span>
-        ${top5.length ? top5.map(([uf, n]) => hrow(`${uf} — ${UF_NAME[uf]}`, n, top5[0][1])).join('') : '<p class="muted" style="font-size:12.5px">Nenhum lead localizado ainda.</p>'}
+        ${top5.length ? top5.map(([uf, n]) => hrow(`${uf}, ${UF_NAME[uf]}`, n, top5[0][1])).join('') : '<p class="muted" style="font-size:12.5px">Nenhum lead localizado ainda.</p>'}
         ${g.foreign ? `<p class="muted" style="font-size:12px;margin-top:6px">${fmtN(g.foreign)} contato(s) fora do Brasil / sem DDD.</p>` : ''}
       </div>
       <div class="geo-block">
@@ -3021,7 +3572,7 @@ function dayBars(series, color = '#10B981') {
   const max = Math.max(1, ...series.map(d => d.count));
   const fmtD = iso => { const [, m, d] = iso.split('-'); return `${d}/${m}`; };
   return `<div class="hbars" style="height:130px">${series.map(d =>
-    `<div class="hb" style="height:${Math.max(3, d.count / max * 100)}%;background:${color}" title="${fmtD(d.date)} — ${d.count}"></div>`).join('')}</div>
+    `<div class="hb" style="height:${Math.max(3, d.count / max * 100)}%;background:${color}" title="${fmtD(d.date)}, ${d.count}"></div>`).join('')}</div>
   <div class="hbars-x"><span>${fmtD(series[0].date)}</span><span>${fmtD(series[Math.floor(series.length / 2)].date)}</span><span>${fmtD(series[series.length - 1].date)}</span></div>`;
 }
 
@@ -3032,16 +3583,16 @@ function chVolume(days, kind = 'line', h = 240) {
   const max = Math.max(1, ...days.map(d => Math.max(d.in, d.out)));
   const fmtD = iso => { const [, m, d] = iso.split('-'); return `${d}/${m}`; };
   const grid = [0.25, 0.5, 0.75].map(f => `<line x1="0" y1="${(h - padB) * f}" x2="${w}" y2="${(h - padB) * f}" stroke="#e8f3ec" stroke-dasharray="3 4"/>`).join('');
-  const labels = `<text x="2" y="${h - 6}" style="font:600 10px 'Inter Tight'" fill="#93a092">${fmtD(days[0].date)}</text>
-    <text x="${w - 2}" y="${h - 6}" text-anchor="end" style="font:600 10px 'Inter Tight'" fill="#93a092">${fmtD(days[days.length - 1].date)}</text>`;
+  const labels = `<text x="2" y="${h - 6}" style="font:600 10px 'Inter Tight'" fill="var(--faint)">${fmtD(days[0].date)}</text>
+    <text x="${w - 2}" y="${h - 6}" text-anchor="end" style="font:600 10px 'Inter Tight'" fill="var(--faint)">${fmtD(days[days.length - 1].date)}</text>`;
   if (kind === 'bars') {
     const slot = w / days.length, bw = Math.max(3, Math.min(16, slot * 0.34));
     let bars = '';
     days.forEach((d, i) => {
       const xm = i * slot + slot / 2;
       const ho = d.out / max * (h - padB - 8), hi = d.in / max * (h - padB - 8);
-      bars += `<rect x="${(xm - bw - 0.5).toFixed(1)}" y="${(h - padB - ho).toFixed(1)}" width="${bw}" height="${Math.max(2.5, ho).toFixed(1)}" rx="${Math.min(4, bw / 2)}" fill="url(#gvb)"><title>${fmtD(d.date)} — ${d.out} enviadas</title></rect>`;
-      bars += `<rect x="${(xm + 0.5).toFixed(1)}" y="${(h - padB - hi).toFixed(1)}" width="${bw}" height="${Math.max(2.5, hi).toFixed(1)}" rx="${Math.min(4, bw / 2)}" fill="#53BDEB" opacity=".8"><title>${fmtD(d.date)} — ${d.in} recebidas</title></rect>`;
+      bars += `<rect x="${(xm - bw - 0.5).toFixed(1)}" y="${(h - padB - ho).toFixed(1)}" width="${bw}" height="${Math.max(2.5, ho).toFixed(1)}" rx="${Math.min(4, bw / 2)}" fill="url(#gvb)"><title>${fmtD(d.date)}, ${d.out} enviadas</title></rect>`;
+      bars += `<rect x="${(xm + 0.5).toFixed(1)}" y="${(h - padB - hi).toFixed(1)}" width="${bw}" height="${Math.max(2.5, hi).toFixed(1)}" rx="${Math.min(4, bw / 2)}" fill="#53BDEB" opacity=".8"><title>${fmtD(d.date)}, ${d.in} recebidas</title></rect>`;
     });
     return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto" class="chv">
       <defs><linearGradient id="gvb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34D399"/><stop offset="1" stop-color="#0B815A"/></linearGradient></defs>
@@ -3146,7 +3697,7 @@ async function renderReports(daysOverride) {
       <div class="two-col even">
         <div class="card">
           <h2>Horários de pico (recebidas)</h2>
-          <div class="hbars">${r.byHour.map((v, i) => `<div class="hb" style="height:${Math.max(3, v / maxHour * 100)}%" title="${i}h — ${v} mensagem(ns)"></div>`).join('')}</div>
+          <div class="hbars">${r.byHour.map((v, i) => `<div class="hb" style="height:${Math.max(3, v / maxHour * 100)}%" title="${i}h, ${v} mensagem(ns)"></div>`).join('')}</div>
           <div class="hbars-x"><span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>23h</span></div>
         </div>
         <div class="card">
@@ -3213,7 +3764,7 @@ async function paintCampaigns() {
     const { campaigns } = await api('/campaigns');
     if (!campaigns.length) {
       box.innerHTML = `<div class="empty-state"><div class="big">${ico('megaphone', 40)}</div><b>Nenhuma campanha ainda</b>
-        <p class="muted" style="margin:6px auto 16px;max-width:420px">Dispare um template aprovado para todos os contatos, para uma etapa do funil ou para uma tag — e acompanhe entregas, leituras e falhas por destinatário.</p>
+        <p class="muted" style="margin:6px auto 16px;max-width:420px">Dispare um template aprovado para todos os contatos, para uma etapa do funil ou para uma tag, e acompanhe entregas, leituras e falhas por destinatário.</p>
         <a class="btn primary" href="#/campaigns/new">Criar primeira campanha</a></div>`;
       return;
     }
@@ -3251,7 +3802,7 @@ async function renderCampaignNew() {
   if (!templates.length) {
     $('#view').innerHTML = `<div class="page">
       <div class="page-head row" style="align-items:center">
-        <a class="btn no-grow" href="#/campaigns">${ico('arrow-up', 14)} Voltar</a>
+        <a class="btn no-grow" href="#/campaigns">${ico('arrowleft', 14)} Voltar</a>
         <div style="flex:1"><h1>Nova campanha</h1></div>
       </div>
       <div class="empty-state card"><div class="big">${ico('megaphone', 40)}</div><b>Nenhum modelo aprovado</b>
@@ -3266,7 +3817,7 @@ async function renderCampaignNew() {
   window._campSel = new Set(); // etapas/tags marcadas
   $('#view').innerHTML = `<div class="page editor-page">
     <div class="page-head row" style="align-items:center">
-      <a class="btn no-grow" href="#/campaigns">${ico('arrow-up', 14)} Voltar</a>
+      <a class="btn no-grow" href="#/campaigns">${ico('arrowleft', 14)} Voltar</a>
       <div style="flex:1"><h1>Nova campanha</h1><p>Escolha o modelo, preencha as variáveis e veja o preview antes de disparar</p></div>
       <button class="btn primary no-grow" onclick="createCampaign()">${ico('send', 14)} Disparar campanha</button>
     </div>
@@ -3325,7 +3876,7 @@ function campVarSrc(i, val) {
   if (val === '__wh') {
     const hooks = window._campHooks || [];
     if (!hooks.length) {
-      toast('Nenhuma automação com gatilho de webhook — crie uma no Flow Builder e ela aparece aqui', 'error');
+      toast('Nenhuma automação com gatilho de webhook, crie uma no Flow Builder e ela aparece aqui', 'error');
       ecSelPick('cp-src-' + i, '');
       return;
     }
@@ -3347,7 +3898,7 @@ function campVarHook(i, flowId) {
   const h = (window._campHooks || []).find(x => x.flowId === flowId);
   const box = $('#cp-whv-' + i); if (!box || !h) return;
   box.innerHTML = h.vars.length
-    ? `<label>Variável do webhook "${esc(h.name)}"${ecSelect('cp-whk-' + i, h.vars.map(k => ({ value: k, label: `${k} — último: ${String(h.lastVars[k]).slice(0, 24)}` })), '', `campVarField(${i},'${flowId}',val)`, 'sm')}</label>`
+    ? `<label>Variável do webhook "${esc(h.name)}"${ecSelect('cp-whk-' + i, h.vars.map(k => ({ value: k, label: `${k}, último: ${String(h.lastVars[k]).slice(0, 24)}` })), '', `campVarField(${i},'${flowId}',val)`, 'sm')}</label>`
     : `<p class="muted" style="font-size:12px;margin:8px 0 0">O webhook "${esc(h.name)}" ainda não recebeu dados. Dispare um teste para ele e as variáveis aparecem aqui.</p>`;
 }
 
@@ -3404,7 +3955,7 @@ function campAudChanged() {
     box.innerHTML = tags.length
       ? `<span class="fb-sub">Marque uma ou mais tags</span>
         <div class="aud-chips">${tags.map(([t, n]) => `<button type="button" class="aud-chip" data-v="${esc(t)}" onclick="campAudToggle(this)">${esc(t)} <b>${n}</b></button>`).join('')}</div>`
-      : '<p class="muted" style="font-size:12.5px;margin:0">Nenhuma tag ainda — adicione tags aos contatos na aba <a href="#/contacts">Contatos</a>.</p>';
+      : '<p class="muted" style="font-size:12.5px;margin:0">Nenhuma tag ainda, adicione tags aos contatos na aba <a href="#/contacts">Contatos</a>.</p>';
   } else box.innerHTML = '';
   campReach();
 }
@@ -3553,7 +4104,6 @@ async function renderTeam() {
           return `<button class="stbtn ${state.agent.presence === s ? 'on' : ''}" onclick="setMyStatus('${s}')" title="${lbl}"><span class="pres-dot ${cls}"></span>${lbl}</button>`;
         }).join('')}</div>` : ''}
         <div class="row" style="gap:7px">
-          <button class="btn small" style="flex:1" onclick="addMemberModal()">${ico('plus', 12)} Novo membro</button>
           <button class="btn small" style="flex:1" onclick="addSectorModal()">${ico('hashtag', 12)} Adicionar setor</button>
         </div>
       </div>
@@ -3625,12 +4175,12 @@ async function openThread(id, initial) {
     if (head) {
       const av = thread.kind === 'dm' ? avatarHtml({ name: thread.name }) : `<span class="avatar" style="background:#10B981">${thread.kind === 'sector' ? '#' : '@'}</span>`;
       const sub = thread.kind === 'dm' ? `Conversa privada · ${esc(thread.role || 'Atendente')}`
-        : thread.kind === 'sector' ? 'Canal do setor — visível para a equipe' : 'Canal geral — todos os atendentes';
+        : thread.kind === 'sector' ? 'Canal do setor, visível para a equipe' : 'Canal geral, todos os atendentes';
       head.innerHTML = `${av}<div class="info"><b>${esc(thread.name)}</b><span>${sub}</span></div>`;
     }
     if (sc) {
       sc.innerHTML = messages.length ? messages.map(teamBubble).join('')
-        : `<div class="chat-empty"><div class="ce-ic">${ico('chat2', 44)}</div><b>${thread.kind === 'dm' ? 'Converse em particular' : 'Comece a conversa'}</b><p class="muted" style="font-size:13px">Mensagens internas — não vão para o WhatsApp dos clientes.</p></div>`;
+        : `<div class="chat-empty"><div class="ce-ic">${ico('chat2', 44)}</div><b>${thread.kind === 'dm' ? 'Converse em particular' : 'Comece a conversa'}</b><p class="muted" style="font-size:13px">Mensagens internas, não vão para o WhatsApp dos clientes.</p></div>`;
       sc.scrollTop = sc.scrollHeight;
     }
     if (!initial) $('#team-input')?.focus();
@@ -3659,18 +4209,6 @@ async function sendTeamMsg() {
   catch (e) { toast(e.message, 'error'); inp.value = text; }
 }
 
-function addMemberModal() {
-  openModal(`<h2>${ico('users')} Novo membro da equipe</h2>
-    <label>Nome<input id="mb-name" placeholder="Ex.: Ana Souza"></label>
-    <label>Função / setor<input id="mb-role" placeholder="Ex.: Vendas" value="Atendente"></label>
-    <div class="row"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" onclick="saveMember()">${ico('plus', 14)} Adicionar</button></div>`);
-  setTimeout(() => $('#mb-name')?.focus(), 60);
-}
-async function saveMember() {
-  const name = $('#mb-name').value.trim(); if (!name) return toast('Informe o nome', 'error');
-  try { await api('/team/members', { body: { name, role: $('#mb-role').value.trim() } }); closeModal(); renderTeam(); toast('Membro adicionado'); }
-  catch (e) { toast(e.message, 'error'); }
-}
 async function removeMember(id) {
   if (!await confirmModal({ title: 'Remover membro', text: 'Remover este membro e a conversa privada dele?', ok: 'Remover', danger: true })) return;
   try { await api('/team/members/' + id, { method: 'DELETE' }); if (state.teamThread === 'dm:' + id) state.teamThread = 'group'; renderTeam(); } catch (e) { toast(e.message, 'error'); }
@@ -3710,7 +4248,7 @@ async function paintLinks() {
     const { links } = await api('/links');
     if (!links.length) {
       box.innerHTML = `<div class="empty-state"><div class="big">${ico('link', 40)}</div><b>Nenhum link ainda</b>
-        <p class="muted" style="margin:6px auto 16px;max-width:440px">Crie links curtos para bio, anúncios e campanhas. Cada clique é registrado — e, com os pixels configurados, alimenta a Meta e o Google automaticamente.</p>
+        <p class="muted" style="margin:6px auto 16px;max-width:440px">Crie links curtos para bio, anúncios e campanhas. Cada clique é registrado, e, com os pixels configurados, alimenta a Meta e o Google automaticamente.</p>
         <button class="btn primary" onclick="openLinkNew()">Criar primeiro link</button></div>`;
       return;
     }
@@ -3796,7 +4334,7 @@ async function renderLinkForm() {
         <h2>${ico('help')} Como funciona</h2>
         <ul class="lk-tips">
           <li><b>Evento de conversão:</b> o que será disparado nos seus pixels a cada clique (Lead, Purchase…). Escolha <b>Purchase</b> para informar o valor da venda.</li>
-          <li><b>UTMs:</b> anexados automaticamente à URL de destino — aparecem no Google Analytics e no gerenciador de anúncios.</li>
+          <li><b>UTMs:</b> anexados automaticamente à URL de destino, aparecem no Google Analytics e no gerenciador de anúncios.</li>
           <li><b>Pixels:</b> configure em <a href="#/pixels">Pixels</a>. Com a Conversions API ligada, o clique também é enviado pelo servidor (à prova de bloqueadores).</li>
         </ul>
       </div>
@@ -3853,7 +4391,7 @@ async function renderLinkStats() {
         <div><b>${s.link.lastClick ? timeAgo(s.link.lastClick) : '—'}</b><span>Último clique</span></div>
       </div>
       <div class="card">
-        <h2>${ico('activity')} Cliques — últimos 30 dias</h2>
+        <h2>${ico('activity')} Cliques, últimos 30 dias</h2>
         ${dayBars(s.byDay)}
       </div>
       <div class="two-col even">
@@ -3902,8 +4440,10 @@ async function paintBilling() {
     const plan = b.plan;
     const pc = b.pendingCharge;
     const refLink = `${location.origin}/app/?ref=${d.affiliate.code}`;
+    const cardOn = !!(d.card && (d.card.credit || d.card.debit));
+    BILL_CACHE = d;
     box.innerHTML = `
-      ${d.wooviReady ? '' : `<div class="card warn-card">${ico('alert', 16)} <b>Pagamentos ainda não configurados.</b> ${state.kind === 'admin' ? 'Informe o AppID da Woovi em <a href="#/admin">Admin SaaS → Pagamentos</a>.' : 'A plataforma ainda não ativou os pagamentos — fale com o suporte.'}</div>`}
+      ${d.wooviReady ? '' : `<div class="card warn-card">${ico('alert', 16)} <b>Pagamentos ainda não configurados.</b> ${state.kind === 'admin' ? 'Informe o AppID da Woovi em <a href="#/admin">Admin SaaS → Pagamentos</a>.' : 'A plataforma ainda não ativou os pagamentos, fale com o suporte.'}</div>`}
 
       <div class="card bill-status">
         <div class="bs-main">
@@ -3920,38 +4460,42 @@ async function paintBilling() {
 
       ${pc ? payBoxHtml(pc) : ''}
 
+      ${usageSection(d)}
+
       <div class="card">
         <h2>${ico('zap')} Planos</h2>
         ${d.plans.length ? `<div class="plans-grid">${d.plans.map(p => `
           <div class="plan ${plan && plan.id === p.id ? 'current' : ''}">
             <b class="pl-name">${esc(p.name)}</b>
             <div class="pl-price">${fmtBRL(p.price)}<span>/mês</span></div>
-            <ul class="pl-feats">${(p.features || []).map(f => `<li>${ico('check', 13)} ${esc(f)}</li>`).join('')}</ul>
+            <ul class="pl-feats">
+              ${(p.features || []).map(f => `<li>${ico('check', 13)} ${esc(f)}</li>`).join('')}
+              ${LIMIT_META.map(m => {
+                const v = (p.limits || {})[m.key];
+                return `<li class="pl-lim">${ico('check', 13)} <b>${v === -1 || v === undefined ? 'Ilimitado' : fmtN(v)}</b> ${esc(m.label.toLowerCase())}</li>`;
+              }).join('')}
+            </ul>
             ${plan && plan.id === p.id && b.status === 'active'
               ? '<span class="pill done" style="align-self:center">Plano atual</span>'
-              : `<button class="btn primary block" ${d.wooviReady ? '' : 'disabled'} onclick="subscribePlan('${p.id}')">Assinar com Pix</button>`}
+              : `<div class="pl-btns">
+                  <button class="btn primary block" ${d.wooviReady ? '' : 'disabled'} onclick="subscribePlan('${p.id}')">${ico('pix', 14)} Pix</button>
+                  ${cardOn ? `<button class="btn block" onclick="openCardPay('plan','${p.id}',${p.price})">${ico('card', 14)} Cartão</button>` : ''}
+                </div>
+                ${d.wallet.balance >= p.price + (d.extrasCost || 0) ? `<button class="btn block" style="margin-top:7px" onclick="payWithWallet('${p.id}')">${ico('briefcase', 13)} Usar saldo (${fmtBRL(d.wallet.balance)})</button>` : ''}`}
           </div>`).join('')}</div>
-          <p class="muted" style="font-size:12px;margin:12px 0 0">${ico('shield', 13)} Pagamento processado pela <b>Woovi</b> — Pix na hora e, quando disponível no seu banco, renovação por <b>Pix Automático</b> (sem precisar pagar todo mês manualmente).</p>`
+          <p class="muted" style="font-size:12px;margin:12px 0 0">${ico('shield', 13)}
+            <b>Pix</b> pela Woovi (com renovação por Pix Automático quando o seu banco suporta)${cardOn
+              ? ` ou <b>cartão de ${[d.card.credit && 'crédito', d.card.debit && 'débito'].filter(Boolean).join(' e ')}</b>, com ativação na hora e renovação automática no cartão salvo.`
+              : '. O pagamento com cartão ainda não foi ativado pela plataforma.'}</p>`
           : '<p class="muted">Nenhum plano publicado ainda.</p>'}
       </div>
 
       <div class="two-col even">
-        <div class="card">
-          <h2>${ico('briefcase')} Carteira</h2>
-          <div class="wallet-bal"><span>Saldo disponível</span><b>${fmtBRL(d.wallet.balance)}</b></div>
-          <div class="row" style="margin-top:12px">
-            <label style="flex:1">Adicionar saldo (R$)<input id="wal-amount" placeholder="ex.: 50,00" inputmode="decimal"></label>
-            <button class="btn primary no-grow" ${d.wooviReady ? '' : 'disabled'} onclick="topupWallet()">${ico('plus', 14)} Gerar Pix</button>
-          </div>
-          ${d.wallet.transactions.length ? `<span class="fb-sub" style="margin-top:14px">Extrato</span>
-          <div class="tx-list">${d.wallet.transactions.map(t => `
-            <div class="tx"><span class="tx-lbl">${esc(t.label)}</span><span class="muted" style="font-size:11px">${timeAgo(t.ts)}</span>
-            <b class="${t.amount >= 0 ? 'tx-in' : 'tx-out'}">${t.amount >= 0 ? '+' : ''}${fmtBRL(t.amount)}</b></div>`).join('')}</div>` : ''}
-        </div>
+        ${walletCard(d)}
 
         <div class="card aff-card">
           <h2>${ico('sparkles')} Indique e ganhe</h2>
-          <p class="muted" style="margin:0 0 10px;font-size:13px">Ganhe <b style="color:var(--verde-deep)">${d.affiliate.percentFirst}%</b> de cada nova assinatura e <b style="color:var(--verde-deep)">${d.affiliate.percentRenewal}%</b> de cada renovação dos indicados — direto na sua carteira.</p>
+          <p class="muted" style="margin:0 0 10px;font-size:13px">Ganhe <b style="color:var(--verde-deep)">${d.affiliate.percentFirst}%</b> de cada nova assinatura e <b style="color:var(--verde-deep)">${d.affiliate.percentRenewal}%</b> de cada renovação dos indicados, direto na sua carteira.</p>
           <div class="linkrow"><code>${esc(refLink)}</code><button class="icon-btn" title="Copiar" onclick="copyText('${esc(refLink)}')">${ico('copy', 13)}</button></div>
           <div class="lk-kpis" style="margin-top:12px">
             <div><b>${d.affiliate.referrals.length}</b><span>Indicados</span></div>
@@ -3961,9 +4505,10 @@ async function paintBilling() {
             ${d.affiliate.referrals.map(r => `<div class="tx"><span class="tx-lbl">${esc(r.name)}</span><span class="pill ${r.status === 'active' ? 'done' : ''}">${(BILL_ST[r.status] || [r.status])[0]}</span></div>`).join('')}` : ''}
           <div class="row" style="margin-top:14px">
             <label style="flex:1.4">Chave Pix p/ saque<input id="wd-key" placeholder="CPF, e-mail ou aleatória"></label>
-            <label style="flex:1">Valor (R$)<input id="wd-amount" placeholder="mín. 20,00" inputmode="decimal"></label>
+            <label style="flex:1">Valor (R$)<input id="wd-amount" placeholder="mín. 20,00" inputmode="decimal" oninput="wdQuote()"></label>
             <button class="btn no-grow" onclick="withdrawWallet()">Sacar</button>
           </div>
+          <p class="hint" id="wd-quote" style="margin-top:8px;text-align:left"></p>
           ${d.withdrawals.length ? `<div class="tx-list" style="margin-top:10px">${d.withdrawals.map(w => `
             <div class="tx"><span class="tx-lbl">Saque ${fmtBRL(w.amount)}</span><span class="muted" style="font-size:11px">${timeAgo(w.ts)}</span>
             <span class="pill ${w.status === 'paid' ? 'done' : w.status === 'rejected' ? '' : 'pending'}">${{ pending: 'Em análise', paid: 'Pago', rejected: 'Recusado' }[w.status] || w.status}</span></div>`).join('')}</div>` : ''}
@@ -3973,6 +4518,263 @@ async function paintBilling() {
   } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 }
 
+// ============================================================================
+// CARTEIRA — vendas no cartão entram aqui e viram saldo utilizável na plataforma
+// ============================================================================
+let BILL_CACHE = null;
+
+function walletCard(d) {
+  const w = d.walletDetail || { balance: d.wallet.balance, pending: 0, cardAvailable: 0, receivables: [] };
+  const ca = d.cardAccount || {};
+  const prox = w.nextRelease;
+
+  return `<div class="card">
+    <h2>${ico('briefcase')} Carteira</h2>
+    <div class="wallet-split">
+      <div class="wal-box hi">
+        <span class="wal-lbl">Disponível para usar ou sacar</span>
+        <b class="wal-val">${fmtBRL(w.balance)}</b>
+        ${w.cardAvailable ? `<span class="wal-sub">${fmtBRL(w.cardAvailable)} vieram de venda no cartão</span>` : ''}
+      </div>
+      <div class="wal-box">
+        <span class="wal-lbl">A liberar (vendas no cartão)</span>
+        <b class="wal-val">${fmtBRL(w.pending)}</b>
+        <span class="wal-sub">${prox
+          ? `Próxima: ${fmtBRL(prox.amount)} em ${new Date(prox.at).toLocaleDateString('pt-BR')}`
+          : 'Nenhuma venda aguardando liberação'}</span>
+      </div>
+    </div>
+
+    <p class="hint" style="margin-top:12px;text-align:left">${ico('clock', 12)}
+      O dinheiro do cartão é liberado <b>no mesmo prazo da adquirente</b>:
+      crédito <b>${esc(((ca.settleRules || {}).credit || {}).text || 'D+30')}</b> ·
+      débito <b>${esc(((ca.settleRules || {}).debit || {}).text || 'D+1 útil')}</b>.
+      Até lá o valor fica em “a liberar”.
+      O saldo disponível pode <b>pagar o seu plano, conexões WhatsApp e links extras</b>, sem taxa de saque.
+    </p>
+
+    ${w.receivables && w.receivables.length ? `
+      <span class="fb-sub" style="margin-top:14px">Próximas liberações</span>
+      <div class="tx-list">${w.receivables.map(r => `
+        <div class="tx"><span class="tx-lbl">${r.kind === 'debit' ? 'Débito' : 'Crédito'}${r.installments > 1 ? ` · parcela ${r.installment}/${r.installments}` : ''} · libera ${new Date(r.at).toLocaleDateString('pt-BR')}</span>
+        <b class="tx-in">${fmtBRL(r.amount)}</b></div>`).join('')}</div>` : ''}
+
+    <div class="row" style="margin-top:14px">
+      <label style="flex:1">Adicionar saldo via Pix (R$)<input id="wal-amount" placeholder="ex.: 50,00" inputmode="decimal"></label>
+      <button class="btn primary no-grow" ${d.wooviReady ? '' : 'disabled'} onclick="topupWallet()">${ico('plus', 14)} Gerar Pix</button>
+    </div>
+
+    ${d.wallet.transactions.length ? `<span class="fb-sub" style="margin-top:14px">Extrato</span>
+    <div class="tx-list">${d.wallet.transactions.map(t => `
+      <div class="tx"><span class="tx-lbl">${esc(t.label)}${t.pending ? ' <span class="pill pending" style="margin-left:6px">a liberar</span>' : ''}</span>
+      <span class="muted" style="font-size:11px">${timeAgo(t.ts)}</span>
+      <b class="${t.amount >= 0 ? 'tx-in' : 'tx-out'}">${t.amount >= 0 ? '+' : ''}${fmtBRL(t.amount)}</b></div>`).join('')}</div>` : ''}
+  </div>`;
+}
+
+// Prévia da taxa de saque conforme a origem do dinheiro (cartão x Pix).
+let wdQuoteTimer = null;
+function wdQuote() {
+  clearTimeout(wdQuoteTimer);
+  wdQuoteTimer = setTimeout(async () => {
+    const el = $('#wd-amount'), out = $('#wd-quote');
+    if (!el || !out) return;
+    const v = String(el.value || '').trim();
+    if (!v) { out.innerHTML = ''; return; }
+    try {
+      const q = await api('/wallet/withdraw/quote?amount=' + encodeURIComponent(v));
+      if (!q.amount) { out.innerHTML = ''; return; }
+      out.innerHTML = q.fee
+        ? `Taxa ${fmtBRL(q.fee)}${q.fromCard ? ` (cartão ${fmtBRL(q.cardFee)}${q.pixFee ? ` + Pix ${fmtBRL(q.pixFee)}` : ''})` : ''} · você recebe <b>${fmtBRL(q.net)}</b>`
+        : `Sem taxa · você recebe <b>${fmtBRL(q.net)}</b>`;
+    } catch { out.innerHTML = ''; }
+  }, 350);
+}
+
+// ============================================================================
+// CONSUMO x LIMITES DO PLANO + compra de unidades extras
+// ============================================================================
+
+function usageSection(d) {
+  const u = d.usage || {};
+  const cardOn = !!(d.card && (d.card.credit || d.card.debit));
+  const compraveis = LIMIT_META.filter(m => m.extra && (u[m.key] || {}).extraPrice);
+
+  return `<div class="card">
+    <h2>${ico('activity')} Seu consumo no ciclo</h2>
+    <p class="muted" style="margin:0 0 14px;font-size:13px">O que o seu plano libera e quanto já foi usado. Ao bater o teto, o recurso trava até você liberar mais.</p>
+    <div class="use-grid">
+      ${LIMIT_META.map(m => {
+        const r = u[m.key]; if (!r) return '';
+        const cls = r.unlimited ? '' : r.exceeded ? 'full' : r.percent >= 80 ? 'warn' : '';
+        return `<div class="use-item ${cls}">
+          <div class="use-top"><span>${esc(m.label)}</span><b>${fmtN(r.used)}${r.unlimited ? '' : ' / ' + fmtN(r.limit)}</b></div>
+          <div class="use-bar"><i style="width:${r.unlimited ? 0 : Math.max(2, r.percent)}%"></i></div>
+          <span class="use-sub">${r.unlimited
+            ? 'Ilimitado no seu plano'
+            : `${fmtN(r.included)} do plano${r.extras ? ` + ${fmtN(r.extras)} extra(s)` : ''}${r.exceeded ? ' · <b>limite atingido</b>' : ''}`}</span>
+        </div>`;
+      }).join('')}
+    </div>
+
+    ${compraveis.length ? `
+      <div class="fee-sep"></div>
+      <h2 style="font-size:14px">${ico('plus')} Comprar unidades extras</h2>
+      <p class="muted" style="margin:0 0 12px;font-size:13px">Precisa de mais um número de WhatsApp ou mais links rastreáveis? Compre avulso, o valor entra na sua renovação mensal.</p>
+      <div class="extra-grid">
+        ${compraveis.map(m => {
+          const r = u[m.key];
+          return `<div class="extra-item">
+            <div style="flex:1;min-width:0">
+              <b>${esc(m.label)}</b>
+              <div class="muted" style="font-size:12px;margin-top:2px">${fmtBRL(r.extraPrice)}/mês por unidade · você tem ${fmtN(r.extras)} extra(s)</div>
+            </div>
+            <input class="extra-qty" id="ex-q-${m.key}" value="1" inputmode="numeric" aria-label="Quantidade">
+            ${d.wallet.balance >= r.extraPrice ? `<button class="btn no-grow" onclick="buyExtra('${m.key}','wallet')">${ico('briefcase', 13)} Usar saldo</button>` : ''}
+            <button class="btn primary no-grow" ${cardOn ? '' : 'disabled title="Cartão não ativado pela plataforma"'}
+              onclick="buyExtra('${m.key}')">${ico('card', 13)} Cartão</button>
+          </div>`;
+        }).join('')}
+      </div>
+      ${d.extrasCost ? `<p class="hint" style="margin-top:12px">Seus extras somam <b>${fmtBRL(d.extrasCost)}/mês</b>, cobrados junto com o plano na renovação.</p>` : ''}
+      ${cardOn ? '' : '<p class="hint" style="margin-top:12px">A compra de extras é feita no cartão, a plataforma ainda não ativou esse meio.</p>'}`
+    : ''}
+  </div>`;
+}
+
+async function buyExtra(key, pay) {
+  const el = $('#ex-q-' + key);
+  const qty = Math.max(1, Number(el ? el.value : 1) || 1);
+  const r = ((BILL_CACHE || {}).usage || {})[key] || {};
+  const total = (r.extraPrice || 0) * qty;
+
+  if (pay !== 'wallet') return openCardPay('extra', key, total, qty);
+
+  const ok = await confirmModal({
+    title: 'Pagar com o saldo?',
+    text: `${qty}x ${(LIMIT_META.find(m => m.key === key) || {}).label || key}, ${fmtBRLp(total)} serão debitados da sua carteira.`,
+    ok: 'Confirmar'
+  });
+  if (!ok) return;
+  try {
+    await api('/billing/extras', { body: { key, qty, pay: 'wallet' } });
+    toast('Extra liberado!');
+    paintBilling();
+    if (key === 'whatsapps') loadChannels();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// Assinar/renovar abatendo do saldo da carteira (dinheiro das vendas no cartão).
+async function payWithWallet(planId) {
+  const d = BILL_CACHE || {};
+  const p = (d.plans || []).find(x => x.id === planId) || {};
+  const total = (p.price || 0) + (d.extrasCost || 0);
+  const ok = await confirmModal({
+    title: 'Pagar o plano com o saldo?',
+    text: `${p.name || 'Plano'}, ${fmtBRLp(total)} serão debitados da carteira. Saldo atual: ${fmtBRLp((d.wallet || {}).balance || 0)}.`,
+    ok: 'Confirmar'
+  });
+  if (!ok) return;
+  try {
+    await api('/billing/subscribe-wallet', { body: { planId } });
+    toast('Assinatura ativada com o saldo! 🎉');
+    paintBilling();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// confirmModal usa esc() no texto — usa o valor já formatado sem HTML
+function fmtBRLp(c) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+
+// ---------------------------------------------------------------------------
+// Formulário de cartão (assinatura do plano ou compra de extras)
+// ---------------------------------------------------------------------------
+let CARD_CTX = null;
+
+function openCardPay(mode, id, amount, qty) {
+  const d = BILL_CACHE || {};
+  const c = d.card || {};
+  if (!c.credit && !c.debit) return toast('Pagamento com cartão indisponível', 'error');
+  CARD_CTX = { mode, id, amount, qty: qty || 1 };
+  const kinds = [c.credit && ['credit', 'Crédito'], c.debit && ['debit', 'Débito']].filter(Boolean);
+  const maxP = Math.max(1, c.maxInstallments || 1);
+
+  openModal(`
+    <h2>${ico('card')} Pagar no cartão</h2>
+    <p class="muted" style="margin:0 0 14px;font-size:13px">
+      ${mode === 'plan' ? 'Assinatura do EliteChat' : `${qty}x ${esc((LIMIT_META.find(m => m.key === id) || {}).label || id)}`}
+     , <b style="color:var(--verde-deep)">${fmtBRL(amount)}</b>. A ativação é imediata após a aprovação.
+    </p>
+    ${kinds.length > 1 ? `<div class="row" style="gap:8px;margin-bottom:12px">
+      ${kinds.map(([v, l], i) => `<label class="chk" style="flex:0 0 auto">
+        <input type="radio" name="cpk" value="${v}" ${i === 0 ? 'checked' : ''} onchange="cardKindChange()"> ${l}</label>`).join('')}
+    </div>` : `<input type="hidden" id="cp-kind-fixed" value="${kinds[0][0]}">`}
+    <label>Número do cartão<input id="cp-num" inputmode="numeric" autocomplete="cc-number" placeholder="0000 0000 0000 0000" oninput="maskCardNum(this)"></label>
+    <label>Nome impresso no cartão<input id="cp-holder" autocomplete="cc-name" placeholder="COMO ESTÁ NO CARTÃO"></label>
+    <div class="row">
+      <label style="max-width:110px">Mês<input id="cp-mm" inputmode="numeric" maxlength="2" placeholder="MM"></label>
+      <label style="max-width:110px">Ano<input id="cp-yy" inputmode="numeric" maxlength="4" placeholder="AAAA"></label>
+      <label style="max-width:110px">CVV<input id="cp-cvv" inputmode="numeric" maxlength="4" placeholder="123"></label>
+    </div>
+    <div class="row">
+      <label style="flex:1.2">CPF ou CNPJ do titular<input id="cp-doc" inputmode="numeric" placeholder="000.000.000-00"></label>
+      <label style="flex:1" id="cp-inst-wrap">Parcelas
+        <select id="cp-inst">${Array.from({ length: maxP }, (_, i) =>
+          `<option value="${i + 1}">${i + 1}x de ${fmtBRL(Math.round(amount / (i + 1)))}${i ? '' : ' à vista'}</option>`).join('')}</select>
+      </label>
+    </div>
+    <p class="hint" style="margin-top:10px">${ico('lock', 12)} Os dados vão direto para o adquirente, o EliteChat guarda só a bandeira e os 4 últimos dígitos para renovar.</p>
+    <div class="row" style="margin-top:14px">
+      <button class="btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn primary" onclick="submitCardPay(this)">${ico('lock', 14)} Pagar ${fmtBRL(amount)}</button>
+    </div>`);
+  cardKindChange();
+}
+
+function cardKindChange() {
+  const kind = cardKind();
+  const w = $('#cp-inst-wrap');
+  // débito não parcela
+  if (w) w.style.display = kind === 'debit' ? 'none' : '';
+}
+function cardKind() {
+  const fixed = $('#cp-kind-fixed');
+  if (fixed) return fixed.value;
+  const r = document.querySelector('input[name="cpk"]:checked');
+  return r ? r.value : 'credit';
+}
+function maskCardNum(el) {
+  el.value = el.value.replace(/\D/g, '').slice(0, 19).replace(/(.{4})/g, '$1 ').trim();
+}
+
+async function submitCardPay(btn) {
+  const ctx = CARD_CTX; if (!ctx) return;
+  const kind = cardKind();
+  const body = {
+    kind,
+    installments: kind === 'debit' ? 1 : Number(($('#cp-inst') || {}).value || 1),
+    card: {
+      number: ($('#cp-num').value || '').replace(/\D/g, ''),
+      holderName: ($('#cp-holder').value || '').trim(),
+      expMonth: ($('#cp-mm').value || '').trim(),
+      expYear: ($('#cp-yy').value || '').trim(),
+      cvv: ($('#cp-cvv').value || '').trim()
+    },
+    customer: { name: ($('#cp-holder').value || '').trim(), taxId: ($('#cp-doc').value || '').replace(/\D/g, '') }
+  };
+  const txt = btn.innerHTML; btn.disabled = true; btn.textContent = 'Processando…';
+  try {
+    if (ctx.mode === 'plan') await api('/billing/subscribe-card', { body: { ...body, planId: ctx.id } });
+    else await api('/billing/extras', { body: { ...body, key: ctx.id, qty: ctx.qty } });
+    closeModal();
+    toast(ctx.mode === 'plan' ? 'Assinatura ativada! 🎉' : 'Extra liberado!');
+    paintBilling();
+    if (ctx.mode === 'extra' && ctx.id === 'whatsapps') loadChannels();
+  } catch (e) {
+    toast(e.message, 'error');
+    btn.disabled = false; btn.innerHTML = txt;
+  }
+}
+
 // QR do Pix inline (sem pop-up) + copia-e-cola + polling
 function payBoxHtml(pc) {
   return `<div class="card pay-card" id="pay-card">
@@ -3980,7 +4782,7 @@ function payBoxHtml(pc) {
       <div class="pay-qr">${pc.qrCodeImage ? `<img src="${esc(pc.qrCodeImage)}" alt="QR Code Pix">` : `<div class="pay-qr-ph">${ico('clock', 26)}</div>`}</div>
       <div style="flex:1;min-width:0">
         <h2 style="margin:0 0 4px">${ico('zap')} Pague com Pix para ativar</h2>
-        <p class="muted" style="margin:0 0 10px;font-size:13px">${pc.kind === 'topup' ? 'Recarga de saldo' : 'Assinatura'} — <b>${fmtBRL(pc.amount)}</b>. Escaneie o QR ou use o copia-e-cola. A confirmação é automática.</p>
+        <p class="muted" style="margin:0 0 10px;font-size:13px">${pc.kind === 'topup' ? 'Recarga de saldo' : 'Assinatura'}, <b>${fmtBRL(pc.amount)}</b>. Escaneie o QR ou use o copia-e-cola. A confirmação é automática.</p>
         ${pc.brCode ? `<label>Pix copia-e-cola<textarea readonly rows="3" style="font-size:11px" onclick="this.select()">${esc(pc.brCode)}</textarea></label>` : ''}
         <div class="row" style="margin-top:10px">
           ${pc.brCode ? `<button class="btn no-grow" onclick="copyText(${JSON.stringify(esc(pc.brCode))})">${ico('copy', 13)} Copiar código</button>` : ''}
@@ -4014,7 +4816,7 @@ async function checkPending(manual) {
 async function subscribePlan(planId) {
   try {
     await api('/billing/subscribe', { body: { planId } });
-    toast('Cobrança Pix gerada — escaneie o QR para ativar');
+    toast('Cobrança Pix gerada, escaneie o QR para ativar');
     paintBilling();
     setTimeout(() => $('#pay-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
   } catch (e) { toast(e.message, 'error'); }
@@ -4054,6 +4856,9 @@ async function renderAdmin() {
       <button data-tab="adm-aff" onclick="showSettingsTab('adm-aff')">Afiliados</button>
       <button data-tab="adm-pay" onclick="showSettingsTab('adm-pay')">Pagamentos</button>
       <button data-tab="adm-wd" onclick="showSettingsTab('adm-wd')">Saques</button>
+      <button data-tab="adm-ep" onclick="showSettingsTab('adm-ep');admEpPaint()">Elite Pay</button>
+      <button data-tab="adm-int" onclick="showSettingsTab('adm-int');admNsLoad()">Integrações</button>
+      <button data-tab="adm-plat" onclick="showSettingsTab('adm-plat')">Plataforma</button>
       <button data-tab="adm-seo" onclick="showSettingsTab('adm-seo')">SEO</button>
     </div>
     <div id="adm-box"><div class="card">${skel(6)}</div></div>
@@ -4061,22 +4866,145 @@ async function renderAdmin() {
   paintAdmin();
 }
 
+
+// ---------------------------------------------------------------------------
+// PLATAFORMA (Admin SaaS). Credenciais do app da Meta usadas pelo Embedded
+// Signup do WhatsApp e pelo OAuth do Meta Ads. Fica SO aqui: o cliente nunca
+// ve nem preenche nada disso, ele so clica em "Conectar".
+// ---------------------------------------------------------------------------
+  function admPlatformCard(p, m, origin) {
+  return `
+      <div class="card">
+        <h2>${ico('key')} Plataforma. Embedded Signup (Tech Provider)</h2>
+        <p class="muted" style="margin:0 0 12px">Credenciais do <b>app da Meta da plataforma</b>. Seus clientes nunca preenchem nada, eles só clicam em "Conectar WhatsApp".</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <label>App ID<input id="pl-appid" value="${esc(p.appId || '')}" placeholder="Painel do app da Meta"></label>
+          <label>App Secret<input id="pl-appsecret" type="password" value="${esc(p.appSecret || '')}" placeholder="Configurações do app → Básico"></label>
+          <label>Config ID (Embedded Signup)<input id="pl-configid" value="${esc(p.configId || '')}" placeholder="Login do Facebook p/ Empresas → Configurações"></label>
+          <label>System User Token (fallback)<input id="pl-systoken" type="password" value="${esc(p.systemToken || '')}" placeholder="Opcional"></label>
+          <label>Versão da Graph API${ecSelect('pl-version', ['v25.0', 'v24.0', 'v23.0', 'v22.0', 'v21.0'].map(v => ({ value: v, label: v })), p.graphVersion || 'v25.0')}</label>
+        </div>
+        <div class="row" style="margin-top:14px">
+          <button class="btn primary no-grow" onclick="savePlatform()">${ico('save', 14)} Salvar plataforma</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>${ico('trend')} Meta Ads (Tracking, permissão ads_read)</h2>
+        <p class="muted" style="margin:0 0 12px">Para os clientes conectarem a conta de anúncios pelo botão <b>"Conectar Meta Ads"</b> no Tracking. Por padrão usa o <b>mesmo app da Meta acima</b> (o do WhatsApp), então normalmente você <b>não precisa preencher nada aqui</b>.</p>
+        <div class="capi-box" style="margin-bottom:14px">
+          <div class="capi-head">${ico('shield', 14)} O que o app da Meta precisa ter <span class="capi-tag">obrigatório</span></div>
+          <p class="muted" style="font-size:12px;margin:6px 0 0">1. Produto <b>Login do Facebook</b> adicionado ao app.
+          2. Permissão <b>ads_read</b> aprovada (App Review).
+          3. A <b>URL de redirecionamento</b> abaixo cadastrada em <b>Login do Facebook → Configurações → URIs de redirecionamento OAuth válidos</b>.
+          4. App em <b>modo Live</b> e servido por <b>HTTPS</b>.</p>
+        </div>
+        <label>URL de redirecionamento OAuth (cole no painel da Meta)</label>
+        <div class="copy-box"><code id="ads-cb">${esc(origin)}/auth/meta-ads/callback</code><button class="btn small" onclick="copyText($('#ads-cb').textContent)">Copiar</button></div>
+        <details class="adv" style="margin-top:14px">
+          <summary class="muted" style="cursor:pointer;font-size:13px;font-weight:700">Usar um app da Meta SEPARADO para anúncios (opcional)</summary>
+          <p class="muted" style="margin:8px 0 10px;font-size:12.5px">Só preencha se o seu <code>ads_read</code> está em um app diferente do WhatsApp. Vazio = reaproveita o app acima.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <label>App ID (Meta Ads)<input id="pl-ads-appid" value="${esc((p.metaAds || {}).appId || '')}" placeholder="deixe vazio p/ usar o do WhatsApp"></label>
+            <label>App Secret (Meta Ads)<input id="pl-ads-secret" type="password" value="${esc((p.metaAds || {}).appSecret || '')}" placeholder="deixe vazio p/ usar o do WhatsApp"></label>
+          </div>
+          <p class="hint" style="margin-top:8px">Depois de preencher, clique em <b>Salvar plataforma</b> acima.</p>
+        </details>
+      </div>
+
+      <div class="card">
+        <h2>${ico('link')} Webhook (cole no painel da Meta)</h2>
+        <p class="muted" style="margin:0 0 10px">No app da Meta: <b>WhatsApp → Configuração → Webhook</b>. A URL precisa ser <b>pública com HTTPS</b>. Assine os campos: <code>messages</code>, <code>message_template_status_update</code>, <code>phone_number_quality_update</code>, <code>account_update</code>.</p>
+        <label>Callback URL</label>
+        <div class="copy-box"><code id="wh-url">${esc(origin)}/webhook</code><button class="btn small" onclick="copyText($('#wh-url').textContent)">Copiar</button></div>
+        <label style="margin-top:10px">Verify Token</label>
+        <div class="copy-box"><code id="wh-token">${esc(p.verifyToken || '')}</code>
+          <button class="btn small" onclick="copyText($('#wh-token').textContent)">Copiar</button>
+          <button class="btn small" onclick="regenToken()">${ico('refresh', 13)} Gerar novo</button>
+        </div>
+      </div>
+
+      <details class="card adv">
+        <summary><h2>${ico('shield')} Credenciais manuais (avançado)</h2></summary>
+        <p class="muted" style="margin:8px 0 12px">Alternativa ao Embedded Signup para a conta do administrador (testes e desenvolvimento).</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <label>Access Token<textarea id="st-token" rows="2">${esc(m.accessToken || '')}</textarea></label>
+          <label>WABA ID<input id="st-waba" value="${esc(m.wabaId || '')}"></label>
+          <label>Phone Number ID<input id="st-phoneid" value="${esc(m.phoneNumberId || '')}"></label>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn primary no-grow" onclick="saveManual()">${ico('save', 14)} Salvar manuais</button>
+          <button class="btn no-grow" onclick="subscribeWaba()">${ico('radio', 14)} Assinar app na WABA</button>
+        </div>
+      </details>`;
+}
 async function paintAdmin() {
   const box = $('#adm-box'); if (!box) return;
   try {
     const d = await api('/admin/saas');
     const m = d.metrics;
+    const ad = d.advanced || {};
+    const S = d.series || [];
     const activeTab = $('.tabs button.active')?.dataset.tab || 'adm-vis';
     box.innerHTML = `
       <div class="tabpane ${activeTab === 'adm-vis' ? 'show' : ''}" data-pane="adm-vis">
         <div class="metric-hero">
           <div class="mh-card hi"><span class="mh-ic">${ico('zap', 20)}</span><div class="mh-val">${fmtBRL(m.mrr)}</div><div class="mh-lbl">MRR (receita recorrente)</div></div>
-          <div class="mh-card"><span class="mh-ic">${ico('activity', 20)}</span><div class="mh-val">${fmtBRL(m.revenue30d)}</div><div class="mh-lbl">Receita — 30 dias</div></div>
+          <div class="mh-card"><span class="mh-ic">${ico('activity', 20)}</span><div class="mh-val">${fmtBRL(m.revenue30d)}</div><div class="mh-lbl">Receita. 30 dias</div></div>
           <div class="mh-card"><span class="mh-ic">${ico('briefcase', 20)}</span><div class="mh-val">${fmtBRL(m.totalRevenue)}</div><div class="mh-lbl">Receita total</div></div>
           <div class="mh-card"><span class="mh-ic">${ico('users', 20)}</span><div class="mh-val">${fmtN(m.accounts)}</div><div class="mh-lbl">Contas</div></div>
           <div class="mh-card"><span class="mh-ic">${ico('check', 20)}</span><div class="mh-val">${fmtN(m.activeSubs)}</div><div class="mh-lbl">Assinaturas ativas</div></div>
           <div class="mh-card"><span class="mh-ic">${ico('clock', 20)}</span><div class="mh-val">${fmtN(m.trials)}</div><div class="mh-lbl">Em teste</div></div>
         </div>
+
+        <div class="kpi-strip">
+          <div class="kpi-mini"><span>ARPU</span><b>${fmtBRL(ad.arpu)}</b><em>por assinante ativo</em></div>
+          <div class="kpi-mini"><span>Ticket médio</span><b>${fmtBRL(ad.avgTicket)}</b><em>por pagamento</em></div>
+          <div class="kpi-mini"><span>Conversão</span><b>${ad.conversion || 0}%</b><em>contas → assinantes</em></div>
+          <div class="kpi-mini ${(ad.momGrowth || 0) >= 0 ? 'up' : 'down'}"><span>Crescimento (MoM)</span><b>${(ad.momGrowth || 0) >= 0 ? '+' : ''}${ad.momGrowth || 0}%</b><em>receita vs mês anterior</em></div>
+          <div class="kpi-mini"><span>Novas assinaturas</span><b>${fmtN(ad.newSubs30d)}</b><em>últimos 30 dias</em></div>
+          <div class="kpi-mini"><span>Renovações</span><b>${fmtN(ad.renewals30d)}</b><em>últimos 30 dias</em></div>
+          <div class="kpi-mini"><span>Depósitos (carteira)</span><b>${fmtBRL(m.deposits)}</b><em>recargas incluídas na receita</em></div>
+        </div>
+
+        <div class="card">
+          <div class="row" style="align-items:center;margin-bottom:4px">
+            <h2 style="margin:0;flex:1">${ico('activity')} Receita. 12 meses</h2>
+            <div class="chart-legend"><span><i class="lg-first"></i>Novas</span><span><i class="lg-renewal"></i>Renovações</span><span><i class="lg-topup"></i>Recargas</span></div>
+          </div>
+          <div class="bar-chart">
+            ${(() => { const mx = Math.max(1, ...S.map(x => x.total)); const h = v => Math.round((v || 0) / mx * 100); return S.map(s => `
+              <div class="bar-col" title="${esc(s.label)}: ${fmtBRL(s.total)}&#10;Novas ${fmtBRL(s.first)} · Renov. ${fmtBRL(s.renewal)} · Recargas ${fmtBRL(s.topup)}">
+                <div class="bar-stack">
+                  <div class="bar-seg seg-topup" style="height:${h(s.topup)}%"></div>
+                  <div class="bar-seg seg-renewal" style="height:${h(s.renewal)}%"></div>
+                  <div class="bar-seg seg-first" style="height:${h(s.first)}%"></div>
+                </div>
+                <span class="bar-x">${esc(s.label)}</span>
+              </div>`).join(''); })()}
+          </div>
+        </div>
+
+        <div class="two-col even">
+          <div class="card">
+            <h2 style="margin:0 0 10px">${ico('users')} Novas contas. 12 meses</h2>
+            <div class="bar-chart sm">
+              ${(() => { const mx = Math.max(1, ...S.map(x => x.newAccounts)); return S.map(s => `
+                <div class="bar-col" title="${esc(s.label)}: ${fmtN(s.newAccounts)} conta(s)">
+                  <div class="bar-stack"><div class="bar-seg seg-acct" style="height:${Math.round((s.newAccounts || 0) / mx * 100)}%"></div></div>
+                  <span class="bar-x">${esc(s.label)}</span>
+                </div>`).join(''); })()}
+            </div>
+          </div>
+          <div class="card">
+            <h2 style="margin:0 0 12px">${ico('columns')} MRR por plano</h2>
+            ${(d.byPlan && d.byPlan.length) ? (() => { const mx = Math.max(1, ...d.byPlan.map(x => x.mrr)); return d.byPlan.map(p => `
+              <div class="ep-volrow"><span>${esc(p.name)} <em style="color:var(--muted);font-weight:600;font-style:normal">· ${fmtN(p.subscribers)}</em></span>
+                <div class="ep-volbar"><i style="width:${Math.max(2, Math.round(p.mrr / mx * 100))}%"></i></div>
+                <b>${fmtBRL(p.mrr)}</b></div>`).join(''); })() : '<p class="muted">Nenhum plano com assinantes ativos.</p>'}
+          </div>
+        </div>
+
         <div class="card">
           <h2>${ico('activity')} Últimos pagamentos</h2>
           ${d.revenue.length ? `<table><thead><tr><th>Quando</th><th>Conta</th><th>Tipo</th><th style="text-align:right">Valor</th></tr></thead><tbody>
@@ -4116,25 +5044,56 @@ async function paintAdmin() {
             <label>Dias por ciclo<input id="pl-days" value="30" inputmode="numeric"></label>
           </div>
           <label style="margin-top:9px">Recursos (um por linha)<textarea id="pl-feats" rows="3" placeholder="Atendimento ilimitado&#10;Campanhas e automações&#10;Suporte prioritário"></textarea></label>
+          ${planLimitFields('new', null)}
           <div class="row" style="margin-top:10px;justify-content:flex-end"><button class="btn primary no-grow" onclick="admCreatePlan()">${ico('save', 14)} Criar plano</button></div>
         </div>
+
+        <div class="card">
+          <h2>${ico('card')} Preço das unidades extras</h2>
+          <p class="muted" style="margin:0 0 12px;font-size:13px">
+            Todo plano já inclui <b>X conexões WhatsApp</b> e <b>Y links rastreáveis</b> (definidos acima, por plano).
+            Acima disso o cliente compra avulso, e é <b>você</b> quem define o preço de cada unidade aqui.
+          </p>
+          <div class="row" style="align-items:flex-end">
+            <label style="max-width:230px">WhatsApp adicional (R$/mês)<input id="ex-wa" value="${((d.config.billing.extras && d.config.billing.extras.whatsappPrice || 0) / 100).toFixed(2)}" inputmode="decimal" placeholder="0,00"></label>
+            <label style="max-width:230px">Link rastreável adicional (R$/mês)<input id="ex-lk" value="${((d.config.billing.extras && d.config.billing.extras.linkPrice || 0) / 100).toFixed(2)}" inputmode="decimal" placeholder="0,00"></label>
+            <button class="btn primary no-grow" onclick="admSaveConfig({whatsappPrice:$('#ex-wa').value,linkPrice:$('#ex-lk').value})">${ico('save', 14)} Salvar preços</button>
+          </div>
+          <p class="hint" style="margin-top:10px">Com <b>R$ 0,00</b> o extra fica indisponível para compra, o cliente só consegue mais fazendo upgrade de plano.</p>
+        </div>
+
         <div class="card">
           <h2>${ico('columns')} Planos publicados</h2>
-          ${d.plans.filter(p => !p.archived).length ? `<table><thead><tr><th>Plano</th><th>Preço</th><th>Ciclo</th><th>Assinantes</th><th></th></tr></thead><tbody>
-            ${d.plans.filter(p => !p.archived).map(p => `<tr>
-              <td><b>${esc(p.name)}</b><div class="muted" style="font-size:11.5px">${(p.features || []).join(' · ')}</div></td>
-              <td><b>${fmtBRL(p.price)}</b></td><td>${p.periodDays}d</td>
-              <td>${d.accounts.filter(a => a.billing.planId === p.id && a.billing.status === 'active').length}</td>
-              <td style="text-align:right"><button class="icon-btn danger" title="Arquivar" onclick="admDelPlan('${p.id}')">${ico('trash', 14)}</button></td>
-            </tr>`).join('')}
-          </tbody></table>` : '<p class="muted">Nenhum plano ainda — crie o primeiro acima.</p>'}
+          ${d.plans.filter(p => !p.archived).length ? d.plans.filter(p => !p.archived).map(p => {
+            const subs = d.accounts.filter(a => a.billing.planId === p.id && a.billing.status === 'active').length;
+            return `<div class="plan-row">
+              <div class="plan-head">
+                <div style="flex:1;min-width:0">
+                  <b style="font-size:15px">${esc(p.name)}</b>
+                  <div class="muted" style="font-size:11.5px;margin-top:2px">${fmtBRL(p.price)} / ${p.periodDays}d · ${fmtN(subs)} assinante(s)${(p.features || []).length ? ' · ' + esc((p.features || []).join(' · ')) : ''}</div>
+                </div>
+                <button class="btn small no-grow" onclick="admTogglePlan('${p.id}')">${ico('edit', 13)} Limites</button>
+                <button class="icon-btn danger" title="Arquivar" onclick="admDelPlan('${p.id}')">${ico('trash', 14)}</button>
+              </div>
+              <div class="plan-lims">${LIMIT_META.map(m => {
+                const v = (p.limits || {})[m.key];
+                return `<span class="pill ${v === 0 ? 'pending' : ''}">${m.short}: <b>${v === -1 || v === undefined ? '∞' : fmtN(v)}</b></span>`;
+              }).join('')}</div>
+              <div class="plan-edit hidden" id="pl-ed-${p.id}">
+                ${planLimitFields(p.id, p.limits || {})}
+                <div class="row" style="margin-top:10px;justify-content:flex-end">
+                  <button class="btn primary no-grow" onclick="admSavePlanLimits('${p.id}')">${ico('save', 14)} Salvar limites</button>
+                </div>
+              </div>
+            </div>`;
+          }).join('') : '<p class="muted">Nenhum plano ainda, crie o primeiro acima.</p>'}
         </div>
       </div>
 
       <div class="tabpane ${activeTab === 'adm-aff' ? 'show' : ''}" data-pane="adm-aff">
         <div class="card">
           <h2>${ico('sparkles')} Programa de afiliados</h2>
-          <p class="muted" style="margin:0 0 12px;font-size:13px">Todo cliente tem um link de indicação. A comissão cai na carteira do afiliado <b>automaticamente</b> a cada pagamento confirmado do indicado — na primeira assinatura e em toda renovação.</p>
+          <p class="muted" style="margin:0 0 12px;font-size:13px">Todo cliente tem um link de indicação. A comissão cai na carteira do afiliado <b>automaticamente</b> a cada pagamento confirmado do indicado, na primeira assinatura e em toda renovação.</p>
           <div class="row">
             <label>% na 1ª assinatura<input id="aff-first" value="${d.config.affiliate.percentFirst}" inputmode="numeric"></label>
             <label>% nas renovações<input id="aff-ren" value="${d.config.affiliate.percentRenewal}" inputmode="numeric"></label>
@@ -4153,19 +5112,20 @@ async function paintAdmin() {
 
       <div class="tabpane ${activeTab === 'adm-pay' ? 'show' : ''}" data-pane="adm-pay">
         <div class="card">
-          <h2>${ico('shield')} Woovi — Pix &amp; Pix Automático</h2>
-          <p class="muted" style="margin:0 0 12px;font-size:13px">Crie uma conta em <b>app.woovi.com</b>, gere um <b>AppID</b> em API/Plugins → Nova integração e cole abaixo. Método de pagamento: <b>apenas Pix</b> (cobrança na hora) e <b>Pix Automático</b> (recorrência) — sem cartão.</p>
+          <h2>${ico('shield')} Woovi. Pix &amp; Pix Automático</h2>
+          <p class="muted" style="margin:0 0 12px;font-size:13px">Crie uma conta em <b>app.woovi.com</b>, gere um <b>AppID</b> em API/Plugins → Nova integração e cole abaixo. Método de pagamento: <b>apenas Pix</b> (cobrança na hora) e <b>Pix Automático</b> (recorrência), sem cartão.</p>
           <div class="row">
             <label style="flex:2">AppID da Woovi ${d.config.woovi.configured ? `<span class="pill done" style="margin-left:6px">Configurado ${esc(d.config.woovi.appId)}</span>` : ''}<input id="wv-appid" type="password" placeholder="Q2xpZW50X0lkX…"></label>
             <button class="btn primary no-grow" onclick="admSaveConfig({wooviAppId:$('#wv-appid').value})">${ico('save', 14)} Salvar</button>
             <button class="btn no-grow" onclick="admTestWoovi(this)">${ico('activity', 14)} Testar conexão</button>
           </div>
-          <label class="chk" style="margin-top:12px"><input type="checkbox" id="wv-auto" ${d.config.woovi.pixAutomatic ? 'checked' : ''} onchange="admSaveConfig({pixAutomatic:this.checked})"> Tentar Pix Automático (assinatura recorrente) — se indisponível, cai para Pix avulso por renovação</label>
+          <label class="chk" style="margin-top:12px"><input type="checkbox" id="wv-auto" ${d.config.woovi.pixAutomatic ? 'checked' : ''} onchange="admSaveConfig({pixAutomatic:this.checked})"> Tentar Pix Automático (assinatura recorrente), se indisponível, cai para Pix avulso por renovação</label>
           <div class="capi-box" style="margin-top:14px">
             <div class="capi-head">${ico('webhook', 14)} Webhook de confirmação <span class="capi-tag">obrigatório em produção</span></div>
             <p class="muted" style="font-size:12px;margin:6px 0 0">Em app.woovi.com → Webhooks, cadastre a URL <code>${location.origin}/woovi-webhook</code> para os eventos de <b>cobrança paga</b>. Cada pagamento é verificado de novo na API antes de ativar (anti-fraude).</p>
           </div>
         </div>
+        ${admCardSection(d.card || {}, null)}
         <div class="card">
           <h2>${ico('gear')} Regras de cobrança</h2>
           <div class="row">
@@ -4197,15 +5157,78 @@ async function paintAdmin() {
         </div>
       </div>
 
+      <div class="tabpane ${activeTab === 'adm-ep' ? 'show' : ''}" data-pane="adm-ep">
+        <div id="adm-ep-box">${skel(5)}</div>
+      </div>
+
+      <div class="tabpane ${activeTab === 'adm-int' ? 'show' : ''}" data-pane="adm-int">
+        <div id="adm-int-box">${skel(4)}</div>
+      </div>
+
+      <div class="tabpane ${activeTab === 'adm-plat' ? 'show' : ''}" data-pane="adm-plat">
+        ${admPlatformCard(d.platform || {}, d.manual || {}, location.origin)}
+      </div>
+
       <div class="tabpane ${activeTab === 'adm-seo' ? 'show' : ''}" data-pane="adm-seo">
         ${admSeoForm(d.seo || {})}
       </div>`;
+    if (activeTab === 'adm-ep') admEpPaint();
+    if (activeTab === 'adm-int') admNsLoad();
   } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+}
+
+// ---- LIMITES DE PLANO (admin) ----
+// Vazio = ilimitado. WhatsApp e Links são "inclusos"; o excedente é vendido
+// avulso pelo preço definido no card "Preço das unidades extras".
+const LIMIT_META = [
+  { key: 'sends',     label: 'Disparos por ciclo',        short: 'Disparos', ph: 'ilimitado' },
+  { key: 'contacts',  label: 'Contatos (leads)',          short: 'Leads',    ph: 'ilimitado' },
+  { key: 'flows',     label: 'Fluxos de automação',       short: 'Fluxos',   ph: 'ilimitado' },
+  { key: 'pixels',    label: 'Pixels de rastreamento',    short: 'Pixels',   ph: 'ilimitado' },
+  { key: 'links',     label: 'Links rastreáveis grátis',  short: 'Links',    ph: '1', extra: true },
+  { key: 'whatsapps', label: 'WhatsApps inclusos',        short: 'WhatsApp', ph: '1', extra: true }
+];
+
+function planLimitFields(scope, lims) {
+  const val = k => {
+    if (!lims) return '';
+    const v = lims[k];
+    return v === -1 || v === undefined ? '' : String(v);
+  };
+  return `<div class="lim-box">
+    <div class="lim-head">${ico('shield', 13)} Limites do plano <span class="lim-hint">vazio = ilimitado · 0 = bloqueado</span></div>
+    <div class="lim-grid">
+      ${LIMIT_META.map(m => `<label>${m.label}${m.extra ? ' <em class="lim-extra">+ extras pagos</em>' : ''}
+        <input id="lim-${scope}-${m.key}" value="${val(m.key)}" inputmode="numeric" placeholder="${m.ph}"></label>`).join('')}
+    </div>
+  </div>`;
+}
+
+function readLimitFields(scope) {
+  const out = {};
+  for (const m of LIMIT_META) {
+    const el = $(`#lim-${scope}-${m.key}`);
+    if (el) out[m.key] = el.value;
+  }
+  return out;
+}
+
+function admTogglePlan(id) {
+  const el = $('#pl-ed-' + id);
+  if (el) el.classList.toggle('hidden');
+}
+
+async function admSavePlanLimits(id) {
+  try {
+    await api('/admin/plans/' + id, { method: 'PUT', body: { limits: readLimitFields(id) } });
+    toast('Limites atualizados'); paintAdmin();
+    setTimeout(() => showSettingsTab('adm-pl'), 60);
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function admCreatePlan() {
   try {
-    await api('/admin/plans', { body: { name: $('#pl-name').value, price: $('#pl-price').value, periodDays: $('#pl-days').value, features: $('#pl-feats').value } });
+    await api('/admin/plans', { body: { name: $('#pl-name').value, price: $('#pl-price').value, periodDays: $('#pl-days').value, features: $('#pl-feats').value, limits: readLimitFields('new') } });
     toast('Plano criado!'); paintAdmin();
     setTimeout(() => showSettingsTab('adm-pl'), 60);
   } catch (e) { toast(e.message, 'error'); }
@@ -4214,6 +5237,68 @@ async function admDelPlan(id) {
   if (!await confirmModal({ title: 'Arquivar plano', text: 'Novos clientes não poderão assiná-lo. Assinantes atuais continuam até cancelarem.', ok: 'Arquivar', danger: true })) return;
   try { await api('/admin/plans/' + id, { method: 'DELETE' }); paintAdmin(); setTimeout(() => showSettingsTab('adm-pl'), 60); } catch (e) { toast(e.message, 'error'); }
 }
+// ---- Admin → Integrações → Nuvemshop (app único da plataforma) ----
+let admNs = null;
+async function admNsLoad() {
+  const box = $('#adm-int-box'); if (!box) return;
+  try { admNs = (await api('/admin/nuvemshop')).nuvemshop; }
+  catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
+  admNsPaint();
+}
+function admNsPaint() {
+  const box = $('#adm-int-box'); if (!box || !admNs) return;
+  const n = admNs;
+  const status = n.available
+    ? '<span class="pill done">Ativa para os clientes</span>'
+    : n.enabled ? '<span class="pill pending">Ligada, mas falta o app</span>' : '<span class="pill">Desligada</span>';
+
+  box.innerHTML = `<div class="card">
+    <div class="row" style="align-items:center;margin-bottom:6px">
+      <h2 style="margin:0;flex:1">${ico('cart')} Nuvemshop</h2>
+      ${status}
+    </div>
+    <p class="muted" style="margin:0 0 14px;font-size:13px">
+      Um <b>único app</b> da plataforma atende todos os clientes. Eles não criam app nem informam credenciais,
+      só clicam em “Conectar loja”. Enquanto estiver desligada, a integração <b>nem aparece</b> no painel deles.
+    </p>
+
+    <label class="chk"><input type="checkbox" ${n.enabled ? 'checked' : ''} onchange="admNsSave({enabled:this.checked})">
+      Disponibilizar a integração com a Nuvemshop para os clientes</label>
+
+    <div class="row" style="margin-top:16px;align-items:flex-end">
+      <label style="flex:1">App ID ${n.appId ? '<span class="pill done" style="margin-left:6px">Preenchido</span>' : ''}
+        <input id="adm-ns-appid" value="${esc(n.appId || '')}" placeholder="Ex.: 12345"></label>
+      <label style="flex:1">Client Secret ${n.hasSecret ? '<span class="pill done" style="margin-left:6px">Salvo</span>' : ''}
+        <input id="adm-ns-secret" type="password" placeholder="${n.hasSecret ? '•••••••• (deixe vazio p/ manter)' : 'Cole o secret do app'}"></label>
+      <button class="btn primary no-grow" onclick="admNsSave({appId:$('#adm-ns-appid').value,appSecret:$('#adm-ns-secret').value})">${ico('save', 14)} Salvar</button>
+    </div>
+
+    <div class="capi-box" style="margin-top:16px">
+      <div class="capi-head">${ico('webhook', 14)} URLs para cadastrar no app <span class="capi-tag">Portal de Parceiros</span></div>
+      <p class="muted" style="font-size:12px;margin:8px 0 5px">URL de redirecionamento (OAuth):</p>
+      <div class="linkrow"><code>${esc(n.redirectUri)}</code>
+        <button class="icon-btn" title="Copiar" onclick="copyText('${esc(n.redirectUri)}')">${ico('copy', 13)}</button></div>
+      <p class="muted" style="font-size:12px;margin:10px 0 5px">URL de notificações (webhooks):</p>
+      <div class="linkrow"><code>${esc(n.webhookUrl)}</code>
+        <button class="icon-btn" title="Copiar" onclick="copyText('${esc(n.webhookUrl)}')">${ico('copy', 13)}</button></div>
+      <p class="muted" style="font-size:11.5px;margin:10px 0 0">
+        Escopos necessários: <b>read_orders</b> e <b>read_customers</b>. Em produção, o domínio precisa ser HTTPS.
+      </p>
+    </div>
+
+    <div class="wh-meta" style="margin-top:16px">
+      <span class="pill ${n.lojasConectadas ? 'done' : ''}">${fmtN(n.lojasConectadas)} loja(s) conectada(s)</span>
+    </div>
+  </div>`;
+}
+async function admNsSave(body) {
+  try {
+    admNs = (await api('/admin/nuvemshop', { method: 'PUT', body })).nuvemshop;
+    toast('Integração atualizada');
+    admNsPaint();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
 async function admSaveConfig(body) {
   try { await api('/admin/config', { method: 'PUT', body }); toast('Configuração salva'); } catch (e) { toast(e.message, 'error'); }
 }
@@ -4238,10 +5323,10 @@ function admSeoForm(seo) {
       <h2>${ico('target')} SEO da página de marketing</h2>
       <p class="muted" style="margin:0 0 14px;font-size:13px">Personalize como sua página inicial (a landing pública em <code>${location.origin}/</code>) aparece no Google e ao ser compartilhada. As tags são injetadas no HTML lido pelos buscadores.</p>
       <div class="row">
-        <label style="flex:2">Título (title / aba do navegador)<input id="seo-title" maxlength="180" value="${v('title')}" placeholder="EliteChat — CRM de WhatsApp com IA"></label>
+        <label style="flex:2">Título (title / aba do navegador)<input id="seo-title" maxlength="180" value="${v('title')}" placeholder="EliteChat. CRM de WhatsApp com IA"></label>
         <label style="flex:1">Theme color<input id="seo-theme" value="${v('themeColor')}" placeholder="#34D399"></label>
       </div>
-      <label style="margin-top:9px">Descrição (meta description — ideal até 160 caracteres)<textarea id="seo-desc" rows="2" maxlength="400" placeholder="Automatize o atendimento no WhatsApp, gerencie leads e dispare campanhas com o EliteChat.">${v('description')}</textarea></label>
+      <label style="margin-top:9px">Descrição (meta description, ideal até 160 caracteres)<textarea id="seo-desc" rows="2" maxlength="400" placeholder="Automatize o atendimento no WhatsApp, gerencie leads e dispare campanhas com o EliteChat.">${v('description')}</textarea></label>
       <div class="row" style="margin-top:9px">
         <label style="flex:2">Palavras-chave (separadas por vírgula)<input id="seo-keywords" maxlength="400" value="${v('keywords')}" placeholder="crm whatsapp, disparo em massa, chatbot"></label>
         <label style="flex:1">Autor<input id="seo-author" maxlength="120" value="${v('author')}" placeholder="EliteChat"></label>
@@ -4251,14 +5336,14 @@ function admSeoForm(seo) {
         <label style="flex:1">Título ao compartilhar<input id="seo-ogtitle" maxlength="180" value="${v('ogTitle')}" placeholder="(usa o título acima se vazio)"></label>
       </div>
       <label style="margin-top:9px">Descrição ao compartilhar<textarea id="seo-ogdesc" rows="2" maxlength="400" placeholder="(usa a descrição acima se vazio)">${v('ogDescription')}</textarea></label>
-      <label style="margin-top:9px">Imagem de preview (URL — 1200×630 recomendado)<input id="seo-ogimage" maxlength="600" value="${v('ogImage')}" placeholder="${location.origin}/assets/elitechat-logo.png"></label>
+      <label style="margin-top:9px">Imagem de preview (URL. 1200×630 recomendado)<input id="seo-ogimage" maxlength="600" value="${v('ogImage')}" placeholder="${location.origin}/assets/elitechat-logo.png"></label>
       <h3 class="notif-sub">Avançado</h3>
       <div class="row">
         <label style="flex:2">URL canônica<input id="seo-canonical" maxlength="400" value="${v('canonical')}" placeholder="${location.origin}/"></label>
         <label style="flex:1">Robots<input id="seo-robots" maxlength="60" value="${v('robots')}" placeholder="index, follow"></label>
       </div>
       <label style="margin-top:9px">Google Analytics ID (opcional)<input id="seo-ga" maxlength="40" value="${v('gaId')}" placeholder="G-XXXXXXXXXX"></label>
-      <label style="margin-top:9px">HTML extra no &lt;head&gt; (opcional — verificação de domínio, scripts)<textarea id="seo-extra" rows="3" maxlength="4000" placeholder="<meta name=&quot;google-site-verification&quot; content=&quot;...&quot;>">${v('extraHead')}</textarea></label>
+      <label style="margin-top:9px">HTML extra no &lt;head&gt; (opcional, verificação de domínio, scripts)<textarea id="seo-extra" rows="3" maxlength="4000" placeholder="<meta name=&quot;google-site-verification&quot; content=&quot;...&quot;>">${v('extraHead')}</textarea></label>
       <div class="row" style="margin-top:14px;justify-content:space-between;align-items:center">
         <a class="btn no-grow" href="/" target="_blank" rel="noopener">${ico('activity', 14)} Ver a página</a>
         <button class="btn primary no-grow" onclick="admSaveSeo()">${ico('save', 14)} Salvar SEO</button>
@@ -4273,7 +5358,364 @@ async function admSaveSeo() {
     canonical: $('#seo-canonical').value, robots: $('#seo-robots').value, gaId: $('#seo-ga').value,
     extraHead: $('#seo-extra').value
   };
-  try { await api('/admin/seo', { method: 'PUT', body }); toast('SEO salvo — já vale na página inicial'); } catch (e) { toast(e.message, 'error'); }
+  try { await api('/admin/seo', { method: 'PUT', body }); toast('SEO salvo, já vale na página inicial'); } catch (e) { toast(e.message, 'error'); }
+}
+
+// ---------- Admin → Elite Pay (gestão financeira da plataforma) ----------
+const EP_SUB_ST = {
+  active: ['Ativa', 'pill done'], pending: ['Aguardando aprovação', 'pill pending'],
+  suspended: ['Suspensa', 'pill'], rejected: ['Rejeitada', 'pill']
+};
+const EP_LOG_LBL = {
+  subaccount_created: 'Subconta criada', subaccount_active: 'Subconta aprovada',
+  subaccount_suspended: 'Subconta suspensa', subaccount_rejected: 'Subconta rejeitada',
+  subaccount_pending: 'Subconta em análise', charge_created: 'Cobrança criada',
+  charge_paid: 'PIX In, pagamento', charge_cancelled: 'Cobrança cancelada',
+  config_updated: 'Configuração alterada', withdraw: 'PIX Out, saque'
+};
+// ---- Admin → Elite Pay → adquirente de cartão (Pagar.me / Asaas) ----
+// ============================================================================
+// TAXAS DA PLATAFORMA — Pix e Cartão no MESMO painel.
+// Entradas (Pix In / Cartão) e saídas (Pix Out) ficam lado a lado: é uma decisão
+// só, de quanto a plataforma retém em cada meio, então não faz sentido estarem
+// em abas diferentes.
+// ============================================================================
+function admFeesSection(cfg, c, t) {
+  const isPag = c.provider === 'pagarme';
+  const exemplo = 10000;
+  const cartaoCut = Math.floor(exemplo * (Number(c.feeCardPercent) || 0) / 100) + (c.feeCardFixed || 0);
+
+  return `<div class="card">
+    <h2>${ico('zap')} Taxas da plataforma</h2>
+    <p class="muted" style="margin:0 0 16px;font-size:13px">
+      Quanto você retém em cada meio de pagamento, <b>entradas e saídas, Pix e cartão, tudo aqui</b>.
+      A retenção é automática (split): o líquido vai ao lojista e a sua parte vem para você. Com <b>0%</b> e <b>R$ 0,00</b> a taxa fica desativada.
+    </p>
+
+    <div class="fee-grid">
+      <div class="fee-col">
+        <div class="fee-tag in">${ico('arrow-down', 13)} Entrada · Pix</div>
+        <label>Taxa PIX In (%)<input id="adm-ep-fee-in" value="${esc(String(cfg.feeInPercent))}" inputmode="decimal" placeholder="0"></label>
+        <p class="hint">Incide sobre cada venda recebida pelo lojista.</p>
+      </div>
+      <div class="fee-col">
+        <div class="fee-tag in">${ico('card', 13)} Entrada · Cartão</div>
+        <div class="row" style="gap:8px">
+          <label>Taxa (%)<input id="adm-card-fee" value="${esc(String(c.feeCardPercent))}" inputmode="decimal" placeholder="0"></label>
+          <label>Fixa (R$)<input id="adm-card-fixed" value="${((c.feeCardFixed || 0) / 100).toFixed(2)}" inputmode="decimal" placeholder="0,00"></label>
+        </div>
+        <p class="hint">Por cima do que o adquirente já cobra. Venda de ${fmtBRL(exemplo)} → <b>${fmtBRL(cartaoCut)}</b> para você.</p>
+      </div>
+      <div class="fee-col">
+        <div class="fee-tag out">${ico('arrow-up', 13)} Saída · Pix</div>
+        <label>Taxa PIX Out (%)<input id="adm-ep-fee-out" value="${esc(String(cfg.feeOutPercent))}" inputmode="decimal" placeholder="0"></label>
+        <p class="hint">Saque de dinheiro que entrou via Pix ou comissão.</p>
+      </div>
+      <div class="fee-col">
+        <div class="fee-tag out">${ico('card', 13)} Saída · Cartão</div>
+        <div class="row" style="gap:8px">
+          <label>Taxa (%)<input id="adm-card-fee-out" value="${esc(String(c.feeOutCardPercent || 0))}" inputmode="decimal" placeholder="0"></label>
+          <label>Fixa (R$)<input id="adm-card-fixed-out" value="${((c.feeOutCardFixed || 0) / 100).toFixed(2)}" inputmode="decimal" placeholder="0,00"></label>
+        </div>
+        <p class="hint">Saque do dinheiro vindo de venda no cartão. Saque de ${fmtBRL(exemplo)} retém <b>${fmtBRL(Math.floor(exemplo * (Number(c.feeOutCardPercent) || 0) / 100) + (c.feeOutCardFixed || 0))}</b>.</p>
+      </div>
+    </div>
+
+    <div class="fee-sep"></div>
+    <h2 style="font-size:14px">${ico('clock')} Repasse das vendas no cartão</h2>
+    <p class="muted" style="margin:0 0 12px;font-size:13px">
+      O adquirente não libera o dinheiro do cartão no mesmo dia. No modo <b>Carteira</b>, a venda entra
+      na carteira do lojista dentro do EliteChat como <b>“a liberar”</b> e vira saldo sacável quando o prazo vence.
+      Ele pode gastar esse saldo aqui (plano, conexões, links) sem nem sacar.
+    </p>
+    <div class="row" style="align-items:flex-end">
+      <label style="max-width:340px">Modo de repasse${ecSelect('adm-card-mode', [
+        { value: 'wallet', label: 'Carteira no EliteChat (recomendado)' },
+        { value: 'split', label: 'Split direto para o recebedor do lojista' }
+      ], c.settleMode || 'wallet')}</label>
+    </div>
+
+    <div class="settle-box">
+      <div class="settle-head">${ico('lock', 13)} Prazos do <b>${esc((c.settleRules || {}).label || (isPag ? 'Pagar.me' : 'Asaas'))}</b>
+        <span class="settle-tag">definidos pela adquirente</span></div>
+      <div class="settle-rows">
+        <div class="settle-row"><span>Crédito</span><b>D+${(c.settleRules || {}).credit ? c.settleRules.credit.days : c.settleCredit}</b>
+          <em>${esc((c.settleRules || {}).credit ? c.settleRules.credit.text : '')}</em></div>
+        <div class="settle-row"><span>Débito</span><b>D+${(c.settleRules || {}).debit ? c.settleRules.debit.days : c.settleDebit}</b>
+          <em>${esc((c.settleRules || {}).debit ? c.settleRules.debit.text : '')}</em></div>
+      </div>
+      <p class="hint" style="margin:10px 0 0;text-align:left">
+        Não são editáveis de propósito: o EliteChat libera o saldo <b>no mesmo dia em que a adquirente repassa</b>.
+        Se fosse possível digitar um prazo menor, o cliente sacaria dinheiro que ainda não entrou.
+        Trocar de adquirente troca o prazo automaticamente.
+      </p>
+    </div>
+
+    <div class="row" style="margin-top:16px;align-items:flex-end">
+      <label style="flex:1.6">Chave Pix da plataforma (recebe o split do Pix)<input id="adm-ep-splitkey" value="${esc(cfg.splitPixKey || '')}" placeholder="chave Pix que recebe a comissão"></label>
+      <label style="max-width:190px">Nome na fatura do cartão<input id="adm-card-sd" value="${esc(c.softDescriptor || '')}" maxlength="13" placeholder="ELITECHAT"></label>
+      <label style="max-width:140px">Parcelas máx.<input id="adm-card-inst" value="${esc(String(c.maxInstallments || 1))}" inputmode="numeric"></label>
+    </div>
+
+    ${isPag ? `
+      <div class="row" style="margin-top:12px;align-items:flex-end">
+        <label style="flex:1">Seu recebedor no Pagar.me (recebe a taxa do cartão via split)
+          <input id="adm-card-prid" value="${esc(c.platformRecipientId || '')}" placeholder="rp_..."></label>
+      </div>
+      <p class="hint" style="margin-top:8px">${c.platformRecipientId
+        ? 'ID do recebedor padrão da sua conta Pagar.me, é para onde a taxa do cartão é enviada no split.'
+        : '<b style="color:var(--amber)">Sem esse ID a taxa do cartão não é separada:</b> o valor cheio vai para o lojista. Pegue o <code>recipient_id</code> padrão no dashboard do Pagar.me.'}</p>`
+    : `
+      <div class="row" style="margin-top:12px;align-items:flex-end">
+        <label style="flex:1">Sua carteira no Asaas, <b>Wallet ID</b> (recebe a taxa do cartão via split)
+          <input id="adm-card-wallet" value="${esc((c.asaas && c.asaas.walletId) || '')}" placeholder="ex.: 5f1c8c1e-4a2b-4c7d-9e3f-0a1b2c3d4e5f"></label>
+      </div>
+      <p class="hint" style="margin-top:8px">${(c.asaas && c.asaas.walletId)
+        ? 'A taxa é enviada <b>explicitamente</b> para essa carteira no split; o líquido vai para a carteira do lojista.'
+        : 'Opcional: sem Wallet ID o split manda o líquido ao lojista e a <b>diferença fica na conta que emitiu a cobrança</b>, que já é a sua. Informe uma carteira só se quiser separar a taxa em outra conta Asaas. O ID fica em <b>Asaas → Minha conta → Integrações → Wallet ID</b>.'}</p>`}
+
+    <div class="row" style="margin-top:16px;justify-content:flex-end">
+      <button class="btn primary no-grow" onclick="admSaveAllFees(this)">${ico('save', 14)} Salvar todas as taxas</button>
+    </div>
+
+    <div class="fee-sep"></div>
+    <label class="chk"><input type="checkbox" id="adm-ep-approval" ${cfg.requireApproval ? 'checked' : ''} onchange="admEpSaveCfg()"> Exigir aprovação manual das subcontas novas</label>
+
+    <div class="wh-meta" style="margin-top:16px">
+      <span class="pill ${t.fees ? 'done' : ''}">${fmtBRL(t.fees || 0)} em taxas de Pix</span>
+      <span class="pill ${t.cardFees ? 'done' : ''}">${fmtBRL(t.cardFees || 0)} em taxas de cartão</span>
+      <span class="pill">${fmtN(t.cardCount || 0)} venda(s) no cartão · ${fmtBRL(t.cardIn || 0)}</span>
+    </div>
+    <p class="hint" style="margin-top:12px">
+      Gateway Pix: <b>${esc(cfg.gateway)}</b> · ${cfg.configured ? 'conectado ✅' : '<b style="color:var(--amber)">AppID não configurado</b>'}.
+      Adquirente do cartão: <b>${esc(isPag ? 'Pagar.me' : 'Asaas')}</b> · ${c.configured ? 'conectado ✅' : '<b style="color:var(--amber)">credenciais pendentes</b>'}.
+      As <b>credenciais e webhooks</b> ficam em <a href="javascript:showSettingsTab('adm-pay')"><b>Pagamentos</b></a>.
+    </p>
+  </div>`;
+}
+
+// Salva Pix In/Out + taxa de cartão numa tacada só (o painel é um só).
+async function admSaveAllFees(btn) {
+  const txt = btn.innerHTML; btn.disabled = true; btn.textContent = 'Salvando…';
+  const num = id => { const el = $(id); return el ? el.value : undefined; };
+  try {
+    await api('/admin/elitepay/config', {
+      method: 'PUT',
+      body: {
+        feeInPercent: num('#adm-ep-fee-in'),
+        feeOutPercent: num('#adm-ep-fee-out'),
+        splitPixKey: num('#adm-ep-splitkey'),
+        requireApproval: !!($('#adm-ep-approval') || {}).checked
+      }
+    });
+    const cents = v => Math.round(Number(String(v || '0').replace(',', '.')) * 100) || 0;
+    const card = {
+      feeCardPercent: num('#adm-card-fee'),
+      feeCardFixed: cents(num('#adm-card-fixed')),
+      feeOutCardPercent: num('#adm-card-fee-out'),
+      feeOutCardFixed: cents(num('#adm-card-fixed-out')),
+      settleMode: ecSelVal('adm-card-mode'),   // prazos não vão: são da adquirente
+      softDescriptor: num('#adm-card-sd'),
+      maxInstallments: num('#adm-card-inst')
+    };
+    const prid = $('#adm-card-prid');
+    if (prid) card.platformRecipientId = prid.value;
+    const wal = $('#adm-card-wallet');
+    if (wal) card.asaas = { walletId: wal.value.trim() };
+    await api('/admin/elitepay/card', { method: 'PUT', body: card });
+    toast('Taxas de Pix e cartão salvas');
+    admEpPaint();
+  } catch (e) { toast(e.message, 'error'); btn.disabled = false; btn.innerHTML = txt; }
+}
+
+function admCardSection(c, t) {
+  const isPag = c.provider === 'pagarme';
+  const status = c.available
+    ? '<span class="pill done">Ativo no checkout</span>'
+    : c.enabled ? '<span class="pill pending">Ligado, falta configurar</span>' : '<span class="pill">Desligado</span>';
+
+  return `<div class="card">
+    <div class="row" style="align-items:center;margin-bottom:6px">
+      <h2 style="margin:0;flex:1">${ico('card')} Cartão de crédito & débito</h2>
+      ${status}
+    </div>
+    <p class="muted" style="margin:0 0 14px;font-size:13px">
+      O <b>Pix continua sendo o meio principal</b>. O cartão aparece como alternativa no mesmo checkout,
+      processado pelo adquirente escolhido abaixo. Desligado, o checkout mostra só Pix.
+    </p>
+
+    <label class="chk"><input type="checkbox" ${c.enabled ? 'checked' : ''} onchange="admCardSave({enabled:this.checked})">
+      Aceitar cartão no Elite Pay</label>
+
+    <div class="row" style="margin-top:16px;align-items:flex-end">
+      <label style="max-width:260px">Adquirente${ecSelect('adm-card-prov',
+        (c.drivers || []).map(d => ({ value: d.id, label: d.label })), c.provider, `admCardSave({provider:val})`)}</label>
+      <label class="chk" style="flex:0 0 auto;margin-bottom:10px"><input type="checkbox" ${c.credit ? 'checked' : ''} onchange="admCardSave({credit:this.checked})"> Crédito</label>
+      <label class="chk" style="flex:0 0 auto;margin-bottom:10px" title="${isPag ? '' : 'O Asaas não processa débito'}">
+        <input type="checkbox" ${c.debit ? 'checked' : ''} ${isPag ? '' : 'disabled'} onchange="admCardSave({debit:this.checked})"> Débito</label>
+    </div>
+    ${isPag ? '' : '<p class="hint" style="margin-top:8px">O Asaas não processa cartão de <b>débito</b>, para aceitar débito, use o Pagar.me.</p>'}
+
+    <div class="capi-box" style="margin-top:16px">
+      <div class="capi-head">${ico('gear', 14)} Credenciais, ${esc(isPag ? 'Pagar.me' : 'Asaas')} <span class="capi-tag">${c.configured ? 'configurado' : 'pendente'}</span></div>
+      ${isPag ? `
+        <div class="row" style="margin-top:10px;align-items:flex-end">
+          <label style="flex:1">Secret Key ${c.pagarme.hasSecret ? '<span class="pill done" style="margin-left:6px">Salva</span>' : ''}
+            <input id="adm-card-sk" type="password" placeholder="${c.pagarme.hasSecret ? '•••••••• (deixe vazio p/ manter)' : 'sk_...'}"></label>
+          <label style="flex:1">Public Key
+            <input id="adm-card-pk" value="${esc(c.pagarme.publicKey || '')}" placeholder="pk_..."></label>
+          <button class="btn primary no-grow" onclick="admCardSaveKeys()">${ico('save', 14)} Salvar</button>
+        </div>
+        <p class="hint" style="margin-top:8px">Chaves em <b>Dashboard Pagar.me → Configurações → Chaves</b>. As de teste começam com <code>sk_test_</code>.</p>`
+      : `
+        <div class="row" style="margin-top:10px;align-items:flex-end">
+          <label style="flex:1">API Key ${c.asaas.hasKey ? '<span class="pill done" style="margin-left:6px">Salva</span>' : ''}
+            <input id="adm-card-ak" type="password" placeholder="${c.asaas.hasKey ? '•••••••• (deixe vazio p/ manter)' : '$aact_...'}"></label>
+          <button class="btn primary no-grow" onclick="admCardSaveKeys()">${ico('save', 14)} Salvar</button>
+        </div>
+        <label class="chk" style="margin-top:12px"><input type="checkbox" ${c.asaas.sandbox ? 'checked' : ''} onchange="admCardSave({asaas:{sandbox:this.checked}})"> Usar ambiente <b>sandbox</b> (testes)</label>
+        <p class="hint" style="margin-top:8px">API Key em <b>Asaas → Integrações → Gerar API Key</b>. Sandbox e produção têm chaves diferentes.</p>`}
+      <div class="row" style="margin-top:12px">
+        <button class="btn small no-grow" onclick="admCardTest(this)">${ico('activity', 13)} Testar credenciais</button>
+      </div>
+    </div>
+
+    <div class="capi-box" style="margin-top:16px">
+      <div class="capi-head">${ico('webhook', 14)} Webhook de confirmação <span class="capi-tag">obrigatório em produção</span></div>
+      <p class="muted" style="font-size:12px;margin:8px 0 5px">URL de notificação:</p>
+      <div class="linkrow"><code>${esc(c.webhookUrl || '')}</code>
+        <button class="icon-btn" title="Copiar" onclick="copyText('${esc(c.webhookUrl || '')}')">${ico('copy', 13)}</button></div>
+      <p class="muted" style="font-size:12px;margin:10px 0 5px">${isPag ? 'Senha (Basic auth, usuário pode ser qualquer um):' : 'Token de acesso (campo <b>authToken</b>):'}</p>
+      <div class="linkrow"><code>${esc(c.webhookToken || '')}</code>
+        <button class="icon-btn" title="Copiar" onclick="copyText('${esc(c.webhookToken || '')}')">${ico('copy', 13)}</button></div>
+      <p class="muted" style="font-size:11.5px;margin:10px 0 0">
+        ${isPag
+          ? 'Em <b>Pagar.me → Configurações → Webhooks</b>, cadastre a URL com os eventos <code>charge.paid</code>, <code>charge.refunded</code>, <code>charge.payment_failed</code> e <code>recipient.updated</code>, e ative a autenticação com essa senha.'
+          : 'Em <b>Asaas → Integrações → Webhooks</b>, cadastre a URL com os eventos de <b>cobrança</b> e cole esse valor no campo <b>authToken</b>, ele chega no header <code>asaas-access-token</code>.'}
+        Todo pagamento é <b>reconferido na API</b> antes de ser confirmado, mesmo com o webhook autenticado.
+      </p>
+    </div>
+
+    <label class="chk" style="margin-top:16px"><input type="checkbox" ${c.requireApproval ? 'checked' : ''} onchange="admCardSave({requireApproval:this.checked})"> Exigir minha aprovação manual antes do lojista vender no cartão</label>
+    <p class="hint" style="margin-top:12px">${ico('zap', 12)} A <b>taxa que você cobra sobre as vendas no cartão</b> fica junto das taxas de Pix, em <a href="javascript:showSettingsTab('adm-ep')"><b>Elite Pay → Taxas da plataforma</b></a>.</p>
+
+    ${t ? `<div class="wh-meta" style="margin-top:16px">
+      <span class="pill ${t.cardCount ? 'done' : ''}">${fmtN(t.cardCount || 0)} venda(s) no cartão</span>
+      <span class="pill">${fmtBRL(t.cardIn || 0)} processado</span>
+      <span class="pill">${fmtBRL(t.cardFees || 0)} em taxas suas</span>
+    </div>` : ''}
+  </div>`;
+}
+
+async function admCardSave(body) {
+  // a config vive na aba Pagamentos (paintAdmin); refaz esse painel, não o Elite Pay
+  try { await api('/admin/elitepay/card', { method: 'PUT', body }); toast('Cartão atualizado'); paintAdmin(); }
+  catch (e) { toast(e.message, 'error'); }
+}
+function admCardSaveKeys() {
+  const sk = $('#adm-card-sk'), pk = $('#adm-card-pk'), ak = $('#adm-card-ak');
+  const body = ak
+    ? { asaas: { apiKey: ak.value.trim() } }
+    : { pagarme: { secretKey: sk.value.trim(), publicKey: pk.value.trim() } };
+  admCardSave(body);
+}
+async function admCardTest(btn) {
+  const txt = btn.innerHTML; btn.disabled = true; btn.textContent = 'Testando…';
+  try { const r = await api('/admin/elitepay/card/test'); toast(`Conexão OK, ${r.provider} (${r.ambiente})`); }
+  catch (e) { toast(e.message, 'error'); }
+  btn.disabled = false; btn.innerHTML = txt;
+}
+
+async function admEpPaint() {
+  const box = $('#adm-ep-box'); if (!box) return;
+  try {
+    const d = await api('/admin/elitepay');
+    const t = d.totals, cfg = d.config;
+    box.innerHTML = `
+      <div class="metric-hero">
+        <div class="mh-card hi"><span class="mh-ic">${ico('arrow-down', 20)}</span><div class="mh-val">${fmtBRL(t.pixIn)}</div><div class="mh-lbl">PIX In (recebido pelos clientes)</div></div>
+        <div class="mh-card"><span class="mh-ic">${ico('arrow-up', 20)}</span><div class="mh-val">${fmtBRL(t.pixOut)}</div><div class="mh-lbl">PIX Out (saques)</div></div>
+        <div class="mh-card"><span class="mh-ic">${ico('zap', 20)}</span><div class="mh-val">${fmtBRL(t.fees)}</div><div class="mh-lbl">Comissões via Split</div></div>
+        <div class="mh-card"><span class="mh-ic">${ico('users', 20)}</span><div class="mh-val">${fmtN(t.subActive)}</div><div class="mh-lbl">Subcontas ativas</div></div>
+        <div class="mh-card"><span class="mh-ic">${ico('clock', 20)}</span><div class="mh-val">${fmtN(t.subPending)}</div><div class="mh-lbl">Aguardando aprovação</div></div>
+        <div class="mh-card"><span class="mh-ic">${ico('activity', 20)}</span><div class="mh-val">${fmtN(t.charges)}</div><div class="mh-lbl">Cobranças geradas</div></div>
+      </div>
+
+      <div class="card">
+        <h2>${ico('shield')} Onboarding & KYC das subcontas</h2>
+        <p class="muted" style="margin:0 0 12px;font-size:13px">Como os clientes abrem a conta de recebimento:</p>
+        <div class="row" style="align-items:flex-end">
+          <label style="flex:1;max-width:340px">Modo de cadastro${ecSelect('adm-ep-mode', [
+            { value: 'subaccount', label: 'Subconta (chave Pix. KYC via Banco Central)' },
+            { value: 'kyc', label: 'KYC/KYB completo (BaaS, verificação de identidade)' }
+          ], cfg.onboardingMode || 'subaccount', 'admEpSaveCfg()')}</label>
+        </div>
+        <p class="hint" style="margin-top:10px">${ico('shield', 11)} <b>Subconta:</b> cria a subconta com a chave Pix do cliente (a Woovi valida a chave no Banco Central). <b>KYC/KYB:</b> abre a verificação de identidade hospedada da Woovi e libera a conta pelo webhook <code>ACCOUNT_REGISTER_APPROVED</code> (requer BaaS habilitado na sua conta Woovi).</p>
+      </div>
+
+      ${admFeesSection(cfg, d.card || {}, t)}
+
+      <div class="card">
+        <h2>${ico('users')} Subcontas dos clientes</h2>
+        ${d.accounts.length ? `<div style="overflow-x:auto"><table><thead><tr><th>Cliente</th><th>Subconta</th><th>Status</th><th style="text-align:right">PIX In</th><th style="text-align:right">Taxas</th><th style="text-align:right">Cobranças</th><th></th></tr></thead><tbody>
+          ${d.accounts.map(a => {
+            const st = a.sub ? (EP_SUB_ST[a.sub.status] || [a.sub.status, 'pill']) : null;
+            return `<tr>
+              <td><b>${esc(a.name)}</b><div class="muted" style="font-size:11.5px">${esc(a.email)}</div></td>
+              <td>${a.sub ? `${esc(a.sub.name)}<div class="muted" style="font-size:11px">${esc(a.sub.pixKey)}</div>` : '<span class="muted">—</span>'}</td>
+              <td>${st ? `<span class="${st[1]}">${st[0]}</span>` : '<span class="muted">sem conta</span>'}</td>
+              <td style="text-align:right"><b>${fmtBRL(a.pixIn)}</b></td>
+              <td style="text-align:right">${fmtBRL(a.fees)}</td>
+              <td style="text-align:right">${fmtN(a.charges)}${a.pending ? ` <span class="muted">(${a.pending} pend.)</span>` : ''}</td>
+              <td style="white-space:nowrap;text-align:right">
+                ${a.sub && a.sub.status === 'pending' ? `
+                  <button class="btn small" onclick="admEpSubStatus('${a.accountId}','active')">${ico('check', 13)} Aprovar</button>
+                  <button class="btn small danger" onclick="admEpSubStatus('${a.accountId}','rejected')">Rejeitar</button>` : ''}
+                ${a.sub && a.sub.status === 'active' ? `<button class="btn small danger" onclick="admEpSubStatus('${a.accountId}','suspended')">${ico('slash', 13)} Suspender</button>` : ''}
+                ${a.sub && a.sub.status === 'suspended' ? `<button class="btn small" onclick="admEpSubStatus('${a.accountId}','active')">${ico('refresh', 13)} Reativar</button>` : ''}
+              </td>
+            </tr>`; }).join('')}
+        </tbody></table></div>` : '<p class="muted">Nenhum cliente ativou o Elite Pay ainda.</p>'}
+      </div>
+
+      <div class="card">
+        <h2>${ico('activity')} Relatório, volume por cliente</h2>
+        ${d.accounts.filter(a => a.pixIn > 0).length ? d.accounts.filter(a => a.pixIn > 0).map(a => {
+          const max = Math.max(1, ...d.accounts.map(x => x.pixIn));
+          return `<div class="ep-volrow"><span>${esc(a.name)}</span>
+            <div class="ep-volbar"><i style="width:${Math.max(2, Math.round(a.pixIn / max * 100))}%"></i></div>
+            <b>${fmtBRL(a.pixIn)}</b></div>`;
+        }).join('') : '<p class="muted">Sem volume financeiro ainda.</p>'}
+      </div>
+
+      <div class="card">
+        <h2>${ico('list')} Logs financeiros</h2>
+        ${d.logs.length ? `<table><thead><tr><th>Quando</th><th>Evento</th><th>Cliente</th><th style="text-align:right">Valor</th></tr></thead><tbody>
+          ${d.logs.map(l => `<tr>
+            <td class="muted" style="white-space:nowrap">${timeAgo(l.ts)}</td>
+            <td>${esc(EP_LOG_LBL[l.type] || l.type)}${l.detail ? `<div class="muted" style="font-size:11px">${esc(l.detail)}</div>` : ''}</td>
+            <td>${esc(l.accountName || '—')}</td>
+            <td style="text-align:right">${l.amount ? fmtBRL(l.amount) : '—'}${l.fee ? `<div class="muted" style="font-size:11px">taxa ${fmtBRL(l.fee)}</div>` : ''}</td>
+          </tr>`).join('')}</tbody></table>` : '<p class="muted">Nenhum evento financeiro registrado.</p>'}
+      </div>`;
+  } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+}
+async function admEpSaveCfg() {
+  try {
+    const body = { onboardingMode: ecVal('adm-ep-mode') || 'subaccount' };
+    if ($('#adm-ep-fee-in')) body.feeInPercent = $('#adm-ep-fee-in').value;
+    if ($('#adm-ep-fee-out')) body.feeOutPercent = $('#adm-ep-fee-out').value;
+    if ($('#adm-ep-splitkey')) body.splitPixKey = $('#adm-ep-splitkey').value;
+    if ($('#adm-ep-approval')) body.requireApproval = $('#adm-ep-approval').checked;
+    await api('/admin/elitepay/config', { method: 'PUT', body });
+    toast('Configuração do Elite Pay salva');
+  } catch (e) { toast(e.message, 'error'); }
+}
+async function admEpSubStatus(accId, status) {
+  const lbl = { active: 'aprovar/reativar', suspended: 'suspender', rejected: 'rejeitar' }[status] || status;
+  if (status !== 'active' && !confirm(`Tem certeza que deseja ${lbl} esta subconta?`)) return;
+  try { await api('/admin/elitepay/subaccounts/' + accId, { method: 'PUT', body: { status } }); toast('Subconta atualizada'); admEpPaint(); }
+  catch (e) { toast(e.message, 'error'); }
 }
 
 // ==================== LIGAÇÕES (Calling API) — tela de chamada WhatsApp ====================
@@ -4284,7 +5726,7 @@ let callUI = null; // { id, waId, name, direction, phase: incoming|calling|activ
 
 function onCallEvent(d) {
   if (d.kind === 'incoming') {
-    if (callUI) return; // já em chamada — a Meta trata o busy do outro lado
+    if (callUI) return; // já em chamada, a Meta trata o busy do outro lado
     callUI = { ...d.call, sdpOffer: d.sdpOffer, phase: 'incoming', muted: false };
     paintCall();
     if (window.ECNotify) {
@@ -4775,7 +6217,7 @@ async function loadLogs() {
           <div class="log-row">
             <span class="log-ic">${ico(LOG_ICON[l.action] || 'activity', 14)}</span>
             <div style="flex:1;min-width:0">
-              <b>${esc(l.label)}</b> ${l.detail ? `<span class="muted">— ${esc(l.detail)}</span>` : ''}
+              <b>${esc(l.label)}</b> ${l.detail ? `<span class="muted">· ${esc(l.detail)}</span>` : ''}
               <div class="muted" style="font-size:11.5px">${esc(l.agentName)}</div>
             </div>
             <time class="muted" style="font-size:11.5px;white-space:nowrap">${new Date(l.ts).toLocaleString('pt-BR')}</time>
@@ -5293,7 +6735,7 @@ function paintConsentContacts(d) {
         }).join('')}
       </tbody></table></div>`
       : `<div class="empty-state" style="padding:30px"><div class="big">${ico('shield', 34)}</div><b>Nenhum contato ${coFilters.status === 'opted_out' ? 'em opt-out' : 'encontrado'}</b>
-         <p class="muted" style="margin:6px 0 0;font-size:13px">${coFilters.status === 'opted_out' ? 'Ótimo sinal — ninguém pediu para sair da sua lista.' : 'Ajuste os filtros para ver outros contatos.'}</p></div>`}
+         <p class="muted" style="margin:6px 0 0;font-size:13px">${coFilters.status === 'opted_out' ? 'Ótimo sinal, ninguém pediu para sair da sua lista.' : 'Ajuste os filtros para ver outros contatos.'}</p></div>`}
     </div>`;
 }
 
@@ -5323,14 +6765,29 @@ let whList = [];
 let whMap = null;        // webhook em edição de mapeamento (null = tela de lista)
 let whMapDraft = null;   // rascunho do mapeamento sendo editado
 
-async function renderWebhooks() {
+// ==================== INTEGRAÇÕES ====================
+// Duas abas: Webhooks (genéricos) e Nuvemshop (loja conectada por OAuth).
+let intTab = 'webhooks';
+let nsAvailable = null;   // cache: admin liberou a integração Nuvemshop?
+function setIntTab(t) { intTab = t; renderIntegrations(); }
+
+async function renderIntegrations() {
+  // Integrações ainda não liberadas pelo admin nem aparecem na lista de abas —
+  // nada de "em breve" entregando roadmap para concorrente.
+  if (nsAvailable === null) { try { nsAvailable = (await api('/integrations/nuvemshop')).nuvemshop.available; } catch { nsAvailable = false; } }
+  if (!nsAvailable && intTab === 'nuvemshop') intTab = 'webhooks';
+  const tabs = [['webhooks', 'Webhooks', 'webhook']];
+  if (nsAvailable) tabs.push(['nuvemshop', 'Nuvemshop', 'cart']);
   $('#view').innerHTML = `<div class="page">
     <div class="page-head row" style="align-items:center">
-      <div style="flex:1"><h1>Webhooks</h1><p>Receba eventos de sistemas externos e transforme em contatos e automações</p></div>
-      <button class="btn primary no-grow" onclick="createWebhook()">${ico('plus', 14)} Novo webhook</button>
+      <div style="flex:1"><h1>Integrações</h1><p>Conecte o EliteChat às ferramentas e à loja que você já usa</p></div>
+      ${intTab === 'webhooks' ? `<button class="btn primary no-grow" onclick="createWebhook()">${ico('plus', 14)} Novo webhook</button>` : ''}
     </div>
-    <div id="wh-box">${skel(4)}</div>
+    <div class="seg int-tabs">${tabs.map(([k, l, i]) => `<button class="${k === intTab ? 'on' : ''}" onclick="setIntTab('${k}')">${ico(i, 13)} ${l}</button>`).join('')}</div>
+    <div id="int-body">${skel(4)}</div>
   </div>`;
+  if (intTab === 'nuvemshop') return loadNuvemshop();
+  $('#int-body').innerHTML = `<div id="wh-box">${skel(4)}</div>`;
   whMap = null;
   whStopWait();
   await loadWebhooks();
@@ -5420,12 +6877,12 @@ function whStopWait() {
 // chamado pelo SSE quando o webhook recebe um POST
 function whOnEvent(d) {
   if (whWait && d.webhookId === whWait.id) whWaitSuccess();
-  else if (state.view === 'webhooks' && !whMap) loadWebhooks();
+  else if ((state.view === 'integrations' || state.view === 'webhooks') && intTab === 'webhooks' && !whMap) loadWebhooks();
 }
 async function whWaitSuccess() {
   const id = whWait && whWait.id;
   whStopWait();
-  toast('🎉 Evento recebido — variáveis capturadas!');
+  toast('🎉 Evento recebido, variáveis capturadas!');
   await loadWebhooks();
   if (id) editWhMapping(id); // agora sim: mapear e salvar
 }
@@ -5488,7 +6945,7 @@ async function delWebhook(id) {
 async function simulateWebhook(id) {
   try {
     const r = await api('/webhooks/' + id + '/simulate', { body: {} });
-    toast(r.matched ? 'Evento de teste recebido — contato criado/atualizado!' : 'Evento recebido, mas o telefone não foi mapeado ainda.');
+    toast(r.matched ? 'Evento de teste recebido, contato criado/atualizado!' : 'Evento recebido, mas o telefone não foi mapeado ainda.');
     whList = whList.map(w => w.id === id ? r.webhook : w);
     if (whMap && whMap.id === id) { whMap = r.webhook; whMapDraft = JSON.parse(JSON.stringify(r.webhook.mapping)); }
     paintWebhooks();
@@ -5505,7 +6962,7 @@ function editWhMapping(id) {
 function whFieldOptions(fields, extraSelected) {
   const paths = Object.keys(fields || {});
   if (extraSelected && !paths.includes(extraSelected)) paths.push(extraSelected);
-  return [{ value: '', label: '— não mapear —' }].concat(paths.map(p => ({ value: p, label: p })));
+  return [{ value: '', label: 'não mapear' }].concat(paths.map(p => ({ value: p, label: p })));
 }
 function whSampleOf(path) {
   if (!whMap || !path) return '';
@@ -5531,7 +6988,7 @@ function paintWhMapping() {
   const box = $('#wh-box'); if (!box || !whMap) return;
   const nFields = Object.keys(whMap.fields || {}).length;
   box.innerHTML = `
-    <button class="btn small no-grow" style="margin-bottom:14px" onclick="closeWhMapping()">${ico('arrow-up', 13)} Voltar aos webhooks</button>
+    <button class="btn small no-grow" style="margin-bottom:14px" onclick="closeWhMapping()">${ico('arrowleft', 13)} Voltar aos webhooks</button>
     <div class="card wm-card">
       <div class="wm-head">
         <h2 style="margin:0">${ico('columns')} Mapeamento de Campos</h2>
@@ -5584,7 +7041,7 @@ function whDelCustom(i) { whMapDraft.custom.splice(i, 1); $('#wm-custom-list').i
 function closeWhMapping() { whMap = null; whMapDraft = null; paintWebhooks(); }
 
 async function saveWhMapping() {
-  if (!whMapDraft.phone) return toast('Mapeie o Telefone (WhatsApp) — é obrigatório para gerar o contato', 'error');
+  if (!whMapDraft.phone) return toast('Mapeie o Telefone (WhatsApp), é obrigatório para gerar o contato', 'error');
   const custom = (whMapDraft.custom || []).filter(c => c.key && c.path);
   try {
     const r = await api('/webhooks/' + whMap.id, { method: 'PUT', body: { mapping: { ...whMapDraft, custom } } });
@@ -5592,6 +7049,144 @@ async function saveWhMapping() {
     toast('Mapeamento salvo!');
     closeWhMapping();
   } catch (e) { toast(e.message, 'error'); }
+}
+
+// ==================== INTEGRAÇÃO NUVEMSHOP ====================
+let nsCfg = null;
+
+async function loadNuvemshop() {
+  try { nsCfg = (await api('/integrations/nuvemshop')).nuvemshop; }
+  catch (e) { $('#int-body').innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
+  paintNuvemshop();
+}
+
+function paintNuvemshop() {
+  const box = $('#int-body'); if (!box || intTab !== 'nuvemshop') return;
+  const c = nsCfg;
+
+  // Admin ainda não liberou a integração.
+  if (!c.available) {
+    box.innerHTML = `<div class="empty-state card"><div class="big">${ico('cart', 38)}</div>
+      <b>Integração com a Nuvemshop em breve</b>
+      <p class="muted" style="margin:6px auto 0;max-width:520px">Estamos finalizando a publicação do app oficial do EliteChat na Nuvemshop.
+      Assim que estiver disponível, você conecta sua loja aqui em um clique, sem precisar de código, App ID ou chaves.</p></div>`;
+    return;
+  }
+
+  // Cabeçalho padrão dos passos: ícone + título/descrição + status.
+  const hd = (icon, num, titulo, desc, pill) => `<div class="ns-hd">
+    <span class="ns-ic">${ico(icon, 18)}</span>
+    <div class="ns-hd-txt"><b>${num ? num + '. ' : ''}${titulo}</b><span>${desc}</span></div>
+    ${pill}
+  </div>`;
+
+  // Passo 1 — conexão OAuth com a loja (é tudo que o cliente precisa fazer).
+  const passo1 = `<div class="card">
+    ${hd(c.connected ? 'check-circle' : 'cart', 1, 'Conectar sua loja',
+      c.connected
+        ? `Loja <b>${esc(c.storeName || c.storeId)}</b> conectada ${c.connectedAt ? timeAgo(c.connectedAt) : ''}`
+        : 'Autorize o EliteChat a ler os pedidos e clientes da sua loja',
+      c.connected ? '<span class="pill done">Conectada</span>' : '<span class="pill pending">Desconectada</span>')}
+    ${c.connected ? `
+      <div class="wh-meta">
+        <span class="pill">${fmtN(c.events || 0)} evento(s) recebido(s)</span>
+        ${c.lastEventAt ? `<span class="pill done">último: ${esc(c.lastEvent || '')} · ${timeAgo(c.lastEventAt)}</span>` : '<span class="pill pending">Nenhum evento ainda</span>'}
+        <span class="pill">${(c.hooks || []).length} evento(s) assinado(s)</span>
+        ${c.storeUrl ? `<a class="pill" href="${esc(c.storeUrl)}" target="_blank" rel="noopener">Abrir loja ↗</a>` : ''}
+      </div>
+      <div class="ns-actions">
+        <button class="btn small no-grow" onclick="testNs()">${ico('activity', 13)} Testar conexão</button>
+        <button class="btn small no-grow" onclick="rehookNs()">${ico('refresh', 13)} Reassinar eventos</button>
+        <button class="btn small danger no-grow" onclick="disconnectNs()">${ico('slash', 13)} Desconectar</button>
+      </div>`
+    : `<div class="ns-steps">
+        ${[
+          ['Clique em <b>Conectar loja Nuvemshop</b> aqui embaixo', 'Uma janela da Nuvemshop vai abrir'],
+          ['Entre com o login da sua loja', 'É o mesmo e-mail e senha que você usa no painel da Nuvemshop'],
+          ['Confirme as permissões', 'O EliteChat pede acesso de leitura a pedidos e clientes, nada é alterado na sua loja'],
+          ['Pronto', 'A janela fecha sozinha e sua loja aparece conectada aqui']
+        ].map(([t, d], i) => `<div class="ns-step"><span class="ns-step-n">${i + 1}</span>
+          <div><b>${t}</b><span>${d}</span></div></div>`).join('')}
+      </div>
+      <div class="ns-actions">
+        <button class="btn primary no-grow" onclick="connectNs()">${ico('link', 13)} Conectar loja Nuvemshop</button>
+        <span class="ns-nota">Permita pop-ups no navegador para a janela abrir.</span>
+      </div>`}
+  </div>`;
+
+  // Passo 2 — o que fazer com os eventos.
+  const passo2 = c.connected ? `<div class="card">
+    ${hd('zap', 2, 'O que fazer com os eventos', 'Cada evento da loja vira contato no CRM e pode disparar automações', '')}
+    <label class="chk">
+      <input type="checkbox" id="ns-auto" ${c.autoContact ? 'checked' : ''} onchange="saveNsSettings()">
+      Criar/atualizar o contato automaticamente a cada evento
+    </label>
+    <div class="ns-field">
+      <span class="ns-lbl">Tags aplicadas ao contato (separadas por vírgula)</span>
+      <input id="ns-tags" value="${esc((c.tags || []).join(', '))}" placeholder="Ex.: nuvemshop, loja" onchange="saveNsSettings()">
+    </div>
+    <div class="ns-field">
+      <span class="ns-lbl">Eventos assinados na loja</span>
+      <div class="wh-meta">
+        ${(c.availableEvents || []).map(e => {
+          const on = (c.hooks || []).some(h => h.event === e.event);
+          return `<span class="pill ${on ? 'done' : 'pending'}">${esc(e.label)}</span>`;
+        }).join('')}
+      </div>
+    </div>
+    <div class="ns-field">
+      <span class="ns-lbl">Variáveis disponíveis nas automações e campanhas</span>
+      <div class="wh-meta">${['pedido_numero', 'pedido_total', 'pedido_status', 'pedido_pagamento', 'pedido_itens']
+        .map(v => `<code class="ns-var">{{${v}}}</code>`).join('')}</div>
+    </div>
+  </div>` : '';
+
+  box.innerHTML = passo1 + passo2;
+}
+
+async function saveNsSettings() {
+  const tags = $('#ns-tags').value.split(',').map(t => t.trim()).filter(Boolean);
+  const autoContact = $('#ns-auto').checked;
+  try { nsCfg = (await api('/integrations/nuvemshop/settings', { method: 'PUT', body: { tags, autoContact } })).nuvemshop; }
+  catch (e) { toast(e.message, 'error'); }
+}
+
+// Abre o consentimento da Nuvemshop numa janela e espera o postMessage do callback.
+function connectNs() {
+  const state = Math.random().toString(36).slice(2);
+  const url = `${nsCfg.authorizeUrl}?state=${encodeURIComponent(state)}`;
+  const win = window.open(url, 'nuvemshop', 'width=560,height=720');
+  if (!win) return toast('Permita pop-ups para conectar a loja', 'error');
+
+  const onMsg = async ev => {
+    if (ev.origin !== window.location.origin) return;
+    const d = ev.data || {};
+    if (d.type !== 'ELITECHAT_NUVEMSHOP_CALLBACK') return;
+    window.removeEventListener('message', onMsg);
+    if (d.error) return toast('Autorização cancelada: ' + d.error, 'error');
+    if (d.state !== state) return toast('Falha de segurança na autorização (state inválido)', 'error');
+    try {
+      const r = await api('/integrations/nuvemshop/connect', { body: { code: d.code } });
+      nsCfg = r.nuvemshop;
+      toast(r.aviso ? 'Loja conectada, mas os webhooks falharam: ' + r.aviso : 'Loja conectada!', r.aviso ? 'error' : '');
+      paintNuvemshop();
+    } catch (e) { toast(e.message, 'error'); }
+  };
+  window.addEventListener('message', onMsg);
+}
+
+async function testNs() {
+  try { const r = await api('/integrations/nuvemshop/test'); toast('Conexão OK, ' + (r.store.name || r.store.id)); }
+  catch (e) { toast(e.message, 'error'); }
+}
+async function rehookNs() {
+  try { nsCfg = (await api('/integrations/nuvemshop/rehook', { body: {} })).nuvemshop; toast('Webhooks reassinados!'); paintNuvemshop(); }
+  catch (e) { toast(e.message, 'error'); }
+}
+async function disconnectNs() {
+  if (!await confirmModal({ title: 'Desconectar loja', text: 'O EliteChat deixa de receber pedidos e clientes desta loja. As credenciais do app são mantidas.', ok: 'Desconectar', danger: true })) return;
+  try { nsCfg = (await api('/integrations/nuvemshop', { method: 'DELETE' })).nuvemshop; toast('Loja desconectada'); paintNuvemshop(); }
+  catch (e) { toast(e.message, 'error'); }
 }
 
 // ==================== FLOW BUILDER (automações) ====================
@@ -5623,13 +7218,14 @@ const NODE_TYPES = {
   optout: { icon: 'slash', label: 'Registrar Opt-out', sub: 'Consentimento', color: 'red', cat: 'consent' },
   reactivate: { icon: 'refresh', label: 'Reativar contato', sub: 'Consentimento', color: 'blue', cat: 'consent' },
   http: { icon: 'globe', label: 'HTTP Request', sub: 'Integração', color: 'orange', cat: 'logic' },
+  payment: { icon: 'pix', label: 'Cobrança Pix', sub: 'Elite Pay', color: 'green', cat: 'messages' },
   end: { icon: 'square', label: 'Fim', sub: 'Encerrar', color: 'gray', cat: 'logic' }
 };
 const FB_PALETTE = {
   triggers: { label: 'Gatilhos', items: ['keyword', 'webhook', 'link', 'button', 'list'] },
   // "Enviar texto" cobre botões e lista (opcionais). Os nós antigos `buttons` e
   // `list` continuam funcionando em automações já criadas, mas saíram da paleta.
-  messages: { label: 'Mensagens', items: ['text', 'media', 'template', 'ai'] },
+  messages: { label: 'Mensagens', items: ['text', 'media', 'template', 'payment', 'ai'] },
   logic: { label: 'Lógica', items: ['delay', 'condition', 'addtag', 'removetag', 'movestage', 'http', 'end'] },
   consent: { label: 'Opt-in & Opt-out', items: ['optin', 'optout', 'reactivate'] }
 };
@@ -5637,7 +7233,7 @@ const FB_PALETTE = {
 async function renderFlows() {
   $('#view').innerHTML = `<div class="page">
     <div class="page-head row">
-      <div style="flex:1"><h1>Flow Builder</h1><p>Automações com gatilhos e ações — sem código</p></div>
+      <div style="flex:1"><h1>Flow Builder</h1><p>Automações com gatilhos e ações, sem código</p></div>
       <button class="btn primary no-grow" onclick="newFlow()">${ico('plus', 14)} Nova automação</button>
     </div>
     <div id="flow-list">${skel(4)}</div>
@@ -5683,17 +7279,13 @@ async function paintFlows() {
   } catch (e) { box.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
 }
 
+// Automação nova começa com o canvas VAZIO: o usuário arrasta o gatilho
+// (um por fluxo) e monta o resto do fluxo do jeito dele.
 function newFlow() {
   flowDraft = {
     name: '', enabled: true,
     trigger: { type: 'keyword', keyword: '', match: 'contains', phrase: '' },
-    graph: {
-      nodes: [
-        { id: 'trigger', type: 'trigger', x: 60, y: 140 },
-        { id: 'n1', type: 'text', x: 380, y: 110, text: 'Olá {{nome}}! 👋 Recebemos sua mensagem e já vamos te atender.' }
-      ],
-      edges: [{ id: 'e1', from: 'trigger', to: 'n1' }]
-    }
+    graph: { nodes: [], edges: [] }
   };
   openBuilder();
 }
@@ -5735,7 +7327,7 @@ async function testFlow(id) {
   try {
     const r = await api('/flows/' + id + '/test', { body: { to, text: 'teste' } });
     const okAll = r.steps.every(s => s.ok);
-    toast(okAll ? 'Automação executada com sucesso!' : 'Executada com avisos — veja os passos', okAll ? 'ok' : 'error');
+    toast(okAll ? 'Automação executada com sucesso!' : 'Executada com avisos, veja os passos', okAll ? 'ok' : 'error');
   } catch (e) { toast(e.message, 'error'); }
 }
 
@@ -5791,6 +7383,7 @@ function nodeSummary(n) {
     case 'template': return `Template: ${n.templateName || '—'}`;
     case 'ai': return (n.prompt || 'Resposta automática por IA').slice(0, 52);
     case 'http': return `${n.method || 'POST'} ${(n.url || '—').slice(0, 34)}`;
+    case 'payment': return `Pix de R$ ${n.value || '—'}${n.description ? ' · ' + n.description.slice(0, 24) : ''}`;
     case 'delay': return `Aguardar ${n.seconds || 0}s`;
     case 'condition': return `Se ${n.field || 'texto'} ${OP_LBL[n.op] || 'contém'} "${(n.value || '').slice(0, 18)}"`;
     case 'addtag': return `+ tag "${n.tag || '—'}"`;
@@ -5813,6 +7406,7 @@ function nodeDefaults(type) {
   else if (type === 'addtag' || type === 'removetag') d.tag = '';
   else if (type === 'movestage') d.stage = (state.settings && state.settings.stages && state.settings.stages[0]) || '';
   else if (type === 'http') { d.method = 'POST'; d.url = ''; d.headers = []; d.body = ''; }
+  else if (type === 'payment') { d.value = ''; d.description = ''; d.sendMessage = true; d.sendQr = false; }
   return d;
 }
 
@@ -5821,7 +7415,7 @@ function openBuilder() {
   const en = flowDraft.enabled;
   $('#view').innerHTML = `<div class="fb2">
     <header class="fb2-top">
-      <button class="icon-btn" title="Voltar" onclick="renderFlows()">${ico('arrow-up', 17)}</button>
+      <button class="icon-btn" title="Voltar" onclick="renderFlows()">${ico('arrowleft', 17)}</button>
       <input id="fb-name" class="fb2-name" placeholder="Nome da automação" value="${esc(flowDraft.name)}">
       <span class="fb2-pill ${en ? 'on' : ''}" id="fb-pill">${en ? '▶ Ativo' : '⏸ Pausado'}</span>
       <span class="fb2-save" id="fb-savestate">Auto-save ativo</span>
@@ -5841,6 +7435,10 @@ function openBuilder() {
           <button class="icon-btn" title="Centralizar" onclick="fbFit()">${ico('target', 15)}</button>
         </div>
         <div class="fb2-mini" id="fb-mini"></div>
+        <div class="fb2-hint" id="fb-hint">${ico('funnel', 34)}
+          <b>Comece pelo gatilho</b>
+          <span>Arraste um gatilho da barra lateral para o canvas, é um por automação. Depois vá montando o fluxo com as ações.</span>
+        </div>
       </div>
       <aside class="fb2-inspector" id="fb-inspector"></aside>
     </div>
@@ -5871,17 +7469,28 @@ function paletteHtml() {
         ${iconChip(meta.icon, meta.color, 16)}<span>${meta.label}</span></div>`;
     }).join('')}`).join('');
 }
+// Coloca o gatilho no canvas. É um só por fluxo: se já existe, apenas troca o
+// tipo e seleciona o nó existente em vez de criar outro.
+function placeTrigger(type, x, y) {
+  if (!nodeById('trigger')) {
+    if (x === undefined) { x = 60; y = 140; }
+    flowDraft.graph.nodes.unshift({ id: 'trigger', type: 'trigger', x, y });
+  }
+  fbChangeTrigger(type);
+  renderEdges(); selectNode('trigger');
+}
 function paletteClick(cat, key) {
-  if (cat === 'triggers') { fbChangeTrigger(key); selectNode('trigger'); }
+  if (cat === 'triggers') placeTrigger(key);
   else addNodeAt(key);
 }
 function onPaletteDrop(e) {
   e.preventDefault();
   const data = e.dataTransfer.getData('text/plain'); if (!data) return;
   const [cat, key] = data.split(':');
-  if (cat === 'triggers') { fbChangeTrigger(key); selectNode('trigger'); return; }
   const wp = screenToWorld(e.clientX, e.clientY);
-  addNodeAt(key, Math.round(wp.x - NODE_W / 2), Math.round(wp.y - 30));
+  const x = Math.round(wp.x - NODE_W / 2), y = Math.round(wp.y - 30);
+  if (cat === 'triggers') return placeTrigger(key, x, y);
+  addNodeAt(key, x, y);
 }
 
 function cleanupBuilder() {
@@ -5897,12 +7506,73 @@ async function loadFbWebhooks() {
   if (fbSel === 'trigger' && flowDraft && flowDraft.trigger.type === 'webhook') renderInspector();
 }
 
-function fbToggleEnabled() {
-  flowDraft.enabled = !flowDraft.enabled;
+function syncEnabledUi() {
   const pill = $('#fb-pill'), btn = $('#fb-activate');
   if (pill) { pill.className = 'fb2-pill ' + (flowDraft.enabled ? 'on' : ''); pill.textContent = flowDraft.enabled ? '▶ Ativo' : '⏸ Pausado'; }
   if (btn) btn.innerHTML = `${ico('power', 14)} ${flowDraft.enabled ? 'Desativar' : 'Ativar'}`;
+}
+function fbToggleEnabled() {
+  // Só bloqueia ATIVAR — pausar é sempre permitido.
+  if (!flowDraft.enabled) {
+    if (!nodeById('trigger')) return toast('Adicione um gatilho antes de ativar', 'error');
+    const issues = flowIssues();
+    if (issues.length) return reportFlowIssue(issues);
+  }
+  flowDraft.enabled = !flowDraft.enabled;
+  syncEnabledUi();
   scheduleSave();
+}
+
+// ---------- validação ----------
+// Todo nó que PEDE uma orientação ao cliente (botões, lista, CTA de link ou
+// condição) precisa ter o desfecho definido. Sem isso o cliente responde e o
+// fluxo trava — então a automação não salva nem ativa.
+// Opção pode ser string ("Sim") ou objeto ({ title: 'Sim' }).
+function fbOptTitle(o) { return typeof o === 'string' ? o : String((o && o.title) || ''); }
+function flowIssues() {
+  if (!flowDraft || !flowDraft.graph) return [];
+  const out = [];
+  const nodes = flowDraft.graph.nodes || [], edges = flowDraft.graph.edges || [];
+  const hasEdgeFrom = (id, branch) => edges.some(e => e.from === id && (branch ? e.branch === branch : !e.branch));
+  const label = n => (NODE_TYPES[n.type] || {}).label || n.type;
+
+  for (const n of nodes) {
+    if (n.type === 'trigger') continue;
+
+    // Botões de resposta (nó "text" com opções, ou o nó legado "buttons")
+    const replies = (n.type === 'text' || n.type === 'buttons') ? (n.buttons || []) : [];
+    // Itens de lista (nó legado "list")
+    const items = n.type === 'list' ? (n.items || []) : [];
+    const opts = replies.length ? replies : items;
+    const optWord = items.length ? 'item da lista' : 'botão de resposta';
+
+    if (opts.length) {
+      const vazio = opts.findIndex(o => !fbOptTitle(o).trim());
+      if (vazio >= 0) out.push({ nodeId: n.id, msg: `"${label(n)}": o ${optWord} ${vazio + 1} está sem texto.` });
+      if (!hasEdgeFrom(n.id)) out.push({ nodeId: n.id, msg: `"${label(n)}" pergunta ao cliente mas não tem resposta, conecte a saída ao próximo passo (ou a um nó "Fim").` });
+    }
+
+    // CTA de link: botão de link precisa de redirecionamento válido + rótulo
+    if (n.type === 'text') {
+      const url = String(n.url || '').trim(), urlText = String(n.urlText || '').trim();
+      if (urlText && !url) out.push({ nodeId: n.id, msg: `"${label(n)}": o botão de link "${urlText}" está sem redirecionamento, informe a URL.` });
+      if (url && !/^https?:\/\/\S+\.\S+/i.test(url)) out.push({ nodeId: n.id, msg: `"${label(n)}": a URL do botão de link é inválida, use o formato https://…` });
+      if (url && !urlText) out.push({ nodeId: n.id, msg: `"${label(n)}": o botão de link está sem texto.` });
+    }
+
+    // Condição: as duas saídas precisam ter destino
+    if (n.type === 'condition') {
+      if (!hasEdgeFrom(n.id, 'yes')) out.push({ nodeId: n.id, msg: `"${label(n)}": a saída <b>Sim</b> não leva a lugar nenhum.` });
+      if (!hasEdgeFrom(n.id, 'no')) out.push({ nodeId: n.id, msg: `"${label(n)}": a saída <b>Não</b> não leva a lugar nenhum.` });
+    }
+  }
+  return out;
+}
+// Mostra o primeiro problema e leva o usuário até o nó culpado.
+function reportFlowIssue(issues) {
+  const first = issues[0];
+  toast(first.msg.replace(/<\/?b>/g, ''), 'error');
+  if (first.nodeId) selectNode(first.nodeId);
 }
 
 // ---------- auto-save ----------
@@ -5914,6 +7584,10 @@ function scheduleSave() {
 async function doAutoSave() {
   const st = $('#fb-savestate');
   if (!flowDraft.name.trim()) { if (st) st.textContent = 'Defina um nome para salvar'; return; }
+  if (!nodeById('trigger')) { if (st) st.textContent = 'Adicione um gatilho para salvar'; return; }
+  // Rascunho incompleto continua sendo guardado, mas nunca vai ao ar ativo.
+  const pend = flowIssues();
+  if (pend.length) flowDraft.enabled = false;
   flowDraft.nodes = [];
   try {
     if (flowDraft.id) await api('/flows/' + flowDraft.id, { method: 'PUT', body: flowDraft });
@@ -5922,7 +7596,8 @@ async function doAutoSave() {
       flowDraft.id = r.flow.id; flowDraft.hookUrl = r.flow.hookUrl; flowDraft.waLink = r.flow.waLink;
       if (fbSel === 'trigger') renderInspector();
     }
-    if (st) st.textContent = 'Auto-save ativo';
+    if (st) st.textContent = pend.length ? `Rascunho salvo · pausado: ${pend.length} pendência(s)` : 'Auto-save ativo';
+    if (pend.length) syncEnabledUi();
   } catch (e) { if (st) st.textContent = 'Erro ao salvar'; }
 }
 
@@ -5949,6 +7624,8 @@ function edgeD(a, b) { const dx = Math.max(46, Math.abs(b.x - a.x) / 2); return 
 function renderNodes() {
   const world = $('#fb-world');
   world.querySelectorAll('.fb-n').forEach(el => el.remove());
+  const hint = $('#fb-hint');
+  if (hint) hint.style.display = flowDraft.graph.nodes.length ? 'none' : '';
   for (const n of flowDraft.graph.nodes) {
     const M = nodeMeta(n);
     const el = document.createElement('div');
@@ -6086,7 +7763,7 @@ function triggerInspector() {
   } else if (tr.type === 'webhook') {
     const hooks = window._fbWebhooks || [];
     const wh = hooks.find(w => w.id === tr.webhookId);
-    const opts = [{ value: '', label: hooks.length ? '— selecione um webhook —' : 'Nenhum webhook criado' }]
+    const opts = [{ value: '', label: hooks.length ? 'selecione um webhook' : 'Nenhum webhook criado' }]
       .concat(hooks.map(w => ({ value: w.id, label: w.name })));
     // variáveis disponíveis a partir do mapeamento do webhook escolhido
     let varsHtml = '';
@@ -6099,7 +7776,7 @@ function triggerInspector() {
       varsHtml = '<p class="muted" style="font-size:12px;margin-top:8px">Webhook não encontrado (foi excluído?). Selecione outro.</p>';
     }
     cfg = `<label>Webhook de gatilho${ecSelect('fb-trig-wh', opts, tr.webhookId || '', "fbSetTrig('webhookId',val)")}</label>
-      ${hooks.length ? '' : `<p class="muted" style="font-size:12px;margin-top:6px">Crie um webhook na aba <a href="#/webhooks">Webhooks</a> e mapeie os campos primeiro.</p>`}
+      ${hooks.length ? '' : `<p class="muted" style="font-size:12px;margin-top:6px">Crie um webhook na aba <a href="#/integrations">Integrações</a> e mapeie os campos primeiro.</p>`}
       ${wh ? `<div class="fb-linkbox" style="margin-top:8px"><code>${esc(wh.url)}</code><button class="btn small" onclick="copyText('${esc(wh.url)}')">${ico('copy', 13)}</button></div>` : ''}
       ${varsHtml}`;
   } else if (tr.type === 'button' || tr.type === 'list') {
@@ -6133,7 +7810,7 @@ function fbTextInspector(n, set) {
 
     <div class="fb-sec">
       <div class="row" style="align-items:center;margin-bottom:2px">
-        <span class="fb-sub" style="flex:1;margin:0">Botões — opcional</span>
+        <span class="fb-sub" style="flex:1;margin:0">Botões, opcional</span>
         <span class="pill ${FMT[1]}">${FMT[0]}</span>
       </div>
       <p class="muted" style="font-size:11.5px;margin:4px 0 9px">
@@ -6141,7 +7818,7 @@ function fbTextInspector(n, set) {
       </p>
 
       ${n.url && n.url.trim() ? `<p class="muted" style="font-size:11.5px;margin:0 0 8px">
-        <b>Com link (CTA), a Meta não permite botões de resposta</b> — limpe a URL abaixo para usar botões.</p>` : ''}
+        <b>Com link (CTA), a Meta não permite botões de resposta</b>, limpe a URL abaixo para usar botões.</p>` : ''}
 
       <div id="fb-btns">${fbBtnRows(n, max)}</div>
 
@@ -6154,7 +7831,7 @@ function fbTextInspector(n, set) {
     </div>
 
     <details class="utm-box" ${(n.url || '').trim() ? 'open' : ''}>
-      <summary>${ico('link', 13)} Botão de link (CTA) — opcional</summary>
+      <summary>${ico('link', 13)} Botão de link (CTA), opcional</summary>
       <label style="margin-top:8px">URL<input value="${esc(n.url || '')}" ${set('url')} placeholder="https://..."></label>
       <label style="margin-top:8px">Texto do botão<input value="${esc(n.urlText || '')}" maxlength="20" ${set('urlText')} placeholder="Abrir link"></label>
       <p class="muted" style="font-size:11px;margin:8px 0 0">A Meta permite <b>1 botão de link</b> por mensagem e ele <b>não pode ser combinado</b> com botões de resposta.</p>
@@ -6163,7 +7840,7 @@ function fbTextInspector(n, set) {
 
 function fbBtnRows(n, max) {
   const btns = n.buttons || [];
-  if (!btns.length) return '<p class="muted" style="font-size:12px;margin:0">Nenhum botão — será enviado como texto simples.</p>';
+  if (!btns.length) return '<p class="muted" style="font-size:12px;margin:0">Nenhum botão, será enviado como texto simples.</p>';
   return btns.map((b, i) => {
     const len = (b.title || '').length;
     return `<div class="fb-btn-row">
@@ -6207,6 +7884,18 @@ function nodeInspector(n) {
   let body = '';
   if (n.type === 'text') body = fbTextInspector(n, set);
   else if (n.type === 'delay') body = `<label>Aguardar (segundos)<input type="number" min="0" max="300" value="${n.seconds || 3}" oninput="fbSetNode('${n.id}','seconds',Number(this.value))"></label>`;
+  else if (n.type === 'payment') {
+    body = `<label>Valor (R$)<input value="${esc(n.value || '')}" ${set('value')} placeholder="97,00" inputmode="decimal"></label>
+      <label>Descrição da cobrança<input value="${esc(n.description || '')}" ${set('description')} maxlength="140" placeholder="Ex.: Pedido {{nome}}"></label>
+      <label class="chk" style="margin-top:8px"><input type="checkbox" ${n.sendMessage !== false ? 'checked' : ''} onchange="fbSetNode('${n.id}','sendMessage',this.checked)"> Enviar a cobrança (texto) na conversa automaticamente</label>
+      <label class="chk" style="margin-top:6px"><input type="checkbox" ${n.sendQr ? 'checked' : ''} onchange="fbSetNode('${n.id}','sendQr',this.checked)"> Enviar também a <b>imagem do QR Code Pix</b></label>
+      <div class="var-ex-box" style="margin-top:10px">
+        <p class="muted" style="font-size:11.5px;margin:0 0 6px"><b>Variáveis disponíveis nos próximos nós:</b></p>
+        <p class="muted" style="font-size:11.5px;margin:0">{{pagamento.link}} · {{pagamento.valor}} · {{pagamento.codigo}} · {{pagamento.qrcode}} · {{pagamento.id}}</p>
+        <p class="muted" style="font-size:11px;margin:6px 0 0">Dica: use {{pagamento.qrcode}} num nó de <b>Mídia (imagem)</b> para enviar o QR Code.</p>
+      </div>
+      <p class="muted" style="font-size:11.5px;margin-top:8px">${ico('shield', 11)} Requer conta Elite Pay ativa. O valor aceita variáveis (ex.: {{valor}} vindo de um webhook).</p>`;
+  }
   else if (n.type === 'buttons') {
     n.buttons = n.buttons || [{ title: 'Sim' }];
     const hasUrl = !!(n.url && n.url.trim());
@@ -6218,7 +7907,7 @@ function nodeInspector(n) {
       ${hasUrl ? `
         <label>Texto do botão<input value="${esc(n.urlText || '')}" maxlength="20" oninput="fbSetNode('${n.id}','urlText',this.value)" placeholder="Ex.: Ver oferta"></label>
         <label>URL de destino<input value="${esc(n.url || '')}" oninput="fbSetNode('${n.id}','url',this.value)" placeholder="https://…"></label>
-        <p class="muted" style="font-size:11.5px">A Meta permite <b>1 botão de link</b> por mensagem — não pode ser combinado com respostas rápidas.</p>`
+        <p class="muted" style="font-size:11.5px">A Meta permite <b>1 botão de link</b> por mensagem, não pode ser combinado com respostas rápidas.</p>`
       : `
         <span class="fb-sub">Botões de resposta (máx. 3)</span><div class="fb-btns">${n.buttons.map((b, i) => `<div class="fb-btn-row"><input value="${esc(b.title || '')}" maxlength="20" oninput="fbSetBtn('${n.id}',${i},this.value)" placeholder="Botão ${i + 1}"><button class="icon-btn" onclick="rmButton('${n.id}',${i})">${ico('x', 13)}</button></div>`).join('')}</div>
         ${n.buttons.length < 3 ? `<button class="btn small" onclick="addButton('${n.id}')">${ico('plus', 12)} Botão</button>` : ''}`}`;
@@ -6263,7 +7952,7 @@ function nodeInspector(n) {
     body = `<label>Etapa do funil${ecSelect('fb-move-stage', stages.map(s => ({ value: s, label: s })), n.stage || stages[0], `fbSetNode('${n.id}','stage',val)`)}</label>`;
   } else if (n.type === 'optin' || n.type === 'optout' || n.type === 'reactivate') {
     const desc = {
-      optin: 'Marca o contato como <b>opt-in</b> — ele volta a receber mensagens e entra nas campanhas.',
+      optin: 'Marca o contato como <b>opt-in</b>, ele volta a receber mensagens e entra nas campanhas.',
       optout: 'Marca o contato como <b>opt-out</b>. Ele deixa de receber <b>qualquer</b> envio (bloqueado no backend) e recebe a mensagem de opt-out configurada.',
       reactivate: 'Reativa um contato que estava em opt-out, registrando a origem <b>Automação</b> no histórico.'
     }[n.type];
@@ -6334,7 +8023,7 @@ async function flowStatsModal() {
   if (!flowDraft.id) return toast('Salve a automação primeiro para ver as métricas', 'error');
   try {
     const s = await api('/flows/' + flowDraft.id + '/stats');
-    openModal(`<h2>${ico('activity')} Métricas — ${esc(s.name)}</h2>
+    openModal(`<h2>${ico('activity')} Métricas, ${esc(s.name)}</h2>
       <div class="lk-kpis">
         <div><b>${fmtN(s.runs)}</b><span>Execuções</span></div>
         <div><b>${fmtN(s.runsToday)}</b><span>Hoje</span></div>
@@ -6343,7 +8032,7 @@ async function flowStatsModal() {
       ${s.history.length ? `<span class="fb-sub">Histórico recente</span>
         <div class="flow-hist">${s.history.map(h => `
           <details class="log"><summary>${ico(h.log.every(l => l.ok) ? 'check-circle' : 'alert', 14)} ${new Date(h.ts).toLocaleString('pt-BR')} · ${h.log.length} passo(s)</summary>
-          <pre class="out">${esc(h.log.map(l => `${l.ok ? '✓' : '✗'} ${l.node}${l.detail ? ' — ' + l.detail : ''}`).join('\n'))}</pre></details>`).join('')}</div>`
+          <pre class="out">${esc(h.log.map(l => `${l.ok ? '✓' : '✗'} ${l.node}${l.detail ? ', ' + l.detail : ''}`).join('\n'))}</pre></details>`).join('')}</div>`
         : '<p class="muted" style="font-size:13px">Nenhuma execução ainda. A automação roda quando o gatilho for acionado.</p>'}
       <div class="row"><button class="btn primary" onclick="closeModal()">Fechar</button></div>`);
   } catch (e) { toast(e.message, 'error'); }
@@ -6351,6 +8040,9 @@ async function flowStatsModal() {
 
 async function saveFlow() {
   if (!flowDraft.name.trim()) return toast('Dê um nome à automação', 'error');
+  if (!nodeById('trigger')) return toast('Adicione um gatilho para salvar a automação', 'error');
+  const issues = flowIssues();
+  if (issues.length) return reportFlowIssue(issues);
   clearTimeout(fbSaveTimer);
   flowDraft.nodes = [];
   try {
@@ -6455,7 +8147,7 @@ async function esFinish(code, usedRedirect) {
   esDone = true;
   esMark('popup', true);
   const msg = $('#es-msg');
-  if (msg) msg.textContent = 'Código recebido — finalizando a integração automaticamente…';
+  if (msg) msg.textContent = 'Código recebido, finalizando a integração automaticamente…';
   try {
     const r = await api('/wa/connect', {
       body: {
@@ -6519,6 +8211,1747 @@ async function connectWhatsApp() {
     `&scope=${encodeURIComponent('business_management,whatsapp_business_management,whatsapp_business_messaging')}`;
   const pop = window.open(url, 'elitechat_es', 'width=700,height=780');
   if (!pop) esFail('Popup bloqueado pelo navegador. Libere popups para este site.');
+}
+
+// ==================== ELITE PAY — pagamentos Pix do cliente ====================
+// Subconta própria por cliente (gateway Woovi via plataforma), cobranças Pix com
+// QR Code + copia e cola + link, histórico com filtros e integração com o chat.
+let epState = { tab: 'dash', q: '', status: '' };
+
+const EP_ST = {
+  active: ['Aguardando', 'pill pending'],
+  paid: ['Pago', 'pill done'],
+  cancelled: ['Cancelada', 'pill'],
+  expired: ['Expirada', 'pill']
+};
+function epPill(st) { const [l, c] = EP_ST[st] || [st, 'pill']; return `<span class="${c}">${l}</span>`; }
+function epParseReais(v) { return Math.round((Number(String(v || '').replace(/[^\d,.]/g, '').replace(/\./g, '').replace(',', '.')) || 0) * 100); }
+
+async function renderElitePay() {
+  $('#view').innerHTML = `<div class="page"><div class="card">${skel(6)}</div></div>`;
+  let d;
+  try { d = await api('/elitepay'); } catch (e) { $('#view').innerHTML = `<div class="page"><div class="card err">${esc(e.message)}</div></div>`; return; }
+  state.epInfo = d;
+  // A aba Cartão só existe se a plataforma habilitou o adquirente.
+  try { epCardTabVisible = (await api('/elitepay/card-account')).account.available; } catch { epCardTabVisible = false; }
+  if (!epCardTabVisible && epState.tab === 'card') epState.tab = 'dash';
+
+  // ---- Sem subconta → fluxo de cadastro (onboarding) ----
+  if (!d.subaccount || d.subaccount.status === 'rejected') { epRenderOnboarding(d); return; }
+  if (d.subaccount.status === 'pending') {
+    const kyc = d.subaccount.kyc;
+    if (kyc && kyc.onboardingUrl) {
+      epRenderGate(d, 'shield', 'Conclua sua verificação (KYC)',
+        'Falta pouco! Finalize a verificação de identidade na página segura da Woovi. Assim que a compliance aprovar, sua conta Elite Pay é liberada automaticamente.',
+        `<a class="btn primary no-grow" href="${esc(kyc.onboardingUrl)}" target="_blank" rel="noopener">${ico('shield', 14)} Continuar verificação</a>`);
+    } else if (kyc && (kyc.status === 'awaiting_gateway' || kyc.status === 'error')) {
+      epRenderGate(d, 'clock', 'Verificação iniciada',
+        'Recebemos seu cadastro. A verificação KYC será aberta assim que o gateway estiver disponível, você será avisado quando for aprovado.');
+    } else {
+      epRenderGate(d, 'clock', 'Cadastro em análise', 'Sua conta Elite Pay foi criada e está aguardando aprovação. Você será liberado automaticamente, não precisa fazer mais nada.');
+    }
+    return;
+  }
+  if (d.subaccount.status === 'suspended') { epRenderGate(d, 'slash', 'Conta suspensa', 'Sua conta Elite Pay está suspensa. Fale com o suporte da plataforma para reativar.'); return; }
+
+  // ---- Subconta ativa → módulo completo ----
+  $('#view').innerHTML = `<div class="page">
+    <div class="page-head row">
+      <div style="flex:1"><h1>Elite Pay</h1><p>Receba por Pix direto nas suas conversas, ${esc(d.subaccount.name)}</p></div>
+      <button class="btn primary no-grow" onclick="epNewChargeModal()">${ico('plus', 14)} Gerar cobrança</button>
+    </div>
+    ${!d.configured ? `<div class="card" style="border-color:var(--amber-border);background:var(--amber-bg)"><b>⚠ Gateway não configurado.</b><p class="muted" style="margin:4px 0 0;font-size:13px">O administrador precisa informar o AppID da Woovi em Admin → Pagamentos para gerar cobranças reais.</p></div>` : ''}
+    <div class="tabs">
+      <button class="${epState.tab === 'dash' ? 'active' : ''}" data-tab="ep-dash" onclick="epTab('dash')">Dashboard</button>
+      <button class="${epState.tab === 'charges' ? 'active' : ''}" data-tab="ep-charges" onclick="epTab('charges')">Cobranças</button>
+      <button class="${epState.tab === 'products' ? 'active' : ''}" data-tab="ep-products" onclick="epTab('products')">Produtos</button>
+      ${epCardTabVisible ? `<button class="${epState.tab === 'card' ? 'active' : ''}" data-tab="ep-card" onclick="epTab('card')">Cartão</button>` : ''}
+      <button class="${epState.tab === 'cfg' ? 'active' : ''}" data-tab="ep-cfg" onclick="epTab('cfg')">Configurações</button>
+    </div>
+    <div id="ep-box">${skel(5)}</div>
+  </div>`;
+  epPaintTab();
+}
+function epTab(t) { epState.tab = t; $$('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'ep-' + t)); epPaintTab(); }
+
+function epRenderGate(d, icon, title, text, actionHtml) {
+  $('#view').innerHTML = `<div class="page">
+    <div class="page-head"><h1>Elite Pay</h1><p>Pagamentos Pix integrados ao seu atendimento</p></div>
+    <div class="card empty-state" style="padding:46px 20px">
+      <div class="big">${ico(icon, 38)}</div><b>${title}</b>
+      <p class="muted" style="margin:8px auto 0;max-width:460px">${text}</p>
+      ${actionHtml ? `<div style="margin-top:18px">${actionHtml}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+// ---- Onboarding: criação da subconta (com KYC quando o admin exige BaaS) ----
+function epRenderOnboarding(d) {
+  const kyc = d.onboardingMode === 'kyc';
+  $('#view').innerHTML = `<div class="page">
+    <div class="page-head"><h1>Elite Pay</h1><p>Crie sua conta de pagamentos e receba por Pix sem sair do EliteChat</p></div>
+    <div class="card" style="max-width:720px">
+      <h2>${ico('sparkles')} Ative o Elite Pay</h2>
+      <p class="muted" style="margin:0 0 16px;font-size:13px">${kyc
+        ? 'Preencha os dados da empresa e do representante legal. Após enviar, você concluirá a <b>verificação de identidade (KYC/KYB)</b> na página segura da Woovi. Assim que a compliance aprovar, sua conta é liberada automaticamente.'
+        : 'Preencha os dados abaixo para criar sua conta de recebimentos. O dinheiro das suas vendas cai na <b>sua chave Pix</b>, cobranças, QR Code e links são gerados aqui dentro, direto nas conversas.'}</p>
+      <div class="row">
+        <label style="flex:2">Nome / Razão social<input id="ep-ob-name" placeholder="Minha Empresa LTDA"></label>
+        <label style="flex:1">CPF / CNPJ<input id="ep-ob-doc" placeholder="00.000.000/0000-00" inputmode="numeric"></label>
+      </div>
+      <div class="row" style="margin-top:9px">
+        <label style="flex:1.4">E-mail financeiro<input id="ep-ob-email" type="email" placeholder="financeiro@empresa.com"></label>
+        <label style="flex:1">Telefone<input id="ep-ob-phone" placeholder="(11) 99999-9999" inputmode="tel"></label>
+      </div>
+      ${kyc ? `
+      <div class="var-ex-box" style="margin-top:14px">
+        <p class="muted" style="font-size:11.5px;margin:0 0 8px"><b>${ico('shield', 11)} Representante legal</b>, exigido pela verificação KYC/KYB da Woovi.</p>
+        <div class="row">
+          <label style="flex:2">Nome completo do responsável<input id="ep-ob-repname" placeholder="Nome do sócio/representante"></label>
+          <label style="flex:1">CPF do responsável<input id="ep-ob-repdoc" placeholder="000.000.000-00" inputmode="numeric"></label>
+        </div>
+      </div>` : ''}
+      <div class="row" style="margin-top:9px;align-items:flex-end">
+        <label style="flex:1.4">Chave Pix (onde você recebe)<input id="ep-ob-pix" placeholder="sua chave Pix"></label>
+        <label style="flex:1">Tipo da chave${ecSelect('ep-ob-pixtype', [
+          { value: 'cpf', label: 'CPF' }, { value: 'cnpj', label: 'CNPJ' }, { value: 'email', label: 'E-mail' },
+          { value: 'telefone', label: 'Telefone' }, { value: 'aleatoria', label: 'Aleatória' }
+        ], 'cpf')}</label>
+      </div>
+      <p class="hint" style="margin-top:12px">${ico('shield', 12)} ${kyc
+        ? 'A verificação de identidade é feita diretamente pela Woovi (instituição de pagamento regulada pelo Banco Central).'
+        : 'Seus dados são usados apenas para criar a subconta de recebimento no gateway de pagamentos da plataforma.'}</p>
+      <div class="row" style="margin-top:14px;justify-content:flex-end">
+        <button class="btn primary no-grow" id="ep-ob-btn" onclick="epSubmitOnboarding()">${ico('zap', 14)} ${kyc ? 'Iniciar verificação' : 'Criar minha conta Elite Pay'}</button>
+      </div>
+      <p id="ep-ob-err" class="err"></p>
+    </div>
+  </div>`;
+}
+async function epSubmitOnboarding() {
+  const btn = $('#ep-ob-btn'); btn.disabled = true;
+  try {
+    const body = {
+      name: $('#ep-ob-name').value, document: $('#ep-ob-doc').value,
+      email: $('#ep-ob-email').value, phone: $('#ep-ob-phone').value,
+      pixKey: $('#ep-ob-pix').value, pixKeyType: ecVal('ep-ob-pixtype') || 'cpf'
+    };
+    if ($('#ep-ob-repname')) { body.repName = $('#ep-ob-repname').value; body.repDocument = $('#ep-ob-repdoc').value; }
+    const r = await api('/elitepay/subaccount', { body });
+    // Modo KYC: abre a verificação hospedada da Woovi em nova aba
+    if (r.onboardingUrl) { window.open(r.onboardingUrl, '_blank', 'noopener'); toast('Conclua a verificação KYC na aba que abriu'); }
+    else toast(r.subaccount.status === 'active' ? 'Conta Elite Pay criada e ativada! 🎉' : 'Conta criada, aguardando aprovação');
+    renderElitePay();
+  } catch (e) { const el = $('#ep-ob-err'); if (el) el.textContent = e.message; toast(e.message, 'error'); }
+  finally { if ($('#ep-ob-btn')) $('#ep-ob-btn').disabled = false; }
+}
+
+// ---- Abas ----
+async function epPaintTab() {
+  const box = $('#ep-box'); if (!box) return;
+  if (epState.tab === 'dash') return epPaintDash(box);
+  if (epState.tab === 'charges') return epPaintCharges(box);
+  if (epState.tab === 'products') return epPaintProducts(box);
+  if (epState.tab === 'card') return epPaintCard(box);
+  return epPaintCfg(box);
+}
+
+// ---------- Elite Pay → Cartão: conta de recebimento do lojista ----------
+// Sem recebedor próprio o dinheiro do cartão cairia na conta da plataforma —
+// por isso o cadastro (KYC) é obrigatório antes de vender no cartão.
+let epCardTabVisible = false;
+let epCardAcc = null;
+
+async function epPaintCard(box) {
+  box.innerHTML = skel(4);
+  try { epCardAcc = (await api('/elitepay/card-account')).account; }
+  catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
+  const a = epCardAcc;
+
+  if (!a.available) {
+    box.innerHTML = `<div class="card empty-state"><div class="big">${ico('card', 36)}</div>
+      <b>Cartão indisponível</b><p class="muted" style="margin:6px auto 0;max-width:460px">A plataforma ainda não habilitou o pagamento com cartão.</p></div>`;
+    return;
+  }
+
+  const ST = {
+    none: ['pending', 'Não cadastrado'], pending: ['pending', 'Em análise'],
+    active: ['done', 'Ativo'], refused: ['failed', 'Recusado'], blocked: ['failed', 'Bloqueado']
+  }[a.status] || ['pending', a.status];
+
+  // Já cadastrado: mostra o status e não repete o formulário.
+  if (a.status !== 'none' && a.status !== 'refused') {
+    box.innerHTML = `<div class="card">
+      <div class="row" style="align-items:center;margin-bottom:6px">
+        <h2 style="margin:0;flex:1">${ico('card')} Conta de recebimento no cartão</h2>
+        <span class="pill ${ST[0]}">${ST[1]}</span>
+      </div>
+      <p class="muted" style="margin:0 0 14px;font-size:13px">
+        ${a.ready
+          ? 'Tudo certo, as vendas no cartão caem direto na sua conta bancária, já descontada a taxa da plataforma.'
+          : esc(a.reason || 'Seu cadastro está em análise pelo adquirente. Isso costuma levar de algumas horas a 2 dias úteis.')}
+      </p>
+      ${a.fields ? `<div class="wh-meta">
+        <span class="pill">${esc(a.fields.name)}</span>
+        <span class="pill">${esc(a.fields.document)}</span>
+        ${a.fields.bank ? `<span class="pill">Banco ${esc(a.fields.bank)} · conta ••••${esc(a.fields.accountLast)}</span>` : ''}
+        ${a.createdAt ? `<span class="pill">enviado ${timeAgo(a.createdAt)}</span>` : ''}
+      </div>` : ''}
+      <div class="row" style="margin-top:16px">
+        <button class="btn small no-grow" onclick="epPaintCard($('#ep-box'))">${ico('refresh', 13)} Atualizar status</button>
+      </div>
+    </div>`;
+    return;
+  }
+
+  // Não cadastrado (ou recusado): mostra o formulário de KYC.
+  const pf = (epCardForm.docType || 'individual') === 'individual';
+  const precisaBanco = a.provider === 'pagarme';
+  box.innerHTML = `<div class="card">
+    <div class="row" style="align-items:center;margin-bottom:6px">
+      <h2 style="margin:0;flex:1">${ico('card')} Ative o recebimento no cartão</h2>
+      <span class="pill ${ST[0]}">${ST[1]}</span>
+    </div>
+    ${a.status === 'refused' ? `<div class="card err" style="margin:0 0 14px">Cadastro recusado pelo adquirente${a.refusedReason ? ': ' + esc(a.refusedReason) : ''}. Revise os dados e envie de novo.</div>` : ''}
+    <p class="muted" style="margin:0 0 16px;font-size:13px">
+      Exigido pelo Banco Central para receber por cartão. Os dados vão direto para o adquirente
+      (<b>${esc(a.provider === 'asaas' ? 'Asaas' : 'Pagar.me')}</b>), o dinheiro cai na <b>sua</b> conta, não na da plataforma.
+    </p>
+
+    <div class="kindrow" style="display:flex;gap:10px;margin-bottom:16px">
+      <label class="chk"><input type="radio" name="ep-doctype" value="individual" ${pf ? 'checked' : ''} onchange="epCardSetType('individual')"> Pessoa física (CPF)</label>
+      <label class="chk"><input type="radio" name="ep-doctype" value="company" ${pf ? '' : 'checked'} onchange="epCardSetType('company')"> Empresa (CNPJ)</label>
+    </div>
+
+    <div class="ns-grid">
+      <label>${pf ? 'Nome completo' : 'Nome fantasia'}<input id="ep-c-name" value="${esc(epCardForm.name || state.user || '')}"></label>
+      ${pf ? '' : `<label>Razão social<input id="ep-c-company" value="${esc(epCardForm.companyName || '')}"></label>`}
+      <label>${pf ? 'CPF' : 'CNPJ'}<input id="ep-c-doc" value="${esc(epCardForm.document || '')}" inputmode="numeric" placeholder="${pf ? '000.000.000-00' : '00.000.000/0000-00'}"></label>
+      <label>E-mail<input id="ep-c-email" type="email" value="${esc(epCardForm.email || '')}"></label>
+      <label>Celular<input id="ep-c-phone" value="${esc(epCardForm.phone || '')}" inputmode="tel" placeholder="(11) 91234-5678"></label>
+      ${pf ? `<label>Data de nascimento<input id="ep-c-birth" value="${esc(epCardForm.birthdate || '')}" placeholder="DD/MM/AAAA" maxlength="10"></label>` : ''}
+      ${pf && precisaBanco ? `<label>Nome da mãe<input id="ep-c-mother" value="${esc(epCardForm.motherName || '')}"></label>` : ''}
+      <label>Faturamento mensal (R$)<input id="ep-c-income" value="${esc(epCardForm.monthlyIncomeBRL || '')}" inputmode="decimal" placeholder="5000,00"></label>
+    </div>
+
+    <div class="ns-lbl" style="margin-top:18px">Endereço</div>
+    <div class="ns-grid">
+      <label>CEP<input id="ep-c-zip" value="${esc(epCardForm.zip || '')}" inputmode="numeric" placeholder="00000-000" maxlength="9"></label>
+      <label>Rua / Avenida<input id="ep-c-street" value="${esc(epCardForm.street || '')}"></label>
+      <label>Número<input id="ep-c-num" value="${esc(epCardForm.number || '')}"></label>
+      <label>Complemento (opcional)<input id="ep-c-comp" value="${esc(epCardForm.complement || '')}"></label>
+      <label>Bairro<input id="ep-c-hood" value="${esc(epCardForm.neighborhood || '')}"></label>
+      <label>Cidade<input id="ep-c-city" value="${esc(epCardForm.city || '')}"></label>
+      <label>Estado (UF)<input id="ep-c-state" value="${esc(epCardForm.state || '')}" maxlength="2" placeholder="SP"></label>
+    </div>
+
+    ${precisaBanco ? `
+      <div class="ns-lbl" style="margin-top:18px">Conta bancária que vai receber</div>
+      <div class="ns-grid">
+        <label>Banco (código)<input id="ep-c-bank" value="${esc(epCardForm.bank || '')}" inputmode="numeric" placeholder="341" maxlength="3"></label>
+        <label>Agência<input id="ep-c-branch" value="${esc(epCardForm.branch || '')}" inputmode="numeric" placeholder="1234"></label>
+        <label>Conta<input id="ep-c-acc" value="${esc(epCardForm.accountNumber || '')}" inputmode="numeric" placeholder="56789"></label>
+        <label>Dígito<input id="ep-c-accd" value="${esc(epCardForm.accountDigit || '')}" inputmode="numeric" placeholder="0" maxlength="2"></label>
+        <label>Tipo de conta${ecSelect('ep-c-acctype', [
+          { value: 'checking', label: 'Corrente' }, { value: 'savings', label: 'Poupança' }
+        ], epCardForm.accountType || 'checking', '')}</label>
+      </div>
+      <p class="hint" style="margin-top:8px">O titular da conta precisa ser o mesmo do ${pf ? 'CPF' : 'CNPJ'} informado acima.</p>`
+    : '<p class="hint" style="margin-top:16px">O Asaas cria sua carteira digital, você define a conta de saque depois, no painel dele.</p>'}
+
+    <div class="ns-actions">
+      <button class="btn primary no-grow" id="ep-c-go" onclick="epCardSubmit()">${ico('shield', 14)} Enviar cadastro</button>
+      <span class="ns-nota">Análise do adquirente: de algumas horas a 2 dias úteis.</span>
+    </div>
+  </div>`;
+
+  // máscaras
+  const m = (id, fn) => { const el = $('#' + id); if (el) el.addEventListener('input', () => { el.value = fn(el.value); }); };
+  m('ep-c-doc', v => (epCardForm.docType === 'company' ? maskCnpj(v) : maskCpf(v)));
+  m('ep-c-zip', v => v.replace(/\D/g, '').slice(0, 8).replace(/(\d{5})(\d)/, '$1-$2'));
+  m('ep-c-birth', v => { const d = v.replace(/\D/g, '').slice(0, 8); return d.length > 4 ? `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}` : d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d; });
+  m('ep-c-state', v => v.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 2));
+}
+
+let epCardForm = { docType: 'individual' };
+function epCardSetType(t) { epCardCollect(); epCardForm.docType = t; epPaintCard($('#ep-box')); }
+function maskCpf(v) { return v.replace(/\D/g, '').slice(0, 11).replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})\.(\d{3})(\d)/, '$1.$2.$3').replace(/(\d{3})\.(\d{3})\.(\d{3})(\d)/, '$1.$2.$3-$4'); }
+function maskCnpj(v) { return v.replace(/\D/g, '').slice(0, 14).replace(/(\d{2})(\d)/, '$1.$2').replace(/(\d{2})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d)/, '.$1/$2').replace(/(\d{4})(\d)/, '$1-$2'); }
+
+// Guarda o que já foi digitado (para não perder ao trocar PF/PJ ou reexibir).
+function epCardCollect() {
+  const g = id => { const el = $('#' + id); return el ? el.value.trim() : undefined; };
+  const f = epCardForm;
+  const set = (k, v) => { if (v !== undefined) f[k] = v; };
+  set('name', g('ep-c-name')); set('companyName', g('ep-c-company'));
+  set('document', g('ep-c-doc')); set('email', g('ep-c-email')); set('phone', g('ep-c-phone'));
+  set('birthdate', g('ep-c-birth')); set('motherName', g('ep-c-mother'));
+  set('monthlyIncomeBRL', g('ep-c-income'));
+  set('zip', g('ep-c-zip')); set('street', g('ep-c-street')); set('number', g('ep-c-num'));
+  set('complement', g('ep-c-comp')); set('neighborhood', g('ep-c-hood'));
+  set('city', g('ep-c-city')); set('state', g('ep-c-state'));
+  set('bank', g('ep-c-bank')); set('branch', g('ep-c-branch'));
+  set('accountNumber', g('ep-c-acc')); set('accountDigit', g('ep-c-accd'));
+  const t = $('#ep-c-acctype'); if (t) f.accountType = ecVal('ep-c-acctype') || 'checking';
+  return f;
+}
+
+async function epCardSubmit() {
+  const f = epCardCollect();
+  const btn = $('#ep-c-go'); const txt = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Enviando…';
+  try {
+    await api('/elitepay/card-account', {
+      body: {
+        ...f,
+        docType: f.docType,
+        // servidor espera centavos
+        monthlyIncome: Math.round(Number(String(f.monthlyIncomeBRL || '').replace(/\./g, '').replace(',', '.')) * 100) || 0
+      }
+    });
+    toast('Cadastro enviado! Acompanhe o status aqui.');
+    epPaintCard($('#ep-box'));
+  } catch (e) {
+    toast(e.message, 'error');
+    btn.disabled = false; btn.innerHTML = txt;
+  }
+}
+
+async function epPaintDash(box) {
+  try {
+    const { metrics: m, recent, logs } = await api('/elitepay/dashboard');
+    const maxV = Math.max(1, ...m.series.map(s => s.value));
+    box.innerHTML = `
+      <div class="metric-hero">
+        <div class="mh-card hi"><span class="mh-ic">${ico('zap', 20)}</span><div class="mh-val">${fmtBRL(m.totalPaid)}</div><div class="mh-lbl">Total recebido</div></div>
+        <div class="mh-card"><span class="mh-ic">${ico('activity', 20)}</span><div class="mh-val">${fmtBRL(m.paid30d)}</div><div class="mh-lbl">Recebido. 30 dias</div></div>
+        <div class="mh-card"><span class="mh-ic">${ico('clock', 20)}</span><div class="mh-val">${fmtBRL(m.pendingValue)}</div><div class="mh-lbl">${m.pendingCount} cobrança(s) aguardando</div></div>
+        <div class="mh-card"><span class="mh-ic">${ico('check', 20)}</span><div class="mh-val">${fmtN(m.countPaid)}</div><div class="mh-lbl">Pagamentos confirmados</div></div>
+      </div>
+      <div class="card">
+        <h2>${ico('activity')} Recebimentos, últimos 14 dias</h2>
+        <div class="ep-chart">${m.series.map(s => `
+          <div class="ep-bar-w" title="${new Date(s.day).toLocaleDateString('pt-BR')} · ${fmtBRL(s.value)}">
+            <div class="ep-bar" style="height:${Math.max(3, Math.round(s.value / maxV * 100))}%"></div>
+            <span>${new Date(s.day).toLocaleDateString('pt-BR', { day: '2-digit' })}</span>
+          </div>`).join('')}</div>
+      </div>
+      <div class="card">
+        <h2>${ico('clock')} Últimas cobranças</h2>
+        ${recent.length ? epChargesTable(recent) : '<p class="muted">Nenhuma cobrança ainda, clique em <b>Gerar cobrança</b> para começar.</p>'}
+      </div>`;
+  } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+}
+
+function epChargesTable(list) {
+  return `<div style="overflow-x:auto"><table><thead><tr><th>Criada</th><th>Contato</th><th>Descrição</th><th style="text-align:right">Valor</th><th>Status</th><th></th></tr></thead><tbody>
+    ${list.map(c => `<tr>
+      <td class="muted" style="white-space:nowrap">${timeAgo(c.createdAt)}</td>
+      <td>${c.contactName ? `<b>${esc(c.contactName)}</b>` : '<span class="muted">—</span>'}${c.waId ? `<div class="muted" style="font-size:11px">+${esc(c.waId)}</div>` : ''}</td>
+      <td class="muted">${esc(c.comment || '—')}</td>
+      <td style="text-align:right"><b>${fmtBRL(c.value)}</b></td>
+      <td>${epPill(c.status)}</td>
+      <td style="white-space:nowrap;text-align:right">
+        <button class="btn small" title="Detalhes / QR Code" onclick="epChargeDetail('${c.id}')">${ico('eye', 13)}</button>
+        ${c.status === 'active' && c.waId ? `<button class="btn small" title="Reenviar no WhatsApp" onclick="epResend('${c.id}')">${ico('send', 13)}</button>` : ''}
+        <button class="btn small" title="Duplicar" onclick="epDuplicate('${c.id}')">${ico('copy', 13)}</button>
+        ${c.status === 'active' ? `<button class="btn small danger" title="Cancelar" onclick="epCancel('${c.id}')">${ico('slash', 13)}</button>` : ''}
+      </td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+async function epPaintCharges(box) {
+  box.innerHTML = `
+    <div class="card">
+      <div class="row" style="align-items:flex-end">
+        <label style="flex:2">Pesquisar<input id="ep-q" placeholder="Contato, telefone ou descrição…" value="${esc(epState.q)}" oninput="epState.q=this.value;epDebounceList()"></label>
+        <label style="flex:1">Status${ecSelect('ep-status', [
+          { value: '', label: 'Todos' }, { value: 'active', label: 'Aguardando' }, { value: 'paid', label: 'Pagas' },
+          { value: 'cancelled', label: 'Canceladas' }, { value: 'expired', label: 'Expiradas' }
+        ], epState.status, 'epState.status=val;epListCharges()')}</label>
+      </div>
+      <div id="ep-list" style="margin-top:14px">${skel(4)}</div>
+    </div>`;
+  epListCharges();
+}
+let epListTimer = null;
+function epDebounceList() { clearTimeout(epListTimer); epListTimer = setTimeout(epListCharges, 300); }
+async function epListCharges() {
+  const el = $('#ep-list'); if (!el) return;
+  try {
+    const { charges, total } = await api(`/elitepay/charges?q=${encodeURIComponent(epState.q)}&status=${encodeURIComponent(epState.status)}`);
+    el.innerHTML = charges.length
+      ? `<p class="muted" style="font-size:12px;margin:0 0 8px">${total} cobrança(s)</p>` + epChargesTable(charges)
+      : '<p class="muted">Nenhuma cobrança com esses filtros.</p>';
+  } catch (e) { el.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+}
+
+async function epPaintCfg(box) {
+  const s = (state.epInfo && state.epInfo.settings) || {};
+  const sub = (state.epInfo && state.epInfo.subaccount) || {};
+  const info = state.epInfo || {};
+  box.innerHTML = `
+    <div class="card">
+      <h2>${ico('file')} Modelos de mensagem</h2>
+      <p class="muted" style="margin:0 0 14px;font-size:13px">
+        Cobrança e confirmação de pagamento são enviadas como <b>Templates aprovados pela Meta</b>, por isso
+        chegam mesmo <b>fora da janela de 24h</b>. Crie os modelos em <a href="#/templates/new">Modelos</a>
+        marcando o papel de cada um; se tiver mais de um do mesmo papel, escolha aqui qual é enviado.
+      </p>
+      ${epTplPicker('cobranca', 'Cobrança', 'pix', info.chargeTemplates || [], info.chargeTemplateName)}
+      ${epTplPicker('confirmacao', 'Confirmação de pagamento', 'check-circle', info.confirmTemplates || [], info.confirmTemplateName)}
+    </div>
+    <div class="card">
+      <h2>${ico('gear')} Preferências de cobrança</h2>
+      <div class="row" style="margin-top:4px;align-items:flex-end">
+        <label style="max-width:260px">Validade da cobrança${ecSelect('ep-cfg-exp', [
+          { value: '60', label: '1 hora' }, { value: '360', label: '6 horas' }, { value: '720', label: '12 horas' },
+          { value: '1440', label: '24 horas' }, { value: '4320', label: '3 dias' }, { value: '10080', label: '7 dias' }
+        ], String(s.expiresMin || 1440))}</label>
+        <label class="chk" style="padding-bottom:8px"><input type="checkbox" id="ep-cfg-notify" ${s.notifyPaid ? 'checked' : ''}> Confirmar pagamento no WhatsApp automaticamente</label>
+      </div>
+      <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn primary no-grow" onclick="epSaveCfg()">${ico('save', 14)} Salvar</button></div>
+    </div>
+    <div class="card">
+      <h2>${ico('shield')} Sua conta de recebimento</h2>
+      <div class="wa-status">
+        <div class="wa-row"><span>Titular</span><b>${esc(sub.name || '—')}</b></div>
+        <div class="wa-row"><span>Documento</span><b>${esc(sub.document || '—')}</b></div>
+        <div class="wa-row"><span>Chave Pix</span><b>${esc(sub.pixKey || '—')} (${esc(sub.pixKeyType || '')})</b></div>
+        <div class="wa-row"><span>Status</span><b>${sub.status === 'active' ? 'Ativa ✅' : esc(sub.status || '')}</b></div>
+        <div class="wa-row"><span>Criada em</span><b>${sub.createdAt ? new Date(sub.createdAt).toLocaleDateString('pt-BR') : '—'}</b></div>
+        ${state.epInfo.feeInPercent ? `<div class="wa-row"><span>Taxa por venda (PIX In)</span><b>${state.epInfo.feeInPercent}%</b></div>` : ''}
+        ${state.epInfo.feeOutPercent ? `<div class="wa-row"><span>Taxa por saque (PIX Out)</span><b>${state.epInfo.feeOutPercent}%</b></div>` : ''}
+      </div>
+    </div>`;
+}
+// Seletor do modelo usado em cada papel. Com um só, mostra qual é; com vários,
+// vira um select; com nenhum, convida a criar.
+function epTplPicker(role, label, icone, lista, atual) {
+  const aprovados = lista.filter(t => t.approved);
+  const pendentes = lista.length - aprovados.length;
+
+  if (!lista.length) {
+    return `<div class="tplpick vazio">
+      <div class="tplpick-head">${ico(icone, 14)} <b>${esc(label)}</b></div>
+      <p class="muted" style="margin:6px 0 10px;font-size:12.5px">
+        Nenhum modelo de ${esc(label.toLowerCase())} ainda.
+        ${role === 'confirmacao'
+          ? 'Sem ele, a confirmação vai como texto simples, e só chega dentro das 24h.'
+          : 'Sem ele, a cobrança vai como texto simples, e só chega dentro das 24h.'}
+      </p>
+      <a class="btn small no-grow" href="#/templates/new">${ico('plus', 13)} Criar modelo de ${esc(label.toLowerCase())}</a>
+    </div>`;
+  }
+
+  return `<div class="tplpick">
+    <div class="tplpick-head">${ico(icone, 14)} <b>${esc(label)}</b>
+      <span class="pill ${aprovados.length ? 'done' : 'pending'}">${fmtN(aprovados.length)} aprovado(s)</span>
+      ${pendentes ? `<span class="pill pending">${fmtN(pendentes)} em análise</span>` : ''}
+    </div>
+    ${aprovados.length > 1 ? `
+      <label style="margin-top:10px">Modelo enviado${ecSelect('ep-tpl-' + role,
+        aprovados.map(t => ({ value: t.name, label: `${t.name} (${t.language})` })),
+        atual || aprovados[0].name, `epPickTpl('${role}',val)`)}</label>`
+    : `<p class="muted" style="margin:8px 0 0;font-size:12.5px">Enviando <b>${esc((aprovados[0] || lista[0]).name)}</b>${aprovados.length ? '' : ', <b style="color:var(--amber)">aguardando aprovação da Meta</b>'}.</p>`}
+    ${(aprovados.find(t => t.name === (atual || (aprovados[0] || {}).name)) || {}).body
+      ? `<p class="tplpick-body">${esc((aprovados.find(t => t.name === (atual || aprovados[0].name)) || {}).body).slice(0, 180)}</p>` : ''}
+  </div>`;
+}
+
+async function epPickTpl(role, name) {
+  const campo = role === 'cobranca' ? 'chargeTemplateName' : 'confirmTemplateName';
+  try {
+    const r = await api('/elitepay/settings', { method: 'PUT', body: { [campo]: name } });
+    if (state.epInfo) state.epInfo[campo] = r[campo];
+    toast(`Modelo de ${role === 'cobranca' ? 'cobrança' : 'confirmação'}: ${name}`);
+    epPaintCfg($('#ep-box'));
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// Variáveis do modelo de cobrança (inseridas no cursor)
+const EP_MSG_VARS = [
+  { tag: '{nome}', label: 'contato' },
+  { tag: '{valor}', label: 'valor' },
+  { tag: '{descricao}', label: 'descrição' },
+  { tag: '{link}', label: 'link de pagamento' },
+  { tag: '{codigo}', label: 'Pix copia e cola' }
+];
+function epInsertVar(tag) {
+  const el = document.getElementById('ep-cfg-msg'); if (!el) return;
+  const s = el.selectionStart ?? el.value.length, e = el.selectionEnd ?? el.value.length;
+  el.value = el.value.slice(0, s) + tag + el.value.slice(e);
+  el.focus(); el.selectionStart = el.selectionEnd = s + tag.length;
+  epMsgPreview();
+}
+function epMsgPreview() {
+  const el = document.getElementById('ep-cfg-msg'), prev = document.getElementById('ep-msg-preview');
+  if (!el || !prev) return;
+  const sample = {
+    '{nome}': 'Maria', '{valor}': 'R$ 97,00', '{descricao}': 'Plano mensal, julho',
+    '{link}': 'pay.elitechat.app/x7Qk2', '{codigo}': '00020126…5204000053039865802BR6304AB12'
+  };
+  let txt = el.value || '';
+  for (const k in sample) txt = txt.split(k).join(sample[k]);
+  prev.innerHTML = txt.trim()
+    ? esc(txt).replace(/\*(.+?)\*/g, '<b>$1</b>').replace(/\n/g, '<br>')
+    : '<span class="muted">Escreva a mensagem acima para ver a prévia…</span>';
+}
+async function epSaveCfg() {
+  try {
+    const body = { expiresMin: Number(ecVal('ep-cfg-exp') || 1440), notifyPaid: $('#ep-cfg-notify').checked };
+    if ($('#ep-cfg-msg')) body.autoMessage = $('#ep-cfg-msg').value;   // só se o editor estiver presente
+    const r = await api('/elitepay/settings', { method: 'PUT', body });
+    state.epInfo.settings = r.settings;
+    toast('Preferências de cobrança salvas');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ---- CHECKOUT BUILDER: página dedicada (#/elitepay/checkout) ----
+let epkState = null;
+let epkPrevStep = 1;   // etapa exibida na prévia: 1 dados · 2 pix
+const EPK_COLORS = ['#10b981', '#2563eb', '#7c3aed', '#db2777', '#ea580c', '#0891b2', '#111827'];
+
+async function renderCheckoutBuilder() {
+  $('#view').innerHTML = `<div class="page"><div class="card">${skel(6)}</div></div>`;
+  if (!state.epInfo) {
+    try { state.epInfo = await api('/elitepay'); }
+    catch (e) { $('#view').innerHTML = `<div class="page"><div class="card err">${esc(e.message)}</div></div>`; return; }
+  }
+  if (!state.epInfo.subaccount || state.epInfo.subaccount.status !== 'active') { location.hash = '#/elitepay'; return; }
+  // ?c=<id> abre um template específico; sem isso, o padrão
+  const wanted = new URLSearchParams((location.hash.split('?')[1] || '')).get('c');
+  let ck = state.epInfo.checkout || {};
+  if (wanted) {
+    try { const r = await api('/elitepay/checkouts'); ck = r.checkouts.find(c => c.id === wanted) || ck; } catch {}
+  }
+  epkCheckoutId = ck.id || '';
+  epkCheckoutName = ck.name || 'Checkout padrão';
+  epkState = {
+    banner: ck.banner || '', bannerMobile: ck.bannerMobile || '',
+    logo: ck.logo || '', logoMobile: ck.logoMobile || '',
+    title: ck.title || '', description: ck.description || '',
+    color: ck.color || '#10b981', successMsg: ck.successMsg || '', supportText: ck.supportText || '',
+    blocks: (ck.blocks && ck.blocks.length) ? ck.blocks.slice() : EPK_BLOCK_KEYS.slice(),
+    timer: Object.assign({ on: false, minutes: 15, text: 'Oferta por tempo limitado!' }, ck.timer || {}),
+    benefits: Object.assign({ on: false, title: 'O que você recebe', items: [] }, ck.benefits || {}),
+    testimonial: Object.assign({ on: false, name: '', role: '', text: '' }, ck.testimonial || {}),
+    guarantee: Object.assign({ on: false, days: 7, text: 'Garantia incondicional de {dias} dias, devolvemos 100% do valor.' }, ck.guarantee || {}),
+    faq: Object.assign({ on: false, items: [] }, ck.faq || {}),
+    notice: Object.assign({ on: false, text: '' }, ck.notice || {}),
+    badges: Object.assign({ on: true }, ck.badges || {}),
+    methods: Object.assign({ pix: true, credit: true, debit: false }, ck.methods || {})
+  };
+  epkPrevStep = 1;
+  epkSection = null;          // null = paleta de componentes (estilo Kiwify)
+  epkTab = 'comp';
+  epkDevice = 'desktop';
+  // Editor em tela cheia no formato Kiwify: canvas central grande com a página
+  // sendo montada + painel DIREITO com abas Componentes/Configurações.
+  $('#view').innerHTML = `<div class="ckb">
+    <header class="ckb-top">
+      <button class="icon-btn" title="Voltar ao Elite Pay" onclick="location.hash='#/elitepay'">${ico('arrowleft', 17)}</button>
+      <div class="brand ckb-brand">
+        <span class="brand-mark"><img src="/assets/elitechat-logo.png" alt="Elite Builder"></span>
+        <div><b class="brand-name">Elite<span class="gt2">Builder</span></b>
+          <input class="ckb-cname" id="epk-name" value="${esc(epkCheckoutName)}" maxlength="60"
+            title="Nome deste checkout" oninput="epkCheckoutName=this.value"></div>
+      </div>
+      <div class="ckb-devices" id="epk-devseg">
+        <button class="icon-btn on" data-dv="desktop" onclick="epkSetDevice('desktop')" title="Ver como computador">${ico('monitor', 16)}</button>
+        <button class="icon-btn" data-dv="mobile" onclick="epkSetDevice('mobile')" title="Ver como celular">${ico('smartphone', 16)}</button>
+      </div>
+      <span class="ckb-status" id="epk-saved"><i></i> Tudo certo!</span>
+      <div style="flex:1"></div>
+      <button class="btn primary no-grow" id="epk-save" onclick="epkSave()">${ico('save', 14)} Salvar</button>
+      <a class="btn no-grow" href="/pay/demo-${esc(state.accountId || '')}:${esc(epkCheckoutId)}" target="_blank" rel="noopener">${ico('globe', 14)} Ver página</a>
+    </header>
+    <div class="ckb-body">
+      <div class="ckb-stagewrap">
+        <div class="seg ckb-stepseg" id="epk-stepseg">
+          <button class="on" data-pv="1" onclick="epkPrevTab(1)">Etapa 1 · Dados</button>
+          <button data-pv="2" onclick="epkPrevTab(2)">Etapa 2 · Pix</button>
+        </div>
+        <div class="ckb-stage" id="epk-stage">
+          <div class="epk-browser" id="epk-browser">
+            <div class="epk-bbar"><i></i><i></i><i></i><span>elitechat.app/pay/x7Qk2</span></div>
+            <div class="epk-page" id="epk-page"></div>
+          </div>
+        </div>
+      </div>
+      <aside class="ckb-side">
+        <div class="ckb-tabs" id="epk-tabs">
+          <button class="on" data-t="comp" onclick="epkSideTab('comp')">Componentes</button>
+          <button data-t="cfg" onclick="epkSideTab('cfg')">Configurações</button>
+        </div>
+        <div class="ckb-panel" id="epk-side"></div>
+      </aside>
+    </div>
+    <input type="file" id="epk-file" accept="image/png,image/jpeg,image/webp" style="display:none">
+  </div>`;
+  epkPaintSide();
+  epkPrev();
+}
+
+// Blocos reordenáveis da página (arrastar e soltar)
+const EPK_BLOCK_KEYS = ['banner', 'timer', 'product', 'notice', 'benefits', 'testimonial', 'guarantee', 'faq'];
+const EPK_BLOCK_META = {
+  banner:      { icon: 'image',    label: 'Banner',      hint: 'Capa no topo do site' },
+  timer:       { icon: 'clock',    label: 'Cronômetro',  hint: 'Escassez / urgência' },
+  product:     { icon: 'card',     label: 'Checkout',    hint: 'Formulário e Pix (fixo)', fixed: true },
+  notice:      { icon: 'help',     label: 'Aviso',       hint: 'Faixa de destaque' },
+  benefits:    { icon: 'check',    label: 'Vantagens',   hint: 'Lista do que o cliente recebe' },
+  testimonial: { icon: 'chat2',    label: 'Depoimento',  hint: 'Prova social' },
+  guarantee:   { icon: 'shield',   label: 'Garantia',    hint: 'Selo de garantia' },
+  faq:         { icon: 'help',     label: 'FAQ',         hint: 'Perguntas frequentes' }
+};
+
+// Componentes do checkout (paleta do painel direito, estilo Kiwify)
+const EPK_SECTIONS = [
+  { key: 'marca',      icon: 'image',    label: 'Imagens',    hint: 'Logo e capa (desktop e celular)', tab: 'comp' },
+  { key: 'produto',    icon: 'sparkles', label: 'Produto',    hint: 'Nome e descrição',        tab: 'comp' },
+  { key: 'cor',        icon: 'target',   label: 'Aparência',  hint: 'Cor de destaque',         tab: 'comp' },
+  { key: 'timer',      icon: 'clock',    label: 'Cronômetro', hint: 'Urgência na oferta',      tab: 'comp' },
+  { key: 'benefits',   icon: 'check',    label: 'Vantagens',  hint: 'O que o cliente recebe',  tab: 'comp' },
+  { key: 'testimonial',icon: 'chat2',    label: 'Depoimento', hint: 'Prova social',            tab: 'comp' },
+  { key: 'guarantee',  icon: 'shield',   label: 'Garantia',   hint: 'Selo de garantia',        tab: 'comp' },
+  { key: 'faq',        icon: 'help',     label: 'FAQ',        hint: 'Perguntas frequentes',    tab: 'comp' },
+  { key: 'notice',     icon: 'help',     label: 'Aviso',      hint: 'Faixa de destaque',       tab: 'comp' },
+  { key: 'pagamento',  icon: 'card',     label: 'Pagamento',  hint: 'Pix, crédito e débito aceitos', tab: 'cfg' },
+  { key: 'ordem',      icon: 'flow',     label: 'Ordem',      hint: 'Arraste os blocos da página', tab: 'cfg' },
+  { key: 'mensagens',  icon: 'chat2',    label: 'Mensagens',  hint: 'Pós-pagamento e suporte', tab: 'cfg' },
+  { key: 'fluxo',      icon: 'zap',      label: 'Fluxo',      hint: 'Como o checkout funciona',tab: 'cfg' }
+];
+let epkSection = null;
+let epkTab = 'comp';
+let epkDevice = 'desktop';
+let epkCheckoutId = '';       // template sendo editado
+let epkCheckoutName = '';
+
+function epkSideTab(t) {
+  epkTab = t; epkSection = null;
+  $$('#epk-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  epkPaintSide();
+}
+function epkGo(k) { epkSection = k; epkPaintSide(); }
+function epkBack() { epkSection = null; epkPaintSide(); }
+
+// Painel direito: paleta de componentes OU os campos do componente aberto
+function epkPaintSide() {
+  const box = $('#epk-side'); if (!box) return;
+  if (!epkSection) {
+    const items = EPK_SECTIONS.filter(s => s.tab === epkTab);
+    // widgets arrastáveis para o canvas (os que viram blocos na página)
+    const BLOCO_DA_SECAO = { marca: 'banner', produto: 'product', timer: 'timer', benefits: 'benefits', testimonial: 'testimonial', guarantee: 'guarantee', faq: 'faq', notice: 'notice' };
+    box.innerHTML = `<div class="ckb-grp">${epkTab === 'comp' ? 'Componentes' : 'Configurações'}</div>
+      ${epkTab === 'comp' ? `<p class="muted" style="font-size:11.5px;margin:-4px 2px 10px">${ico('menu', 11)} Arraste um componente para a página ao lado, ou clique para configurar.</p>` : ''}
+      <div class="ckb-comps">${items.map(s => {
+        const blk = BLOCO_DA_SECAO[s.key];
+        return `<button class="ckb-comp${blk ? ' drag' : ''}" onclick="epkGo('${s.key}')" title="${blk ? 'Arraste para a página ou clique para configurar' : s.hint}"
+          ${blk ? `draggable="true" ondragstart="epkPalDrag(event,'${blk}')" ondragend="epkCanvasEnd()"` : ''}>
+          <span class="ic">${ico(s.icon, 20)}</span><b>${s.label}</b>
+        </button>`;
+      }).join('')}</div>
+      ${epkTab === 'cfg' ? `<a class="card link-card" style="margin-top:14px" href="#/elitepay">
+        <span class="lc-ic">${ico('gear', 18)}</span>
+        <div style="flex:1"><h2 style="margin:0 0 2px;font-size:13.5px">Preferências de cobrança</h2>
+        <p class="muted" style="margin:0;font-size:12px">Validade do Pix e confirmação automática</p></div>
+        <span class="lc-arrow">${ico('arrowright', 15)}</span></a>` : ''}`;
+  } else {
+    epkPaintForm();
+    epkPaintThumbs();
+  }
+}
+function epkSetDevice(d) {
+  epkDevice = d;
+  $$('#epk-devseg button').forEach(b => b.classList.toggle('on', b.dataset.dv === d));
+  const st = $('#epk-stage'); if (st) st.classList.toggle('mobile', d === 'mobile');
+}
+
+// Campos do componente aberto (renderizados no painel direito)
+function epkPaintForm() {
+  const box = $('#epk-side'); if (!box) return;
+  const ck = epkState;
+  const sec = EPK_SECTIONS.find(s => s.key === epkSection) || EPK_SECTIONS[0];
+  let body = '';
+
+  // uploader reutilizável (cada imagem tem o seu tamanho recomendado)
+  const up = (kind, titulo, dim, nota) => `
+    <span class="fb-sub" style="margin-top:14px">${titulo} <span class="muted">(${dim})</span></span>
+    <div class="epk-upload" id="epk-up-${kind}" onclick="epkPickImg('${kind}')">
+      <div class="epk-thumb epk-thumb-${kind.startsWith('banner') ? 'banner' : 'logo'}" id="epk-th-${kind}"></div>
+      <div class="epk-upmeta"><b id="epk-lbl-${kind}"></b><span class="muted">${nota} · clique para ${ck[kind] ? 'trocar' : 'enviar'}</span></div>
+      <button class="btn small danger" id="epk-rm-${kind}" style="display:none" onclick="event.stopPropagation();epkRemoveImg('${kind}')">${ico('trash', 13)}</button>
+    </div>`;
+
+  if (epkSection === 'marca') {
+    body = `
+      <div class="ckb-devgrp">${ico('monitor', 13)} Computador</div>
+      ${up('logo', 'Logo do produto', 'quadrada · 512×512 px', 'Marca no topo e miniatura no resumo')}
+      ${up('banner', 'Banner / capa', 'larga · 1200×360 px', 'Aparece no header do site, abaixo da marca')}
+      <div class="ckb-devgrp" style="margin-top:18px">${ico('smartphone', 13)} Celular</div>
+      ${up('logoMobile', 'Logo do produto', 'quadrada · 256×256 px', 'Opcional, sem ela usamos a de computador')}
+      ${up('bannerMobile', 'Banner / capa', 'vertical · 800×500 px', 'Opcional, enquadramento próprio p/ telas estreitas')}
+      <p class="hint" style="margin-top:16px">${ico('shield', 12)} Envie PNG, JPG ou WebP. As imagens são <b>redimensionadas e comprimidas automaticamente</b> para o tamanho ideal, você só precisa mandar a maior versão que tiver.</p>`;
+  } else if (epkSection === 'timer') {
+    body = `
+      <label class="chk"><input type="checkbox" ${ck.timer.on ? 'checked' : ''} onchange="epkState.timer.on=this.checked;epkPrev()"> Exibir cronômetro de oferta</label>
+      <label style="margin-top:12px;display:block">Texto
+        <input maxlength="120" value="${esc(ck.timer.text)}" placeholder="Oferta por tempo limitado!" oninput="epkState.timer.text=this.value;epkPrev()"></label>
+      <label style="margin-top:10px;display:block">Duração (minutos)
+        <input type="number" min="1" max="1440" value="${ck.timer.minutes}" oninput="epkState.timer.minutes=+this.value||15;epkPrev()"></label>
+      <p class="hint" style="margin-top:12px">A contagem começa quando o cliente abre a página e continua se ele recarregar.</p>`;
+  } else if (epkSection === 'benefits') {
+    body = `
+      <label class="chk"><input type="checkbox" ${ck.benefits.on ? 'checked' : ''} onchange="epkState.benefits.on=this.checked;epkPrev()"> Exibir lista de vantagens</label>
+      <label style="margin-top:12px;display:block">Título da lista
+        <input maxlength="80" value="${esc(ck.benefits.title)}" placeholder="O que você recebe" oninput="epkState.benefits.title=this.value;epkPrev()"></label>
+      <span class="fb-sub" style="margin-top:14px">Itens</span>
+      <div id="epk-benef-list">${epkListRows('benefits')}</div>
+      <button class="btn small" style="margin-top:8px" onclick="epkAddItem('benefits')">${ico('plus', 12)} Adicionar vantagem</button>`;
+  } else if (epkSection === 'testimonial') {
+    body = `
+      <label class="chk"><input type="checkbox" ${ck.testimonial.on ? 'checked' : ''} onchange="epkState.testimonial.on=this.checked;epkPrev()"> Exibir depoimento</label>
+      <label style="margin-top:12px;display:block">Depoimento
+        <textarea rows="4" maxlength="400" placeholder="Melhor investimento que fiz esse ano…" oninput="epkState.testimonial.text=this.value;epkPrev()">${esc(ck.testimonial.text)}</textarea></label>
+      <div class="row" style="margin-top:10px">
+        <label style="flex:1">Nome<input maxlength="60" value="${esc(ck.testimonial.name)}" placeholder="Maria S." oninput="epkState.testimonial.name=this.value;epkPrev()"></label>
+        <label style="flex:1">Cargo<input maxlength="60" value="${esc(ck.testimonial.role)}" placeholder="Empreendedora" oninput="epkState.testimonial.role=this.value;epkPrev()"></label>
+      </div>`;
+  } else if (epkSection === 'guarantee') {
+    body = `
+      <label class="chk"><input type="checkbox" ${ck.guarantee.on ? 'checked' : ''} onchange="epkState.guarantee.on=this.checked;epkPrev()"> Exibir selo de garantia</label>
+      <label style="margin-top:12px;display:block">Dias de garantia
+        <input type="number" min="1" max="365" value="${ck.guarantee.days}" oninput="epkState.guarantee.days=+this.value||7;epkPrev()"></label>
+      <label style="margin-top:10px;display:block">Texto <span class="muted">(use {dias})</span>
+        <textarea rows="3" maxlength="240" oninput="epkState.guarantee.text=this.value;epkPrev()">${esc(ck.guarantee.text)}</textarea></label>`;
+  } else if (epkSection === 'faq') {
+    body = `
+      <label class="chk"><input type="checkbox" ${ck.faq.on ? 'checked' : ''} onchange="epkState.faq.on=this.checked;epkPrev()"> Exibir perguntas frequentes</label>
+      <div id="epk-faq-list" style="margin-top:12px">${epkFaqRows()}</div>
+      <button class="btn small" style="margin-top:8px" onclick="epkAddFaq()">${ico('plus', 12)} Adicionar pergunta</button>`;
+  } else if (epkSection === 'notice') {
+    body = `
+      <label class="chk"><input type="checkbox" ${ck.notice.on ? 'checked' : ''} onchange="epkState.notice.on=this.checked;epkPrev()"> Exibir faixa de aviso</label>
+      <label style="margin-top:12px;display:block">Mensagem
+        <textarea rows="3" maxlength="200" placeholder="Ex.: O acesso é liberado em até 5 minutos após o pagamento." oninput="epkState.notice.text=this.value;epkPrev()">${esc(ck.notice.text)}</textarea></label>
+      <label class="chk" style="margin-top:14px"><input type="checkbox" ${ck.badges.on ? 'checked' : ''} onchange="epkState.badges.on=this.checked;epkPrev()"> Exibir selos de segurança no rodapé</label>`;
+  } else if (epkSection === 'pagamento') {
+    const cap = (state.epInfo && state.epInfo.card) || { ready: false, credit: false, debit: false };
+    const m = ck.methods;
+    // linha de toggle: se o método não está liberado, trava e explica por quê
+    const linha = (key, titulo, sub, liberado, motivo) => `
+      <label class="chk epk-payrow${liberado ? '' : ' off'}">
+        <input type="checkbox" ${m[key] && liberado ? 'checked' : ''} ${liberado ? '' : 'disabled'}
+          onchange="epkState.methods.${key}=this.checked;epkPrev()">
+        <span><b>${titulo}</b><em>${liberado ? sub : motivo}</em></span>
+      </label>`;
+    const setupLink = `<a href="#/elitepay" onclick="location.hash='#/elitepay';setTimeout(()=>epTab&&epTab('card'),120)">Configure a conta de cartão</a>`;
+    body = `
+      <p class="muted" style="font-size:13px;margin:0 0 14px">Escolha o que este checkout aceita. O cliente vê só os métodos ligados.</p>
+      ${linha('pix', 'Pix', 'Aprovação na hora, menor taxa', true, '')}
+      ${linha('credit', 'Cartão de crédito', 'Parcelável, aprovação imediata', cap.credit,
+        cap.ready ? 'Crédito não liberado pela plataforma' : `Indisponível, ${setupLink}`)}
+      ${linha('debit', 'Cartão de débito', 'À vista no cartão', cap.debit,
+        cap.ready ? 'Débito exige o adquirente Pagar.me' : `Indisponível, ${setupLink}`)}
+      <p class="hint" style="margin-top:14px">${ico('shield', 12)} O dinheiro do cartão cai direto na <b>sua</b> conta do adquirente, o EliteChat só intermedeia.</p>`;
+  } else if (epkSection === 'ordem') {
+    body = `
+      <p class="muted" style="font-size:13px;margin:0 0 12px">Arraste para reordenar os blocos da página. O bloco <b>Checkout</b> é fixo, mas pode mudar de posição.</p>
+      <div class="ckb-order" id="epk-order">${epkOrderRows()}</div>
+      <button class="btn small" style="margin-top:12px" onclick="epkResetOrder()">${ico('arrowleft', 12)} Restaurar ordem padrão</button>`;
+  } else if (epkSection === 'produto') {
+    body = `
+      <label style="display:block">Nome do produto / título
+        <input id="epk-title" maxlength="80" placeholder="Ex.: Mentoria Elite. Plano Mensal" value="${esc(ck.title)}" oninput="epkState.title=this.value;epkPrev()"></label>
+      <label style="margin-top:12px;display:block">Descrição
+        <textarea id="epk-desc" rows="5" maxlength="600" placeholder="O que o cliente está pagando? Benefícios, condições, o que acontece após o pagamento…" oninput="epkState.description=this.value;epkPrev()">${esc(ck.description)}</textarea></label>
+      <p class="hint" style="margin-top:12px">Aparece no card de <b>Resumo do pedido</b>, ao lado da miniatura.</p>`;
+  } else if (epkSection === 'cor') {
+    body = `
+      <span class="fb-sub">Cor de destaque</span>
+      <p class="muted" style="font-size:13px;margin:0 0 10px">Usada no botão principal, no selo do Pix e nos destaques da página.</p>
+      <div class="epk-colors" id="epk-colors">
+        ${EPK_COLORS.map(c => `<button class="epk-swatch${c === ck.color ? ' on' : ''}" data-c="${c}" style="background:${c}" onclick="epkSetColor('${c}')"></button>`).join('')}
+        <input type="color" id="epk-colorpick" value="${esc(ck.color)}" title="Cor personalizada" oninput="epkSetColor(this.value)">
+      </div>
+      <p class="hint" style="margin-top:14px">${ico('shield', 12)} O contraste do texto do botão é ajustado sozinho conforme a cor escolhida.</p>`;
+  } else if (epkSection === 'mensagens') {
+    body = `
+      <label style="display:block">Mensagem após o pagamento <span class="muted">(opcional)</span>
+        <input id="epk-success" maxlength="300" placeholder="Ex.: Pagamento confirmado! Seu acesso chega no WhatsApp em instantes 🎉" value="${esc(ck.successMsg)}" oninput="epkState.successMsg=this.value"></label>
+      <label style="margin-top:12px;display:block">Suporte / rodapé <span class="muted">(opcional)</span>
+        <input id="epk-support" maxlength="200" placeholder="Ex.: Dúvidas? Chame no WhatsApp (11) 99999-9999" value="${esc(ck.supportText)}" oninput="epkState.supportText=this.value;epkPrev()"></label>
+      <p class="hint" style="margin-top:12px">A mensagem de sucesso aparece na tela de confirmação, veja em <b>Ver página real</b> com <code>?s=paid</code>.</p>`;
+  } else {
+    body = `
+      <div class="epk-flowsteps">
+        <div><i>1</i><span><b>Identificação</b>, o cliente preenche nome, CPF/CNPJ, e-mail e WhatsApp</span></div>
+        <div><i>2</i><span><b>Automático</b>, vira <b>cliente na Woovi</b>, <b>contato</b> no EliteChat e entra no <b>funil</b></span></div>
+        <div><i>3</i><span><b>Pagamento</b>. QR Code + copia e cola; ao pagar, o contato vai para <b>Ganho</b> com a tag <b>Cliente</b></span></div>
+      </div>
+      <p class="hint" style="margin-top:14px">${ico('shield', 12)} Tudo isso acontece sem você fazer nada, é só enviar o link da cobrança.</p>`;
+  }
+
+  box.innerHTML = `
+    <button class="ckb-back" onclick="epkBack()">${ico('arrowleft', 13)} ${epkTab === 'comp' ? 'Componentes' : 'Configurações'}</button>
+    <div class="ckb-sechead"><h2>${ico(sec.icon, 16)} ${sec.label}</h2><p>${sec.hint}</p></div>
+    ${body}`;
+}
+
+function epkPrevTab(n) {
+  epkPrevStep = n;
+  $$('#epk-stepseg button').forEach(b => b.classList.toggle('on', b.dataset.pv == n));
+  epkPrev();
+}
+
+function epkPaintThumbs() {
+  const LBL = {
+    banner: ['Banner enviado', 'Nenhum banner'], bannerMobile: ['Banner do celular enviado', 'Nenhum banner de celular'],
+    logo: ['Logo enviada', 'Nenhuma logo'], logoMobile: ['Logo do celular enviada', 'Nenhuma logo de celular']
+  };
+  ['banner', 'bannerMobile', 'logo', 'logoMobile'].forEach(k => {
+    const th = $('#epk-th-' + k), lbl = $('#epk-lbl-' + k), rm = $('#epk-rm-' + k);
+    if (!th) return;
+    if (epkState[k]) {
+      th.style.backgroundImage = `url(${epkState[k]})`; th.classList.add('has');
+      lbl.textContent = LBL[k][0]; rm.style.display = '';
+    } else {
+      th.style.backgroundImage = ''; th.classList.remove('has');
+      th.innerHTML = ico('image', 20);
+      lbl.textContent = LBL[k][1]; rm.style.display = 'none';
+    }
+  });
+}
+
+// ---- listas simples (vantagens) ----
+function epkListRows(key) {
+  return (epkState[key].items || []).map((v, i) => `
+    <div class="epk-item">
+      <input value="${esc(v)}" maxlength="120" placeholder="Ex.: Acesso vitalício ao conteúdo"
+        oninput="epkState.${key}.items[${i}]=this.value;epkPrev()">
+      <button class="btn small danger" onclick="epkDelItem('${key}',${i})">${ico('trash', 12)}</button>
+    </div>`).join('') || '<p class="muted" style="font-size:12.5px">Nenhum item ainda.</p>';
+}
+function epkAddItem(key) { epkState[key].items.push(''); epkPaintForm(); epkPrev(); }
+function epkDelItem(key, i) { epkState[key].items.splice(i, 1); epkPaintForm(); epkPrev(); }
+
+// ---- FAQ (pergunta + resposta) ----
+function epkFaqRows() {
+  return (epkState.faq.items || []).map((it, i) => `
+    <div class="epk-faqrow">
+      <div class="row" style="align-items:center">
+        <input style="flex:1" value="${esc(it.q)}" maxlength="140" placeholder="Pergunta" oninput="epkState.faq.items[${i}].q=this.value;epkPrev()">
+        <button class="btn small danger no-grow" onclick="epkDelFaq(${i})">${ico('trash', 12)}</button>
+      </div>
+      <textarea rows="2" maxlength="500" placeholder="Resposta" oninput="epkState.faq.items[${i}].a=this.value;epkPrev()">${esc(it.a)}</textarea>
+    </div>`).join('') || '<p class="muted" style="font-size:12.5px">Nenhuma pergunta ainda.</p>';
+}
+function epkAddFaq() { epkState.faq.items.push({ q: '', a: '' }); epkPaintForm(); epkPrev(); }
+function epkDelFaq(i) { epkState.faq.items.splice(i, 1); epkPaintForm(); epkPrev(); }
+
+// ---- ordem dos blocos: ARRASTAR E SOLTAR ----
+function epkOrderRows() {
+  return epkState.blocks.map((k, i) => {
+    const m = EPK_BLOCK_META[k] || { icon: 'square', label: k, hint: '' };
+    const ativo = k === 'product' || k === 'banner'
+      ? (k === 'banner' ? !!(epkState.banner || epkState.bannerMobile) : true)
+      : !!(epkState[k] && epkState[k].on);
+    return `<div class="ckb-orow" draggable="true" data-k="${k}" data-i="${i}"
+        ondragstart="epkDragStart(event)" ondragover="epkDragOver(event)" ondrop="epkDrop(event)" ondragend="epkDragEnd(event)">
+      <span class="ckb-grip">${ico('menu', 14)}</span>
+      <span class="ckb-oic">${ico(m.icon, 15)}</span>
+      <span class="ckb-otxt"><b>${m.label}</b><small>${m.hint}</small></span>
+      <span class="ckb-odot ${ativo ? 'on' : ''}" title="${ativo ? 'Visível na página' : 'Oculto, ative na aba do componente'}"></span>
+    </div>`;
+  }).join('');
+}
+// ===== ARRASTA-E-SOLTA NO CANVAS DO CHECKOUT =====
+// Origem pode ser a PALETA (adiciona o widget) ou um bloco já na página (move).
+let _epkCanvasDrag = null;
+
+function epkPalDrag(e, key) {
+  _epkCanvasDrag = key;
+  e.dataTransfer.effectAllowed = 'copy';
+  try { e.dataTransfer.setData('text/plain', key); } catch {}
+  const c = $('#epk-canvas'); if (c) c.classList.add('dropping');
+}
+function epkCanvasDragStart(e) {
+  _epkCanvasDrag = e.currentTarget.dataset.blk;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', _epkCanvasDrag); } catch {}
+  e.stopPropagation();
+  const c = $('#epk-canvas'); if (c) c.classList.add('dropping');
+}
+function epkCanvasOver(e) {
+  if (!_epkCanvasDrag) return;
+  e.preventDefault(); e.stopPropagation();
+  e.dataTransfer.dropEffect = 'move';
+  const alvo = e.target.closest('.epk2-drop');
+  $$('#epk-canvas .epk2-drop').forEach(d => d.classList.remove('over-before', 'over-after'));
+  if (!alvo || alvo.dataset.blk === _epkCanvasDrag) return;
+  const r = alvo.getBoundingClientRect();
+  alvo.classList.add(e.clientY > r.top + r.height / 2 ? 'over-after' : 'over-before');
+}
+function epkCanvasDrop(e) {
+  if (!_epkCanvasDrag) return;
+  e.preventDefault(); e.stopPropagation();
+  const key = _epkCanvasDrag;
+  const alvo = e.target.closest('.epk2-drop');
+  const arr = epkState.blocks.filter(x => x !== key);
+  if (alvo && alvo.dataset.blk !== key) {
+    const r = alvo.getBoundingClientRect();
+    const at = arr.indexOf(alvo.dataset.blk) + (e.clientY > r.top + r.height / 2 ? 1 : 0);
+    arr.splice(at, 0, key);
+  } else {
+    arr.push(key);                       // soltou no vazio → vai para o fim
+  }
+  epkState.blocks = arr;
+  // arrastar da paleta LIGA o widget automaticamente
+  if (epkState[key] && typeof epkState[key] === 'object' && 'on' in epkState[key] && !epkState[key].on) {
+    epkState[key].on = true;
+    toast(`"${(EPK_BLOCK_META[key] || {}).label || key}" adicionado, configure ao lado`);
+  }
+  epkCanvasEnd();
+  epkPrev();
+  if (epkSection === 'ordem') epkPaintForm();
+}
+function epkCanvasEnd() {
+  _epkCanvasDrag = null;
+  const c = $('#epk-canvas'); if (c) c.classList.remove('dropping');
+  $$('#epk-canvas .epk2-drop').forEach(d => d.classList.remove('dragging', 'over-before', 'over-after'));
+}
+// clicar num bloco do canvas abre os campos dele no painel direito
+function epkOpenBlock(k) {
+  if (_epkCanvasDrag) return;
+  const sec = EPK_SECTIONS.find(s => s.key === (k === 'banner' ? 'marca' : k === 'product' ? 'produto' : k));
+  if (!sec) return;
+  epkTab = sec.tab;
+  $$('#epk-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === epkTab));
+  epkGo(sec.key);
+}
+
+let _epkDrag = null;
+function epkDragStart(e) {
+  _epkDrag = e.currentTarget.dataset.k;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', _epkDrag); } catch {}
+}
+function epkDragOver(e) {
+  e.preventDefault();
+  const row = e.currentTarget;
+  if (!_epkDrag || row.dataset.k === _epkDrag) return;
+  const r = row.getBoundingClientRect();
+  row.classList.toggle('drop-after', e.clientY > r.top + r.height / 2);
+  row.classList.toggle('drop-before', e.clientY <= r.top + r.height / 2);
+}
+function epkDrop(e) {
+  e.preventDefault();
+  const row = e.currentTarget, alvo = row.dataset.k;
+  if (!_epkDrag || alvo === _epkDrag) return;
+  const depois = row.classList.contains('drop-after');
+  const arr = epkState.blocks.filter(x => x !== _epkDrag);
+  const at = arr.indexOf(alvo) + (depois ? 1 : 0);
+  arr.splice(at, 0, _epkDrag);
+  epkState.blocks = arr;
+  epkPaintForm(); epkPrev();
+}
+function epkDragEnd() {
+  _epkDrag = null;
+  $$('.ckb-orow').forEach(r => r.classList.remove('dragging', 'drop-before', 'drop-after'));
+}
+function epkResetOrder() { epkState.blocks = EPK_BLOCK_KEYS.slice(); epkPaintForm(); epkPrev(); }
+
+function epkSetColor(c) {
+  epkState.color = c;
+  $$('#epk-colors .epk-swatch').forEach(b => b.classList.toggle('on', b.dataset.c === c));
+  const p = $('#epk-colorpick'); if (p && p.value !== c) p.value = c;
+  epkPrev();
+}
+
+// Upload → redimensiona no canvas (header 1200px / logo 512px) e comprime.
+function epkPickImg(kind) {
+  const inp = $('#epk-file'); if (!inp) return;
+  inp.onchange = () => {
+    const f = inp.files && inp.files[0]; inp.value = '';
+    if (!f) return;
+    // largura máxima por tipo de imagem (mesma recomendação mostrada ao usuário)
+    const MAXW = { banner: 1200, bannerMobile: 800, logo: 512, logoMobile: 256 };
+    const maxW = MAXW[kind] || 512;
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxW / img.width);
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(img.width * scale); cv.height = Math.round(img.height * scale);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      // logo mantém transparência (PNG); banner vira JPEG comprimido
+      let out = (kind.startsWith('logo') && f.type === 'image/png') ? cv.toDataURL('image/png') : cv.toDataURL('image/jpeg', .85);
+      if (out.length > 800 * 1024) out = cv.toDataURL('image/jpeg', .6);
+      if (out.length > 800 * 1024) return toast('Imagem muito grande mesmo comprimida, use uma menor', 'error');
+      URL.revokeObjectURL(img.src);
+      epkState[kind] = out;
+      epkPaintThumbs(); epkPrev();
+    };
+    img.onerror = () => toast('Não foi possível ler a imagem', 'error');
+    img.src = URL.createObjectURL(f);
+  };
+  inp.click();
+}
+function epkRemoveImg(kind) { epkState[kind] = ''; epkPaintThumbs(); epkPrev(); }
+
+// Prévia ao vivo — réplica fiel da página /pay/:id (modelo card em 2 colunas do Figma)
+function epkPrev() {
+  const el = $('#epk-page'); if (!el || !epkState) return;
+  const s = epkState;
+  const merchant = (state.epInfo && state.epInfo.subaccount && state.epInfo.subaccount.name) || '';
+  const name = s.title || 'Pagamento Pix';
+  const initial = (merchant || name).trim().charAt(0).toUpperCase();
+  el.style.setProperty('--epkc', s.color);
+
+  // imagens do dispositivo em pré-visualização (desktop/celular)
+  const mob = epkDevice === 'mobile';
+  const logoU = (mob && s.logoMobile) ? s.logoMobile : (s.logo || s.logoMobile || '');
+  const bannerU = (mob && s.bannerMobile) ? s.bannerMobile : (s.banner || s.bannerMobile || '');
+  const showBanner = bannerU && s.blocks.indexOf('banner') >= 0;
+
+  const topbar = `
+    <div class="epk2-topbar">
+      <div class="epk2-brand">
+        ${logoU ? `<img src="${esc(logoU)}">` : `<span class="ph">${esc(initial)}</span>`}
+        <div><b>${esc(merchant || name)}</b><small>Pagamento via Pix</small></div>
+      </div>
+      <span class="epk2-secure">${ico('lock', 10)} Compra segura</span>
+    </div>
+    ${showBanner ? `<img class="epk2-headbanner" src="${esc(bannerU)}">` : ''}`;
+
+  const steps = cur => `<div class="epk2-steps">
+    <span class="epk2-stp ${cur > 1 ? 'done' : 'cur'}"><i>${cur > 1 ? '✓' : '1'}</i>Identificação</span>
+    <span class="epk2-stpsep ${cur > 1 ? 'done' : ''}"></span>
+    <span class="epk2-stp ${cur === 2 ? 'cur' : ''}"><i>2</i>Pagamento</span></div>`;
+
+  const summary = cta => `
+    <div class="epk2-summary">
+      <div class="epk2-sumhead">Resumo do pedido</div>
+      <div class="epk2-prod">
+        ${logoU ? `<img class="epk2-thumb" src="${esc(logoU)}">` : `<div class="epk2-thumb ph">${esc(initial)}</div>`}
+        <div class="epk2-pinfo"><b>${esc(name)}</b>${s.description ? `<span>${esc(s.description.length > 46 ? s.description.slice(0, 46) + '…' : s.description)}</span>` : ''}</div>
+      </div>
+      <div class="epk2-rows">
+        <div class="epk2-row"><span>Subtotal</span><span>R$ 97,00</span></div>
+        <div class="epk2-row"><span>Taxas</span><span>Grátis</span></div>
+        <div class="epk2-row total"><span>Total</span><span>R$ 97,00</span></div>
+      </div>
+      ${cta}
+    </div>`;
+
+  const step1main = `
+    <div class="epk2-main">${steps(1)}
+      <div class="epk2-mtitle">Seus dados</div>
+      <div class="epk2-msub">Preencha para gerar o seu Pix.</div>
+      ${[['Nome completo', 'Maria Souza', 1], ['CPF ou CNPJ', '529.982.247-25', 1], ['E-mail', 'voce@email.com', 0], ['Celular / WhatsApp', '(11) 91234-5678', 0]]
+        .map(([l, v, f]) => `<div class="epk2-fld"><small>${l}</small><span class="${f ? 'filled' : ''}">${v}</span></div>`).join('')}
+    </div>`;
+
+  const qr = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm2 2v4h4V5H5zm8-2h8v8h-8V3zm2 2v4h4V5h-4zM3 13h8v8H3v-8zm2 2v4h4v-4H5zm10-2h2v2h-2v-2zm4 0h2v2h-2v-2zm-4 4h2v2h-2v-2zm4 4h2v2h-2v-2zm-4 0h2v2h-2v-2zm4-4h2v2h-2v-2z"/></svg>';
+  const step2main = `
+    <div class="epk2-main">${steps(2)}
+      <div class="epk2-mtitle">Pague com Pix</div>
+      <div class="epk2-msub">Aprovação na hora, confirma sozinho.</div>
+      <div class="epk2-chip">Pagando como <b>&nbsp;Maria Souza</b></div>
+      <div class="epk2-qrwrap"><div class="epk2-qrframe">${qr}</div>
+        <div class="epk2-qrside"><b>Escaneie para pagar</b><span>1. Abra o Pix no seu banco</span><span>2. Aponte para o QR Code</span><span>3. Confirme na hora</span></div></div>
+      <div class="epk2-orlbl">OU COPIA E COLA</div>
+      <div class="epk2-copy">00020126580014BR.GOV.BCB.PIX0136…</div>
+    </div>`;
+
+  const step1cta = `<div class="epk2-btn">Continuar para o pagamento</div><div class="epk2-note">${ico('lock', 10)} Pagamento 100% seguro</div>`;
+  const step2cta = `<div class="epk2-wait"><i></i> Aguardando pagamento</div>`;
+
+  // ---- blocos opcionais na prévia (mesma ordem/regras da página real) ----
+  const bTimer = () => s.timer.on ? `<div class="epk2-blk epk2-timer">${ico('clock', 11)} ${esc(s.timer.text || 'Oferta por tempo limitado!')}
+      <span class="epk2-clock"><i>${String(s.timer.minutes || 15).padStart(2, '0')}</i><i>00</i></span></div>` : '';
+  const bNotice = () => (s.notice.on && s.notice.text) ? `<div class="epk2-blk epk2-notice">${ico('help', 11)} ${esc(s.notice.text)}</div>` : '';
+  const bBenef = () => (s.benefits.on && s.benefits.items.filter(Boolean).length)
+    ? `<div class="epk2-blk"><b class="epk2-blkt">${esc(s.benefits.title || 'O que você recebe')}</b>
+       ${s.benefits.items.filter(Boolean).map(i => `<div class="epk2-bitem">${ico('check', 11)} ${esc(i)}</div>`).join('')}</div>` : '';
+  const bTesti = () => (s.testimonial.on && s.testimonial.text)
+    ? `<div class="epk2-blk epk2-testi"><span class="av">${esc((s.testimonial.name || 'C').charAt(0).toUpperCase())}</span>
+       <div><div class="st">★★★★★</div><p>“${esc(s.testimonial.text)}”</p>${s.testimonial.name ? `<b>${esc(s.testimonial.name)}</b>` : ''}</div></div>` : '';
+  const bGuar = () => s.guarantee.on
+    ? `<div class="epk2-blk epk2-guar">${ico('shield', 18)}<div><b>Garantia de ${s.guarantee.days || 7} dias</b>
+       <span>${esc((s.guarantee.text || '').replace('{dias}', s.guarantee.days || 7))}</span></div></div>` : '';
+  const bFaq = () => (s.faq.on && s.faq.items.filter(i => i.q).length)
+    ? `<div class="epk2-blk"><b class="epk2-blkt">Perguntas frequentes</b>
+       ${s.faq.items.filter(i => i.q).map(i => `<div class="epk2-faq">${esc(i.q)} <em>+</em></div>`).join('')}</div>` : '';
+  const BLK = { timer: bTimer, notice: bNotice, benefits: bBenef, testimonial: bTesti, guarantee: bGuar, faq: bFaq };
+
+  const mainCard = epkPrevStep === 2 ? step2main : step1main;
+
+  // ---- CANVAS ARRASTA-E-SOLTA: cada bloco vira alvo posicionável ----
+  // Widgets desligados aparecem como "fantasma" para o usuário ver onde ficam
+  // e poder arrastá-los; arrastar da paleta para cá insere na posição do mouse.
+  const vazio = (k) => {
+    const m = EPK_BLOCK_META[k] || {};
+    return `<div class="epk2-ghost">${ico(m.icon || 'square', 12)} ${m.label || k}
+      <em>arraste para posicionar · clique para configurar</em></div>`;
+  };
+  const wrap = (k, html, fixo) => `<div class="epk2-drop${fixo ? ' fixed' : ''}${html ? '' : ' off'}" data-blk="${k}"
+      draggable="true" ondragstart="epkCanvasDragStart(event)" ondragover="epkCanvasOver(event)"
+      ondrop="epkCanvasDrop(event)" ondragend="epkCanvasEnd(event)"
+      onclick="epkOpenBlock('${k}')" title="${fixo ? 'Checkout (fixo, mas pode mudar de posição)' : 'Arraste para reposicionar'}">
+      <span class="epk2-handle">${ico('menu', 11)}</span>
+      ${html || vazio(k)}
+    </div>`;
+
+  let coluna = '';
+  for (const k of s.blocks) {
+    if (k === 'banner') continue;                  // banner vive no header do site
+    if (k === 'product') coluna += wrap(k, mainCard, true);
+    else coluna += wrap(k, BLK[k] ? BLK[k]() : '');
+  }
+  if (s.blocks.indexOf('product') < 0) coluna += wrap('product', mainCard, true);
+
+  const selos = s.badges.on ? `<div class="epk2-badges">
+      <span>${ico('lock', 9)} Ambiente seguro</span><span>${ico('shield', 9)} Dados protegidos</span></div>` : '';
+
+  el.innerHTML = topbar + `<div class="epk2-grid">` +
+    `<div class="epk2-col" id="epk-canvas" ondragover="epkCanvasOver(event)" ondrop="epkCanvasDrop(event)">${coluna}</div>` +
+    summary(epkPrevStep === 2 ? step2cta : step1cta) +
+    `</div>` + selos + (s.supportText ? `<div class="epk2-support">${esc(s.supportText)}</div>` : '');
+}
+
+async function epkSave() {
+  const btn = $('#epk-save'); if (btn) btn.disabled = true;
+  try {
+    const r = await api('/elitepay/checkout', { method: 'PUT', body: { ...epkState, id: epkCheckoutId, name: epkCheckoutName } });
+    state.epInfo.checkout = r.checkout;
+    const s = $('#epk-saved');
+    if (s) { s.innerHTML = '<i></i> ✓ Salvo agora'; setTimeout(() => { if ($('#epk-saved')) $('#epk-saved').innerHTML = '<i></i> Tudo certo!'; }, 2600); }
+    toast('Checkout salvo! Seus links de cobrança já usam o novo visual 🎨');
+  } catch (e) { toast(e.message, 'error'); }
+  finally { if ($('#epk-save')) $('#epk-save').disabled = false; }
+}
+
+// ---- PRODUTOS (Elite Pay → Produtos): preenchem as variáveis do checkout ----
+async function epPaintProducts(box) {
+  box.innerHTML = skel(4);
+  let d;
+  try { d = await api('/elitepay/products'); } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
+  state.epProducts = d.products; state.epCheckouts = d.checkouts;
+  box.innerHTML = `
+    <div class="card">
+      <div class="row" style="align-items:center;margin-bottom:4px">
+        <h2 style="flex:1;margin:0">${ico('sparkles')} Produtos</h2>
+        <button class="btn primary no-grow" onclick="epProdForm(null)">${ico('plus', 14)} Novo produto</button>
+      </div>
+      <p class="muted" style="margin:0 0 14px;font-size:13px">O produto preenche as <b>variáveis</b> do checkout: nome, descrição e imagens. Na cobrança você escolhe o produto e o layout.</p>
+      <div id="ep-prod-form"></div>
+      ${d.products.length ? `<div style="overflow-x:auto"><table><thead><tr><th>Produto</th><th>Preço</th><th>Checkout</th><th></th></tr></thead><tbody>
+        ${d.products.map(p => `<tr>
+          <td><div class="cell-user">${p.logo ? `<img class="avatar sm" src="${esc(p.logo)}" style="object-fit:cover">` : `<div class="avatar sm">${esc((p.name || '?').charAt(0).toUpperCase())}</div>`}
+            <div><b>${esc(p.name)}</b>${p.description ? `<div class="muted" style="font-size:11.5px">${esc(p.description.slice(0, 46))}</div>` : ''}</div></div></td>
+          <td><b>${p.price ? fmtBRL(p.price) : '<span class="muted">livre</span>'}</b></td>
+          <td class="muted">${esc((d.checkouts.find(c => c.id === p.checkoutId) || {}).name || 'padrão')}</td>
+          <td style="text-align:right;white-space:nowrap">
+            <button class="btn small" onclick="epProdForm('${p.id}')">${ico('edit', 13)}</button>
+            <button class="btn small danger" onclick="epProdDel('${p.id}')">${ico('trash', 13)}</button>
+          </td></tr>`).join('')}
+      </tbody></table></div>` : '<p class="muted">Nenhum produto ainda, crie o primeiro para agilizar suas cobranças.</p>'}
+    </div>`;
+}
+function epProdForm(id) {
+  const p = (state.epProducts || []).find(x => x.id === id) || { name: '', description: '', price: 0, checkoutId: '', logo: '', banner: '' };
+  window._epProd = id || null;
+  window._epProdImgs = { logo: p.logo || '', logoMobile: p.logoMobile || '', banner: p.banner || '', bannerMobile: p.bannerMobile || '' };
+  const cks = state.epCheckouts || [];
+  $('#ep-prod-form').innerHTML = `<div class="card px-editor" style="margin-bottom:14px">
+    <div class="row" style="align-items:center;margin-bottom:6px">
+      <h2 style="flex:1;margin:0;font-size:15px">${ico(id ? 'edit' : 'plus')} ${id ? 'Editar' : 'Novo'} produto</h2>
+      <button class="icon-btn" title="Fechar" onclick="$('#ep-prod-form').innerHTML=''">${ico('x', 16)}</button>
+    </div>
+    <div class="row">
+      <label style="flex:2">Nome<input id="epp-name" maxlength="80" value="${esc(p.name)}" placeholder="Ex.: Mentoria Elite. Plano Mensal"></label>
+      <label style="flex:1">Preço (R$)<input id="epp-price" inputmode="decimal" value="${p.price ? (p.price / 100).toFixed(2).replace('.', ',') : ''}" placeholder="97,00"></label>
+    </div>
+    <label style="margin-top:9px;display:block">Descrição<textarea id="epp-desc" rows="2" maxlength="600" placeholder="O que o cliente recebe">${esc(p.description || '')}</textarea></label>
+    ${cks.length ? `<label style="margin-top:9px;display:block">Checkout deste produto
+      ${ecSelect('epp-ckt', cks.map(c => ({ value: c.id, label: c.name + (c.isDefault ? ' (padrão)' : '') })), p.checkoutId || (cks.find(c => c.isDefault) || cks[0]).id)}</label>` : ''}
+    <span class="fb-sub" style="margin-top:12px">Imagens do produto <span class="muted">(substituem as variáveis do checkout)</span></span>
+    <div class="row" style="gap:8px;flex-wrap:wrap">
+      ${['logo', 'logoMobile', 'banner', 'bannerMobile'].map(k => `
+        <button class="btn small" onclick="epProdImg('${k}')" id="epp-b-${k}">${ico('image', 12)} ${{ logo: 'Logo', logoMobile: 'Logo celular', banner: 'Banner', bannerMobile: 'Banner celular' }[k]}${window._epProdImgs[k] ? ' ✓' : ''}</button>`).join('')}
+    </div>
+    <p class="hint" style="margin-top:8px">Logo 512×512 · Logo celular 256×256 · Banner 1200×360 · Banner celular 800×500. Sem imagem aqui, o checkout usa a dele.</p>
+    <div class="row" style="margin-top:10px;justify-content:flex-end">
+      <button class="btn primary no-grow" onclick="epProdSave()">${ico('save', 14)} Salvar produto</button>
+    </div>
+    <input type="file" id="epp-file" accept="image/png,image/jpeg,image/webp" style="display:none">
+  </div>`;
+}
+function epProdImg(kind) {
+  const inp = $('#epp-file'); if (!inp) return;
+  const MAXW = { banner: 1200, bannerMobile: 800, logo: 512, logoMobile: 256 };
+  inp.onchange = () => {
+    const f = inp.files && inp.files[0]; inp.value = ''; if (!f) return;
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, (MAXW[kind] || 512) / img.width);
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(img.width * scale); cv.height = Math.round(img.height * scale);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      let out = (kind.startsWith('logo') && f.type === 'image/png') ? cv.toDataURL('image/png') : cv.toDataURL('image/jpeg', .85);
+      if (out.length > 800 * 1024) out = cv.toDataURL('image/jpeg', .6);
+      if (out.length > 800 * 1024) return toast('Imagem muito grande, use uma menor', 'error');
+      URL.revokeObjectURL(img.src);
+      window._epProdImgs[kind] = out;
+      const b = $('#epp-b-' + kind); if (b && !/✓/.test(b.textContent)) b.textContent += ' ✓';
+      toast('Imagem carregada, salve o produto para aplicar');
+    };
+    img.onerror = () => toast('Não foi possível ler a imagem', 'error');
+    img.src = URL.createObjectURL(f);
+  };
+  inp.click();
+}
+async function epProdSave() {
+  const body = {
+    name: $('#epp-name').value.trim(),
+    description: $('#epp-desc').value,
+    price: epParseReais($('#epp-price').value || '0'),
+    checkoutId: ecVal('epp-ckt') || '',
+    ...window._epProdImgs
+  };
+  if (!body.name) return toast('Informe o nome do produto', 'error');
+  try {
+    const id = window._epProd;
+    await api('/elitepay/products' + (id ? '/' + id : ''), { method: id ? 'PUT' : 'POST', body });
+    toast(id ? 'Produto atualizado!' : 'Produto criado!');
+    epPaintProducts($('#ep-box'));
+  } catch (e) { toast(e.message, 'error'); }
+}
+async function epProdDel(id) {
+  if (!await confirmModal('Excluir este produto?', 'As cobranças já criadas continuam válidas.')) return;
+  try { await api('/elitepay/products/' + id, { method: 'DELETE' }); toast('Produto excluído'); epPaintProducts($('#ep-box')); }
+  catch (e) { toast(e.message, 'error'); }
+}
+
+// ---- Checkout Builder: lista de templates (Vendas → Checkout Builder) ----
+async function renderCheckoutList() {
+  $('#view').innerHTML = `<div class="page"><div class="card">${skel(4)}</div></div>`;
+  let d;
+  try { d = await api('/elitepay'); } catch (e) { $('#view').innerHTML = `<div class="page"><div class="card err">${esc(e.message)}</div></div>`; return; }
+  state.epInfo = d;
+  if (!d.subaccount || d.subaccount.status !== 'active') { location.hash = '#/elitepay'; return; }
+  const cks = d.checkouts || [];
+  $('#view').innerHTML = `<div class="page">
+    <div class="page-head row">
+      <div style="flex:1"><h1>Checkout Builder</h1><p>Modelos de página de pagamento, o produto entra como <b>variável</b>, então o mesmo layout serve para vários produtos</p></div>
+      <button class="btn primary no-grow" onclick="ckNew()">${ico('plus', 14)} Novo checkout</button>
+    </div>
+    <div class="card">
+      <h2>${ico('card')} Seus checkouts</h2>
+      <div style="overflow-x:auto"><table><thead><tr><th>Nome</th><th>Blocos ativos</th><th>Cor</th><th></th></tr></thead><tbody>
+        ${cks.map(c => `<tr>
+          <td><b>${esc(c.name)}</b> ${c.isDefault ? '<span class="pill on">Padrão</span>' : ''}</td>
+          <td class="muted">—</td>
+          <td><span style="display:inline-block;width:16px;height:16px;border-radius:5px;background:${esc(c.color || '#10b981')};vertical-align:middle"></span></td>
+          <td style="text-align:right;white-space:nowrap">
+            <button class="btn small" onclick="ckEdit('${c.id}')">${ico('edit', 13)} Editar</button>
+            ${cks.length > 1 ? `<button class="btn small danger" onclick="ckDel('${c.id}')">${ico('trash', 13)}</button>` : ''}
+          </td></tr>`).join('')}
+      </tbody></table></div>
+      <p class="hint" style="margin-top:12px">${ico('shield', 12)} Na hora de gerar a cobrança no Elite Pay você escolhe o <b>produto</b> e qual destes <b>checkouts</b> usar.</p>
+    </div>
+    <a class="card link-card" href="#/elitepay">
+      <span class="lc-ic">${ico('sparkles', 20)}</span>
+      <div style="flex:1"><h2 style="margin:0 0 3px">Produtos</h2>
+        <p class="muted" style="margin:0;font-size:13px">Cadastre nome, preço e imagens em <b>Elite Pay → Produtos</b>, eles preenchem as variáveis do checkout.</p></div>
+      <span class="lc-arrow">${ico('arrowright', 18)}</span></a>
+  </div>`;
+}
+function ckEdit(id) { window.open('/app/#/elitepay/checkout?c=' + encodeURIComponent(id), '_blank', 'noopener'); }
+async function ckNew() {
+  const name = prompt('Nome do novo checkout:', 'Checkout promocional');
+  if (!name) return;
+  try { const r = await api('/elitepay/checkouts', { body: { name } }); toast('Checkout criado!'); ckEdit(r.checkout.id); renderCheckoutList(); }
+  catch (e) { toast(e.message, 'error'); }
+}
+async function ckDel(id) {
+  if (!await confirmModal('Excluir este checkout?', 'As cobranças que já usam ele passam a exibir o checkout padrão.')) return;
+  try { await api('/elitepay/checkouts/' + id, { method: 'DELETE' }); toast('Checkout excluído'); renderCheckoutList(); }
+  catch (e) { toast(e.message, 'error'); }
+}
+
+// ---- Nova cobrança (também usada pelo botão do chat) ----
+function epNewChargeModal(waId, contactName) {
+  const prods = (state.epInfo && state.epInfo.products) || [];
+  const cks = (state.epInfo && state.epInfo.checkouts) || [];
+  openModal(`<h2>${ico('plus')} Gerar cobrança Pix</h2>
+    ${prods.length ? `<label style="display:block;margin-bottom:10px">Produto
+      ${ecSelect('ep-nc-prod', [{ value: '', label: 'Cobrança avulsa (sem produto)' }].concat(prods.map(p => ({ value: p.id, label: p.name + (p.price ? ', ' + fmtBRL(p.price) : '') }))), '', 'epPickProduct(val)')}</label>`
+      : `<p class="hint" style="margin-bottom:10px">${ico('help', 12)} Cadastre produtos em <b>Elite Pay → Produtos</b> para preencher valor, descrição e imagens automaticamente.</p>`}
+    ${cks.length ? `<label style="display:block;margin-bottom:10px">Checkout
+      ${ecSelect('ep-nc-ckt', cks.map(c => ({ value: c.id, label: c.name + (c.isDefault ? ' (padrão)' : '') })), (cks.find(c => c.isDefault) || cks[0]).id)}</label>` : ''}
+    <div class="row">
+      <label style="flex:1">Valor (R$)<input id="ep-nc-val" placeholder="97,00" inputmode="decimal" autofocus></label>
+      <label style="flex:2">Descrição (opcional)<input id="ep-nc-desc" maxlength="140" placeholder="Ex.: Consultoria, plano mensal"></label>
+    </div>
+    ${waId
+      ? `<p class="muted" style="font-size:13px;margin:12px 0 0">Para: <b>${esc(contactName || '+' + waId)}</b></p>
+         <label class="chk" style="margin-top:8px"><input type="checkbox" id="ep-nc-send" checked> Enviar a cobrança na conversa agora</label>
+         <input type="hidden" id="ep-nc-waid" value="${esc(waId)}">`
+      : `<label style="margin-top:12px">Vincular a um contato (opcional)<input id="ep-nc-phone" placeholder="5511999999999, deixa em branco p/ cobrança avulsa" inputmode="tel"></label>
+         <label class="chk" style="margin-top:8px"><input type="checkbox" id="ep-nc-send"> Enviar no WhatsApp do contato</label>`}
+    <div class="row" style="margin-top:16px;justify-content:flex-end">
+      <button class="btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn primary no-grow" id="ep-nc-btn" onclick="epCreateCharge()">${ico('zap', 14)} Gerar cobrança</button>
+    </div>`);
+}
+// ao escolher o produto, preenche valor/descrição e já aponta o checkout dele
+function epPickProduct(id) {
+  const p = ((state.epInfo && state.epInfo.products) || []).find(x => x.id === id);
+  if (!p) return;
+  if (p.price && $('#ep-nc-val')) $('#ep-nc-val').value = (p.price / 100).toFixed(2).replace('.', ',');
+  if ($('#ep-nc-desc')) $('#ep-nc-desc').value = p.name || '';
+  if (p.checkoutId && $('#ep-nc-ckt')) ecSelPick('ep-nc-ckt', p.checkoutId);
+}
+
+async function epCreateCharge() {
+  const btn = $('#ep-nc-btn'); btn.disabled = true;
+  try {
+    const waId = ($('#ep-nc-waid') && $('#ep-nc-waid').value) || ($('#ep-nc-phone') && $('#ep-nc-phone').value.replace(/\D/g, '')) || null;
+    const r = await api('/elitepay/charges', { body: {
+      valueCents: epParseReais($('#ep-nc-val').value),
+      comment: $('#ep-nc-desc').value,
+      productId: ecVal('ep-nc-prod') || '', checkoutId: ecVal('ep-nc-ckt') || '',
+      waId, send: !!($('#ep-nc-send') && $('#ep-nc-send').checked),
+      origin: state.view === 'inbox' ? 'chat' : 'manual'
+    } });
+    closeModal();
+    if (r.sent) toast('Cobrança gerada e enviada na conversa! 💸');
+    else if (r.sendError) toast('Cobrança gerada, mas NÃO enviada: ' + r.sendError, 'error');
+    else toast('Cobrança gerada!');
+    epShowCharge(r.charge, r.sendError);
+    if (state.view === 'elitepay') epPaintTab();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { if ($('#ep-nc-btn')) $('#ep-nc-btn').disabled = false; }
+}
+
+// ---- Detalhe da cobrança: QR Code, copia e cola, link e ações ----
+async function epChargeDetail(id) {
+  try {
+    const { charges } = await api('/elitepay/charges?q=' + encodeURIComponent(id));
+    const ch = charges.find(c => c.id === id);
+    if (!ch) return toast('Cobrança não encontrada', 'error');
+    epShowCharge(ch);
+  } catch (e) { toast(e.message, 'error'); }
+}
+function epShowCharge(ch, warn) {
+  const payLink = ch.payUrl || ch.paymentLinkUrl;   // checkout hospedado (fallback: link do gateway)
+  openModal(`<h2>${ico('activity')} Cobrança ${fmtBRL(ch.value)} ${epPill(ch.status)}</h2>
+    ${ch.comment ? `<p class="muted" style="margin:2px 0 0;font-size:13px">${esc(ch.comment)}</p>` : ''}
+    ${warn ? `<div class="card" style="margin:12px 0 0;border-color:var(--amber-border);background:var(--amber-bg);padding:12px 14px"><b>${ico('clock', 13)} Não enviada no WhatsApp.</b><p class="muted" style="margin:4px 0 0;font-size:12.5px">${esc(warn)} Copie o link/Pix abaixo e envie por outro canal, ou reabra a conversa com um Template aprovado.</p></div>` : ''}
+    <div class="ep-detail">
+      ${ch.qrCodeImage ? `<img class="ep-qr" src="${esc(ch.qrCodeImage)}" alt="QR Code Pix">` : ''}
+      <div class="ep-detail-info">
+        ${payLink ? `
+          <span class="fb-sub">Link de pagamento (checkout)</span>
+          <div class="ep-copy"><input readonly value="${esc(payLink)}" onclick="this.select()">
+            <button class="btn small" title="Copiar link" onclick="epCopy('${esc(payLink)}')">${ico('copy', 13)}</button>
+            <a class="btn small" title="Abrir checkout" href="${esc(payLink)}" target="_blank" rel="noopener">${ico('globe', 13)}</a></div>` : ''}
+        ${ch.brCode ? `
+          <span class="fb-sub" style="margin-top:10px">Pix copia e cola</span>
+          <div class="ep-copy"><input readonly value="${esc(ch.brCode)}" onclick="this.select()">
+            <button class="btn small" onclick="epCopy(this.previousElementSibling.value)">${ico('copy', 13)}</button></div>` : ''}
+        ${ch.payer ? `
+          <span class="fb-sub" style="margin-top:10px">Dados do pagador (checkout)</span>
+          <div class="wa-status" style="margin-top:4px">
+            <div class="wa-row"><span>Nome</span><b>${esc(ch.payer.name)}</b></div>
+            <div class="wa-row"><span>CPF/CNPJ</span><b>${esc(epFmtDoc(ch.payer.taxID))}</b></div>
+            <div class="wa-row"><span>E-mail</span><b>${esc(ch.payer.email)}</b></div>
+            <div class="wa-row"><span>WhatsApp</span><b>+${esc(ch.payer.phone)}</b></div>
+            ${ch.payerSynced ? '<div class="wa-row"><span>Woovi</span><b>Cliente sincronizado ✅</b></div>' : ''}
+          </div>` : ''}
+        <p class="muted" style="font-size:12px;margin:12px 0 0">
+          Criada ${timeAgo(ch.createdAt)}${ch.byName ? ' por ' + esc(ch.byName) : ''} · origem: ${esc(ch.origin)}<br>
+          ${ch.paidAt ? 'Paga em ' + new Date(ch.paidAt).toLocaleString('pt-BR') : ch.expiresAt ? 'Expira em ' + new Date(ch.expiresAt).toLocaleString('pt-BR') : ''}</p>
+      </div>
+    </div>
+    <div class="row" style="margin-top:16px;justify-content:flex-end;flex-wrap:wrap">
+      ${ch.status === 'active' && ch.waId ? `<button class="btn no-grow" onclick="epResend('${ch.id}');closeModal()">${ico('send', 14)} Reenviar no WhatsApp</button>` : ''}
+      <button class="btn no-grow" onclick="epDuplicate('${ch.id}');closeModal()">${ico('copy', 14)} Duplicar</button>
+      ${ch.status === 'active' ? `<button class="btn danger no-grow" onclick="epCancel('${ch.id}');closeModal()">${ico('slash', 14)} Cancelar cobrança</button>` : ''}
+      <button class="btn primary no-grow" onclick="closeModal()">Fechar</button>
+    </div>`);
+}
+function epCopy(v) { navigator.clipboard.writeText(v).then(() => toast('Copiado!')).catch(() => toast('Não foi possível copiar', 'error')); }
+function epFmtDoc(d) {
+  d = String(d || '');
+  if (d.length === 11) return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  if (d.length === 14) return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+  return d;
+}
+async function epCancel(id) {
+  if (!confirm('Cancelar esta cobrança? O cliente não conseguirá mais pagar por ela.')) return;
+  try { await api(`/elitepay/charges/${id}/cancel`, { method: 'POST', body: {} }); toast('Cobrança cancelada'); if (state.view === 'elitepay') epPaintTab(); } catch (e) { toast(e.message, 'error'); }
+}
+async function epResend(id) {
+  try { await api(`/elitepay/charges/${id}/resend`, { method: 'POST', body: {} }); toast('Cobrança reenviada na conversa 📨'); } catch (e) { toast(e.message, 'error'); }
+}
+async function epDuplicate(id) {
+  try { const r = await api(`/elitepay/charges/${id}/duplicate`, { method: 'POST', body: {} }); toast('Cobrança duplicada'); epShowCharge(r.charge); if (state.view === 'elitepay') epPaintTab(); } catch (e) { toast(e.message, 'error'); }
+}
+
+// Botão "Cobrança" dentro da conversa (composer do inbox)
+function chatChargeModal(waId) {
+  const c = state.conversations.find(x => x.waId === waId);
+  epNewChargeModal(waId, c ? c.name : null);
+}
+
+// ==================== TRACKING — atribuição + ROAS (estilo UTMify) ====================
+let trkState = { tab: 'overview', data: null };
+const trkBRL = v => fmtBRL(v || 0);
+const trkPct = v => v === null || v === undefined ? '—' : v + '%';
+const trkX = v => v === null || v === undefined ? '—' : v + 'x';
+
+async function renderTracking() {
+  $('#view').innerHTML = `<div class="page">
+    <div class="page-head row">
+      <div style="flex:1"><h1>Tracking</h1><p>Atribuição de vendas, ROAS e métricas de marketing, cada workspace com seus próprios dados</p></div>
+      <button class="btn no-grow" onclick="trkSnippetModal()">${ico('code', 14)} Instalar no site</button>
+    </div>
+    <div class="tabs">
+      <button class="${trkState.tab === 'overview' ? 'active' : ''}" data-tab="trk-overview" onclick="trkTab('overview')">Visão geral</button>
+      <button class="${trkState.tab === 'conn' ? 'active' : ''}" data-tab="trk-conn" onclick="trkTab('conn')">Conexões</button>
+      <button class="${trkState.tab === 'camp' ? 'active' : ''}" data-tab="trk-camp" onclick="trkTab('camp')">Campanhas</button>
+      <button class="${trkState.tab === 'funnel' ? 'active' : ''}" data-tab="trk-funnel" onclick="trkTab('funnel')">Funil</button>
+      <button class="${trkState.tab === 'events' ? 'active' : ''}" data-tab="trk-events" onclick="trkTab('events')">Eventos</button>
+      <button class="${trkState.tab === 'alerts' ? 'active' : ''}" data-tab="trk-alerts" onclick="trkTab('alerts')">Alertas</button>
+    </div>
+    <div id="trk-box">${skel(5)}</div>
+  </div>`;
+  trkPaintTab();
+}
+function trkTab(t) { trkState.tab = t; $$('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'trk-' + t)); trkPaintTab(); }
+
+async function trkPaintTab() {
+  const box = $('#trk-box'); if (!box) return;
+  try {
+    if (trkState.tab === 'overview') return trkPaintOverview(box);
+    if (trkState.tab === 'conn') return trkPaintConn(box);
+    if (trkState.tab === 'camp') return trkPaintCamp(box);
+    if (trkState.tab === 'funnel') return trkPaintFunnel(box);
+    if (trkState.tab === 'events') return trkPaintEvents(box);
+    return trkPaintAlerts(box);
+  } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+}
+
+// ---- Visão geral: todos os cards financeiros + comparativo ----
+async function trkPaintOverview(box) {
+  const [ov, cmp] = await Promise.all([api('/tracking'), api('/tracking/compare')]);
+  trkState.data = ov;
+  const d = ov.dashboard, c = cmp.compare;
+  const spendOk = ov.meta.campaigns > 0;
+  const card = (lbl, val, sub) => `<div class="trk-card"><span>${lbl}</span><b>${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+  const periods = [['Hoje', c.hoje], ['Ontem', c.ontem], ['7 dias', c.d7], ['30 dias', c.d30], ['90 dias', c.d90], ['Ano', c.ano]];
+  const maxRev = Math.max(1, ...periods.map(([, p]) => p.receita));
+  box.innerHTML = `
+    ${!spendOk ? `<div class="card" style="border-color:var(--amber-border);background:var(--amber-bg)"><b>💡 Conecte o Meta Ads</b><p class="muted" style="margin:4px 0 0;font-size:13px">ROAS, ROI, CPA e CAC dependem do gasto das campanhas. Vá em <b>Conexões → Meta Ads</b> e sincronize, o resto é automático.</p></div>` : ''}
+    <div class="metric-hero">
+      <div class="mh-card hi"><span class="mh-ic">${ico('zap', 20)}</span><div class="mh-val">${trkBRL(d.receita.d30)}</div><div class="mh-lbl">Receita. 30 dias</div></div>
+      <div class="mh-card"><span class="mh-ic">${ico('activity', 20)}</span><div class="mh-val">${d.roas === null ? '—' : d.roas + 'x'}</div><div class="mh-lbl">ROAS</div></div>
+      <div class="mh-card"><span class="mh-ic">${ico('trend', 20) || ico('activity', 20)}</span><div class="mh-val">${trkBRL(d.lucro)}</div><div class="mh-lbl">Lucro (receita − anúncios)</div></div>
+      <div class="mh-card"><span class="mh-ic">${ico('check', 20)}</span><div class="mh-val">${fmtN(d.pedidos.aprovados)}</div><div class="mh-lbl">Pedidos aprovados</div></div>
+    </div>
+    <div class="card"><h2>${ico('activity')} Receita</h2>
+      <div class="trk-cards">
+        ${card('Hoje', trkBRL(d.receita.hoje))}${card('Ontem', trkBRL(d.receita.ontem))}
+        ${card('7 dias', trkBRL(d.receita.d7))}${card('30 dias', trkBRL(d.receita.d30))}
+        ${card('Ticket médio', trkBRL(d.ticketMedio))}${card('AOV', trkBRL(d.aov))}
+      </div></div>
+    <div class="card"><h2>${ico('gear')} Marketing & performance</h2>
+      <div class="trk-cards">
+        ${card('Gasto em anúncios', trkBRL(d.gastoAnuncios), '30d · Meta Ads')}
+        ${card('ROI', trkPct(d.roi))}${card('ROAS', trkX(d.roas))}
+        ${card('CPA', d.cpa === null ? '—' : trkBRL(d.cpa))}${card('CAC', d.cac === null ? '—' : trkBRL(d.cac))}
+        ${card('LTV', trkBRL(d.ltv))}${card('Margem', trkPct(d.margem))}${card('Conversão', trkPct(d.conversao))}
+        ${card('EPC', d.epc === null ? '—' : trkBRL(d.epc))}${card('RPC', d.rpc === null ? '—' : trkBRL(d.rpc))}
+        ${card('ROI líquido', trkPct(d.roiLiquido), 'desconta taxas/reembolsos')}
+        ${card('ROAS líquido', trkX(d.roasLiquido))}
+      </div></div>
+    <div class="card"><h2>${ico('file')} Pedidos & saúde</h2>
+      <div class="trk-cards">
+        ${card('Aprovados', fmtN(d.pedidos.aprovados))}${card('Pendentes', fmtN(d.pedidos.pendentes))}
+        ${card('Recusados/expirados', fmtN(d.pedidos.recusados))}
+        ${card('Reembolsos', `${d.refund.qtd} · ${trkBRL(d.refund.valor)}`)}
+        ${card('Chargebacks', `${d.chargeback.qtd} · ${trkBRL(d.chargeback.valor)}`)}
+        ${card('Taxas da plataforma', trkBRL(d.taxas))}
+      </div></div>
+    <div class="card"><h2>${ico('activity')} Comparativo de receita</h2>
+      <div class="ep-chart" style="height:130px">${periods.map(([lbl, p]) => `
+        <div class="ep-bar-w" title="${lbl} · ${trkBRL(p.receita)} · ROAS ${p.roas ?? '—'}">
+          <div class="ep-bar" style="height:${Math.max(3, Math.round(p.receita / maxRev * 100))}%"></div><span>${lbl}</span>
+        </div>`).join('')}</div>
+      <div style="overflow-x:auto;margin-top:10px"><table><thead><tr><th>Período</th><th>Receita</th><th>Pedidos</th><th>Lucro</th><th>ROAS</th><th>ROI</th><th>Conversão</th></tr></thead><tbody>
+        ${periods.map(([lbl, p]) => `<tr><td><b>${lbl}</b></td><td>${trkBRL(p.receita)}</td><td>${p.pedidos}</td><td>${trkBRL(p.lucro)}</td><td>${trkX(p.roas)}</td><td>${trkPct(p.roi)}</td><td>${trkPct(p.conversao)}</td></tr>`).join('')}
+      </tbody></table></div></div>`;
+}
+
+// ---- Conexões ----
+async function trkPaintConn(box) {
+  const ov = trkState.data || await api('/tracking');
+  trkState.data = ov;
+  box.innerHTML = `
+    <div class="card">
+      ${trkMetaCard(ov)}
+      <p class="muted" style="font-size:12px;margin:10px 0 0">
+        ${ov.meta.lastSync ? `Última sincronização: ${new Date(ov.meta.lastSync).toLocaleString('pt-BR')} · ${ov.meta.campaigns} campanha(s)` : 'Nunca sincronizado'}
+        ${ov.meta.error ? ` · <span style="color:#f87171">${esc(ov.meta.error)}</span>` : ''}</p>
+    </div>
+    <div class="trk-conns">${ov.connections.map(c => `
+      <div class="card trk-conn">
+        <div class="row" style="align-items:center">
+          <b style="flex:1">${esc(c.label)}
+            <span class="trk-mode ${c.mode === 'server' ? 'srv' : ''}" title="${c.mode === 'server'
+              ? 'O EliteChat envia pelo servidor. Não morre em bloqueador de anúncio.'
+              : 'Tag de navegador, injetada no link rastreável e no checkout.'}">${c.mode === 'server' ? 'servidor' : 'navegador'}</span></b>
+          <label class="chk" style="margin:0"><input type="checkbox" ${c.enabled ? 'checked' : ''} onchange="trkConnSave('${c.key}', this.checked)"> ativa</label>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label style="flex:1">${esc(c.idLabel)}<input id="trk-id-${c.key}" value="${esc(c.id || '')}" onblur="trkConnSave('${c.key}')"></label>
+          ${c.tokenLabel ? `<label style="flex:1">${esc(c.tokenLabel)}<input id="trk-tk-${c.key}" type="password" placeholder="${c.token ? '•••• salvo' : ''}" onblur="trkConnSave('${c.key}')"></label>` : ''}
+        </div>
+        <div class="trk-connstats">
+          <span class="${c.enabled && c.id ? 'ok' : ''}">${c.enabled && c.id ? '● Conectada' : '○ Inativa'}</span>
+          ${c.mode === 'server' ? `
+            <span>Sync: ${c.lastSync ? timeAgo(c.lastSync) : '—'}</span>
+            <span>↑ ${fmtN(c.sent || 0)} enviados</span>
+            <span class="${c.errors ? 'err2' : ''}">${c.errors || 0} erro(s)</span>`
+          : '<span>Dispara no link rastreável e no checkout</span>'}
+        </div>
+        ${c.key === 'ga4' && c.sent ? '<p class="muted" style="font-size:11.5px;margin:6px 0 0">O Google não devolve confirmação de recebimento. Confira em GA4, Tempo real.</p>' : ''}
+        ${c.lastError ? `<p class="muted" style="font-size:11.5px;margin:6px 0 0;color:#f87171">${esc(c.lastError)}</p>` : ''}
+      </div>`).join('')}</div>
+    <div class="card"><h2>${ico('shield')} Envio automático de conversões</h2>
+      <p class="muted" style="font-size:13px;margin:0">Toda venda confirmada no Elite Pay é enviada sozinha para <b>Meta Conversions API</b>, <b>GA4 / Google Ads</b> e <b>TikTok Events API</b> (as que estiverem ativas acima), com e-mail/telefone/CPF criptografados (SHA-256) e o click ID da origem.</p></div>`;
+}
+async function trkConnSave(key, enabled) {
+  const body = {};
+  if (enabled !== undefined) body.enabled = enabled;
+  const idEl = $('#trk-id-' + key); if (idEl) body.id = idEl.value;
+  const tkEl = $('#trk-tk-' + key); if (tkEl && tkEl.value) body.token = tkEl.value;
+  try { await api('/tracking/connections/' + key, { method: 'PUT', body }); trkState.data = null; if (enabled !== undefined) trkPaintTab(); }
+  catch (e) { toast(e.message, 'error'); }
+}
+
+// Cartao do Meta Ads. Sem token colado a mao: o cliente autoriza pelo popup
+// e escolhe a conta de anuncios numa lista.
+function trkMetaCard(ov) {
+  const m = ov.meta || {};
+  const h = [];
+  h.push(`<h2>${ico('sparkles')} Meta Ads, gasto automático das campanhas</h2>`);
+  h.push(`<p class="muted" style="margin:0 0 12px;font-size:13px">Conecte sua conta de anúncios e o gasto, cliques, CTR, CPM e CPC entram sozinhos no cálculo de ROAS, ROI, CPA e CAC. Nenhum token para gerar à mão.</p>`);
+
+  if (!m.hasToken) {
+    h.push(`<button class="btn primary" onclick="trkMetaConnect()">${ico('sparkles', 15)} Conectar Meta Ads</button>`);
+    h.push(`<p class="hint" style="margin-top:10px;text-align:left">Abre a autorização da Meta. Você escolhe a conta de anúncios e pronto: a permissão pedida é só de <b>leitura</b> (ads_read). A autorização vale <b>60 dias</b> — quando estiver perto de vencer, avisamos aqui para você reconectar em um clique, sem perder nada.</p>`);
+    return h.join('');
+  }
+
+  const contas = m.adAccounts || [];
+  const seletor = contas.length
+    ? ecSelect('trk-meta-act', contas.map(a => ({ value: a.id, label: a.name + ' (' + a.id + ')' })), m.adAccountId, 'trkSaveMeta()')
+    : `<input id="trk-meta-act" placeholder="act_123456789" value="${esc(m.adAccountId || '')}" onblur="trkSaveMeta()">`;
+
+  h.push(`<div class="row" style="align-items:flex-end">`);
+  h.push(`<label style="flex:1.4">Conta de anúncios${seletor}</label>`);
+  h.push(`<button class="btn primary no-grow" id="trk-sync" onclick="trkSyncMeta()">${ico('activity', 14)} Sincronizar</button>`);
+  h.push(`<button class="btn no-grow" onclick="trkMetaConnect()">${ico('refresh', 14)} Reconectar</button>`);
+  h.push(`<button class="btn danger no-grow" onclick="trkMetaDisconnect()">Desconectar</button>`);
+  h.push('</div>');
+
+  h.push(metaTokenBar(m));
+  return h.join('');
+}
+
+// Barra de validade do token. O OAuth da Meta dura 60 dias e o cliente precisa
+// reconectar antes de vencer, então mostramos um contador honesto: quanto falta,
+// e um alerta que fica mais forte conforme a data se aproxima.
+function metaTokenBar(m) {
+  const dias = m.expiresAt ? Math.floor((m.expiresAt - Date.now()) / 86400000) : null;
+  const venc = m.expiresAt ? new Date(m.expiresAt).toLocaleDateString('pt-BR') : '';
+
+  // estado visual conforme o tempo restante
+  let cls = 'ok', titulo, texto;
+  if (m.expired || (dias !== null && dias < 0)) {
+    cls = 'crit';
+    titulo = 'Autorização expirada';
+    texto = 'A Meta parou de enviar o gasto das campanhas. Clique em <b>Reconectar</b> para voltar a sincronizar — leva 10 segundos.';
+  } else if (dias === null) {
+    cls = 'ok'; titulo = 'Conectado';
+    texto = 'Sua conta de anúncios está enviando dados normalmente.';
+  } else if (dias <= 5) {
+    cls = 'crit';
+    titulo = dias <= 0 ? 'Renove hoje' : `Renove em ${dias} dia${dias === 1 ? '' : 's'}`;
+    texto = `A autorização vence ${dias <= 0 ? '<b>hoje</b>' : `em <b>${venc}</b>`}. Clique em <b>Reconectar</b> agora para não perder nenhum dado de campanha.`;
+  } else if (dias <= 14) {
+    cls = 'warn'; titulo = `Renove em breve · ${dias} dias`;
+    texto = `Por segurança, a Meta limita a autorização a 60 dias. Ela vence em <b>${venc}</b>. Reconecte quando for cômodo.`;
+  } else {
+    cls = 'ok'; titulo = `Conectado · ${dias} dias restantes`;
+    texto = `A autorização da Meta vale 60 dias e vence em <b>${venc}</b>. Quando faltar pouco, avisamos aqui para você reconectar em um clique.`;
+  }
+
+  // barra de progresso: 60 dias = cheia; vazia = na hora de renovar
+  const pct = dias === null ? 100 : Math.max(0, Math.min(100, Math.round(dias / 60 * 100)));
+  const ico2 = cls === 'crit' ? 'alert' : cls === 'warn' ? 'clock' : 'check-circle';
+
+  return `<div class="meta-token ${cls}">
+    <div class="mt-head">${ico(ico2, 15)} <b>${esc(titulo)}</b></div>
+    <div class="mt-bar"><i style="width:${pct}%"></i></div>
+    <p class="mt-txt">${texto}</p>
+  </div>`;
+}
+async function trkSaveMeta() {
+  try {
+    const el = $('#trk-meta-act');
+    const act = el ? (el.dataset.val !== undefined ? el.dataset.val : el.value) : '';
+    await api('/tracking/meta', { method: 'PUT', body: { adAccountId: act } });
+    trkState.data = null;
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ---- Conectar Meta Ads (OAuth, permissao ads_read) ----
+// Abre o popup de autorizacao da Meta e espera o callback devolver o code.
+async function trkMetaConnect() {
+  let dados;
+  try { dados = await api('/tracking/meta/auth-url'); }
+  catch (e) { return toast(e.message, 'error'); }
+
+  const w = window.open(dados.url, 'metaads', 'width=620,height=720');
+  if (!w) return toast('Libere pop-ups para conectar o Meta Ads', 'error');
+
+  const aoReceber = async ev => {
+    if (ev.origin !== location.origin) return;                 // so aceita o nosso callback
+    const d = ev.data || {};
+    if (d.type !== 'ELITECHAT_METAADS_CALLBACK') return;
+    window.removeEventListener('message', aoReceber);
+    if (d.error) return toast(d.error, 'error');
+    try {
+      const r = await api('/tracking/meta/connect', { body: { code: d.code, state: d.state } });
+      toast(r.adAccounts && r.adAccounts.length
+        ? 'Meta Ads conectado! Escolha a conta de anúncios.'
+        : 'Meta Ads conectado.');
+      trkState.data = null;
+      trkPaintTab();
+    } catch (e) { toast(e.message, 'error'); }
+  };
+  window.addEventListener('message', aoReceber);
+}
+
+async function trkMetaDisconnect() {
+  const ok = await confirmModal({
+    title: 'Desconectar Meta Ads?',
+    text: 'O gasto das campanhas deixa de entrar no cálculo de ROAS até você conectar de novo.',
+    ok: 'Desconectar', danger: true
+  });
+  if (!ok) return;
+  try {
+    await api('/tracking/meta', { method: 'DELETE' });
+    toast('Meta Ads desconectado');
+    trkState.data = null; trkPaintTab();
+  } catch (e) { toast(e.message, 'error'); }
+}
+async function trkSyncMeta() {
+  const b = $('#trk-sync'); b.disabled = true;
+  try {
+    await trkSaveMeta();
+    const r = await api('/tracking/meta/sync', { method: 'POST', body: {} });
+    toast(`Sincronizado: ${r.campaigns} campanha(s) 🎯`); trkState.data = null; trkPaintTab();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { if ($('#trk-sync')) $('#trk-sync').disabled = false; }
+}
+
+// ---- Campanhas ----
+async function trkPaintCamp(box) {
+  const { campaigns } = await api('/tracking/campaigns');
+  box.innerHTML = `<div class="card"><h2>${ico('campaign') || ''} Relatório por campanha</h2>
+    ${campaigns.length ? `<div style="overflow-x:auto"><table><thead><tr>
+      <th>Campanha</th><th>Gasto</th><th>Receita</th><th>Lucro</th><th>ROAS</th><th>ROI</th><th>Pedidos</th><th>Conv.</th><th>CPA</th><th>Ticket</th><th>Produtos</th><th>Reemb./CB</th>
+    </tr></thead><tbody>${campaigns.map(c => `<tr>
+      <td><b>${esc(c.nome)}</b></td><td>${trkBRL(c.gasto)}</td><td>${trkBRL(c.receita)}</td>
+      <td style="color:${c.lucro >= 0 ? 'var(--verde-esc)' : '#f87171'}"><b>${trkBRL(c.lucro)}</b></td>
+      <td>${trkX(c.roas)}</td><td>${trkPct(c.roi)}</td><td>${c.pedidos}</td><td>${trkPct(c.conversao)}</td>
+      <td>${c.cpa === null ? '—' : trkBRL(c.cpa)}</td><td>${trkBRL(c.ticket)}</td>
+      <td class="muted" style="font-size:12px">${c.produtos.map(esc).join('<br>') || '—'}</td>
+      <td>${trkBRL(c.refund + c.chargeback)}</td>
+    </tr>`).join('')}</tbody></table></div>`
+    : '<p class="muted">Sem dados ainda, sincronize o Meta Ads e/ou receba vendas com UTM/click ID para ver o relatório.</p>'}</div>`;
+}
+
+// ---- Funil ----
+async function trkPaintFunnel(box) {
+  const { funnel } = await api('/tracking/funnel');
+  const max = Math.max(1, ...funnel.map(f => f.qtd));
+  box.innerHTML = `<div class="card"><h2>${ico('funnel') || ''} Funil de conversão, últimos 30 dias</h2>
+    <div class="trk-funnel">${funnel.map(f => `
+      <div class="trk-frow">
+        <span class="trk-fname">${esc(f.nome)}</span>
+        <div class="trk-fbar"><i style="width:${Math.max(2, Math.round(f.qtd / max * 100))}%"></i></div>
+        <b>${fmtN(f.qtd)}</b>
+        <span class="trk-frate">${f.taxa === null ? '' : '↳ ' + f.taxa + '%'}</span>
+      </div>`).join('')}</div>
+    <p class="muted" style="font-size:12px;margin:12px 0 0">Cliques = anúncios Meta + links rastreáveis · Visitas = PageView (snippet /t.js) · Leads = contatos novos · Checkout = aberturas do checkout · Upsell/Downsell = eventos customizados.</p></div>`;
+}
+
+// ---- Eventos ----
+async function trkPaintEvents(box) {
+  const { events } = await api('/tracking/events');
+  box.innerHTML = `<div class="card"><h2>${ico('activity')} Eventos recebidos <span class="muted" style="font-weight:600;font-size:12.5px">· ${events.length} mais recentes</span></h2>
+    ${events.length ? `<div style="overflow-x:auto"><table><thead><tr><th>Evento</th><th>Origem</th><th>Data · Hora</th><th>Sessão</th><th>Campanha (UTM)</th><th>Valor</th><th>Status</th></tr></thead><tbody>
+      ${events.map(e => `<tr>
+        <td><b>${esc(e.name)}</b></td><td>${esc(e.source || '—')}</td>
+        <td class="muted" style="white-space:nowrap">${new Date(e.ts).toLocaleDateString('pt-BR')} · ${new Date(e.ts).toLocaleTimeString('pt-BR').slice(0, 5)}</td>
+        <td class="muted" style="font-size:11.5px">${esc((e.sid || '').slice(0, 10) || '—')}</td>
+        <td>${esc((e.payload && e.payload.utm && e.payload.utm.campaign) || (e.payload && e.payload.campaign) || '—')}</td>
+        <td>${e.payload && e.payload.value ? trkBRL(Math.round(e.payload.value * 100)) : '—'}</td>
+        <td><span class="pill-ok">${esc(e.status || 'ok')}</span></td>
+      </tr>`).join('')}</tbody></table></div>`
+    : '<p class="muted">Nenhum evento ainda. Instale o snippet no seu site ou receba visitas no checkout.</p>'}</div>`;
+}
+
+// ---- Alertas ----
+async function trkPaintAlerts(box) {
+  const ov = await api('/tracking');
+  trkState.data = ov;
+  box.innerHTML = `
+    <div class="card"><h2>${ico('gear')} Limites dos alertas</h2>
+      <div class="row" style="align-items:flex-end">
+        <label style="max-width:200px">ROAS mínimo<input id="trk-al-roas" inputmode="decimal" value="${ov.alertsCfg.roasMin}"></label>
+        <label style="max-width:220px">CPA máximo (R$, 0 = sem limite)<input id="trk-al-cpa" inputmode="decimal" value="${ov.alertsCfg.cpaMax}"></label>
+        <button class="btn primary no-grow" onclick="trkSaveAlerts()">${ico('save', 14)} Salvar</button>
+      </div></div>
+    ${ov.alerts.map(a => `<div class="card sug-card ${a.level}">
+      <span class="sug-ic">${ico(a.icon || 'activity', 18)}</span>
+      <div><b>${esc(a.title)}</b><p class="muted" style="margin:3px 0 0;font-size:13px">${esc(a.text)}</p></div>
+    </div>`).join('')}`;
+}
+async function trkSaveAlerts() {
+  try {
+    await api('/tracking/alerts', { method: 'PUT', body: { roasMin: $('#trk-al-roas').value, cpaMax: $('#trk-al-cpa').value } });
+    toast('Alertas configurados'); trkState.data = null; trkPaintTab();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function trkSnippetModal() {
+  const url = `${location.origin}/t.js?a=${state.accountId}`;
+  openModal(`<h2>${ico('code')} Instalar o Tracking no seu site</h2>
+    <p class="muted" style="font-size:13px;margin:4px 0 12px">Cole antes do <b>&lt;/body&gt;</b> das suas páginas (landing, vendas, obrigado). Ele captura <b>fbclid, gclid, ttclid e UTMs</b> e liga cada visita à venda no Elite Pay.</p>
+    <div class="ep-copy"><input readonly value='<script src="${esc(url)}"></script>' onclick="this.select()">
+      <button class="btn small" onclick="epCopy(this.previousElementSibling.value)">${ico('copy', 13)}</button></div>
+    <p class="hint" style="margin-top:12px">${ico('shield', 12)} O checkout do Elite Pay já rastreia sozinho, o snippet é para as SUAS páginas.</p>
+    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn primary no-grow" onclick="closeModal()">Fechar</button></div>`);
 }
 
 init();

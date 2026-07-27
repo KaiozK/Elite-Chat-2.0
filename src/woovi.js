@@ -15,7 +15,7 @@ function configured() { return !!appId(); }
 // Chamada genérica à API da Woovi
 async function call(method, path, body) {
   if (!configured()) {
-    const e = new Error('Woovi não configurada — informe o AppID no painel Admin → Pagamentos');
+    const e = new Error('Woovi não configurada, informe o AppID no painel Admin → Pagamentos');
     e.status = 400; throw e;
   }
   const r = await fetch(API + path, {
@@ -131,7 +131,7 @@ function applyPayment(charge, broadcast) {
           aff.affiliate.earned += cut;
           aff.wallet.transactions.push({
             id: db.genId('tx'), ts: Date.now(), amount: cut, type: 'commission',
-            label: `Comissão ${pct}% — ${kind === 'first' ? 'nova assinatura' : 'renovação'} (${acc.name})`
+            label: `Comissão ${pct}%, ${kind === 'first' ? 'nova assinatura' : 'renovação'} (${acc.name})`
           });
           if (broadcast) broadcast('wallet', { accountId: aff.id });
         }
@@ -156,11 +156,23 @@ function webhookHandler(broadcast) {
       const ev = b.event || b.evento || '';
       const charge = b.charge || (b.data && b.data.charge) || null;
       store.logEvent({ type: 'woovi_webhook', event: ev, correlationID: charge && charge.correlationID });
+
+      // KYC/BaaS: conta do cliente aprovada pela compliance → ativa o Elite Pay.
+      if (/ACCOUNT_REGISTER_APPROVED/i.test(ev)) {
+        const acct = b.account || (b.data && b.data.account) || b.data || b;
+        require('./elitepay').applyAccountApproved(acct, broadcast);
+        return;
+      }
+
       if (!/CHARGE_COMPLETED|TRANSACTION_RECEIVED/i.test(ev) || !charge || !charge.correlationID) return;
       if (!configured()) return;
       const fresh = await getCharge(charge.correlationID); // verificação server-side
       if (fresh && /COMPLETED|CONFIRMED|PAID/i.test(fresh.status || '')) {
-        applyPayment(fresh, broadcast);
+        // Cobranças do ELITE PAY (correlationID "ep-...") são de subcontas dos
+        // clientes — vão para o módulo próprio; as demais são do billing SaaS.
+        const elitepay = require('./elitepay');
+        if (elitepay.isElitePayCharge(fresh.correlationID)) elitepay.applyPaid(fresh, broadcast);
+        else applyPayment(fresh, broadcast);
       }
     } catch (e) {
       store.logEvent({ type: 'woovi_webhook_error', error: e.message });

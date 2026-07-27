@@ -85,7 +85,12 @@ function processEvent(body, broadcast) {
     for (const change of entry.changes || []) {
       const v = change.value || {};
       const phoneNumberId = (v.metadata && v.metadata.phone_number_id) || null;
-      const acc = phoneNumberId ? db.findAccountByPhoneId(phoneNumberId) : null;
+      const conta = phoneNumberId ? db.findAccountByPhoneId(phoneNumberId) : null;
+      // O phoneNumberId identifica em QUAL conexão (canal) a mensagem entrou.
+      // Trabalhamos no contexto desse canal para que a conversa seja gravada
+      // no canal certo e não se misture com a de outro número.
+      const canal = conta ? db.channelByPhoneId(conta, phoneNumberId) : null;
+      const acc = conta ? db.chanCtx(conta, canal) : null;
 
       store.logEvent({
         type: 'webhook',
@@ -146,9 +151,13 @@ function processEvent(body, broadcast) {
           const t = session.touchInbound(acc, contact, rec.timestamp);
           db.save();
           broadcast('message', {
-            accountId: acc.id, waId: contact.waId,
+            accountId: acc.id, waId: contact.waId, chId: rec.chId,
             // dados p/ a notificação nativa do WebApp (nome = título, mensagem = descrição)
-            notify: { direction: 'in', name: contact.name || ('+' + contact.waId), text: notifyPreview(parsed), type: parsed.type || 'text' }
+            notify: {
+              direction: 'in', name: contact.name || ('+' + contact.waId),
+              text: notifyPreview(parsed), type: parsed.type || 'text',
+              channel: canal ? canal.label : ''   // de qual número veio
+            }
           });
           if (t && t.reopened) broadcast('attendance', { accountId: acc.id, waId: contact.waId, status: 'open', reason: 'inbound', name: contact.name || ('+' + contact.waId) });
 
@@ -199,7 +208,10 @@ function processEvent(body, broadcast) {
 function handleCalls(acc, v, broadcast) {
   const names = {};
   for (const c of v.contacts || []) names[c.wa_id] = c.profile && c.profile.name;
-  acc.calls = acc.calls || [];
+  // NB: `acc` pode ser um contexto de canal (herda da conta por protótipo), por
+  // isso a lista é criada na CONTA e não no contexto — senão o push se perderia.
+  const dono = db.findAccount(acc.id) || acc;
+  if (!Array.isArray(dono.calls)) dono.calls = [];
 
   for (const ev of v.calls || []) {
     const userSide = ev.direction === 'BUSINESS_INITIATED' ? ev.to : ev.from;

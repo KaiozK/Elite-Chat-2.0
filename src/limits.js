@@ -1,0 +1,145 @@
+// ============================================================================
+// LIMITES DE PLANO — quanto cada cliente pode usar de cada recurso.
+//
+// O plano define o teto de: disparos/mês, contatos (leads), fluxos, pixels,
+// links rastreáveis e conexões WhatsApp.
+//
+//   -1 = ilimitado · 0 = bloqueado · N = teto
+//
+// WhatsApp e Links têm um extra: o plano inclui X e Y grátis, e o cliente pode
+// COMPRAR unidades adicionais (preço definido pelo admin em
+// platform.billing.extras). O teto efetivo é:  incluso no plano + extras pagos.
+// ============================================================================
+
+const db = require('./db');
+
+// Recursos que aceitam compra de unidades avulsas.
+const PAID_EXTRAS = ['whatsapps', 'links'];
+
+const LABEL = {
+  sends: 'disparos por ciclo',
+  contacts: 'contatos (leads)',
+  flows: 'fluxos de automação',
+  pixels: 'pixels de rastreamento',
+  links: 'links rastreáveis',
+  whatsapps: 'conexões WhatsApp'
+};
+
+function planOf(acc) {
+  const b = acc.billing || {};
+  return db.get().plans.find(p => p.id === b.planId) || null;
+}
+
+// Preço unitário (centavos/ciclo) de cada extra, definido no Admin SaaS.
+function extraPrices() {
+  const e = (db.get().platform.billing || {}).extras || {};
+  return {
+    whatsapps: Math.max(0, Math.round(Number(e.whatsappPrice) || 0)),
+    links: Math.max(0, Math.round(Number(e.linkPrice) || 0))
+  };
+}
+
+// Teto efetivo de um recurso: o que o plano inclui + o que foi comprado à parte.
+// Sem plano (trial) o cliente roda no plano mais barato publicado; se não houver
+// nenhum plano, cai nos limites padrão.
+function limitOf(acc, key) {
+  const plan = planOf(acc);
+  const base = (plan && plan.limits) || fallbackLimits();
+  let v = base[key];
+  if (v === undefined) v = db.defaultLimits()[key];
+  if (v === -1) return -1;                                   // ilimitado
+  if (PAID_EXTRAS.includes(key)) {
+    v += Math.max(0, Number(((acc.billing || {}).extras || {})[key]) || 0);
+  }
+  return v;
+}
+
+// Trial / conta sem plano: usa o plano publicado mais barato como referência.
+function fallbackLimits() {
+  const pubs = db.get().plans.filter(p => !p.archived);
+  if (!pubs.length) return db.defaultLimits();
+  const cheapest = pubs.reduce((a, b) => (b.price < a.price ? b : a));
+  return cheapest.limits || db.defaultLimits();
+}
+
+// Início do ciclo vigente — os disparos são contados por ciclo de cobrança.
+function cycleStart(acc) {
+  const b = acc.billing || {};
+  const plan = planOf(acc);
+  const days = (plan && plan.periodDays) || 30;
+  if (b.periodEnd) return b.periodEnd - days * 86400000;
+  return Date.now() - days * 86400000;
+}
+
+// Uso atual de cada recurso.
+function usage(acc) {
+  const t0 = cycleStart(acc);
+  return {
+    sends: acc.messages.filter(m => m.direction === 'out' && m.timestamp >= t0).length,
+    contacts: acc.contacts.length,
+    flows: (acc.flows || []).length,
+    pixels: (acc.pixels || []).length,
+    links: (acc.links || []).length,
+    whatsapps: (acc.channels || []).filter(c => !c.archived).length
+  };
+}
+
+// Resumo pronto para a UI: usado, limite, incluso no plano, extras pagos, %.
+function report(acc) {
+  const u = usage(acc);
+  const plan = planOf(acc);
+  const base = (plan && plan.limits) || fallbackLimits();
+  const prices = extraPrices();
+  const out = {};
+  for (const k of db.LIMIT_KEYS) {
+    const limit = limitOf(acc, k);
+    const included = base[k] === undefined ? db.defaultLimits()[k] : base[k];
+    const extras = PAID_EXTRAS.includes(k) ? (Number(((acc.billing || {}).extras || {})[k]) || 0) : 0;
+    out[k] = {
+      key: k, label: LABEL[k], used: u[k], limit, included, extras,
+      unlimited: limit === -1,
+      extraPrice: prices[k] || 0,
+      buyable: PAID_EXTRAS.includes(k) && !!prices[k],
+      percent: limit === -1 ? 0 : Math.min(100, Math.round(u[k] / Math.max(1, limit) * 100)),
+      exceeded: limit !== -1 && u[k] >= limit
+    };
+  }
+  return out;
+}
+
+// Pode consumir mais `n` unidades de `key`? Retorna null (ok) ou a mensagem.
+function check(acc, key, n = 1) {
+  const limit = limitOf(acc, key);
+  if (limit === -1) return null;
+  const used = usage(acc)[key] || 0;
+  if (used + n <= limit) return null;
+  const price = extraPrices()[key];
+  const comprar = PAID_EXTRAS.includes(key) && price
+    ? ` Compre unidades adicionais em Assinatura → Extras.`
+    : ` Faça upgrade de plano para liberar mais.`;
+  return `Limite do plano atingido: ${limit} ${LABEL[key]}.${comprar}`;
+}
+
+// Versão que lança erro HTTP 402 — para usar direto nas rotas.
+function enforce(acc, key, n = 1) {
+  const msg = check(acc, key, n);
+  if (msg) { const e = new Error(msg); e.status = 402; e.limit = key; throw e; }
+}
+
+// Custo mensal dos extras já contratados (entra na renovação).
+function extrasCost(acc) {
+  const prices = extraPrices();
+  const ex = (acc.billing || {}).extras || {};
+  return PAID_EXTRAS.reduce((s, k) => s + (Math.max(0, Number(ex[k]) || 0) * (prices[k] || 0)), 0);
+}
+
+// Total cobrado na renovação: plano + extras.
+function chargeTotal(acc, plan) {
+  const p = plan || planOf(acc);
+  return (p ? p.price : 0) + extrasCost(acc);
+}
+
+module.exports = {
+  PAID_EXTRAS, LABEL, planOf, extraPrices, limitOf, usage, report,
+  check, enforce, extrasCost, chargeTotal
+};

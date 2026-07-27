@@ -25,6 +25,8 @@ const MODULES = [
   { key: 'webhooks', label: 'Webhooks', view: 'webhooks' },
   { key: 'pixels', label: 'Pixels', view: 'pixels' },
   { key: 'links', label: 'Links Rastreáveis', view: 'links' },
+  { key: 'elitepay', label: 'Elite Pay', view: 'elitepay' },
+  { key: 'tracking', label: 'Tracking', view: 'tracking' },
   { key: 'schedule', label: 'Agendamentos', view: 'schedule' },
   { key: 'agents', label: 'Atendentes', view: 'agents' },
   { key: 'settings', label: 'Configurações', view: 'settings' }

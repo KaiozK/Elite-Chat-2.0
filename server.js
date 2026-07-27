@@ -82,6 +82,64 @@ app.get('/auth/meta/callback', (req, res) => {
 </script></body></html>`);
 });
 
+// Callback do OAuth do META ADS (permissão ads_read, usado pelo Tracking).
+// Mesma mecânica do Embedded Signup: devolve o code para a janela do painel.
+app.get('/auth/meta-ads/callback', (req, res) => {
+  const payload = JSON.stringify({
+    type: 'ELITECHAT_METAADS_CALLBACK',
+    code: String(req.query.code || ''),
+    state: String(req.query.state || ''),
+    error: String(req.query.error_description || req.query.error || '')
+  });
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Conectando…</title>
+<style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#101828;background:#f6f8fa}div{text-align:center}</style>
+</head><body><div><b>Conectando sua conta de anúncios…</b><p>Você já pode fechar esta janela.</p></div>
+<script>
+  (function () {
+    var payload = ${payload};
+    try {
+      if (window.opener) {
+        window.opener.postMessage(payload, window.location.origin);
+        setTimeout(function () { window.close(); }, 900);
+        return;
+      }
+    } catch (e) {}
+    window.location.replace('/app/#/tracking');
+  })();
+</script></body></html>`);
+});
+
+// Callback do OAuth da Nuvemshop — mesma mecânica do Embedded Signup da Meta:
+// recebe o `code`, repassa para a janela do painel via postMessage e fecha.
+app.get('/auth/nuvemshop/callback', (req, res) => {
+  const payload = JSON.stringify({
+    type: 'ELITECHAT_NUVEMSHOP_CALLBACK',
+    code: String(req.query.code || ''),
+    state: String(req.query.state || ''),
+    error: String(req.query.error || '')
+  });
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Conectando…</title>
+<style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#101828;background:#f6f8fa}div{text-align:center}</style>
+</head><body><div><b>Conectando sua loja Nuvemshop…</b><p>Você já pode fechar esta janela.</p></div>
+<script>
+  (function () {
+    var payload = ${payload};
+    try {
+      if (window.opener) {
+        window.opener.postMessage(payload, window.location.origin);
+        setTimeout(function () { window.close(); }, 900);
+        return;
+      }
+    } catch (e) {}
+    window.location.replace('/app/#/integrations');
+  })();
+</script></body></html>`);
+});
+
 // Gatilho de automação por webhook externo (Flow Builder).
 // POST /flow-hook/:token  body: { to, vars? }  → executa a automação.
 const flows = require('./src/flows');
@@ -181,7 +239,7 @@ function fireCapi(acc, link, req) {
       }],
       ...(p.testCode ? { test_event_code: p.testCode } : {})
     };
-    fetch(`https://graph.facebook.com/${ver}/${encodeURIComponent(p.pixelId)}/events?access_token=${encodeURIComponent(p.capiToken)}`, {
+    fetch(`https://graph.facebook.com/${ver}/${encodeURIComponent(idOk(p.pixelId))}/events?access_token=${encodeURIComponent(p.capiToken)}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
     }).then(() => { p.lastEventAt = Date.now(); db.save(); }).catch(() => {});
   }
@@ -204,8 +262,18 @@ app.get('/l/:slug', (req, res) => {
 
   const dest = destWithUtm(link);
   const pixels = (acc.pixels || []).filter(p => p && p.pixelId);
-  if (!pixels.length) return res.redirect(302, dest);
+  // Tags de navegador ligadas em Tracking (LinkedIn, UET, Snapchat, Pinterest,
+  // GTM, Meta Pixel, Google Ads). Sem elas o clique não seria registrado nessas
+  // plataformas, mesmo com o ID preenchido no painel.
+  let tags = '';
+  try { tags = require('./src/tracking').clientTags(acc, { event: link.event || 'PageView' }); } catch {}
+  if (!pixels.length && !tags) return res.redirect(302, dest);
 
+  // Mesmo cuidado das tags de Tracking: JSON.stringify NAO escapa "</script>",
+  // entao um pixelId com HTML fecharia a tag e injetaria script nesta pagina
+  // publica. Filtramos para alfanumerico e escapamos "<" no serializador.
+  const idOk = v => String(v || '').replace(/[^\w.:-]/g, '').slice(0, 64);
+  const js = v => JSON.stringify(v === undefined ? '' : v).replace(/</g, '\\u003c');
   const metas = pixels.filter(p => p.type === 'meta');
   const gtags = pixels.filter(p => p.type === 'gtag');
   const ttks = pixels.filter(p => p.type === 'tiktok');
@@ -220,17 +288,50 @@ app.get('/l/:slug', (req, res) => {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Redirecionando…</title>
 <meta http-equiv="refresh" content="2;url=${destAttr}">
-${metas.length ? `<script>!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');${metas.map(p => `fbq('init',${JSON.stringify(p.pixelId)});`).join('')}fbq('track',${JSON.stringify(ev)},${JSON.stringify(val)});fbq('trackCustom','LinkClick',${JSON.stringify(evParams)});</script><noscript>${metas.map(p => `<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${encodeURIComponent(p.pixelId)}&ev=${encodeURIComponent(ev)}&noscript=1">`).join('')}</noscript>` : ''}
-${gtags.length ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gtags[0].pixelId)}"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());${gtags.map(p => `gtag('config',${JSON.stringify(p.pixelId)});`).join('')}gtag('event',${JSON.stringify(ev.toLowerCase())},{link_slug:${JSON.stringify(link.slug)}${gaVal}});</script>` : ''}
-${ttks.length ? `<script>!function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie"];ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.load=function(e,n){var i="https://analytics.tiktok.com/i18n/pixel/events.js";ttq._i=ttq._i||{};ttq._i[e]=[];ttq._i[e]._u=i;ttq._t=ttq._t||{};ttq._t[e]=+new Date;ttq._o=ttq._o||{};ttq._o[e]=n||{};var o=document.createElement("script");o.type="text/javascript";o.async=!0;o.src=i+"?sdkid="+e+"&lib="+t;var a=document.getElementsByTagName("script")[0];a.parentNode.insertBefore(o,a)};${ttks.map(p => `ttq.load(${JSON.stringify(p.pixelId)});`).join('')}ttq.page();ttq.track(${JSON.stringify(ev)});}(window,document,'ttq');</script>` : ''}
+${tags}
+${metas.length ? `<script>!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');${metas.map(p => `fbq('init',${js(idOk(p.pixelId))});`).join('')}fbq('track',${js(ev)},${JSON.stringify(val).replace(/</g,"\u003c")});fbq('trackCustom','LinkClick',${JSON.stringify(evParams).replace(/</g,"\u003c")});</script><noscript>${metas.map(p => `<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${encodeURIComponent(idOk(p.pixelId))}&ev=${encodeURIComponent(ev)}&noscript=1">`).join('')}</noscript>` : ''}
+${gtags.length ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(idOk(gtags[0].pixelId))}"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());${gtags.map(p => `gtag('config',${js(idOk(p.pixelId))});`).join('')}gtag('event',${js(ev.toLowerCase())},{link_slug:${js(link.slug)}${gaVal}});</script>` : ''}
+${ttks.length ? `<script>!function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie"];ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.load=function(e,n){var i="https://analytics.tiktok.com/i18n/pixel/events.js";ttq._i=ttq._i||{};ttq._i[e]=[];ttq._i[e]._u=i;ttq._t=ttq._t||{};ttq._t[e]=+new Date;ttq._o=ttq._o||{};ttq._o[e]=n||{};var o=document.createElement("script");o.type="text/javascript";o.async=!0;o.src=i+"?sdkid="+e+"&lib="+t;var a=document.getElementsByTagName("script")[0];a.parentNode.insertBefore(o,a)};${ttks.map(p => `ttq.load(${js(idOk(p.pixelId))});`).join('')}ttq.page();ttq.track(${js(ev)});}(window,document,'ttq');</script>` : ''}
 <style>body{font-family:'Segoe UI',system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f7faf6;color:#0f1f15}div{text-align:center}.sp{width:34px;height:34px;border:3px solid #d7eee3;border-top-color:#10b981;border-radius:50%;margin:0 auto 14px;animation:r .8s linear infinite}@keyframes r{to{transform:rotate(360deg)}}</style>
 </head><body><div><div class="sp"></div><b>Redirecionando…</b></div>
 <script>setTimeout(function(){window.location.replace(${destJson})},700);</script>
 </body></html>`);
 });
 
+// Snippet de rastreamento do Tracking (instalável em qualquer site do cliente):
+// <script src="https://SEU-DOMINIO/t.js?a=ACCOUNT_ID"></script>
+// Captura fbclid/gclid/ttclid + UTMs, mantém a sessão e envia PageView.
+app.get('/t.js', (req, res) => {
+  res.set('Content-Type', 'application/javascript; charset=utf-8');
+  res.send(`(function(){try{
+var a=new URL(document.currentScript.src).searchParams.get('a');if(!a)return;
+var q=new URLSearchParams(location.search);
+var st=JSON.parse(localStorage.getItem('ec_trk')||'{}');
+st.sid=st.sid||(Date.now().toString(36)+Math.random().toString(36).slice(2,10));
+['fbclid','gclid','ttclid'].forEach(function(k){if(q.get(k))st[k]=q.get(k);});
+st.utm=st.utm||{};['source','medium','campaign','content','term'].forEach(function(k){if(q.get('utm_'+k))st.utm[k]=q.get('utm_'+k);});
+localStorage.setItem('ec_trk',JSON.stringify(st));
+fetch(new URL('/api/public/track/'+a,document.currentScript.src).href,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'PageView',source:'site',sid:st.sid,url:location.href,fbclid:st.fbclid,gclid:st.gclid,ttclid:st.ttclid,utm:st.utm})});
+}catch(e){}})();`);
+});
+
+// Checkout público do Elite Pay — página de pagamento das cobranças (/pay/:id).
+// A página busca os dados em /api/public/pay/:id (rota sem autenticação).
+app.get('/pay/:id', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'pay.html'));
+});
+
 // Webhook de pagamentos Woovi (Pix / Pix Automático) — configurar em app.woovi.com → Webhooks
 app.post('/woovi-webhook', require('./src/woovi').webhookHandler(broadcast));
+
+// Eventos do adquirente de cartão (Pagar.me / Asaas): pagamento confirmado,
+// estorno e aprovação do recebedor. Autenticado + reconferido na API.
+app.post('/card-webhook', require('./src/elitepay').cardWebhookHandler(broadcast));
+
+// Eventos da loja Nuvemshop (pedido criado/pago/cancelado, cliente novo).
+// Assinado com HMAC-SHA256 — a validação usa req.rawBody.
+app.set('flowDeliver', flowDeliver);
+app.post('/nuvemshop-webhook', require('./src/nuvemshop').webhookHandler(broadcast));
 
 app.use(require('./src/webhook')(broadcast));
 app.use('/api', require('./src/api')(broadcast, clients));
@@ -320,6 +421,19 @@ setInterval(() => {
   try { schedule.sweepReminders(broadcast); }
   catch (e) { console.error('[agenda] erro no sweep de lembretes:', e.message); }
 }, 30 * 1000);
+
+// Liberação dos recebíveis de cartão: a venda entra como "a liberar" e vira
+// saldo sacável quando vence o prazo do adquirente (D+30/D+32). Tick de 1h.
+const elitepayMod = require('./src/elitepay');
+setInterval(() => {
+  try { elitepayMod.releaseReceivables(broadcast); }
+  catch (e) { console.error('[carteira] erro ao liberar recebíveis:', e.message); }
+}, 60 * 60 * 1000);
+setTimeout(() => { try { elitepayMod.releaseReceivables(broadcast); } catch {} }, 20000);
+
+// Renovação automática das assinaturas pagas no CARTÃO (tick diário).
+// O Pix recorrente é renovado pela própria Woovi; o cartão é por nossa conta.
+require('./src/saasbilling').startRenewalJob(broadcast);
 
 const PORT = process.env.PORT || 3900;
 app.listen(PORT, () => {
