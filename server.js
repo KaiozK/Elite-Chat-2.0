@@ -324,6 +324,10 @@ app.get('/pay/:id', (req, res) => {
 // Webhook de pagamentos Woovi (Pix / Pix Automático) — configurar em app.woovi.com → Webhooks
 app.post('/woovi-webhook', require('./src/woovi').webhookHandler(broadcast));
 
+// Webhook do PIX INDIRETO (assinaturas do EliteChat). Token na URL +
+// reconsulta server-side da cobranca antes de ativar (anti-fraude).
+app.post('/pix-indireto-webhook', require('./src/pixindireto').webhookHandler(broadcast));
+
 // Eventos do adquirente de cartão (Pagar.me / Asaas): pagamento confirmado,
 // estorno e aprovação do recebedor. Autenticado + reconferido na API.
 app.post('/card-webhook', require('./src/elitepay').cardWebhookHandler(broadcast));

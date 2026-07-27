@@ -2512,6 +2512,7 @@ module.exports = function (broadcast, clients) {
 
   // ============ ASSINATURA & CARTEIRA (SaaS via Woovi — Pix / Pix Automático) ============
   const woovi = require('./woovi');
+  const pixIndirect = require('./pixindireto');   // Pix Indireto: só assinaturas
   const saas = require('./saasbilling');   // planos do EliteChat no cartão
 
   function billingPublic(acc) {
@@ -2599,6 +2600,14 @@ module.exports = function (broadcast, clients) {
     const plan = db.get().plans.find(p => p.id === (req.body || {}).planId && !p.archived);
     if (!plan) return res.status(400).json({ error: 'Plano não encontrado' });
     const acc = req.acc;
+
+    // PIX INDIRETO — quando habilitado pelo admin, é o meio EXCLUSIVO das
+    // assinaturas do EliteChat (recargas e Elite Pay seguem no OpenPix).
+    if (pixIndirect.configured()) {
+      const pc = await pixIndirect.createSubscriptionCharge(acc, plan);
+      return res.json({ charge: pc, pixAutomatic: false, provider: 'pixIndirect' });
+    }
+
     const customer = { name: acc.name, email: acc.email };
     const cid = `sub-${acc.id}-${plan.id}-${Date.now().toString(36)}`;
 
@@ -2653,6 +2662,11 @@ module.exports = function (broadcast, clients) {
   router.get('/billing/pending', auth, h(async (req, res) => {
     const pc = req.acc.billing.pendingCharge;
     if (!pc) return res.json({ paid: false, none: true });
+    // atualização automática do status: Pix Indireto reconsulta pelo txid
+    if (pc.provider === 'pixIndirect') {
+      const r = await pixIndirect.refreshSubscriptionCharge(req.acc, broadcast);
+      return res.json({ paid: !!r.paid, status: r.status, removed: !!r.removed });
+    }
     const charge = await woovi.getCharge(pc.correlationID);
     if (charge && /COMPLETED|CONFIRMED|PAID/i.test(charge.status || '')) {
       woovi.applyPayment(charge, broadcast);
@@ -2663,8 +2677,14 @@ module.exports = function (broadcast, clients) {
 
   router.post('/billing/pending/cancel', auth, h(async (req, res) => {
     const pc = req.acc.billing.pendingCharge;
+    if (pc && pc.provider === 'pixIndirect') { await pixIndirect.cancelSubscriptionCharge(req.acc); return res.json({ ok: true }); }
     if (pc) { await woovi.deleteCharge(pc.correlationID); req.acc.billing.pendingCharge = null; db.save(); }
     res.json({ ok: true });
+  }));
+
+  // Prorroga a validade da cobrança de assinatura do Pix Indireto (PUT calendar)
+  router.post('/billing/pending/extend', auth, h(async (req, res) => {
+    res.json(await pixIndirect.extendSubscriptionCharge(req.acc, (req.body || {}).seconds));
   }));
 
   // Cancelar assinatura (mantém acesso até o fim do período pago)
@@ -2794,6 +2814,7 @@ module.exports = function (broadcast, clients) {
       },
       // conexão manual do PRÓPRIO admin (testes/desenvolvimento)
       manual: { accessToken: req.wctx.wa.accessToken || '', wabaId: req.wctx.wa.wabaId || '', phoneNumberId: req.wctx.wa.phoneNumberId || '' },
+      pixIndirect: require('./pixindireto').adminView(`${req.protocol}://${req.get('host')}`),
       // adquirente de cartão — configurável aqui na aba Pagamentos
       card: {
         ...require('./cardgateways').adminCard(elitepay.cardConfig()),
@@ -2871,6 +2892,22 @@ module.exports = function (broadcast, clients) {
     const b = req.body || {};
     const p = db.get().platform;
     if (b.wooviAppId !== undefined) p.woovi.appId = String(b.wooviAppId).trim();
+    // ---- Pix Indireto (assinaturas) ----
+    if (b.pixIndirect && typeof b.pixIndirect === 'object') {
+      const pi = require('./pixindireto').cfg();
+      const bi = b.pixIndirect;
+      if (typeof bi.enabled === 'boolean') pi.enabled = bi.enabled;
+      if (typeof bi.baseUrl === 'string') pi.baseUrl = bi.baseUrl.trim().replace(/\/+$/, '');
+      if (typeof bi.appId === 'string' && bi.appId.trim()) pi.appId = bi.appId.trim();
+      if (typeof bi.pixKey === 'string') pi.pixKey = bi.pixKey.trim().slice(0, 140);
+      if (typeof bi.merchantName === 'string') pi.merchantName = bi.merchantName.trim().slice(0, 25);
+      if (typeof bi.merchantCity === 'string') pi.merchantCity = bi.merchantCity.trim().slice(0, 15);
+      if (bi.receiver && typeof bi.receiver === 'object') {
+        for (const k of ['name', 'taxID', 'taxIDType', 'city', 'state', 'street', 'zipcode']) {
+          if (typeof bi.receiver[k] === 'string') pi.receiver[k] = bi.receiver[k].trim().slice(0, 200);
+        }
+      }
+    }
     if (b.pixAutomatic !== undefined) p.woovi.pixAutomatic = !!b.pixAutomatic;
     if (b.trialDays !== undefined) p.billing.trialDays = Math.max(0, Number(b.trialDays) || 0);
     if (b.enforce !== undefined) p.billing.enforce = !!b.enforce;

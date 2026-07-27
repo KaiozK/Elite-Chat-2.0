@@ -4776,10 +4776,27 @@ async function submitCardPay(btn) {
 }
 
 // QR do Pix inline (sem pop-up) + copia-e-cola + polling
+// Gera a IMAGEM do QR no navegador a partir do BR Code EMV (Pix Indireto não
+// devolve imagem pronta; devolve o EMV, que é o conteúdo do QR). Usa a lib
+// vendorizada qrcode-generator (MIT) carregada em /app/vendor/qrcode.js.
+function localQrDataUrl(brCode) {
+  try {
+    if (typeof qrcode !== 'function' || !brCode) return '';
+    const qr = qrcode(0, 'M');           // typeNumber automático, correção M (padrão Pix)
+    qr.addData(String(brCode));
+    qr.make();
+    return qr.createDataURL(5, 12);
+  } catch { return ''; }
+}
+
 function payBoxHtml(pc) {
   return `<div class="card pay-card" id="pay-card">
     <div class="pay-grid">
-      <div class="pay-qr">${pc.qrCodeImage ? `<img src="${esc(pc.qrCodeImage)}" alt="QR Code Pix">` : `<div class="pay-qr-ph">${ico('clock', 26)}</div>`}</div>
+      <div class="pay-qr" id="pay-qr-box">${pc.qrCodeImage
+        ? `<img src="${esc(pc.qrCodeImage)}" alt="QR Code Pix">`
+        : pc.brCode
+          ? `<img src="${localQrDataUrl(pc.brCode)}" alt="QR Code Pix">`
+          : `<div class="pay-qr-ph">${ico('clock', 26)}</div>`}</div>
       <div style="flex:1;min-width:0">
         <h2 style="margin:0 0 4px">${ico('zap')} Pague com Pix para ativar</h2>
         <p class="muted" style="margin:0 0 10px;font-size:13px">${pc.kind === 'topup' ? 'Recarga de saldo' : 'Assinatura'}, <b>${fmtBRL(pc.amount)}</b>. Escaneie o QR ou use o copia-e-cola. A confirmação é automática.</p>
@@ -5125,6 +5142,7 @@ async function paintAdmin() {
             <p class="muted" style="font-size:12px;margin:6px 0 0">Em app.woovi.com → Webhooks, cadastre a URL <code>${location.origin}/woovi-webhook</code> para os eventos de <b>cobrança paga</b>. Cada pagamento é verificado de novo na API antes de ativar (anti-fraude).</p>
           </div>
         </div>
+        ${admPixIndirectSection(d.pixIndirect || {})}
         ${admCardSection(d.card || {}, null)}
         <div class="card">
           <h2>${ico('gear')} Regras de cobrança</h2>
@@ -5526,6 +5544,66 @@ async function admSaveAllFees(btn) {
     toast('Taxas de Pix e cartão salvas');
     admEpPaint();
   } catch (e) { toast(e.message, 'error'); btn.disabled = false; btn.innerHTML = txt; }
+}
+
+// ============================================================================
+// PIX INDIRETO (Woovi). Exclusivo para as ASSINATURAS do EliteChat.
+// Cada participante indireto tem base URL própria; o AppID autentica.
+// Ligado e configurado, as assinaturas passam a cobrar por aqui (recargas e
+// Elite Pay continuam no OpenPix acima).
+// ============================================================================
+function admPixIndirectSection(pi) {
+  const status = pi.configured
+    ? '<span class="pill done">Ativo nas assinaturas</span>'
+    : pi.enabled ? '<span class="pill pending">Ligado, falta configurar</span>' : '<span class="pill">Desligado</span>';
+  return `<div class="card">
+    <div class="row" style="align-items:center;margin-bottom:6px">
+      <h2 style="margin:0;flex:1">${ico('pix')} Pix Indireto (assinaturas)</h2>
+      ${status}
+    </div>
+    <p class="muted" style="margin:0 0 14px;font-size:13px">
+      Infraestrutura de <b>participante indireto</b> da Woovi, usada <b>somente para cobrar as
+      assinaturas do EliteChat</b>. Com ela ligada, o plano é cobrado pela sua base
+      <code>*.indireto.woovi.cloud</code>; recargas e Elite Pay continuam no Pix da Woovi acima.
+    </p>
+    <label class="chk"><input type="checkbox" ${pi.enabled ? 'checked' : ''}
+      onchange="admSaveConfig({pixIndirect:{enabled:this.checked}})"> Usar Pix Indireto nas assinaturas</label>
+
+    <div class="row" style="margin-top:14px;align-items:flex-end">
+      <label style="flex:1.5">Base URL do participante
+        <input id="pi-base" value="${esc(pi.baseUrl || '')}" placeholder="https://SEUNOME.indireto.woovi.cloud"></label>
+      <label style="flex:1">AppID ${pi.hasAppId ? `<span class="pill done" style="margin-left:6px">salvo ${esc(pi.appId)}</span>` : ''}
+        <input id="pi-appid" type="password" placeholder="${pi.hasAppId ? '•••• (vazio mantém)' : 'AppID do Indireto'}"></label>
+    </div>
+    <div class="row" style="margin-top:10px;align-items:flex-end">
+      <label style="flex:1.2">Chave Pix recebedora<input id="pi-key" value="${esc(pi.pixKey || '')}" placeholder="chave que recebe as assinaturas"></label>
+      <label style="max-width:200px">Nome no EMV (até 25)<input id="pi-mname" value="${esc(pi.merchantName || 'ELITECHAT')}" maxlength="25"></label>
+      <label style="max-width:170px">Cidade no EMV (até 15)<input id="pi-mcity" value="${esc(pi.merchantCity || 'SAO PAULO')}" maxlength="15"></label>
+      <button class="btn primary no-grow" onclick="admSavePixIndirect()">${ico('save', 14)} Salvar</button>
+    </div>
+    <p class="hint" style="margin-top:8px;text-align:left">Nome e cidade entram no BR Code EMV. A regra do padrão Pix não aceita acento nem caractere especial.</p>
+
+    <div class="capi-box" style="margin-top:14px">
+      <div class="capi-head">${ico('webhook', 14)} Webhook de liquidação <span class="capi-tag">recomendado</span></div>
+      <p class="muted" style="font-size:12px;margin:6px 0 0">Cadastre esta URL para receber a confirmação de pagamento na hora. Sem ela, o painel confirma pelo polling (a cada 5s enquanto o QR está aberto). Todo evento é <b>reconferido na API</b> pelo txid antes de ativar.</p>
+      <div class="linkrow" style="margin-top:8px"><code>${esc(pi.webhookUrl || '')}</code>
+        <button class="icon-btn" title="Copiar" onclick="copyText('${esc(pi.webhookUrl || '')}')">${ico('copy', 13)}</button></div>
+    </div>
+  </div>`;
+}
+
+async function admSavePixIndirect() {
+  try {
+    await api('/admin/config', { method: 'PUT', body: { pixIndirect: {
+      baseUrl: $('#pi-base').value,
+      appId: $('#pi-appid').value,
+      pixKey: $('#pi-key').value,
+      merchantName: $('#pi-mname').value,
+      merchantCity: $('#pi-mcity').value
+    } } });
+    toast('Pix Indireto salvo'); paintAdmin();
+    setTimeout(() => showSettingsTab('adm-pay'), 60);
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 function admCardSection(c, t) {
