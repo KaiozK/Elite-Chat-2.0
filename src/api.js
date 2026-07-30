@@ -13,6 +13,7 @@ const geo = require('./geo');
 const agents = require('./agents');
 const schedule = require('./schedule');
 const push = require('./push');
+const pushNative = require('./pushnative');
 
 module.exports = function (broadcast, clients) {
   const router = express.Router();
@@ -188,6 +189,54 @@ module.exports = function (broadcast, clients) {
 
     res.status(401).json({ error: 'Usuário ou senha inválidos' });
   }));
+
+  // EXCLUSÃO DA CONTA (App Store, diretriz 5.1.1(v): quem cria conta no app
+  // tem que conseguir apagá-la no app, não só por e-mail ou suporte).
+  //
+  // Apaga a conta inteira e tudo que pende dela — conversas, contatos, mensagens,
+  // automações, agendamentos, atendentes — e derruba todas as sessões abertas,
+  // inclusive as dos atendentes. É irreversível de propósito.
+  //
+  // Só o dono da conta pode: atendente não apaga a empresa em que trabalha e o
+  // admin da plataforma não se autoexclui (deixaria o SaaS sem administrador).
+  router.post('/account/delete', auth, (req, res) => {
+    if (req.session.kind === 'admin') {
+      return res.status(403).json({ error: 'A conta de administrador da plataforma não pode ser excluída por aqui' });
+    }
+    if (req.agent) {
+      return res.status(403).json({ error: 'Somente o dono da conta pode excluí-la' });
+    }
+    const { pass, confirm } = req.body || {};
+    if (db.hash(String(pass || '')) !== req.acc.passHash) {
+      return res.status(401).json({ error: 'Senha incorreta' });
+    }
+    // Confirmação digitada — evita exclusão por toque acidental.
+    if (String(confirm || '').trim().toUpperCase() !== 'EXCLUIR') {
+      return res.status(400).json({ error: 'Digite EXCLUIR para confirmar' });
+    }
+
+    const d = db.get();
+    const accId = req.acc.id;
+
+    // Derruba toda sessão ligada a esta conta (dono e atendentes).
+    for (const [tk, s] of Object.entries(d.sessions)) {
+      if (s.accountId === accId) delete d.sessions[tk];
+    }
+    // O registro da conta guarda conversas, contatos, mensagens, flows,
+    // agendamentos, atendentes e assinaturas de push — some tudo junto.
+    d.accounts = d.accounts.filter(a => a.id !== accId);
+
+    // Log operacional: guarda payloads de webhook com dados dos contatos do
+    // cliente, então sai junto com a conta.
+    d.webhookLog = d.webhookLog.filter(e => e.accountId !== accId);
+
+    // `revenue` e `withdrawals` ficam: são registros financeiros da plataforma
+    // (obrigação fiscal). Não têm dado pessoal além do accountId, que a partir
+    // daqui não aponta mais para ninguém.
+    db.save();
+
+    res.json({ ok: true });
+  });
 
   // Config pública da landing (sem auth) — copy do botão conforme dias de teste
   router.get('/public/landing', (req, res) => {
@@ -3613,6 +3662,17 @@ module.exports = function (broadcast, clients) {
   });
   router.post('/push/unsubscribe', auth, (req, res) => {
     if (req.body && req.body.endpoint) push.unsubscribe(req.acc, req.body.endpoint);
+    res.json({ ok: true });
+  });
+
+  // Aparelho do app das lojas (iOS/Android). O token vem do FCM/APNs e é o
+  // endereço para entregar notificação com o app fechado.
+  router.post('/push/device', auth, (req, res) => {
+    const ok = pushNative.registerDevice(req.acc, req.body.token, req.body.platform, req.body.prefs);
+    res.json({ ok, enabled: pushNative.enabled() });
+  });
+  router.post('/push/device/unregister', auth, (req, res) => {
+    if (req.body && req.body.token) pushNative.unregisterDevice(req.acc, req.body.token);
     res.json({ ok: true });
   });
 

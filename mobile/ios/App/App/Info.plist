@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CAPACITOR_DEBUG</key>
+	<string>$(CAPACITOR_DEBUG)</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+        <string>EliteChat</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>armv7</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<true/>
+
+	<!-- Deep link de retorno das autorizações OAuth (Meta, Meta Ads,
+	     Nuvemshop). A autorização abre no Safari; o callback do servidor
+	     redireciona para elitechat://auth/... e o iOS devolve o controle
+	     ao app. Tratado em public/app/native.js. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.elitechat.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>elitechat</string>
+			</array>
+		</dict>
+	</array>
+
+	<!-- Push chega pelo APNs; o modo remote-notification permite processar a
+	     notificação com o app em segundo plano. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
+
+	<!-- Textos que o iOS mostra ao pedir cada permissão. A App Store rejeita
+	     o app se uma permissão for usada sem a descrição correspondente. -->
+	<key>NSCameraUsageDescription</key>
+	<string>O EliteChat usa a câmera para você fotografar e enviar imagens nas conversas de WhatsApp.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>O EliteChat acessa suas fotos para você anexar imagens e documentos às conversas de WhatsApp.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>O EliteChat salva na sua galeria as imagens recebidas nas conversas.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>O EliteChat usa o microfone para gravar áudios enviados nas conversas de WhatsApp.</string>
+
+	<!-- Permite abrir o WhatsApp e o navegador a partir do app. -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>https</string>
+		<string>whatsapp</string>
+	</array>
+</dict>
+</plist>

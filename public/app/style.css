@@ -2992,3 +2992,65 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .meta-token.warn .mt-bar i { background: var(--amber); }
 .meta-token.crit .mt-bar i { background: var(--red); }
 .mt-txt { margin: 0; font-size: 12.5px; font-weight: 500; line-height: 1.5; color: var(--text2); }
+
+/* ===========================================================================
+   APP NATIVO (iOS / Android) — só entra em vigor dentro do app das lojas.
+   O <html> recebe .ec-native (e .ec-ios / .ec-android) pelo native.js, então
+   nada aqui afeta o painel no navegador.
+   =========================================================================== */
+
+/* Notch, ilha dinâmica e barra de gestos: o conteúdo tem que começar abaixo
+   do recorte e terminar acima da barra inferior. viewport-fit=cover já está
+   no <meta>, o que habilita as variáveis env(). */
+.ec-native .topbar {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
+}
+.ec-native .sidebar {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 14px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.ec-native main#view {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Barra de digitação: sobe junto com o teclado. --ec-keyboard é atualizado
+   pelo native.js nos eventos keyboardWillShow/Hide. */
+.ec-native .composer {
+  padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+}
+.ec-native.kb-open .composer {
+  padding-bottom: 14px;
+  transform: translateY(calc(-1 * var(--ec-keyboard, 0px)));
+  transition: transform .18s var(--ease, ease);
+}
+
+/* A tela de login também respeita o recorte. */
+.ec-native .login-wrap {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 18px);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+}
+
+/* Seleção de texto por toque longo e realce azul de toque atrapalham numa
+   interface de app; texto de mensagens e campos seguem selecionáveis. */
+.ec-native {
+  -webkit-tap-highlight-color: transparent;
+}
+.ec-native body {
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior-y: none;   /* sem "puxar para atualizar" acidental */
+}
+.ec-native input,
+.ec-native textarea,
+.ec-native .bubble,
+.ec-native [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Bloco de ação destrutiva (excluir conta) — separado visualmente do resto
+   das configurações para não ser clicado sem intenção. */
+.danger-card { border-color: color-mix(in srgb, var(--red) 35%, var(--border)); }
+.danger-card h2 { color: var(--red); }
+.btn.danger.no-grow { border-color: color-mix(in srgb, var(--red) 45%, var(--border)); }
+.btn.danger:hover { background: color-mix(in srgb, var(--red) 10%, transparent); }

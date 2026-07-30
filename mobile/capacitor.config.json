@@ -1,0 +1,29 @@
+{
+  "appId": "com.elitechat.app",
+  "appName": "EliteChat",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  },
+  "ios": {
+    "contentInset": "always",
+    "limitsNavigationsToAppBoundDomains": false
+  },
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": false,
+      "backgroundColor": "#ECFDF5",
+      "androidSplashResourceName": "splash",
+      "showSpinner": false
+    },
+    "PushNotifications": {
+      "presentationOptions": ["alert", "sound", "badge"]
+    },
+    "Keyboard": {
+      "resize": "none"
+    }
+  }
+}

@@ -82,6 +82,9 @@ function onReminder(d) {
 // Pede permissão de notificação uma vez (após login)
 function askNotifPermission() {
   setTimeout(() => { try { if (window.ECNotify) ECNotify.requestPermission(); } catch {} }, 4000);
+  // O token do aparelho pode ter chegado antes do login (o SO entrega assim que
+  // o app abre). Agora que existe sessão, vincula-o à conta.
+  if (window.ECNative) { try { ECNative.sendToken(); } catch {} }
 }
 
 // ---------- Notificação de nova mensagem (via SSE) ----------
@@ -111,6 +114,7 @@ function setTheme(t) {
   const btn = $('#theme-btn'); if (btn) btn.title = t === 'dark' ? 'Mudar para claro' : 'Mudar para escuro';
   const card = $('#appearance-card'); if (card) card.innerHTML = renderThemeSettings();
   const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', t === 'dark' ? '#080a08' : '#34D399');
+  if (window.ECNative) ECNative.syncTheme();   // status bar do app acompanha o tema
 }
 function toggleTheme() { setTheme(currentTheme() === 'dark' ? 'light' : 'dark'); }
 function renderThemeSettings() {
@@ -138,6 +142,28 @@ function notifResync() {
   refreshBadge();
   if (state.view === 'inbox') loadConversations();
 }
+
+// ---------- Ganchos usados pelo app nativo (native.js) ----------
+// No navegador ninguém chama isto; no app das lojas são os pontos de entrada
+// do toque na notificação, da volta do segundo plano e do botão voltar.
+window.__ecOnNotifOpen = notifOpenFromData;
+
+window.__ecOnResume = function () {
+  // O SO derruba a conexão SSE quando o app fica em segundo plano.
+  if (TOKEN) { try { connectSSE(); } catch {} notifResync(); }
+};
+
+// Botão físico de voltar do Android. Retorna true quando já tratou o toque —
+// aí o native.js não navega nem fecha o app.
+window.__ecHandleBack = function () {
+  const modal = $('#modal-root');
+  if (modal && modal.innerHTML.trim()) { closeModal(); return true; }
+  const app = document.getElementById('app');
+  if (app && app.classList.contains('nav-open')) { toggleNav(false); return true; }
+  // Dentro de uma conversa, voltar retorna para a lista em vez de sair do app.
+  if (document.querySelector('.inbox.chat-open')) { closeChatMobile(); return true; }
+  return false;
+};
 function paintNotifBell() {
   if (!window.ECNotify) return;
   const dot = $('#notif-dot'); if (!dot) return;
@@ -266,8 +292,33 @@ let CH_ID = localStorage.getItem('ec_channel') || '';
 function chActive() { return CHANNELS.find(c => c.id === CH_ID) || CHANNELS[0] || null; }
 function chName(id) { const c = CHANNELS.find(x => x.id === id); return c ? c.label : ''; }
 
+// Base da API: vazia no navegador (mesmo host), absoluta nos apps nativos —
+// lá o HTML vem do bundle e um caminho relativo não chegaria ao backend.
+const API = window.EC_CONFIG || { api: p => '/api' + p, url: p => location.origin + p, webOrigin: location.origin, native: false };
+
+// Abre uma URL fora do painel (download de CSV, link externo, checkout).
+// No navegador é uma aba nova; no app nativo vai para o navegador do sistema,
+// que sabe lidar com download de arquivo — o WebView do app não sabe.
+function openExternal(url) {
+  if (API.native && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
+    window.Capacitor.Plugins.Browser.open({ url }).catch(() => window.open(url, '_blank'));
+    return;
+  }
+  window.open(url, '_blank');
+}
+
+// Abre uma autorização OAuth (Meta, Meta Ads, Nuvemshop).
+// Navegador: popup que devolve o código por postMessage.
+// App nativo: navegador do sistema — não existe popup com `opener` ali, então
+// o retorno vem por deep link (elitechat://auth/...) e o native.js reemite o
+// mesmo postMessage que estes fluxos já escutam.
+function openAuthWindow(url, name, features) {
+  if (API.native && window.ECNative) return ECNative.openAuthWindow(url);
+  return window.open(url, name, features);
+}
+
 async function api(path, opts = {}) {
-  const res = await fetch('/api' + path, {
+  const res = await fetch(API.api(path), {
     method: opts.method || (opts.body ? 'POST' : 'GET'),
     headers: {
       'Content-Type': 'application/json',
@@ -808,7 +859,7 @@ async function switchChannel(id) {
 
 function connectSSE() {
   if (es) es.close();
-  es = new EventSource('/api/events?token=' + TOKEN);
+  es = new EventSource(API.api('/events?token=' + TOKEN));
   es.addEventListener('message', e => { const d = JSON.parse(e.data || '{}'); maybeNotifyMessage(d); onLive(d); });
   es.addEventListener('status', e => onLive(JSON.parse(e.data || '{}')));
   es.addEventListener('campaign', () => { if (state.view === 'campaigns') paintCampaigns(); });
@@ -1741,7 +1792,7 @@ async function renderContacts() {
     <div class="page">
       <div class="page-head row">
         <div style="flex:1"><h1>Contatos</h1><p>Leads e clientes do seu WhatsApp</p></div>
-        <button class="btn no-grow" onclick="window.open('/api/contacts/export?token=' + TOKEN)" title="CSV com telefones no padrão E.164 aceito pela API">${ico('download-circle', 14)} Exportar CSV</button>
+        <button class="btn no-grow" onclick="openExternal(API.api('/contacts/export?token=' + TOKEN))" title="CSV com telefones no padrão E.164 aceito pela API">${ico('download-circle', 14)} Exportar CSV</button>
         <button class="btn primary no-grow" onclick="newContactModal()">${ico('plus', 14)} Novo contato</button>
       </div>
       <div class="card">
@@ -2746,6 +2797,20 @@ async function renderSettings() {
           <button class="btn primary no-grow" onclick="changePass()">Alterar senha</button>
         </div>
       </div>
+
+      ${state.kind === 'account' && !state.agent ? `<div class="card danger-card">
+        <h2>${ico('trash')} Excluir minha conta</h2>
+        <p class="muted" style="margin:0 0 14px;font-size:13px">
+          Apaga definitivamente sua conta e <b>tudo que está nela</b>: conversas, contatos,
+          mensagens, automações, agendamentos e atendentes. Não há como desfazer nem recuperar depois.
+        </p>
+        <button class="btn danger no-grow" onclick="deleteAccountModal()">Excluir minha conta</button>
+        <p class="muted" style="margin:14px 0 0;font-size:12.5px">
+          <a href="#" onclick="openExternal(API.url('/privacidade'));return false">Política de Privacidade</a>
+          ·
+          <a href="#" onclick="openExternal(API.url('/termos'));return false">Termos de Uso</a>
+        </p>
+      </div>` : ''}
       </div>
     </div>`;
   paintProfilePhoto();
@@ -3277,6 +3342,49 @@ async function changePass() {
     toast('Senha alterada com sucesso!');
     $('#pw-cur').value = ''; $('#pw-new').value = '';
   } catch (e) { toast(e.message, 'error'); }
+}
+
+// Exclusão da conta pelo próprio dono — exigência da App Store (5.1.1(v)) e
+// também o caminho correto de LGPD. Pede senha e confirmação escrita porque a
+// operação apaga tudo e não tem volta.
+function deleteAccountModal() {
+  openModal(`
+    <h2 style="margin:0 0 6px">${ico('alert')} Excluir minha conta</h2>
+    <p class="muted" style="font-size:13px;line-height:1.6;margin:0 0 14px">
+      Isto apaga <b>permanentemente</b> a conta <b>${esc(state.user || '')}</b> e todo o seu conteúdo:
+      conversas, contatos, mensagens, automações, agendamentos, atendentes e integrações.
+      <br><br>
+      <b>Não é possível desfazer.</b> Se você tem uma assinatura ativa, cancele-a antes —
+      a exclusão não gera reembolso automático.
+    </p>
+    <label>Sua senha<input id="del-pass" type="password" autocomplete="current-password"></label>
+    <label style="margin-top:9px"><span>Digite <b>EXCLUIR</b> para confirmar</span>
+      <input id="del-confirm" placeholder="EXCLUIR" autocapitalize="characters">
+    </label>
+    <div class="row" style="margin-top:14px">
+      <button class="btn no-grow" onclick="closeModal()">Cancelar</button>
+      <button class="btn danger no-grow" onclick="doDeleteAccount(this)">Excluir definitivamente</button>
+    </div>`);
+}
+
+async function doDeleteAccount(btn) {
+  const pass = $('#del-pass').value;
+  const confirm = $('#del-confirm').value;
+  if (!pass) return toast('Informe sua senha', 'error');
+  if (confirm.trim().toUpperCase() !== 'EXCLUIR') return toast('Digite EXCLUIR para confirmar', 'error');
+  btn.disabled = true;
+  try {
+    await api('/account/delete', { body: { pass, confirm } });
+    closeModal();
+    // A sessão já morreu no servidor; limpa o que ficou no aparelho.
+    try { localStorage.clear(); } catch {}
+    TOKEN = '';
+    toast('Conta excluída. Até logo.');
+    setTimeout(() => location.reload(), 1200);
+  } catch (e) {
+    btn.disabled = false;
+    toast(e.message, 'error');
+  }
 }
 
 // ==================== TOPBAR ====================
@@ -4439,7 +4547,7 @@ async function paintBilling() {
     const [stLbl, stCls] = BILL_ST[b.status] || [b.status, 'pill'];
     const plan = b.plan;
     const pc = b.pendingCharge;
-    const refLink = `${location.origin}/app/?ref=${d.affiliate.code}`;
+    const refLink = `${API.webOrigin}/app/?ref=${d.affiliate.code}`;
     const cardOn = !!(d.card && (d.card.credit || d.card.debit));
     BILL_CACHE = d;
     box.innerHTML = `
@@ -5139,7 +5247,7 @@ async function paintAdmin() {
           <label class="chk" style="margin-top:12px"><input type="checkbox" id="wv-auto" ${d.config.woovi.pixAutomatic ? 'checked' : ''} onchange="admSaveConfig({pixAutomatic:this.checked})"> Tentar Pix Automático (assinatura recorrente), se indisponível, cai para Pix avulso por renovação</label>
           <div class="capi-box" style="margin-top:14px">
             <div class="capi-head">${ico('webhook', 14)} Webhook de confirmação <span class="capi-tag">obrigatório em produção</span></div>
-            <p class="muted" style="font-size:12px;margin:6px 0 0">Em app.woovi.com → Webhooks, cadastre a URL <code>${location.origin}/woovi-webhook</code> para os eventos de <b>cobrança paga</b>. Cada pagamento é verificado de novo na API antes de ativar (anti-fraude).</p>
+            <p class="muted" style="font-size:12px;margin:6px 0 0">Em app.woovi.com → Webhooks, cadastre a URL <code>${API.webOrigin}/woovi-webhook</code> para os eventos de <b>cobrança paga</b>. Cada pagamento é verificado de novo na API antes de ativar (anti-fraude).</p>
           </div>
         </div>
         ${admPixIndirectSection(d.pixIndirect || {})}
@@ -5184,7 +5292,7 @@ async function paintAdmin() {
       </div>
 
       <div class="tabpane ${activeTab === 'adm-plat' ? 'show' : ''}" data-pane="adm-plat">
-        ${admPlatformCard(d.platform || {}, d.manual || {}, location.origin)}
+        ${admPlatformCard(d.platform || {}, d.manual || {}, API.webOrigin)}
       </div>
 
       <div class="tabpane ${activeTab === 'adm-seo' ? 'show' : ''}" data-pane="adm-seo">
@@ -5339,7 +5447,7 @@ function admSeoForm(seo) {
   return `
     <div class="card">
       <h2>${ico('target')} SEO da página de marketing</h2>
-      <p class="muted" style="margin:0 0 14px;font-size:13px">Personalize como sua página inicial (a landing pública em <code>${location.origin}/</code>) aparece no Google e ao ser compartilhada. As tags são injetadas no HTML lido pelos buscadores.</p>
+      <p class="muted" style="margin:0 0 14px;font-size:13px">Personalize como sua página inicial (a landing pública em <code>${API.webOrigin}/</code>) aparece no Google e ao ser compartilhada. As tags são injetadas no HTML lido pelos buscadores.</p>
       <div class="row">
         <label style="flex:2">Título (title / aba do navegador)<input id="seo-title" maxlength="180" value="${v('title')}" placeholder="EliteChat. CRM de WhatsApp com IA"></label>
         <label style="flex:1">Theme color<input id="seo-theme" value="${v('themeColor')}" placeholder="#34D399"></label>
@@ -5354,10 +5462,10 @@ function admSeoForm(seo) {
         <label style="flex:1">Título ao compartilhar<input id="seo-ogtitle" maxlength="180" value="${v('ogTitle')}" placeholder="(usa o título acima se vazio)"></label>
       </div>
       <label style="margin-top:9px">Descrição ao compartilhar<textarea id="seo-ogdesc" rows="2" maxlength="400" placeholder="(usa a descrição acima se vazio)">${v('ogDescription')}</textarea></label>
-      <label style="margin-top:9px">Imagem de preview (URL. 1200×630 recomendado)<input id="seo-ogimage" maxlength="600" value="${v('ogImage')}" placeholder="${location.origin}/assets/elitechat-logo.png"></label>
+      <label style="margin-top:9px">Imagem de preview (URL. 1200×630 recomendado)<input id="seo-ogimage" maxlength="600" value="${v('ogImage')}" placeholder="${API.webOrigin}/assets/elitechat-logo.png"></label>
       <h3 class="notif-sub">Avançado</h3>
       <div class="row">
-        <label style="flex:2">URL canônica<input id="seo-canonical" maxlength="400" value="${v('canonical')}" placeholder="${location.origin}/"></label>
+        <label style="flex:2">URL canônica<input id="seo-canonical" maxlength="400" value="${v('canonical')}" placeholder="${API.webOrigin}/"></label>
         <label style="flex:1">Robots<input id="seo-robots" maxlength="60" value="${v('robots')}" placeholder="index, follow"></label>
       </div>
       <label style="margin-top:9px">Google Analytics ID (opcional)<input id="seo-ga" maxlength="40" value="${v('gaId')}" placeholder="G-XXXXXXXXXX"></label>
@@ -6781,7 +6889,7 @@ function paintConsentContacts(d) {
         <label style="min-width:150px">Status${ecSelect('co-f-st', statusOpts, coFilters.status, "coFilter('status', val)", 'sm')}</label>
         <label style="min-width:130px">Estado${ecSelect('co-f-uf', ufOpts, coFilters.uf, "coFilter('uf', val)", 'sm')}</label>
         <label style="min-width:150px">Etapa${ecSelect('co-f-sg', stageOpts, coFilters.stage, "coFilter('stage', val)", 'sm')}</label>
-        <a class="btn small no-grow" href="/api/consent/export?status=${coFilters.status}&token=${TOKEN}">${ico('download-circle', 13)} Exportar CSV</a>
+        <a class="btn small no-grow" href="#" onclick="openExternal(API.api('/consent/export?status=${coFilters.status}&token=' + TOKEN));return false">${ico('download-circle', 13)} Exportar CSV</a>
       </div>
     </div>
 
@@ -7233,7 +7341,7 @@ async function saveNsSettings() {
 function connectNs() {
   const state = Math.random().toString(36).slice(2);
   const url = `${nsCfg.authorizeUrl}?state=${encodeURIComponent(state)}`;
-  const win = window.open(url, 'nuvemshop', 'width=560,height=720');
+  const win = openAuthWindow(url, 'nuvemshop', 'width=560,height=720');
   if (!win) return toast('Permita pop-ups para conectar a loja', 'error');
 
   const onMsg = async ev => {
@@ -8230,7 +8338,7 @@ async function esFinish(code, usedRedirect) {
     const r = await api('/wa/connect', {
       body: {
         code,
-        redirectUri: usedRedirect ? location.origin + '/auth/meta/callback' : undefined,
+        redirectUri: usedRedirect ? API.webOrigin + '/auth/meta/callback' : undefined,
         sessionInfo: esSessionInfo
       }
     });
@@ -8280,14 +8388,14 @@ async function connectWhatsApp() {
   }
 
   // Fallback: diálogo OAuth oficial em popup com redirect p/ /auth/meta/callback
-  const redirectUri = location.origin + '/auth/meta/callback';
+  const redirectUri = API.webOrigin + '/auth/meta/callback';
   const url = `https://www.facebook.com/${cfg.graphVersion}/dialog/oauth` +
     `?client_id=${encodeURIComponent(cfg.appId)}` +
     `&redirect_uri=${encodeURIComponent(redirectUri)}` +
     `&state=${encodeURIComponent(esOAuthState)}` +
     `&response_type=code` +
     `&scope=${encodeURIComponent('business_management,whatsapp_business_management,whatsapp_business_messaging')}`;
-  const pop = window.open(url, 'elitechat_es', 'width=700,height=780');
+  const pop = openAuthWindow(url, 'elitechat_es', 'width=700,height=780');
   if (!pop) esFail('Popup bloqueado pelo navegador. Libere popups para este site.');
 }
 
@@ -8417,7 +8525,7 @@ async function epSubmitOnboarding() {
     if ($('#ep-ob-repname')) { body.repName = $('#ep-ob-repname').value; body.repDocument = $('#ep-ob-repdoc').value; }
     const r = await api('/elitepay/subaccount', { body });
     // Modo KYC: abre a verificação hospedada da Woovi em nova aba
-    if (r.onboardingUrl) { window.open(r.onboardingUrl, '_blank', 'noopener'); toast('Conclua a verificação KYC na aba que abriu'); }
+    if (r.onboardingUrl) { openExternal(r.onboardingUrl); toast('Conclua a verificação KYC na aba que abriu'); }
     else toast(r.subaccount.status === 'active' ? 'Conta Elite Pay criada e ativada! 🎉' : 'Conta criada, aguardando aprovação');
     renderElitePay();
   } catch (e) { const el = $('#ep-ob-err'); if (el) el.textContent = e.message; toast(e.message, 'error'); }
@@ -9907,7 +10015,7 @@ async function trkMetaConnect() {
   try { dados = await api('/tracking/meta/auth-url'); }
   catch (e) { return toast(e.message, 'error'); }
 
-  const w = window.open(dados.url, 'metaads', 'width=620,height=720');
+  const w = openAuthWindow(dados.url, 'metaads', 'width=620,height=720');
   if (!w) return toast('Libere pop-ups para conectar o Meta Ads', 'error');
 
   const aoReceber = async ev => {
@@ -10023,7 +10131,7 @@ async function trkSaveAlerts() {
 }
 
 function trkSnippetModal() {
-  const url = `${location.origin}/t.js?a=${state.accountId}`;
+  const url = `${API.webOrigin}/t.js?a=${state.accountId}`;
   openModal(`<h2>${ico('code')} Instalar o Tracking no seu site</h2>
     <p class="muted" style="font-size:13px;margin:4px 0 12px">Cole antes do <b>&lt;/body&gt;</b> das suas páginas (landing, vendas, obrigado). Ele captura <b>fbclid, gclid, ttclid e UTMs</b> e liga cada visita à venda no Elite Pay.</p>
     <div class="ep-copy"><input readonly value='<script src="${esc(url)}"></script>' onclick="this.select()">
