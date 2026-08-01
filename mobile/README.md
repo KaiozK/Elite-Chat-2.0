@@ -214,6 +214,43 @@ npm run run:android
 npm run run:ios
 ```
 
+## Formato das notificações
+
+O mesmo texto vale para o PWA no navegador, para o app das lojas e para o toast
+dentro do painel — o corpo é montado num lugar só (`notifyPreview`, em
+`src/webhook.js`) e viaja no evento SSE que alimenta os três.
+
+**Mensagem recebida** — o título é sempre o nome do lead:
+
+| Tipo | Descrição |
+|---|---|
+| Texto | `💬 {mensagem}` |
+| Mensagem de voz | `🎤 Mensagem de voz` |
+| Áudio (arquivo) | `🎤 Enviou um áudio` |
+| Imagem | `📸 Enviou uma imagem` |
+| Vídeo | `🎥 Enviou um vídeo` |
+| Documento | `📄 Enviou um documento` |
+| Figurinha | `💚 Enviou uma figurinha` |
+| Localização | `📍 Enviou uma localização` |
+
+> **Duração do áudio.** A Cloud API da Meta envia apenas
+> `{ id, mime_type, sha256, voice }` no objeto `audio` — **não existe duração no
+> webhook**. Obtê-la exigiria baixar o arquivo e ler o container OGG/Opus,
+> atrasando justamente a notificação que precisa ser instantânea. O código já
+> usa `durationSec` se o campo aparecer um dia; enquanto não aparece, o tempo é
+> omitido em vez de exibirmos um valor inventado.
+
+**Venda aprovada** — quando um indicado paga (assinatura nova ou renovação), o
+afiliado recebe:
+
+```
+Venda Aprovada✅
+Sua comissão: R$ 89,10
+```
+
+O toque abre a tela de Assinatura. Cada tipo tem som próprio e pode ser
+desligado em **Configurações → Preferências**.
+
 ## Menu enxuto no celular
 
 O app não repete o menu inteiro do painel. Num aparelho, 22 itens viram uma

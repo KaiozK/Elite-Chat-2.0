@@ -133,7 +133,15 @@ function applyPayment(charge, broadcast) {
             id: db.genId('tx'), ts: Date.now(), amount: cut, type: 'commission',
             label: `Comissão ${pct}%, ${kind === 'first' ? 'nova assinatura' : 'renovação'} (${acc.name})`
           });
-          if (broadcast) broadcast('wallet', { accountId: aff.id });
+          if (broadcast) {
+            broadcast('wallet', { accountId: aff.id });
+            // Venda do indicado aprovada: o afiliado é avisado na hora, com o
+            // valor que entrou. Vale para assinatura nova e para renovação.
+            broadcast('commission', {
+              accountId: aff.id, amount: cut, percent: pct,
+              kind, indicado: acc.name
+            });
+          }
         }
       }
     }

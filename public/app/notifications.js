@@ -24,7 +24,7 @@
     sounds: true,      // sons
     vibrate: true,     // vibração
     badge: true,       // badge no ícone do app
-    types: { message: true, call: true, attendance: true, reminder: true }
+    types: { message: true, call: true, attendance: true, reminder: true, commission: true }
   };
 
   var state = {
@@ -102,7 +102,10 @@
     message:    function () { tone(880, 0, 0.12, 'sine', 0.12); tone(1180, 0.10, 0.16, 'sine', 0.12); },
     call:       function () { for (var i = 0; i < 3; i++) { tone(680, i * 0.34, 0.18, 'triangle', 0.16); tone(540, i * 0.34 + 0.16, 0.18, 'triangle', 0.14); } },
     attendance: function () { tone(620, 0, 0.14, 'sine', 0.12); tone(820, 0.12, 0.18, 'sine', 0.12); },
-    reminder:   function () { tone(990, 0, 0.16, 'sine', 0.13); tone(760, 0.15, 0.2, 'sine', 0.12); tone(990, 0.32, 0.22, 'sine', 0.12); }
+    reminder:   function () { tone(990, 0, 0.16, 'sine', 0.13); tone(760, 0.15, 0.2, 'sine', 0.12); tone(990, 0.32, 0.22, 'sine', 0.12); },
+    // venda aprovada: acorde ascendente, distinto de mensagem para o afiliado
+    // reconhecer sem olhar a tela
+    commission: function () { tone(660, 0, 0.14, 'sine', 0.13); tone(880, 0.12, 0.16, 'sine', 0.13); tone(1180, 0.26, 0.26, 'sine', 0.12); }
   };
   function playSound(type) { if (!state.prefs.sounds) return; try { (SOUNDS[type] || SOUNDS.message)(); } catch (e) {} }
 

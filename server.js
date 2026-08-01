@@ -67,6 +67,15 @@ function maybePush(event, data) {
   } else if (event === 'attendance' && data.status === 'open' && data.reason === 'inbound') {
     type = 'attendance';
     payload = { title: 'Novo atendimento', body: (data.name || 'Cliente') + ' iniciou uma conversa', tag: 'att:' + data.waId, data: { type, waId: data.waId, url } };
+  } else if (event === 'commission') {
+    // Venda do indicado aprovada — o afiliado recebe o valor da comissão.
+    type = 'commission';
+    payload = {
+      title: 'Venda Aprovada✅',
+      body: 'Sua comissão: ' + require('./src/elitepay').fmtBRL(data.amount || 0),
+      tag: 'com:' + (data.accountId || '') + ':' + Date.now(),
+      data: { type, url: '/app/#/billing' }
+    };
   } else if (event === 'reminder') {
     const ev = data.event || {};
     const when = ev.start ? new Date(ev.start).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';

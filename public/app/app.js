@@ -249,6 +249,7 @@ function renderNotifSettings() {
       ${ck('types.call', p.types.call, 'Ligações', 'Chamadas de voz recebidas')}
       ${ck('types.attendance', p.types.attendance, 'Atendimentos', 'Novo cliente iniciou conversa')}
       ${ck('types.reminder', p.types.reminder, 'Lembretes', 'Agendamentos da agenda')}
+      ${ck('types.commission', p.types.commission !== false, 'Vendas aprovadas', 'Comissão de indicação na carteira')}
     </div>
     <div class="row" style="margin-top:16px">
       <button class="btn no-grow" onclick="notifTestFire()">${ico('bell', 14)} Testar notificação</button>
@@ -867,6 +868,16 @@ function connectSSE() {
   es.addEventListener('status', e => onLive(JSON.parse(e.data || '{}')));
   // saldo mudou (venda liberada, comissão, recarga paga, saque)
   es.addEventListener('wallet', () => { refreshWallet(); if (state.view === 'billing') paintBilling(); });
+  // venda do indicado aprovada → comissão na carteira
+  es.addEventListener('commission', e => {
+    const d = JSON.parse(e.data || '{}');
+    if (!window.ECNotify) return;
+    ECNotify.notify({
+      type: 'commission', title: 'Venda Aprovada✅',
+      body: 'Sua comissão: ' + fmtBRL(d.amount || 0),
+      url: '/app/#/billing', tag: 'com:' + (d.kind || '') + ':' + Date.now()
+    });
+  });
   es.addEventListener('campaign', () => { if (state.view === 'campaigns') paintCampaigns(); });
   // opt-in / opt-out (palavra-chave do cliente, flow ou ação manual)
   es.addEventListener('consent', e => {

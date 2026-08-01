@@ -20,16 +20,46 @@ function makeDeliver(broadcast) {
   };
 }
 
-// Prévia curta da mensagem p/ a descrição da notificação nativa.
+// Duração em m:ss para a notificação de áudio.
+function fmtDuracao(seg) {
+  const s = Math.max(0, Math.round(Number(seg) || 0));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+// Descrição da notificação. O título é o nome do lead; aqui vai o que ele
+// mandou, com um emoji que identifica o tipo antes de a pessoa abrir o app.
+//
+// Sobre a duração do áudio: a Cloud API da Meta manda apenas
+// { id, mime_type, sha256, voice } no objeto `audio` — não existe duração no
+// webhook. Ela só sairia baixando o arquivo e lendo o container OGG/Opus, o
+// que atrasaria justamente a notificação que precisa ser instantânea. Por isso
+// o tempo aparece quando `durationSec` existir e é omitido quando não existir,
+// em vez de mostrarmos um valor inventado.
 function notifyPreview(parsed) {
   if (!parsed) return 'Nova mensagem';
-  if (parsed.text) return String(parsed.text).slice(0, 140);
-  const byType = {
-    image: '📷 Foto', video: '🎬 Vídeo', audio: '🎤 Áudio', voice: '🎤 Áudio',
-    document: '📄 Documento', sticker: '💚 Figurinha', location: '📍 Localização',
-    contacts: '👤 Contato', interactive: 'Resposta recebida', button: 'Resposta recebida'
-  };
-  return byType[parsed.type] || 'Nova mensagem';
+
+  switch (parsed.type) {
+    case 'text':
+      return '💬 ' + String(parsed.text || '').slice(0, 140);
+
+    case 'audio':
+      // voice = gravado no microfone do WhatsApp; sem a flag é arquivo de áudio.
+      if (parsed.voice) {
+        return '🎤 Mensagem de voz' + (parsed.durationSec ? ' ' + fmtDuracao(parsed.durationSec) : '');
+      }
+      return '🎤 Enviou um áudio';
+
+    case 'image':   return '📸 Enviou uma imagem';
+    case 'video':   return '🎥 Enviou um vídeo';
+    case 'document': return '📄 Enviou um documento';
+    case 'sticker': return '💚 Enviou uma figurinha';
+    case 'location': return '📍 Enviou uma localização';
+    case 'contacts': return '👤 Compartilhou um contato';
+    case 'order':   return '🛒 Enviou um pedido';
+    default:
+      // interactive, button, reaction e afins já vêm com um texto pronto.
+      return parsed.text ? '💬 ' + String(parsed.text).slice(0, 140) : 'Nova mensagem';
+  }
 }
 
 module.exports = function (broadcast) {
@@ -348,6 +378,11 @@ function parseMessage(m) {
     return {
       type: t,
       text: md.caption || '',
+      // `voice: true` distingue o áudio gravado no microfone de um arquivo de
+      // música anexado — a notificação fala "mensagem de voz" só no primeiro.
+      voice: !!md.voice,
+      // A Meta não envia duração hoje; se um dia enviar, a notificação já usa.
+      durationSec: Number(md.duration || md.seconds || 0) || 0,
       media: { id: md.id, mime: md.mime_type, filename: md.filename || '', caption: md.caption || '' }
     };
   }
