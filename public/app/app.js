@@ -3395,6 +3395,8 @@ const TITLES = {
   team: 'Chat interno', flows: 'Flow Builder', links: 'Links rastreáveis',
   integrations: 'Integrações', webhooks: 'Integrações',
   elitepay: 'Elite Pay', 'elitepay/checkout': 'Checkout Builder', checkouts: 'Checkout Builder', tracking: 'Tracking',
+  schedule: 'Agendamentos', consent: 'Opt-in & Opt-out', pixels: 'Pixels & rastreamento',
+  agents: 'Atendentes', billing: 'Assinatura & Carteira', admin: 'Admin SaaS',
   'templates/new': 'Criar modelo', 'campaigns/new': 'Nova campanha'
 };
 function updateTopbar() {
