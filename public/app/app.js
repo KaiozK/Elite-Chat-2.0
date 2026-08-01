@@ -1000,11 +1000,30 @@ function moduleOfView(v) {
   return v;
 }
 // Esconde do menu lateral os módulos sem permissão de visualizar
+// ---------- MENU ENXUTO NO CELULAR ----------
+// Num aparelho o menu completo vira uma lista infinita e ninguém acha nada.
+// No celular mostramos só o que se usa fora do escritório: atender, consultar
+// cadastro, ver compromisso e conferir a conexão. As demais telas continuam
+// existindo e acessíveis por link direto (inclusive pelo toque na notificação)
+// — elas somem da navegação, não do produto.
+//
+// Construir campanha, desenhar automação no Flow Builder ou montar checkout são
+// trabalhos de tela grande; ficam no navegador do computador.
+const MOBILE_VIEWS = new Set([
+  'dashboard', 'inbox', 'team', 'schedule', 'contacts',
+  'funnel', 'quick', 'billing', 'settings'
+]);
+// 820px é o mesmo ponto em que a sidebar já vira gaveta (style.css).
+const MOBILE_MQ = window.matchMedia('(max-width: 820px)');
+function isMobileLayout() { return API.native || MOBILE_MQ.matches; }
+
 function applyNavPermissions() {
   // Assinatura e Admin são do DONO/admin — atendentes nunca veem
   const ownerOnly = new Set(['billing', 'admin']);
+  const mobile = isMobileLayout();
   $$('.nav-item[data-view]').forEach(n => {
     const v = n.dataset.view;
+    if (mobile && !MOBILE_VIEWS.has(v)) { n.style.display = 'none'; return; }
     if (state.agent && ownerOnly.has(v)) { n.style.display = 'none'; return; }
     const mod = moduleOfView(v);
     n.style.display = (mod === null || can(mod, 'view')) ? '' : 'none';
@@ -1018,7 +1037,14 @@ function applyNavPermissions() {
     }
     lbl.style.display = anyVisible ? '' : 'none';
   });
+  // Explica no próprio menu onde foi parar o que não está ali.
+  const hint = document.getElementById('nav-hint');
+  if (hint) hint.classList.toggle('hidden', !mobile);
 }
+
+// Girar o aparelho ou redimensionar a janela cruza o limite dos 820px:
+// o menu se reajusta na hora, sem precisar recarregar.
+MOBILE_MQ.addEventListener('change', () => { if (state.user) applyNavPermissions(); });
 
 // ---------- menu lateral em gaveta (celular) ----------
 // No celular a sidebar sai do fluxo e desliza por cima, devolvendo a largura

@@ -214,6 +214,40 @@ npm run run:android
 npm run run:ios
 ```
 
+## Menu enxuto no celular
+
+O app não repete o menu inteiro do painel. Num aparelho, 22 itens viram uma
+lista onde ninguém acha nada — então o celular mostra só o que se usa fora do
+escritório:
+
+| No celular | Só no computador |
+|---|---|
+| Dashboard | Opt-in & Opt-out |
+| Conversas | Flow Builder |
+| Chat interno | Integrações |
+| Agendamentos | Campanhas |
+| Contatos | Modelos de mensagem |
+| Funil de vendas | Elite Pay · Checkout Builder |
+| Respostas rápidas | Links · Tracking · Pixels |
+| Assinatura | Atendentes |
+| Configurações (inclui Conexão & API) | Webhook & Logs · Admin SaaS |
+
+Montar campanha, desenhar automação e criar checkout são trabalhos de tela
+grande — não cabem bem no celular e ninguém os faz de pé no corredor.
+
+**O corte vale para os apps das lojas e para o navegador em tela estreita**
+(≤ 820px, o mesmo ponto em que a sidebar já vira gaveta). No app ele vale
+sempre, mesmo num tablet em tela larga, porque ali o critério é ser aplicativo.
+Girar o aparelho ou redimensionar a janela reajusta o menu na hora.
+
+As telas ocultas **continuam existindo e funcionando**: somem da navegação, não
+do produto. Um link direto, um `#/flows` guardado nos favoritos ou o toque numa
+notificação continuam abrindo normalmente.
+
+Para mudar a lista, edite `MOBILE_VIEWS` em `public/app/app.js` — é a única
+fonte da regra, e o filtro se compõe com as permissões de atendente (quem não
+pode ver um módulo continua sem vê-lo no celular).
+
 ## Como o app conversa com o backend
 
 | Assunto | Onde está |
