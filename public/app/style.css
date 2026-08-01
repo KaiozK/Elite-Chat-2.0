@@ -3062,3 +3062,108 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   font-size: 11.5px; line-height: 1.45; color: var(--faint);
   background: var(--bg2); border-radius: 9px;
 }
+
+/* ===========================================================================
+   BARRA DE NAVEGAÇÃO DO RODAPÉ (celular)
+   Substitui a gaveta lateral: quatro destinos ao alcance do polegar e um
+   botão "Mais" que abre o restante numa folha. Só existe no celular —
+   buildTabbar() alterna .hidden conforme isMobileLayout().
+   =========================================================================== */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 190;
+  display: flex; align-items: stretch;
+  background: var(--card); border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom, 0px);   /* barra de gestos do iPhone */
+  box-shadow: 0 -6px 22px rgba(6, 10, 8, .07);
+}
+.tabbar-item {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  padding: 9px 4px 8px; position: relative;
+  background: none; border: 0; cursor: pointer;
+  color: var(--faint); font-size: 10.5px; font-weight: 600;
+  text-decoration: none; -webkit-tap-highlight-color: transparent;
+  transition: color .16s;
+}
+.tabbar-item svg { width: 21px; height: 21px; flex: none; }
+.tabbar-item span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.tabbar-item.on { color: var(--verde-esc); }
+.tabbar-item:active { opacity: .6; }
+/* traço no topo do destino ativo — âncora visual sem ocupar altura */
+.tabbar-item.on::before {
+  content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 26px; height: 2.5px; border-radius: 0 0 3px 3px; background: var(--verde-esc);
+}
+.tabbar-dot {
+  position: absolute; top: 5px; left: 50%; margin-left: 3px;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--red); color: #fff; font-size: 9.5px; font-weight: 800;
+  border-radius: 99px; border: 2px solid var(--card);
+}
+
+/* O conteúdo não pode terminar embaixo da barra. */
+body.has-tabbar main#view { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
+body.has-tabbar .composer { margin-bottom: calc(60px + env(safe-area-inset-bottom, 0px)); }
+/* Com a barra no rodapé, a gaveta e o hambúrguer perdem a função. */
+body.has-tabbar .nav-toggle { display: none; }
+body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
+
+/* ---- Folha "Mais" ---- */
+.sheet-back {
+  position: fixed; inset: 0; z-index: 195; background: rgba(6, 10, 8, .5);
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+}
+.more-sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 196;
+  background: var(--card); border-radius: 20px 20px 0 0;
+  padding: 10px 18px calc(22px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -10px 40px rgba(6, 10, 8, .3);
+  animation: sheet-up .22s var(--ease, ease);
+}
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+.sheet-grip { width: 38px; height: 4px; border-radius: 99px; background: var(--border2); margin: 0 auto 12px; }
+.more-sheet h3 { margin: 0 0 14px; font-size: 15px; color: var(--tinta, var(--text)); }
+.sheet-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.sheet-item {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
+  padding: 16px 8px; border-radius: 14px; background: var(--bg2);
+  color: var(--text2); font-size: 11.5px; font-weight: 600; text-align: center;
+  text-decoration: none; -webkit-tap-highlight-color: transparent;
+}
+.sheet-item svg { width: 22px; height: 22px; }
+.sheet-item:active { background: var(--border2); }
+
+/* ---------------------------------------------------------------------------
+   SALDO DA CARTEIRA NO CABEÇALHO (celular)
+   Valor sempre à vista e depósito a um toque. O "+" usa o gradiente da marca
+   (--verde → --verde-deep) para se ler como ação principal, não como ícone.
+   --------------------------------------------------------------------------- */
+.tb-wallet {
+  display: none; align-items: center; gap: 6px; flex: none;
+  padding: 3px 3px 3px 10px; border-radius: 99px;
+  background: var(--bg2); border: 1px solid var(--border);
+}
+body.has-tabbar .tb-wallet:not(.hidden) { display: flex; }
+.tb-wallet-val {
+  font-size: 12.5px; font-weight: 800; color: var(--tinta, var(--text));
+  text-decoration: none; letter-spacing: -.01em; white-space: nowrap;
+}
+.tb-wallet-add {
+  width: 26px; height: 26px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 99px; cursor: pointer; color: #fff;
+  background: linear-gradient(135deg, var(--verde) 0%, var(--verde-esc) 55%, var(--verde-deep) 100%);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--verde-esc) 45%, transparent);
+  -webkit-tap-highlight-color: transparent;
+  transition: transform .14s var(--ease, ease), box-shadow .14s;
+}
+.tb-wallet-add:active { transform: scale(.9); box-shadow: none; }
+
+/* Numa tela bem estreita o cabeçalho não comporta tudo: o chip de status do
+   WhatsApp sai (a mesma informação está no Dashboard e em Configurações) para
+   o saldo caber sem espremer os outros botões. */
+@media (max-width: 430px) {
+  body.has-tabbar #tb-status { display: none; }
+  body.has-tabbar .theme-btn { display: none; }
+}

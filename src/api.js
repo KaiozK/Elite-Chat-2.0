@@ -2593,6 +2593,13 @@ module.exports = function (broadcast, clients) {
       },
       withdrawals: db.get().withdrawals.filter(w => w.accountId === req.acc.id).slice(-10).reverse(),
       wooviReady: woovi.configured(),
+      // Faixas definidas no Admin SaaS. O painel usa para orientar o usuário
+      // ANTES de enviar (mostra o mínimo, trava o campo) — a validação de
+      // verdade continua no servidor, aqui é só conveniência.
+      limitesCarteira: {
+        deposito: { ...db.get().platform.billing.deposit },
+        saque: { ...db.get().platform.affiliate.withdraw }
+      },
       // carteira detalhada: disponível, a liberar e a próxima liberação
       walletDetail: (() => {
         const w = req.acc.wallet;
@@ -2691,7 +2698,14 @@ module.exports = function (broadcast, clients) {
   // Recarga de saldo na carteira via Pix
   router.post('/billing/topup', auth, h(async (req, res) => {
     const amount = Math.round(Number(String((req.body || {}).amount || '0').replace(',', '.')) * 100);
-    if (!amount || amount < 100) return res.status(400).json({ error: 'Valor mínimo de recarga: R$ 1,00' });
+    // Faixa definida pelo admin em Admin SaaS → Pagamentos.
+    const dep = db.get().platform.billing.deposit;
+    if (!amount || amount < dep.min) {
+      return res.status(400).json({ error: `Depósito mínimo: ${elitepay.fmtBRL(dep.min)}` });
+    }
+    if (dep.max > 0 && amount > dep.max) {
+      return res.status(400).json({ error: `Depósito máximo: ${elitepay.fmtBRL(dep.max)}` });
+    }
     const cid = `topup-${req.acc.id}-${Date.now().toString(36)}`;
     const charge = await woovi.createCharge({
       correlationID: cid, value: amount,
@@ -2753,7 +2767,14 @@ module.exports = function (broadcast, clients) {
     const amount = Math.round(Number(String((req.body || {}).amount || '0').replace(',', '.')) * 100);
     const pixKey = String((req.body || {}).pixKey || '').trim();
     if (!pixKey) return res.status(400).json({ error: 'Informe sua chave Pix' });
-    if (!amount || amount < 2000) return res.status(400).json({ error: 'Saque mínimo: R$ 20,00' });
+    // Faixa definida pelo admin em Admin SaaS → Afiliados.
+    const wd = db.get().platform.affiliate.withdraw;
+    if (!amount || amount < wd.min) {
+      return res.status(400).json({ error: `Saque mínimo: ${elitepay.fmtBRL(wd.min)}` });
+    }
+    if (wd.max > 0 && amount > wd.max) {
+      return res.status(400).json({ error: `Saque máximo por vez: ${elitepay.fmtBRL(wd.max)}` });
+    }
     if (amount > req.acc.wallet.balance) return res.status(400).json({ error: 'Saldo insuficiente' });
     // A taxa depende da ORIGEM do dinheiro: venda no cartão tem taxa própria,
     // o resto (Pix, comissões) usa a taxa de PIX Out.
@@ -2773,6 +2794,18 @@ module.exports = function (broadcast, clients) {
     });
     db.save();
     res.json({ ok: true, balance: req.acc.wallet.balance, fee: f.fee, net: f.net });
+  });
+
+  // Resumo da carteira para o cabeçalho: saldo e a faixa de depósito.
+  // É de propósito muito mais leve que GET /billing — o topo recarrega isto a
+  // cada evento `wallet` do SSE, e puxar a tela de assinatura inteira só para
+  // atualizar um número seria desperdício.
+  router.get('/wallet/summary', auth, (req, res) => {
+    res.json({
+      balance: req.acc.wallet.balance,
+      pending: req.acc.wallet.pending,
+      deposito: { ...db.get().platform.billing.deposit }
+    });
   });
 
   // Prévia da taxa antes de confirmar o saque (a UI mostra o líquido ao digitar).
@@ -2967,6 +3000,21 @@ module.exports = function (broadcast, clients) {
     if (b.ctaText !== undefined) p.landing.ctaText = String(b.ctaText).slice(0, 40);
     if (b.percentFirst !== undefined) p.affiliate.percentFirst = Math.min(90, Math.max(0, Number(b.percentFirst) || 0));
     if (b.percentRenewal !== undefined) p.affiliate.percentRenewal = Math.min(90, Math.max(0, Number(b.percentRenewal) || 0));
+
+    // Faixas de depósito (carteira) e de saque (comissão do afiliado).
+    // Máximo 0 = sem teto. O mínimo nunca passa do máximo, senão a faixa
+    // ficaria vazia e ninguém conseguiria transacionar.
+    if (b.depositMin !== undefined) p.billing.deposit.min = Math.max(0, cents(b.depositMin));
+    if (b.depositMax !== undefined) p.billing.deposit.max = Math.max(0, cents(b.depositMax));
+    if (p.billing.deposit.max > 0 && p.billing.deposit.min > p.billing.deposit.max) {
+      p.billing.deposit.min = p.billing.deposit.max;
+    }
+    if (b.withdrawMin !== undefined) p.affiliate.withdraw.min = Math.max(0, cents(b.withdrawMin));
+    if (b.withdrawMax !== undefined) p.affiliate.withdraw.max = Math.max(0, cents(b.withdrawMax));
+    if (p.affiliate.withdraw.max > 0 && p.affiliate.withdraw.min > p.affiliate.withdraw.max) {
+      p.affiliate.withdraw.min = p.affiliate.withdraw.max;
+    }
+
     db.save();
     res.json({ ok: true });
   });

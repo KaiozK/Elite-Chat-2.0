@@ -158,6 +158,8 @@ window.__ecOnResume = function () {
 window.__ecHandleBack = function () {
   const modal = $('#modal-root');
   if (modal && modal.innerHTML.trim()) { closeModal(); return true; }
+  const folha = document.getElementById('more-sheet');
+  if (folha && !folha.classList.contains('hidden')) { toggleMoreSheet(false); return true; }
   const app = document.getElementById('app');
   if (app && app.classList.contains('nav-open')) { toggleNav(false); return true; }
   // Dentro de uma conversa, voltar retorna para a lista em vez de sair do app.
@@ -663,6 +665,7 @@ async function enterApp() {
   if (window.ECNotify) { ECNotify.setHooks({ onOpen: notifOpenFromData, onResync: notifResync, onChange: paintNotifBell }); paintNotifBell(); }
   setTheme(currentTheme());   // sincroniza o ícone de tema do topbar
   askNotifPermission();    // permissão + push do WebApp
+  refreshWallet();         // saldo no cabeçalho (celular)
   initSearch();
   await loadChannels();    // canais (conexões WhatsApp) antes de qualquer listagem
   try { const st = await api('/settings'); state.settings = st.settings; state.wa = st.wa; } catch {}
@@ -862,6 +865,8 @@ function connectSSE() {
   es = new EventSource(API.api('/events?token=' + TOKEN));
   es.addEventListener('message', e => { const d = JSON.parse(e.data || '{}'); maybeNotifyMessage(d); onLive(d); });
   es.addEventListener('status', e => onLive(JSON.parse(e.data || '{}')));
+  // saldo mudou (venda liberada, comissão, recarga paga, saque)
+  es.addEventListener('wallet', () => { refreshWallet(); if (state.view === 'billing') paintBilling(); });
   es.addEventListener('campaign', () => { if (state.view === 'campaigns') paintCampaigns(); });
   // opt-in / opt-out (palavra-chave do cliente, flow ou ação manual)
   es.addEventListener('consent', e => {
@@ -946,6 +951,7 @@ async function refreshBadge() {
     const b = $('#badge-unread');
     if (d.unread > 0) { b.textContent = d.unread; b.classList.remove('hidden'); }
     else b.classList.add('hidden');
+    syncTabbarBadge();
     const chip = $('#tb-status');
     if (chip) {
       const ok = d.configured.connected;
@@ -1040,11 +1046,178 @@ function applyNavPermissions() {
   // Explica no próprio menu onde foi parar o que não está ali.
   const hint = document.getElementById('nav-hint');
   if (hint) hint.classList.toggle('hidden', !mobile);
+
+  buildTabbar();   // a barra do rodapé espelha o que sobrou visível aqui
+}
+
+// ---------- BARRA DE NAVEGAÇÃO DO RODAPÉ (celular) ----------
+// No celular a gaveta lateral dá lugar a uma barra fixa embaixo, do jeito que
+// se espera de um aplicativo: o polegar alcança sem esticar a mão.
+// Cabem quatro destinos; o quinto botão abre uma folha com o restante.
+//
+// Os ícones são clonados da própria sidebar — assim a barra nunca diverge
+// visualmente do menu e não existe um segundo conjunto de ícones para manter.
+const TABBAR_VIEWS = ['dashboard', 'inbox', 'contacts', 'schedule'];
+const TABBAR_LABEL = {
+  dashboard: 'Início', inbox: 'Conversas', contacts: 'Contatos', schedule: 'Agenda',
+  team: 'Chat interno', funnel: 'Funil', quick: 'Respostas', billing: 'Assinatura', settings: 'Ajustes'
+};
+
+function navItemVisivel(v) {
+  const el = document.querySelector(`.sidebar .nav-item[data-view="${v}"]`);
+  return !!el && el.style.display !== 'none';
+}
+function iconeDaView(v) {
+  const svg = document.querySelector(`.sidebar .nav-item[data-view="${v}"] svg`);
+  return svg ? svg.outerHTML : '';
+}
+
+function buildTabbar() {
+  const bar = document.getElementById('tabbar');
+  if (!bar) return;
+  const mobile = isMobileLayout();
+  bar.classList.toggle('hidden', !mobile);
+  document.body.classList.toggle('has-tabbar', mobile);
+  if (!mobile) { toggleMoreSheet(false); return; }
+
+  const principais = TABBAR_VIEWS.filter(navItemVisivel);
+  const restantes = [...MOBILE_VIEWS].filter(v => !TABBAR_VIEWS.includes(v) && navItemVisivel(v));
+
+  bar.innerHTML = principais.map(v => `
+    <a class="tabbar-item" data-view="${v}" href="#/${v}">
+      ${iconeDaView(v)}
+      <span>${TABBAR_LABEL[v] || v}</span>
+      ${v === 'inbox' ? '<b class="tabbar-dot hidden" id="tabbar-unread"></b>' : ''}
+    </a>`).join('') + (restantes.length ? `
+    <button class="tabbar-item" id="tabbar-more" onclick="toggleMoreSheet()" aria-haspopup="dialog">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      <span>Mais</span>
+    </button>` : '');
+
+  const folha = document.getElementById('more-sheet');
+  if (folha) {
+    folha.innerHTML = `
+      <div class="sheet-grip"></div>
+      <h3>Mais</h3>
+      <div class="sheet-grid">
+        ${restantes.map(v => `
+          <a class="sheet-item" href="#/${v}" onclick="toggleMoreSheet(false)">
+            ${iconeDaView(v)}<span>${TABBAR_LABEL[v] || TITLES[v] || v}</span>
+          </a>`).join('')}
+      </div>`;
+  }
+  markTabbarActive();
+  syncTabbarBadge();
+}
+
+// Marca o destino atual. Telas que não estão na barra (nem na folha) deixam
+// tudo apagado — é honesto: o usuário chegou ali por um link, não pela barra.
+function markTabbarActive() {
+  const atual = state.view;
+  $$('#tabbar .tabbar-item[data-view]').forEach(a => {
+    a.classList.toggle('on', a.dataset.view === atual);
+  });
+  const more = document.getElementById('tabbar-more');
+  if (more) {
+    const naFolha = [...MOBILE_VIEWS].some(v => v === atual && !TABBAR_VIEWS.includes(v));
+    more.classList.toggle('on', naFolha);
+  }
+}
+
+// Espelha o contador de não lidas da sidebar na barra de baixo.
+function syncTabbarBadge() {
+  const origem = $('#badge-unread'), destino = $('#tabbar-unread');
+  if (!destino) return;
+  const tem = origem && !origem.classList.contains('hidden');
+  destino.textContent = tem ? origem.textContent : '';
+  destino.classList.toggle('hidden', !tem);
+}
+
+// ---------- CARTEIRA NO CABEÇALHO (celular) ----------
+// Saldo sempre à vista e depósito a um toque. No computador o saldo já mora
+// na tela de Assinatura, que está sempre no menu — aqui ele resolve a distância
+// extra que o celular impõe.
+let WALLET = { balance: 0, deposito: { min: 100, max: 0 } };
+
+async function refreshWallet() {
+  const caixa = document.getElementById('tb-wallet');
+  if (!caixa) return;
+  // Atendente não tem carteira própria: a da empresa não é assunto dele.
+  if (state.agent || !isMobileLayout()) { caixa.classList.add('hidden'); return; }
+  try {
+    WALLET = await api('/wallet/summary');
+    const val = document.getElementById('tb-wallet-val');
+    if (val) val.textContent = fmtBRL(WALLET.balance);
+    caixa.classList.remove('hidden');
+  } catch { caixa.classList.add('hidden'); }
+}
+
+// Pop-up de depósito. A faixa vem do Admin SaaS; validamos aqui só para dar
+// resposta imediata — quem decide de verdade é o servidor.
+function depositModal() {
+  const min = WALLET.deposito.min, max = WALLET.deposito.max;
+  const faixa = `Mínimo ${fmtBRL(min)}${max ? ` · máximo ${fmtBRL(max)}` : ''}`;
+  // Atalhos partindo do mínimo, dobrando, sem passar do teto.
+  const sugestoes = [min, min * 2, min * 5, min * 10]
+    .filter(v => !max || v <= max)
+    .filter((v, i, a) => a.indexOf(v) === i)
+    .slice(0, 4);
+
+  openModal(`
+    <h2 style="margin:0 0 6px">${ico('plus')} Depositar na carteira</h2>
+    <p class="muted" style="font-size:13px;margin:0 0 14px">
+      O saldo paga assinatura, conexões extras e disparos. Pagamento por Pix, confirmação automática.
+      <br><b>${faixa}</b>
+    </p>
+    <label>Valor (R$)<input id="dep-val" inputmode="decimal" placeholder="${(min / 100).toFixed(2)}" autocomplete="off"></label>
+    <div class="row" style="gap:7px;margin-top:9px">
+      ${sugestoes.map(v => `<button class="btn small no-grow" onclick="$('#dep-val').value='${(v / 100).toFixed(2)}'">${fmtBRL(v)}</button>`).join('')}
+    </div>
+    <div class="row" style="margin-top:16px">
+      <button class="btn no-grow" onclick="closeModal()">Cancelar</button>
+      <button class="btn primary no-grow" onclick="doDeposit(this)">${ico('zap', 14)} Gerar Pix</button>
+    </div>
+    <div id="dep-pix"></div>`);
+}
+
+async function doDeposit(btn) {
+  const bruto = String($('#dep-val').value || '').replace(',', '.');
+  const cents = Math.round(Number(bruto) * 100);
+  if (!cents || cents < 0) return toast('Informe um valor', 'error');
+  if (cents < WALLET.deposito.min) return toast(`Depósito mínimo: ${fmtBRL(WALLET.deposito.min)}`, 'error');
+  if (WALLET.deposito.max && cents > WALLET.deposito.max) {
+    return toast(`Depósito máximo: ${fmtBRL(WALLET.deposito.max)}`, 'error');
+  }
+  btn.disabled = true;
+  try {
+    const r = await api('/billing/topup', { body: { amount: bruto } });
+    // Mostra o Pix na própria janela: fechar e procurar a tela de Assinatura
+    // no meio do pagamento é o caminho mais curto para desistir.
+    $('#dep-pix').innerHTML = payBoxHtml(r.charge);
+    toast('Pix gerado — pague para creditar o saldo');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function toggleMoreSheet(force) {
+  const folha = document.getElementById('more-sheet');
+  const fundo = document.getElementById('more-back');
+  if (!folha || !fundo) return;
+  const abrir = force === undefined ? folha.classList.contains('hidden') : !!force;
+  folha.classList.toggle('hidden', !abrir);
+  fundo.classList.toggle('hidden', !abrir);
 }
 
 // Girar o aparelho ou redimensionar a janela cruza o limite dos 820px:
 // o menu se reajusta na hora, sem precisar recarregar.
-MOBILE_MQ.addEventListener('change', () => { if (state.user) applyNavPermissions(); });
+MOBILE_MQ.addEventListener('change', () => {
+  if (!state.user) return;
+  applyNavPermissions();
+  refreshWallet();   // o saldo no topo só existe no celular
+});
 
 // ---------- menu lateral em gaveta (celular) ----------
 // No celular a sidebar sai do fluxo e desliza por cima, devolvendo a largura
@@ -1111,11 +1284,24 @@ async function renderDashboard() {
       </div>
     </div>
     <div class="dash-tiles">
-      <a class="tile" href="#/inbox"><span class="tile-ic">${ico('message', 19)}</span><b>Conversas</b></a>
-      <a class="tile" href="#/contacts"><span class="tile-ic">${ico('users', 19)}</span><b>Novo contato</b></a>
-      <a class="tile" href="#/campaigns"><span class="tile-ic">${ico('megaphone', 19)}</span><b>Campanha</b></a>
-      <a class="tile" href="#/flows"><span class="tile-ic">${ico('flow', 19)}</span><b>Automação</b></a>
-      <a class="tile" href="#/links"><span class="tile-ic">${ico('link', 19)}</span><b>Link rastreável</b></a>
+      ${(() => {
+        // Os atalhos seguem o mesmo recorte do menu: no celular não faz sentido
+        // oferecer Campanha ou Flow Builder aqui se eles não estão na navegação.
+        const atalhos = [
+          ['inbox', 'message', 'Conversas'],
+          ['contacts', 'users', 'Novo contato'],
+          ['schedule', 'calendar', 'Agendamento'],
+          ['campaigns', 'megaphone', 'Campanha'],
+          ['flows', 'flow', 'Automação'],
+          ['links', 'link', 'Link rastreável']
+        ];
+        const mobile = isMobileLayout();
+        return atalhos
+          .filter(([v]) => (mobile ? MOBILE_VIEWS.has(v) : v !== 'schedule'))
+          .map(([v, icone, rotulo]) =>
+            `<a class="tile" href="#/${v}"><span class="tile-ic">${ico(icone, 19)}</span><b>${rotulo}</b></a>`)
+          .join('');
+      })()}
     </div>
     <div id="dash"><div class="card">${skel(6)}</div></div>
   </div>`;
@@ -3428,6 +3614,7 @@ const TITLES = {
 function updateTopbar() {
   const t = $('#tb-title');
   if (t) t.textContent = TITLES[state.view] || 'Elite Chat';
+  markTabbarActive();   // o destino aceso na barra de baixo segue a rota
 }
 
 // ==================== GRÁFICOS (SVG puro, sem libs) ====================
@@ -5253,6 +5440,20 @@ async function paintAdmin() {
             <button class="btn primary no-grow" onclick="admSaveConfig({percentFirst:$('#aff-first').value,percentRenewal:$('#aff-ren').value})">${ico('save', 14)} Salvar</button>
           </div>
         </div>
+
+        <div class="card">
+          <h2>${ico('download-circle')} Limites de saque</h2>
+          <p class="muted" style="margin:0 0 12px;font-size:13px">
+            Faixa aceita quando o afiliado saca a comissão da carteira para a chave Pix dele.
+            O máximo vale <b>por saque</b>, não por período — ele pode sacar de novo depois.
+          </p>
+          <div class="row" style="align-items:flex-end">
+            <label>Saque mínimo (R$)<input id="wd-min" value="${(d.config.affiliate.withdraw.min / 100).toFixed(2)}" inputmode="decimal"></label>
+            <label>Saque máximo (R$)<input id="wd-max" value="${d.config.affiliate.withdraw.max ? (d.config.affiliate.withdraw.max / 100).toFixed(2) : ''}" inputmode="decimal" placeholder="sem limite"></label>
+            <button class="btn primary no-grow" onclick="admSaveConfig({withdrawMin:$('#wd-min').value,withdrawMax:$('#wd-max').value||0})">${ico('save', 14)} Salvar</button>
+          </div>
+          <p class="muted" style="font-size:11.5px;margin:8px 0 0">Máximo vazio ou <b>0</b> = sem teto.</p>
+        </div>
         <div class="card">
           <h2>${ico('users')} Top afiliados</h2>
           ${d.accounts.filter(a => a.referrals > 0).length ? `<table><thead><tr><th>Afiliado</th><th>Código</th><th>Indicados</th><th style="text-align:right">Comissões</th></tr></thead><tbody>
@@ -5292,6 +5493,20 @@ async function paintAdmin() {
             <button class="btn primary no-grow" onclick="admSaveConfig({ctaText:$('#bl-cta').value})">${ico('save', 14)} Salvar copy</button>
           </div>
           <p class="muted" style="font-size:11.5px;margin:8px 0 0">Vazio = automático: <b>“Testar por N dias”</b> quando há teste grátis, ou <b>“Começar agora”</b> quando são 0 dias.</p>
+        </div>
+
+        <div class="card">
+          <h2>${ico('plus')} Depósito na carteira</h2>
+          <p class="muted" style="margin:0 0 12px;font-size:13px">
+            Faixa aceita quando o cliente recarrega o saldo pelo botão <b>+</b> no topo do painel.
+            O valor é cobrado por Pix e cai na carteira ao confirmar o pagamento.
+          </p>
+          <div class="row" style="align-items:flex-end">
+            <label>Depósito mínimo (R$)<input id="dep-min" value="${(d.config.billing.deposit.min / 100).toFixed(2)}" inputmode="decimal"></label>
+            <label>Depósito máximo (R$)<input id="dep-max" value="${d.config.billing.deposit.max ? (d.config.billing.deposit.max / 100).toFixed(2) : ''}" inputmode="decimal" placeholder="sem limite"></label>
+            <button class="btn primary no-grow" onclick="admSaveConfig({depositMin:$('#dep-min').value,depositMax:$('#dep-max').value||0})">${ico('save', 14)} Salvar</button>
+          </div>
+          <p class="muted" style="font-size:11.5px;margin:8px 0 0">Máximo vazio ou <b>0</b> = sem teto.</p>
         </div>
       </div>
 

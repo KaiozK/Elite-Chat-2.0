@@ -43,9 +43,12 @@ const DEFAULTS = {
     //         O admin define aqui; o cliente compra na tela de Assinatura.
     billing: {
       trialDays: 7, enforce: false,
-      extras: { whatsappPrice: 0, linkPrice: 0 }
+      extras: { whatsappPrice: 0, linkPrice: 0 },
+      // Faixa aceita ao recarregar a carteira (centavos). max 0 = sem teto.
+      deposit: { min: 100, max: 0 }
     },
-    affiliate: { percentFirst: 30, percentRenewal: 15 }, // % de comissão do afiliado
+    // % de comissão do afiliado + faixa aceita ao sacar a comissão (centavos).
+    affiliate: { percentFirst: 30, percentRenewal: 15, withdraw: { min: 2000, max: 0 } },
     landing: { ctaText: '' } // copy do botão principal da landing (vazio = automático pelos dias de teste)
   },
   plans: [],             // planos de assinatura { id, name, price(centavos), periodDays, features[], limits{} }
@@ -280,16 +283,31 @@ function load() {
   if (!db) db = JSON.parse(JSON.stringify(DEFAULTS));
   for (const k of Object.keys(DEFAULTS)) if (db[k] === undefined) db[k] = JSON.parse(JSON.stringify(DEFAULTS[k]));
   for (const k of Object.keys(DEFAULTS.platform)) if (db.platform[k] === undefined) db.platform[k] = JSON.parse(JSON.stringify(DEFAULTS.platform[k]));
-  // merge raso dos sub-objetos da plataforma (woovi/billing/affiliate ganham chaves novas)
+  // merge raso dos sub-objetos da plataforma (woovi/billing/affiliate ganham chaves novas).
+  // O valor é CLONADO: alguns desses padrões são objetos (extras, deposit,
+  // withdraw) e copiá-los por referência faria o banco e o DEFAULTS
+  // compartilharem a mesma memória — editar um mexeria no outro.
   for (const k of ['woovi', 'billing', 'affiliate', 'landing', 'metaAds', 'nuvemshop']) {
     for (const kk of Object.keys(DEFAULTS.platform[k])) {
-      if (db.platform[k][kk] === undefined) db.platform[k][kk] = DEFAULTS.platform[k][kk];
+      if (db.platform[k][kk] === undefined) {
+        db.platform[k][kk] = JSON.parse(JSON.stringify(DEFAULTS.platform[k][kk]));
+      }
     }
   }
   // preço dos extras (WhatsApp / links avulsos) — planos e config antigos
   if (!db.platform.billing.extras || typeof db.platform.billing.extras !== 'object') {
     db.platform.billing.extras = { whatsappPrice: 0, linkPrice: 0 };
   }
+  // Faixas de depósito e saque — bancos anteriores não tinham estes objetos.
+  const faixa = (obj, campo, padrao) => {
+    if (!obj[campo] || typeof obj[campo] !== 'object') obj[campo] = { ...padrao };
+    else {
+      if (typeof obj[campo].min !== 'number') obj[campo].min = padrao.min;
+      if (typeof obj[campo].max !== 'number') obj[campo].max = padrao.max;
+    }
+  };
+  faixa(db.platform.billing, 'deposit', { min: 100, max: 0 });
+  faixa(db.platform.affiliate, 'withdraw', { min: 2000, max: 0 });
   for (const p of db.plans) p.limits = normLimits(p.limits, p.limits);
   migrateLegacy();
   for (const a of db.accounts) ensureAccountShape(a);

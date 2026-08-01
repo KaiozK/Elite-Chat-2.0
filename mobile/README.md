@@ -248,6 +248,39 @@ Para mudar a lista, edite `MOBILE_VIEWS` em `public/app/app.js` — é a única
 fonte da regra, e o filtro se compõe com as permissões de atendente (quem não
 pode ver um módulo continua sem vê-lo no celular).
 
+### Barra de navegação no rodapé
+
+No celular a gaveta lateral dá lugar a uma barra fixa embaixo, ao alcance do
+polegar. Cabem quatro destinos — **Início, Conversas, Contatos, Agenda** — e um
+botão **Mais** que abre o restante numa folha. Os ícones são clonados da própria
+sidebar, então barra e menu nunca divergem e não há um segundo conjunto de
+ícones para manter.
+
+A barra respeita a `safe-area` do iPhone e o conteúdo ganha espaço embaixo para
+não terminar atrás dela. O botão físico de voltar do Android fecha a folha antes
+de navegar. Para trocar os quatro destinos, edite `TABBAR_VIEWS`.
+
+### Saldo e depósito no cabeçalho
+
+No celular a tela de Assinatura fica a dois toques, então o saldo da carteira
+sobe para o cabeçalho, com um **+** em gradiente da marca que abre o pop-up de
+depósito. O Pix aparece dentro da própria janela: fechar e procurar outra tela
+no meio do pagamento é o caminho mais curto para o cliente desistir.
+
+O saldo se atualiza sozinho pelo evento `wallet` do SSE — venda liberada,
+comissão de afiliado, recarga confirmada ou saque. Atendente não vê o saldo: a
+carteira é da empresa, não dele.
+
+A faixa aceita no depósito e no saque é definida em **Admin SaaS**:
+
+| Onde | O quê |
+|---|---|
+| Pagamentos → Depósito na carteira | mínimo e máximo por recarga |
+| Afiliados → Limites de saque | mínimo e máximo por saque da comissão |
+
+Máximo `0` (ou campo vazio) significa sem teto. O painel valida antes de enviar
+só para dar resposta imediata — quem decide de verdade é o servidor.
+
 ## Como o app conversa com o backend
 
 | Assunto | Onde está |
