@@ -7773,7 +7773,7 @@ async function testFlow(id) {
 
 // ==================== CANVAS ARRASTA-E-SOLTA (n8n-style) ====================
 const NODE_W = 236;         // largura do nó (px, coords do mundo)
-const PORT_DY = 40;         // âncora vertical das portas
+const PORT_DY = 40;         // legado: âncora antiga (ver portY/portTop)
 const fbV = { s: 1, tx: 60, ty: 40 };
 let fbSel = null, fbInter = null, fbSaveTimer = null;
 
@@ -8084,17 +8084,34 @@ function fbNodeOptions(n) {
 function fbOptBranch(id) { return 'opt:' + id; }
 function fbIsOptBranch(b) { return String(b || '').startsWith('opt:'); }
 
-// Altura da porta de cada saída. As opções ficam empilhadas abaixo do cabeçalho.
-const FB_OPT_DY = 62, FB_OPT_STEP = 26;
-function portY(n, branch) {
-  if (n.type === 'condition') return branch === 'no' ? 66 : 36;
-  if (fbIsOptBranch(branch)) {
-    const i = fbNodeOptions(n).findIndex(o => fbOptBranch(o.id) === branch);
-    return FB_OPT_DY + Math.max(0, i) * FB_OPT_STEP;
-  }
-  return PORT_DY;
+// ---------- GEOMETRIA DAS PORTAS ----------
+// A bolinha é posicionada pelo TOPO (CSS `top`), mas a linha tem que sair do
+// CENTRO dela. Misturar as duas referências é o que deixava as conexões tortas:
+// a linha nascia 7,5px acima do ponto.
+//
+// Por isso o topo de cada porta é declarado uma vez aqui e o ponto de ancoragem
+// da linha é sempre `topo + FB_PORT_HALF`. Quem mexer na posição de uma porta
+// mexe nos dois ao mesmo tempo, e não há como um sair do lugar sem o outro.
+const FB_PORT_HALF = 7.5;          // do topo da bolinha até o centro dela
+const FB_PORT_TOP = 33;            // porta única (entrada e saída)
+const FB_COND_TOP = { yes: 29, no: 59 };
+const FB_OPT_TOP = 62, FB_OPT_STEP = 26;   // 1ª saída de opção e o passo entre elas
+
+function fbOptTop(i) { return FB_OPT_TOP + Math.max(0, i) * FB_OPT_STEP; }
+
+// Topo (CSS) da porta — usado para desenhar a bolinha.
+function portTop(n, branch) {
+  if (n.type === 'condition') return branch === 'no' ? FB_COND_TOP.no : FB_COND_TOP.yes;
+  if (fbIsOptBranch(branch)) return fbOptTop(fbNodeOptions(n).findIndex(o => fbOptBranch(o.id) === branch));
+  return FB_PORT_TOP;
 }
-function portPos(n, side, branch) { return { x: n.x + (side === 'out' ? NODE_W : 0), y: n.y + (side === 'out' ? portY(n, branch) : PORT_DY) }; }
+// Centro da porta — é daqui que a linha sai/chega.
+function portY(n, branch) { return portTop(n, branch) + FB_PORT_HALF; }
+function portPos(n, side, branch) {
+  // A entrada tem posição fixa; a saída depende do ramo (condição ou opção).
+  const dy = side === 'out' ? portY(n, branch) : FB_PORT_TOP + FB_PORT_HALF;
+  return { x: n.x + (side === 'out' ? NODE_W : 0), y: n.y + dy };
+}
 function edgeD(a, b) { const dx = Math.max(46, Math.abs(b.x - a.x) / 2); return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`; }
 
 function renderNodes() {
@@ -8109,9 +8126,8 @@ function renderNodes() {
     el.dataset.id = n.id;
     el.style.left = n.x + 'px'; el.style.top = n.y + 'px'; el.style.width = NODE_W + 'px';
     // O card cresce para caber as saídas das opções sem que elas vazem.
-    if (fbNodeOptions(n).length) {
-      el.style.minHeight = (FB_OPT_DY + fbNodeOptions(n).length * FB_OPT_STEP + 6) + 'px';
-    }
+    const nOpts = fbNodeOptions(n).length;
+    if (nOpts) el.style.minHeight = (fbOptTop(nOpts - 1) + FB_PORT_HALF * 2 + 10) + 'px';
     const opcoes = fbNodeOptions(n);
     const ports = n.type === 'condition'
       ? `<span class="fb-port out yes" data-id="${n.id}" data-side="out" data-branch="yes"><em>Sim</em></span>
@@ -8119,7 +8135,7 @@ function renderNodes() {
       : n.type === 'end' ? ''
       : opcoes.length
         // Uma saída por botão: o fluxo espera o toque e segue o caminho da opção.
-        ? opcoes.map((o, i) => `<span class="fb-port out opt" data-id="${n.id}" data-side="out" data-branch="${esc(fbOptBranch(o.id))}" style="top:${FB_OPT_DY + i * FB_OPT_STEP}px"><em>${esc(o.title.slice(0, 14))}</em></span>`).join('')
+        ? opcoes.map((o, i) => `<span class="fb-port out opt" data-id="${n.id}" data-side="out" data-branch="${esc(fbOptBranch(o.id))}" style="top:${fbOptTop(i)}px"><em>${esc(o.title.slice(0, 14))}</em></span>`).join('')
         : `<span class="fb-port out" data-id="${n.id}" data-side="out"></span>`;
     el.innerHTML = `
       ${n.type !== 'trigger' ? `<span class="fb-port in" data-id="${n.id}" data-side="in"></span>` : ''}
