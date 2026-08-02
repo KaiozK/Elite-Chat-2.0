@@ -65,6 +65,15 @@ module.exports = function (broadcast, clients) {
   const adminOnly = (req, res, next) =>
     req.session.kind === 'admin' ? next() : res.status(403).json({ error: 'Apenas o administrador da plataforma' });
 
+  // GUARD DE FUNCIONALIDADE DO PLANO — módulo desligado no plano responde 402.
+  // O admin da plataforma nunca é barrado (precisa operar qualquer conta).
+  const feat = key => (req, res, next) => {
+    if (req.session.kind === 'admin') return next();
+    const msg = limits.checkFeature(req.acc, key);
+    if (!msg) return next();
+    res.status(402).json({ error: msg, code: 'feature', feature: key });
+  };
+
   // GUARD DE PERMISSÃO — valida no backend (o front só esconde o menu).
   // O dono da conta e o admin da plataforma passam sempre.
   const can = (moduleKey, action = 'view') => (req, res, next) => {
@@ -225,7 +234,10 @@ module.exports = function (broadcast, clients) {
       allowedViews: agents.allowedViews(ag),
       mustChangePassword: ag ? !!ag.mustChangePassword
         : (req.session.kind === 'admin' && p.adminPassHash === db.hash('admin')),
-      wa: waPublic(req.wctx)
+      wa: waPublic(req.wctx),
+      // toggles do plano: o menu esconde o que o plano nao inclui (o backend
+      // tambem recusa com 402, o front e so conforto)
+      planFeatures: req.session.kind === 'admin' ? null : limits.featuresOf(req.acc)
     });
   });
 
@@ -249,7 +261,7 @@ module.exports = function (broadcast, clients) {
     });
   });
 
-  router.post('/agents', auth, can('agents', 'create'), (req, res) => {
+  router.post('/agents', auth, feat('agents'), can('agents', 'create'), (req, res) => {
     const b = req.body || {};
     const name = String(b.name || '').trim();
     const email = String(b.email || '').toLowerCase().trim();
@@ -1017,7 +1029,7 @@ module.exports = function (broadcast, clients) {
     });
   });
 
-  router.post('/schedules', auth, can('schedule', 'create'), (req, res) => {
+  router.post('/schedules', auth, feat('schedule'), can('schedule', 'create'), (req, res) => {
     const e = schedule.create(req.acc, req.body, req.who.name);
     agents.log(req.acc, req.who, 'schedule_created', `Criou o agendamento "${e.title}"`);
     broadcast('schedule', { accountId: req.acc.id, id: e.id });
@@ -1841,7 +1853,7 @@ module.exports = function (broadcast, clients) {
     res.json({ nuvemshop: nuvem.publicCfg(req.acc, origemDe(req)) });
   });
 
-  router.post('/pixels', auth, can('pixels','create'), (req, res) => {
+  router.post('/pixels', auth, feat('pixels'), can('pixels','create'), (req, res) => {
     const lim = limits.check(req.acc, "pixels");
     if (lim) return res.status(402).json({ error: lim, code: "limit", resource: "pixels" });
     const { type, pixelId, name, capiToken, testCode, defaultEvent } = req.body || {};
@@ -1941,7 +1953,7 @@ module.exports = function (broadcast, clients) {
     res.json({ links: req.acc.links.map(l => linkSummary(req.acc, l, origin)).sort((a, b) => b.createdAt - a.createdAt) });
   });
 
-  router.post('/links', auth, can('links','create'), (req, res) => {
+  router.post('/links', auth, feat('links'), can('links','create'), (req, res) => {
     const lim = limits.check(req.acc, "links");
     if (lim) return res.status(402).json({ error: lim, code: "limit", resource: "links" });
     const { title, dest, slug, utm, event, value, currency } = req.body || {};
@@ -2029,7 +2041,7 @@ module.exports = function (broadcast, clients) {
     res.json({ flows: req.acc.flows.map(f => flowPublic(f, origin)) });
   });
 
-  router.post('/flows', auth, can('flows','create'), (req, res) => {
+  router.post('/flows', auth, feat('flows'), can('flows','create'), (req, res) => {
     const lim = limits.check(req.acc, "flows");
     if (lim) return res.status(402).json({ error: lim, code: "limit", resource: "flows" });
     const b = req.body || {};
@@ -2268,7 +2280,7 @@ module.exports = function (broadcast, clients) {
     res.json({ webhooks: (req.acc.webhooks || []).map(w => webhookPublic(w, origin)) });
   });
 
-  router.post('/webhooks', auth, can('webhooks','create'), (req, res) => {
+  router.post('/webhooks', auth, feat('integrations'), can('webhooks','create'), (req, res) => {
     const name = String((req.body || {}).name || '').trim() || 'Novo webhook';
     const wh = {
       id: db.genId('wh'), name, token: crypto.randomBytes(10).toString('hex'),
@@ -2453,7 +2465,7 @@ module.exports = function (broadcast, clients) {
     res.json({ campaign: { ...c, recipients: undefined }, stats: campaignStats(acc, c), recipients });
   });
 
-  router.post('/campaigns', auth, requireActive, h(async (req, res) => {
+  router.post('/campaigns', auth, feat('campaigns'), requireActive, h(async (req, res) => {
     const { name, templateName, language, vars, audience } = req.body || {};
     if (!name || !templateName) return res.status(400).json({ error: 'Informe "name" e "templateName"' });
     if (!req.ch || !req.ch.wa.connected) {
@@ -2858,6 +2870,7 @@ module.exports = function (broadcast, clients) {
       features: String(features || '').split('\n').map(s => s.trim()).filter(Boolean),
       // tetos do plano: disparos, contatos, fluxos, pixels, links e WhatsApps
       limits: db.normLimits((req.body || {}).limits),
+      modules: db.normFeatures((req.body || {}).modules),
       createdAt: Date.now(), archived: false
     };
     db.get().plans.push(plan);
@@ -2877,6 +2890,7 @@ module.exports = function (broadcast, clients) {
     if (b.periodDays) plan.periodDays = Number(b.periodDays) || plan.periodDays;
     if (b.features !== undefined) plan.features = String(b.features).split('\n').map(s => s.trim()).filter(Boolean);
     if (b.limits !== undefined) plan.limits = db.normLimits(b.limits, plan.limits);
+    if (b.modules !== undefined) plan.modules = db.normFeatures(b.modules, plan.modules);
     if (b.archived !== undefined) plan.archived = !!b.archived;
     db.save();
     res.json({ plan });
@@ -3083,7 +3097,7 @@ module.exports = function (broadcast, clients) {
   });
 
   // conexões (Meta Pixel, CAPI, GA4, TikTok, GTM…)
-  router.put('/tracking/connections/:key', auth, can('tracking', 'edit'), (req, res) => {
+  router.put('/tracking/connections/:key', auth, feat('tracking'), can('tracking', 'edit'), (req, res) => {
     const t = tracking.ensure(req.acc);
     const c = t.connections[req.params.key];
     if (!c) return res.status(404).json({ error: 'Conexão desconhecida' });
@@ -3290,7 +3304,7 @@ module.exports = function (broadcast, clients) {
   });
 
   // Nova cobrança (Pix + link + QR + copia e cola) — opcionalmente já envia no chat
-  router.post('/elitepay/charges', auth, can('elitepay', 'create'), h(async (req, res) => {
+  router.post('/elitepay/charges', auth, feat('elitepay'), can('elitepay', 'create'), h(async (req, res) => {
     const b = req.body || {};
     const contact = b.waId ? store.findContact(req.wctx, store.normalizeWaId(b.waId)) : null;
     const ch = await elitepay.createCharge(req.acc, {

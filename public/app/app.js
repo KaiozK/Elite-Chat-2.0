@@ -506,6 +506,7 @@ async function init() {
       state.mustChangePassword = me.mustChangePassword;
       state.agent = me.agent || null;
       state.permissions = me.permissions || null;   // null = acesso total (dono/admin)
+      state.planFeatures = me.planFeatures || null; // null = admin da plataforma (tudo liberado)
       state.allowedViews = me.allowedViews || null;
       return enterApp();
     } catch {}
@@ -944,6 +945,16 @@ const VIEW_MODULE = {
   'elitepay/checkout': 'elitepay', checkouts: 'elitepay',
   billing: null, admin: null, logs: null   // sempre acessíveis (donos/config próprios)
 };
+// O plano do cliente inclui este módulo? (null = sem restrição de plano)
+// checkouts pertence ao Elite Pay; integrations cobre webhooks/Nuvemshop.
+const VIEW_FEATURE = { checkouts: 'elitepay', webhooks: 'integrations' };
+function planHas(view) {
+  const f = state.planFeatures;
+  if (!f) return true;
+  const key = VIEW_FEATURE[view] || view;
+  return f[key] !== false;
+}
+
 function moduleOfView(v) {
   if (v in VIEW_MODULE) return VIEW_MODULE[v];
   return v;
@@ -955,6 +966,7 @@ function applyNavPermissions() {
   $$('.nav-item[data-view]').forEach(n => {
     const v = n.dataset.view;
     if (state.agent && ownerOnly.has(v)) { n.style.display = 'none'; return; }
+    if (!planHas(v)) { n.style.display = 'none'; return; }   // fora do plano contratado
     const mod = moduleOfView(v);
     n.style.display = (mod === null || can(mod, 'view')) ? '' : 'none';
   });
@@ -990,6 +1002,13 @@ function route() {
   // do nome da view; sem separar, a rota não é encontrada e cai no dashboard.
   const v = ((location.hash || '#/dashboard').replace('#/', '') || 'dashboard').split('?')[0];
   let target = views[v] ? v : 'dashboard';
+  // guard de PLANO: digitar a URL de um módulo fora do plano não entra
+  // (o backend também recusa com 402; aqui é só para não abrir uma tela vazia)
+  if (!planHas(target.split('/')[0])) {
+    toast('Esse recurso não faz parte do seu plano. Faça upgrade em Assinatura.', 'error');
+    location.hash = '#/billing';
+    return;
+  }
   // guard de permissão no front (o backend valida de novo em cada rota)
   const mod = moduleOfView(target);
   if (mod !== null && !can(mod, 'view')) {
@@ -4469,6 +4488,8 @@ async function paintBilling() {
             <b class="pl-name">${esc(p.name)}</b>
             <div class="pl-price">${fmtBRL(p.price)}<span>/mês</span></div>
             <ul class="pl-feats">
+              ${FEATURE_META.filter(m => !p.modules || p.modules[m.key] !== false)
+                .map(m => `<li>${ico('check', 13)} ${esc(m.label)}</li>`).join('')}
               ${(p.features || []).map(f => `<li>${ico('check', 13)} ${esc(f)}</li>`).join('')}
               ${LIMIT_META.map(m => {
                 const v = (p.limits || {})[m.key];
@@ -5060,7 +5081,7 @@ async function paintAdmin() {
             <label>Preço mensal (R$)<input id="pl-price" placeholder="97,00" inputmode="decimal"></label>
             <label>Dias por ciclo<input id="pl-days" value="30" inputmode="numeric"></label>
           </div>
-          <label style="margin-top:9px">Recursos (um por linha)<textarea id="pl-feats" rows="3" placeholder="Atendimento ilimitado&#10;Campanhas e automações&#10;Suporte prioritário"></textarea></label>
+          ${planFeatureFields('new', null)}
           ${planLimitFields('new', null)}
           <div class="row" style="margin-top:10px;justify-content:flex-end"><button class="btn primary no-grow" onclick="admCreatePlan()">${ico('save', 14)} Criar plano</button></div>
         </div>
@@ -5087,16 +5108,19 @@ async function paintAdmin() {
               <div class="plan-head">
                 <div style="flex:1;min-width:0">
                   <b style="font-size:15px">${esc(p.name)}</b>
-                  <div class="muted" style="font-size:11.5px;margin-top:2px">${fmtBRL(p.price)} / ${p.periodDays}d · ${fmtN(subs)} assinante(s)${(p.features || []).length ? ' · ' + esc((p.features || []).join(' · ')) : ''}</div>
+                  <div class="muted" style="font-size:11.5px;margin-top:2px">${fmtBRL(p.price)} / ${p.periodDays}d · ${fmtN(subs)} assinante(s)</div>
                 </div>
                 <button class="btn small no-grow" onclick="admTogglePlan('${p.id}')">${ico('edit', 13)} Limites</button>
                 <button class="icon-btn danger" title="Arquivar" onclick="admDelPlan('${p.id}')">${ico('trash', 14)}</button>
               </div>
-              <div class="plan-lims">${LIMIT_META.map(m => {
+              <div class="plan-lims">
+                ${planFeatureBadge(p)}
+                ${LIMIT_META.map(m => {
                 const v = (p.limits || {})[m.key];
                 return `<span class="pill ${v === 0 ? 'pending' : ''}">${m.short}: <b>${v === -1 || v === undefined ? '∞' : fmtN(v)}</b></span>`;
               }).join('')}</div>
               <div class="plan-edit hidden" id="pl-ed-${p.id}">
+                ${planFeatureFields(p.id, p.modules || null)}
                 ${planLimitFields(p.id, p.limits || {})}
                 <div class="row" style="margin-top:10px;justify-content:flex-end">
                   <button class="btn primary no-grow" onclick="admSavePlanLimits('${p.id}')">${ico('save', 14)} Salvar limites</button>
@@ -5198,6 +5222,44 @@ async function paintAdmin() {
 // ---- LIMITES DE PLANO (admin) ----
 // Vazio = ilimitado. WhatsApp e Links são "inclusos"; o excedente é vendido
 // avulso pelo preço definido no card "Preço das unidades extras".
+// Funcionalidades que cada plano liga/desliga (toggle). O que nao esta aqui
+// (conversas, contatos, funil, modelos, LGPD) e essencial e vem em todo plano.
+const FEATURE_META = [
+  { key: 'campaigns',    label: 'Campanhas em massa' },
+  { key: 'flows',        label: 'Automações (Flow Builder)' },
+  { key: 'schedule',     label: 'Agendamentos' },
+  { key: 'team',         label: 'Chat interno' },
+  { key: 'agents',       label: 'Atendentes (equipe)' },
+  { key: 'elitepay',     label: 'Elite Pay (cobranças)' },
+  { key: 'links',        label: 'Links rastreáveis' },
+  { key: 'pixels',       label: 'Pixels de rastreamento' },
+  { key: 'tracking',     label: 'Tracking (atribuição)' },
+  { key: 'integrations', label: 'Integrações' }
+];
+
+// Grade de toggles: um por funcionalidade. Sem texto livre, sem erro de digitação.
+function planFeatureFields(scope, mods) {
+  const on = k => !mods || mods[k] !== false;
+  const linhas = FEATURE_META.map(m =>
+    `<label class="chk feat-row"><input type="checkbox" id="feat-${scope}-${m.key}" ${on(m.key) ? 'checked' : ''}><span>${esc(m.label)}</span></label>`).join('');
+  return `<div class="lim-box" style="margin-top:10px"><div class="lim-head">${ico('zap', 13)} Funcionalidades do plano <span class="lim-hint">ligado = incluso</span></div><div class="feat-grid">${linhas}</div></div>`;
+}
+
+function readFeatureFields(scope) {
+  const out = {};
+  for (const m of FEATURE_META) {
+    const el = document.getElementById('feat-' + scope + '-' + m.key);
+    if (el) out[m.key] = !!el.checked;
+  }
+  return out;
+}
+
+// Resumo para a lista de planos: quantas funcoes ficaram de fora.
+function planFeatureBadge(p) {
+  const off = FEATURE_META.filter(m => p.modules && p.modules[m.key] === false);
+  if (!off.length) return '<span class="pill done">todas as funções</span>';
+  return `<span class="pill pending" title="Fora: ${esc(off.map(x => x.label).join(', '))}">${off.length} função(ões) fora</span>`;
+}
 const LIMIT_META = [
   { key: 'sends',     label: 'Disparos por ciclo',        short: 'Disparos', ph: 'ilimitado' },
   { key: 'contacts',  label: 'Contatos (leads)',          short: 'Leads',    ph: 'ilimitado' },
@@ -5238,15 +5300,15 @@ function admTogglePlan(id) {
 
 async function admSavePlanLimits(id) {
   try {
-    await api('/admin/plans/' + id, { method: 'PUT', body: { limits: readLimitFields(id) } });
-    toast('Limites atualizados'); paintAdmin();
+    await api('/admin/plans/' + id, { method: 'PUT', body: { limits: readLimitFields(id), modules: readFeatureFields(id) } });
+    toast('Funcionalidades e limites atualizados'); paintAdmin();
     setTimeout(() => showSettingsTab('adm-pl'), 60);
   } catch (e) { toast(e.message, 'error'); }
 }
 
 async function admCreatePlan() {
   try {
-    await api('/admin/plans', { body: { name: $('#pl-name').value, price: $('#pl-price').value, periodDays: $('#pl-days').value, features: $('#pl-feats').value, limits: readLimitFields('new') } });
+    await api('/admin/plans', { body: { name: $('#pl-name').value, price: $('#pl-price').value, periodDays: $('#pl-days').value, modules: readFeatureFields('new'), limits: readLimitFields('new') } });
     toast('Plano criado!'); paintAdmin();
     setTimeout(() => showSettingsTab('adm-pl'), 60);
   } catch (e) { toast(e.message, 'error'); }

@@ -139,7 +139,47 @@ function chargeTotal(acc, plan) {
   return (p ? p.price : 0) + extrasCost(acc);
 }
 
+// ---------------------------------------------------------------------------
+// FUNCIONALIDADES (toggles do plano). Booleano por módulo: desligado no plano,
+// a rota recusa com 402 e o menu do cliente esconde a tela.
+// ---------------------------------------------------------------------------
+const FEATURE_LABEL = {
+  campaigns: 'Campanhas em massa',
+  flows: 'Automações (Flow Builder)',
+  schedule: 'Agendamentos',
+  team: 'Chat interno',
+  agents: 'Atendentes (equipe)',
+  elitepay: 'Elite Pay (cobranças)',
+  links: 'Links rastreáveis',
+  pixels: 'Pixels de rastreamento',
+  tracking: 'Tracking (atribuição)',
+  integrations: 'Integrações (webhooks/Nuvemshop)'
+};
+
+// Módulos do plano vigente. Trial/sem plano usa o plano mais barato publicado
+// (mesma regra dos limites); sem nenhum plano, tudo liberado.
+function featuresOf(acc) {
+  const plan = planOf(acc);
+  if (plan) return db.normFeatures(plan.modules, plan.modules);
+  const pubs = db.get().plans.filter(p => !p.archived);
+  if (!pubs.length) return db.defaultFeatures();
+  const cheapest = pubs.reduce((a, b) => (b.price < a.price ? b : a));
+  return db.normFeatures(cheapest.modules, cheapest.modules);
+}
+
+function featureOn(acc, key) {
+  if (!db.FEATURE_KEYS.includes(key)) return true;   // módulo essencial: sempre on
+  return !!featuresOf(acc)[key];
+}
+
+// null = liberado; string = mensagem de bloqueio.
+function checkFeature(acc, key) {
+  if (featureOn(acc, key)) return null;
+  return `${FEATURE_LABEL[key] || key} não faz parte do seu plano. Faça upgrade em Assinatura para liberar.`;
+}
+
 module.exports = {
-  PAID_EXTRAS, LABEL, planOf, extraPrices, limitOf, usage, report,
-  check, enforce, extrasCost, chargeTotal
+  PAID_EXTRAS, LABEL, FEATURE_LABEL, planOf, extraPrices, limitOf, usage, report,
+  check, enforce, extrasCost, chargeTotal,
+  featuresOf, featureOn, checkFeature
 };

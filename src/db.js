@@ -70,6 +70,26 @@ const LIMIT_KEYS = ['sends', 'contacts', 'flows', 'pixels', 'links', 'whatsapps'
 function defaultLimits() {
   return { sends: -1, contacts: -1, flows: -1, pixels: -1, links: 1, whatsapps: 1 };
 }
+// ---------------------------------------------------------------------------
+// FUNCIONALIDADES POR PLANO (toggles)
+// Cada plano liga/desliga módulos inteiros. Diferente dos LIMITES (quantidade),
+// aqui é booleano: desligado, o módulo some do menu do cliente e as rotas
+// recusam com 402. Módulos essenciais (conversas, contatos, funil, modelos,
+// LGPD) não entram na lista: fazem parte de qualquer plano.
+const FEATURE_KEYS = ['campaigns', 'flows', 'schedule', 'team', 'agents', 'elitepay', 'links', 'pixels', 'tracking', 'integrations'];
+function defaultFeatures() {
+  const o = {};
+  for (const k of FEATURE_KEYS) o[k] = true;   // plano sem config libera tudo
+  return o;
+}
+function normFeatures(src, base) {
+  const out = Object.assign(defaultFeatures(), base || {});
+  if (src && typeof src === 'object') {
+    for (const k of FEATURE_KEYS) if (src[k] !== undefined) out[k] = !!src[k];
+  }
+  return out;
+}
+
 // Normaliza os limites vindos do body/banco: aceita '' (ilimitado) e números.
 function normLimits(src, base) {
   const out = Object.assign(defaultLimits(), base || {});
@@ -290,7 +310,7 @@ function load() {
   if (!db.platform.billing.extras || typeof db.platform.billing.extras !== 'object') {
     db.platform.billing.extras = { whatsappPrice: 0, linkPrice: 0 };
   }
-  for (const p of db.plans) p.limits = normLimits(p.limits, p.limits);
+  for (const p of db.plans) { p.limits = normLimits(p.limits, p.limits); p.modules = normFeatures(p.modules, p.modules); }
   migrateLegacy();
   for (const a of db.accounts) ensureAccountShape(a);
   flush();
@@ -543,4 +563,4 @@ function findAdminAccount() {
 
 process.on('exit', () => { try { if (db) flush(); } catch {} });
 
-module.exports = { get, save, load, flush, genId, hash, newAccount, emptyWa, emptyBilling, defaultSurvey, findAccount, findAccountByEmail, findAccountByPhoneId, findAccountByRefCode, findAdminAccount, findLinkBySlug, findWebhookByToken, DEFAULT_STAGES, emptyWallet, attachTplAlias, LIMIT_KEYS, defaultLimits, normLimits, emptyChannel, chanCtx, findChannel, channelByPhoneId, ensureAccountShape };
+module.exports = { get, save, load, flush, genId, hash, newAccount, emptyWa, emptyBilling, defaultSurvey, findAccount, findAccountByEmail, findAccountByPhoneId, findAccountByRefCode, findAdminAccount, findLinkBySlug, findWebhookByToken, DEFAULT_STAGES, emptyWallet, attachTplAlias, FEATURE_KEYS, defaultFeatures, normFeatures, LIMIT_KEYS, defaultLimits, normLimits, emptyChannel, chanCtx, findChannel, channelByPhoneId, ensureAccountShape };
