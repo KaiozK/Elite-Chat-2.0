@@ -715,9 +715,9 @@ details.log pre { margin: 0; border: 0; border-radius: 0 0 16px 16px; }
 .wa-connect-hero { text-align: center; padding: 50px 24px; }
 .wa-connect-hero .wa-hero-ic {
   width: 72px; height: 72px; border-radius: 22px; margin: 0 auto 16px;
-  background: var(--verde); color: var(--ink-on-verde);
+  background: #25D366; color: #fff;   /* verde oficial do WhatsApp */
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 16px 38px rgba(52, 211, 153, .4);
+  box-shadow: 0 16px 38px rgba(37, 211, 102, .38);
 }
 .wa-connect-hero h2 { font-size: 20px; letter-spacing: -.03em; }
 .wa-status { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 32px; }
@@ -2996,3 +2996,8 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 /* Toggles de funcionalidade do plano (Admin SaaS) */
 .feat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 9px 14px; }
 .feat-row { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--text2); }
+
+/* Linha da conta de WhatsApp: o bloco de texto abre o "renomear" */
+.ch-row-main { flex: 1; min-width: 0; cursor: pointer; border-radius: 9px; padding: 2px 6px; margin: -2px -6px; transition: background .15s; }
+.ch-row-main:hover { background: color-mix(in srgb, var(--verde) 10%, transparent); }
+.ch-row-main:focus-visible { outline: 2px solid var(--verde-esc); outline-offset: 1px; }

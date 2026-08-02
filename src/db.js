@@ -301,6 +301,9 @@ function load() {
   for (const k of Object.keys(DEFAULTS)) if (db[k] === undefined) db[k] = JSON.parse(JSON.stringify(DEFAULTS[k]));
   for (const k of Object.keys(DEFAULTS.platform)) if (db.platform[k] === undefined) db.platform[k] = JSON.parse(JSON.stringify(DEFAULTS.platform[k]));
   // merge raso dos sub-objetos da plataforma (woovi/billing/affiliate ganham chaves novas)
+  // O Pix Indireto foi descontinuado: limpa a config de bancos antigos para não
+  // ficar lixo no db.json (as assinaturas usam o Pix/Woovi e o cartão).
+  delete db.platform.pixIndirect;
   for (const k of ['woovi', 'billing', 'affiliate', 'landing', 'metaAds', 'nuvemshop']) {
     for (const kk of Object.keys(DEFAULTS.platform[k])) {
       if (db.platform[k][kk] === undefined) db.platform[k][kk] = DEFAULTS.platform[k][kk];

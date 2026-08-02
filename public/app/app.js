@@ -633,7 +633,7 @@ function channelsCard() {
   const at = chActive() || {};
   return `<div class="card">
     <div class="row" style="align-items:center;margin-bottom:6px">
-      <h2 style="margin:0;flex:1">${ico('smartphone')} Contas do WhatsApp conectadas</h2>
+      <h2 style="margin:0;flex:1">${waLogo(17, '#25D366')} Contas do WhatsApp conectadas</h2>
       <span class="pill ${cheio ? 'pending' : 'done'}">${fmtN(lim.used || CHANNELS.length)}${lim.unlimited ? '' : ' / ' + fmtN(lim.limit)} conexões</span>
     </div>
     <p class="muted" style="margin:0 0 14px;font-size:13px">
@@ -643,7 +643,9 @@ function channelsCard() {
     <div class="ch-list">
       ${CHANNELS.map(c => `<div class="ch-row ${c.id === at.id ? 'sel' : ''}">
         <i class="ch-dot ${c.connected ? 'on' : 'off'}"></i>
-        <div style="flex:1;min-width:0">
+        <div class="ch-row-main" role="button" tabindex="0" title="Renomear esta conta"
+             onclick="renameChannel('${c.id}')"
+             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();renameChannel('${c.id}')}">
           <b>${esc(c.label)}</b>${c.isDefault ? ' <span class="pill" style="font-size:10px">principal</span>' : ''}
           <div class="muted" style="font-size:12px;margin-top:2px">
             ${c.displayPhoneNumber ? esc(c.displayPhoneNumber) : '<b style="color:var(--amber)">não conectado</b>'}
@@ -677,14 +679,43 @@ async function createChannel() {
   } catch (e) { toast(e.message, 'error'); }
 }
 
-async function renameChannel(id) {
-  const atual = chName(id);
-  const novo = prompt('Nome do canal:', atual);
-  if (novo === null || novo.trim() === atual) return;
+// Renomear a conta de WhatsApp. Usa o modal do app: o prompt() nativo é
+// bloqueado em vários navegadores e no app instalado (PWA), e o botão parecia
+// simplesmente não fazer nada.
+function renameChannel(id) {
+  const ch = CHANNELS.find(c => c.id === id) || {};
+  openModal(`
+    <h2>${ico('edit')} Renomear conta</h2>
+    <p class="muted" style="margin:0 0 12px;font-size:13px">
+      É só o apelido que aparece no painel${ch.displayPhoneNumber ? ` para o número <b>${esc(ch.displayPhoneNumber)}</b>` : ''}.
+      O número conectado na Meta não muda.</p>
+    <label>Nome da conta<input id="ch-rename" value="${esc(ch.label || '')}" maxlength="40" placeholder="ex.: Vendas · Suporte · Filial SP"></label>
+    <p id="ch-rename-err" class="err"></p>
+    <div class="row" style="margin-top:14px">
+      <button class="btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn primary" onclick="renameChannelSave('${id}', this)">${ico('save', 14)} Salvar</button>
+    </div>`);
+  setTimeout(() => { const i = $('#ch-rename'); if (i) { i.focus(); i.select(); } }, 40);
+  const inp = $('#ch-rename');
+  if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') renameChannelSave(id, null); });
+}
+
+async function renameChannelSave(id, btn) {
+  const inp = $('#ch-rename'); if (!inp) return;
+  const nome = inp.value.trim();
+  const err = $('#ch-rename-err');
+  if (!nome) { if (err) err.textContent = 'Dê um nome para a conta.'; return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando…'; }
   try {
-    await api('/channels/' + id, { method: 'PUT', body: { label: novo.trim() } });
-    await loadChannels(); route();
-  } catch (e) { toast(e.message, 'error'); }
+    await api('/channels/' + id, { method: 'PUT', body: { label: nome } });
+    closeModal();
+    await loadChannels();
+    route();
+    toast('Conta renomeada');
+  } catch (e) {
+    if (err) err.textContent = e.message;
+    if (btn) { btn.disabled = false; btn.innerHTML = `${ico('save', 14)} Salvar`; }
+  }
 }
 
 async function removeChannel(id) {
@@ -2119,7 +2150,7 @@ function phonePreview(data, opts = {}) {
       </div>
       <div class="wa-top">
         <svg class="wa-back" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m15 19-7-7 7-7"/></svg>
-        <span class="wa-av">${state.wa && state.wa.profilePictureUrl ? `<img src="${esc(state.wa.profilePictureUrl)}" alt="">` : waInitials(name)}</span>
+        <span class="wa-av">${state.wa && state.wa.profilePictureUrl ? avatarImg(state.wa.profilePictureUrl, '', waInitials(name)) : waInitials(name)}</span>
         <div class="wa-top-info"><b>${esc(name)} <svg class="wa-verified" viewBox="0 0 24 24" width="13" height="13" fill="#00A884"><path d="M12 1.8 14.8 4l3.5-.4 1 3.4 3 1.8-1.4 3.2 1.4 3.2-3 1.8-1 3.4-3.5-.4L12 22.2 9.2 20l-3.5.4-1-3.4-3-1.8L3.1 12 1.7 8.8l3-1.8 1-3.4L9.2 4 12 1.8z"/><path d="m8.6 12.2 2.3 2.3 4.6-4.8" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></b><span>conta comercial</span></div>
         <svg class="wa-hicon" viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.9.36 1.79.7 2.63a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.45-1.27a2 2 0 0 1 2.11-.45c.84.34 1.73.57 2.63.7A2 2 0 0 1 22 16.92z"/></svg>
       </div>
@@ -2590,9 +2621,9 @@ async function renderSettings() {
 
   const connCard = w.connected ? `
       <div class="card">
-        <h2>${ico('check-circle')} WhatsApp conectado</h2>
+        <h2>${waLogo(18, '#25D366')} WhatsApp conectado</h2>
         <div class="conn-id">
-          <div class="pf-avatar sm" id="conn-photo">${w.profilePictureUrl ? `<img src="${esc(w.profilePictureUrl)}" alt="">` : waInitials(w.verifiedName || state.user)}</div>
+          <div class="pf-avatar sm" id="conn-photo">${w.profilePictureUrl ? avatarImg(w.profilePictureUrl, '', waInitials(w.verifiedName || state.user)) : waInitials(w.verifiedName || state.user)}</div>
           <div style="min-width:0">
             <b style="font-size:15px;display:block">${esc(w.verifiedName || 'Perfil do WhatsApp')}</b>
             <span class="muted" style="font-size:12.5px">${esc(w.displayPhoneNumber || '')} · foto e nome que seus clientes veem</span>
@@ -2614,13 +2645,13 @@ async function renderSettings() {
         </div>
       </div>` : `
       <div class="card wa-connect-hero">
-        <div class="wa-hero-ic"><svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor" aria-hidden="true"><path d="M12 2C6.5 2 2 6.4 2 11.9c0 1.9.5 3.7 1.5 5.3L2 22l4.9-1.4c1.5.9 3.3 1.4 5.1 1.4 5.5 0 10-4.4 10-9.9S17.5 2 12 2zm0 18.2c-1.6 0-3.2-.5-4.6-1.3l-.33-.2-2.9.83.85-2.8-.22-.34a8.1 8.1 0 0 1-1.3-4.4c0-4.5 3.8-8.2 8.5-8.2s8.5 3.7 8.5 8.2-3.8 8.24-8.5 8.24zm4.7-6.1c-.26-.13-1.5-.75-1.74-.83-.23-.09-.4-.13-.57.13-.17.25-.66.83-.8 1-.15.17-.3.19-.55.06-.26-.13-1.08-.4-2.06-1.28a7.8 7.8 0 0 1-1.43-1.78c-.15-.26-.02-.4.11-.52.12-.12.26-.3.39-.45.13-.15.17-.26.26-.43.09-.17.04-.32-.02-.45-.06-.13-.57-1.4-.79-1.9-.2-.5-.42-.43-.57-.44h-.49c-.17 0-.45.06-.68.32-.23.25-.9.88-.9 2.14s.92 2.49 1.05 2.66c.13.17 1.8 2.77 4.4 3.88.61.27 1.09.42 1.47.54.62.2 1.18.17 1.62.1.5-.07 1.5-.62 1.72-1.22.21-.6.21-1.1.15-1.21-.06-.11-.23-.18-.5-.3z"/></svg></div>
+        <div class="wa-hero-ic">${waLogo(40)}</div>
         <h2 style="justify-content:center">Conecte seu WhatsApp</h2>
         <p class="muted" style="max-width:480px;margin:6px auto 18px;text-align:center">
           Clique no botão abaixo e siga o cadastro oficial da Meta na janela que vai abrir.
           Número, conta e webhooks são configurados <b>automaticamente</b>, você não precisa copiar nenhum ID ou token.
         </p>
-        <button class="btn primary lg" onclick="connectWhatsApp()">${ico('zap', 16)} Conectar WhatsApp</button>
+        <button class="btn primary lg" onclick="connectWhatsApp()">${waLogo(18)} Conectar WhatsApp</button>
         <p class="hint" style="margin-top:12px">Embedded Signup oficial · WhatsApp Business Platform (Cloud API ${esc(s.graphVersion || 'v25.0')})</p>
       </div>`;
 
@@ -3222,14 +3253,31 @@ async function saveProfile() {
 // Foto do perfil conectado — exibida no painel e trocada via API oficial
 function paintProfilePhoto() {
   const url = state.wa && state.wa.profilePictureUrl;
-  const html = url ? `<img src="${esc(url)}" alt="Foto do perfil">` : waInitials((state.wa && state.wa.verifiedName) || state.user);
+  const iniciais = waInitials((state.wa && state.wa.verifiedName) || state.user);
+  // URL da Meta expira: se a imagem falhar, volta para as iniciais
+  const html = url ? avatarImg(url, 'Foto do perfil', iniciais) : iniciais;
   const el = $('#pf-photo'); if (el) el.innerHTML = html;
   const cp = $('#conn-photo'); if (cp) cp.innerHTML = html; // card "WhatsApp conectado"
+}
+// Logo OFICIAL do WhatsApp (glifo do balão com o telefone). Vetor: nítido em
+// qualquer tamanho e sem baixar os 2 MB do PNG.
+function waLogo(size, color) {
+  const c = color || 'currentColor';
+  return `<svg viewBox="0 0 24 24" width="${size || 24}" height="${size || 24}" fill="${c}" aria-hidden="true"><path d="M17.47 14.38c-.3-.15-1.75-.86-2.02-.96-.27-.1-.47-.15-.66.15-.2.3-.76.96-.94 1.16-.17.2-.34.22-.63.08-.3-.15-1.25-.46-2.38-1.47-.88-.79-1.48-1.75-1.65-2.05-.17-.3-.02-.46.13-.6.13-.14.3-.35.45-.53.15-.18.2-.3.3-.5.1-.2.05-.38-.02-.53-.08-.15-.66-1.6-.9-2.19-.24-.57-.48-.5-.66-.5l-.57-.01c-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48s1.06 2.88 1.21 3.08c.15.2 2.1 3.2 5.08 4.49.71.3 1.26.49 1.7.63.71.22 1.36.19 1.87.12.57-.09 1.75-.72 2-1.41.25-.7.25-1.29.17-1.41-.07-.13-.27-.2-.57-.35z"/><path d="M12.05 2C6.6 2 2.18 6.42 2.18 11.87c0 1.74.46 3.44 1.32 4.94L2.1 22l5.33-1.4a9.83 9.83 0 0 0 4.62 1.18h.01c5.44 0 9.87-4.42 9.87-9.87A9.8 9.8 0 0 0 19 4.87 9.8 9.8 0 0 0 12.05 2zm0 17.93h-.01a8.2 8.2 0 0 1-4.17-1.14l-.3-.18-3.1.81.83-3.02-.2-.31a8.16 8.16 0 0 1-1.25-4.36c0-4.52 3.68-8.2 8.2-8.2a8.15 8.15 0 0 1 5.8 2.4 8.15 8.15 0 0 1 2.4 5.8c0 4.53-3.68 8.2-8.2 8.2z"/></svg>`;
+}
+
+// Foto de perfil da Meta: a URL de pps.whatsapp.net EXPIRA. Quando falha, o
+// <img> quebrado aparecia no lugar do avatar; agora cai nas iniciais.
+function avatarImg(url, alt, fallbackHtml, style) {
+  const fb = String(fallbackHtml || '').replace(/"/g, '&quot;');
+  return `<img src="${esc(url)}" alt="${esc(alt || '')}"${style ? ' style="' + style + '"' : ''} onerror="this.parentElement.innerHTML=this.dataset.fb" data-fb="${fb}">`;
 }
 function paintTopbarAvatar() {
   const av = $('#tb-avatar'); if (!av) return;
   const url = state.wa && state.wa.profilePictureUrl;
-  if (url) av.innerHTML = `<img src="${esc(url)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+  if (!url) return;
+  const iniciais = waInitials(state.user || 'A');
+  av.innerHTML = avatarImg(url, '', iniciais, 'width:100%;height:100%;object-fit:cover;border-radius:50%');
 }
 function changeProfilePhoto(input) {
   const f = input.files && input.files[0]; if (!f) return;
@@ -5166,7 +5214,6 @@ async function paintAdmin() {
             <p class="muted" style="font-size:12px;margin:6px 0 0">Em app.woovi.com → Webhooks, cadastre a URL <code>${location.origin}/woovi-webhook</code> para os eventos de <b>cobrança paga</b>. Cada pagamento é verificado de novo na API antes de ativar (anti-fraude).</p>
           </div>
         </div>
-        ${admPixIndirectSection(d.pixIndirect || {})}
         ${admCardSection(d.card || {}, null)}
         <div class="card">
           <h2>${ico('gear')} Regras de cobrança</h2>
@@ -5608,65 +5655,6 @@ async function admSaveAllFees(btn) {
   } catch (e) { toast(e.message, 'error'); btn.disabled = false; btn.innerHTML = txt; }
 }
 
-// ============================================================================
-// PIX INDIRETO (Woovi). Exclusivo para as ASSINATURAS do EliteChat.
-// Cada participante indireto tem base URL própria; o AppID autentica.
-// Ligado e configurado, as assinaturas passam a cobrar por aqui (recargas e
-// Elite Pay continuam no OpenPix acima).
-// ============================================================================
-function admPixIndirectSection(pi) {
-  const status = pi.configured
-    ? '<span class="pill done">Ativo nas assinaturas</span>'
-    : pi.enabled ? '<span class="pill pending">Ligado, falta configurar</span>' : '<span class="pill">Desligado</span>';
-  return `<div class="card">
-    <div class="row" style="align-items:center;margin-bottom:6px">
-      <h2 style="margin:0;flex:1">${ico('pix')} Pix Indireto (assinaturas)</h2>
-      ${status}
-    </div>
-    <p class="muted" style="margin:0 0 14px;font-size:13px">
-      Infraestrutura de <b>participante indireto</b> da Woovi, usada <b>somente para cobrar as
-      assinaturas do EliteChat</b>. Com ela ligada, o plano é cobrado pela sua base
-      <code>*.indireto.woovi.cloud</code>; recargas e Elite Pay continuam no Pix da Woovi acima.
-    </p>
-    <label class="chk"><input type="checkbox" ${pi.enabled ? 'checked' : ''}
-      onchange="admSaveConfig({pixIndirect:{enabled:this.checked}})"> Usar Pix Indireto nas assinaturas</label>
-
-    <div class="row" style="margin-top:14px;align-items:flex-end">
-      <label style="flex:1.5">Base URL do participante
-        <input id="pi-base" value="${esc(pi.baseUrl || '')}" placeholder="https://SEUNOME.indireto.woovi.cloud"></label>
-      <label style="flex:1">AppID ${pi.hasAppId ? `<span class="pill done" style="margin-left:6px">salvo ${esc(pi.appId)}</span>` : ''}
-        <input id="pi-appid" type="password" placeholder="${pi.hasAppId ? '•••• (vazio mantém)' : 'AppID do Indireto'}"></label>
-    </div>
-    <div class="row" style="margin-top:10px;align-items:flex-end">
-      <label style="flex:1.2">Chave Pix recebedora<input id="pi-key" value="${esc(pi.pixKey || '')}" placeholder="chave que recebe as assinaturas"></label>
-      <label style="max-width:200px">Nome no EMV (até 25)<input id="pi-mname" value="${esc(pi.merchantName || 'ELITECHAT')}" maxlength="25"></label>
-      <label style="max-width:170px">Cidade no EMV (até 15)<input id="pi-mcity" value="${esc(pi.merchantCity || 'SAO PAULO')}" maxlength="15"></label>
-      <button class="btn primary no-grow" onclick="admSavePixIndirect()">${ico('save', 14)} Salvar</button>
-    </div>
-    <p class="hint" style="margin-top:8px;text-align:left">Nome e cidade entram no BR Code EMV. A regra do padrão Pix não aceita acento nem caractere especial.</p>
-
-    <div class="capi-box" style="margin-top:14px">
-      <div class="capi-head">${ico('webhook', 14)} Webhook de liquidação <span class="capi-tag">recomendado</span></div>
-      <p class="muted" style="font-size:12px;margin:6px 0 0">Cadastre esta URL para receber a confirmação de pagamento na hora. Sem ela, o painel confirma pelo polling (a cada 5s enquanto o QR está aberto). Todo evento é <b>reconferido na API</b> pelo txid antes de ativar.</p>
-      <div class="linkrow" style="margin-top:8px"><code>${esc(pi.webhookUrl || '')}</code>
-        <button class="icon-btn" title="Copiar" onclick="copyText('${esc(pi.webhookUrl || '')}')">${ico('copy', 13)}</button></div>
-    </div>
-  </div>`;
-}
-
-async function admSavePixIndirect() {
-  try {
-    await api('/admin/config', { method: 'PUT', body: { pixIndirect: {
-      baseUrl: $('#pi-base').value,
-      appId: $('#pi-appid').value,
-      pixKey: $('#pi-key').value,
-      merchantName: $('#pi-mname').value,
-      merchantCity: $('#pi-mcity').value
-    } } });
-    toast('Pix Indireto salvo'); paintAdmin();
-    setTimeout(() => showSettingsTab('adm-pay'), 60);
-  } catch (e) { toast(e.message, 'error'); }
-}
 
 function admCardSection(c, t) {
   const isPag = c.provider === 'pagarme';
