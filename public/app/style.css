@@ -909,6 +909,15 @@ details.adv[open] summary::after { content: '–'; }
 .fb-port.out.no { top: 59px; border-color: #98a2b3; background: #98a2b3; }
 .fb-port em { position: absolute; right: 16px; top: -5px; font-size: 9.5px; font-weight: 800; font-style: normal; color: var(--muted); background: var(--card); padding: 0 3px; border-radius: 4px; }
 
+/* Saída de cada botão/item: um caminho por opção. O `top` de cada uma vem
+   inline do renderNodes(), calculado pela posição da opção na lista. */
+.fb-port.out.opt { border-color: var(--verde); background: var(--verde); }
+.fb-port.out.opt em {
+  right: 17px; top: -4px; max-width: 96px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; color: var(--verde-deep); font-size: 9px;
+  border: 1px solid color-mix(in srgb, var(--verde) 35%, transparent);
+}
+
 .fb2-zoom {
   position: absolute; left: 16px; bottom: 16px; display: flex; flex-direction: column; align-items: center; gap: 2px;
   background: var(--card); border: 1px solid var(--border2); border-radius: 12px; padding: 5px; box-shadow: var(--shadow-sm);

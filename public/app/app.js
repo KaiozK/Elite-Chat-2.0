@@ -7989,7 +7989,20 @@ function flowIssues() {
     if (opts.length) {
       const vazio = opts.findIndex(o => !fbOptTitle(o).trim());
       if (vazio >= 0) out.push({ nodeId: n.id, msg: `"${label(n)}": o ${optWord} ${vazio + 1} está sem texto.` });
-      if (!hasEdgeFrom(n.id)) out.push({ nodeId: n.id, msg: `"${label(n)}" pergunta ao cliente mas não tem resposta, conecte a saída ao próximo passo (ou a um nó "Fim").` });
+
+      // Duas formas de continuar depois de perguntar:
+      //   · uma saída POR OPÇÃO → o fluxo espera o toque e ramifica (preferida)
+      //   · uma saída única     → segue direto, sem esperar (fluxos antigos)
+      const porOpcao = edges.filter(e => e.from === n.id && fbIsOptBranch(e.branch));
+      if (porOpcao.length) {
+        for (const o of fbNodeOptions(n)) {
+          if (!porOpcao.some(e => e.branch === fbOptBranch(o.id))) {
+            out.push({ nodeId: n.id, msg: `"${label(n)}": o ${optWord} "${o.title}" não leva a lugar nenhum, conecte a saída dele.` });
+          }
+        }
+      } else if (!hasEdgeFrom(n.id)) {
+        out.push({ nodeId: n.id, msg: `"${label(n)}" pergunta ao cliente mas não tem resposta, conecte a saída de cada ${optWord} ao próximo passo (ou a um nó "Fim").` });
+      }
     }
 
     // CTA de link: botão de link precisa de redirecionamento válido + rótulo
@@ -8057,7 +8070,30 @@ function onCanvasWheel(e) { e.preventDefault(); const r = e.currentTarget.getBou
 function fbFit() { fbV.s = 1; fbV.tx = 60; fbV.ty = 40; applyTransform(); }
 
 function screenToWorld(cx, cy) { const r = $('#fb-canvas').getBoundingClientRect(); return { x: (cx - r.left - fbV.tx) / fbV.s, y: (cy - r.top - fbV.ty) / fbV.s }; }
-function portY(n, branch) { if (n.type === 'condition') return branch === 'no' ? 66 : 36; return PORT_DY; }
+// ---------- SAÍDAS POR OPÇÃO (um caminho por botão / item de lista) ----------
+// Perguntar e ramificar é a mesma coisa para quem monta o fluxo: cada botão
+// tem a sua própria saída, e o fluxo espera o toque do cliente antes de seguir.
+// O motor (src/flows.js) usa exatamente estes mesmos identificadores.
+function fbNodeOptions(n) {
+  if (!n) return [];
+  const brutos = (n.type === 'list') ? (n.items || []) : (n.buttons || []);
+  return brutos
+    .map((o, i) => ({ id: (o && o.id) || (n.type === 'list' ? `row_${i + 1}` : `btn_${i + 1}`), title: fbOptTitle(o) }))
+    .filter(o => o.title.trim());
+}
+function fbOptBranch(id) { return 'opt:' + id; }
+function fbIsOptBranch(b) { return String(b || '').startsWith('opt:'); }
+
+// Altura da porta de cada saída. As opções ficam empilhadas abaixo do cabeçalho.
+const FB_OPT_DY = 62, FB_OPT_STEP = 26;
+function portY(n, branch) {
+  if (n.type === 'condition') return branch === 'no' ? 66 : 36;
+  if (fbIsOptBranch(branch)) {
+    const i = fbNodeOptions(n).findIndex(o => fbOptBranch(o.id) === branch);
+    return FB_OPT_DY + Math.max(0, i) * FB_OPT_STEP;
+  }
+  return PORT_DY;
+}
 function portPos(n, side, branch) { return { x: n.x + (side === 'out' ? NODE_W : 0), y: n.y + (side === 'out' ? portY(n, branch) : PORT_DY) }; }
 function edgeD(a, b) { const dx = Math.max(46, Math.abs(b.x - a.x) / 2); return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`; }
 
@@ -8072,10 +8108,19 @@ function renderNodes() {
     el.className = 'fb-n type-' + n.type + (fbSel === n.id ? ' sel' : '') + (n.type === 'trigger' ? ' trig' : '');
     el.dataset.id = n.id;
     el.style.left = n.x + 'px'; el.style.top = n.y + 'px'; el.style.width = NODE_W + 'px';
+    // O card cresce para caber as saídas das opções sem que elas vazem.
+    if (fbNodeOptions(n).length) {
+      el.style.minHeight = (FB_OPT_DY + fbNodeOptions(n).length * FB_OPT_STEP + 6) + 'px';
+    }
+    const opcoes = fbNodeOptions(n);
     const ports = n.type === 'condition'
       ? `<span class="fb-port out yes" data-id="${n.id}" data-side="out" data-branch="yes"><em>Sim</em></span>
          <span class="fb-port out no" data-id="${n.id}" data-side="out" data-branch="no"><em>Não</em></span>`
-      : (n.type === 'end' ? '' : `<span class="fb-port out" data-id="${n.id}" data-side="out"></span>`);
+      : n.type === 'end' ? ''
+      : opcoes.length
+        // Uma saída por botão: o fluxo espera o toque e segue o caminho da opção.
+        ? opcoes.map((o, i) => `<span class="fb-port out opt" data-id="${n.id}" data-side="out" data-branch="${esc(fbOptBranch(o.id))}" style="top:${FB_OPT_DY + i * FB_OPT_STEP}px"><em>${esc(o.title.slice(0, 14))}</em></span>`).join('')
+        : `<span class="fb-port out" data-id="${n.id}" data-side="out"></span>`;
     el.innerHTML = `
       ${n.type !== 'trigger' ? `<span class="fb-port in" data-id="${n.id}" data-side="in"></span>` : ''}
       ${ports}
@@ -8408,14 +8453,14 @@ function nodeInspector(n) {
 // ---------- setters ----------
 function refreshPreview(id) { const el = $(`.fb-n[data-id="${id}"] .fb-n-prev`); if (el) el.textContent = nodeSummary(nodeById(id)); }
 function fbSetNode(id, k, v) { nodeById(id)[k] = v; refreshPreview(id); if (k === 'field' || k === 'op' || k === 'kind') renderInspector(); scheduleSave(); }
-function fbSetBtn(id, i, v) { nodeById(id).buttons[i].title = v; refreshPreview(id); scheduleSave(); }
+function fbSetBtn(id, i, v) { nodeById(id).buttons[i].title = v; renderNodes(); renderEdges(); refreshPreview(id); scheduleSave(); }
 function fbBtnMode(id, mode) {
   const n = nodeById(id);
   if (mode === 'url') { if (!n.url) n.url = 'https://'; if (!n.urlText) n.urlText = 'Abrir link'; }
   else { n.url = ''; n.urlText = ''; }
   renderInspector(); refreshPreview(id); scheduleSave();
 }
-function fbSetItem(id, i, v) { nodeById(id).items[i].title = v; refreshPreview(id); scheduleSave(); }
+function fbSetItem(id, i, v) { nodeById(id).items[i].title = v; renderNodes(); renderEdges(); refreshPreview(id); scheduleSave(); }
 function fbSetHdr(id, i, k, v) { nodeById(id).headers[i][k] = v; scheduleSave(); }
 function fbSetTrig(k, v) {
   flowDraft.trigger[k] = v; refreshPreview('trigger');
@@ -8440,7 +8485,8 @@ function addNodeAt(type, x, y) {
   flowDraft.graph.nodes.push(node);
   const src = fbSel && fbSel !== id ? fbSel : 'trigger';
   const srcNode = nodeById(src);
-  if (srcNode && srcNode.type !== 'condition' && srcNode.type !== 'end' && !flowDraft.graph.edges.some(e => e.from === src && !e.branch)) {
+  const srcTemOpcoes = srcNode && fbNodeOptions(srcNode).length;
+  if (srcNode && srcNode.type !== 'condition' && srcNode.type !== 'end' && !srcTemOpcoes && !flowDraft.graph.edges.some(e => e.from === src && !e.branch)) {
     flowDraft.graph.edges.push({ id: 'e' + Date.now().toString(36), from: src, to: id });
   }
   renderNodes(); renderEdges(); selectNode(id); scheduleSave();
@@ -8452,10 +8498,24 @@ function removeNode(id) {
   if (fbSel === id) fbSel = null;
   renderNodes(); renderEdges(); renderInspector(); scheduleSave();
 }
-function addButton(id) { const n = nodeById(id); if (n.buttons.length < 3) n.buttons.push({ title: '' }); renderInspector(); refreshPreview(id); scheduleSave(); }
-function rmButton(id, i) { nodeById(id).buttons.splice(i, 1); renderInspector(); refreshPreview(id); scheduleSave(); }
-function addItem(id) { const n = nodeById(id); if (n.items.length < 10) n.items.push({ title: '' }); renderInspector(); refreshPreview(id); scheduleSave(); }
-function rmItem(id, i) { nodeById(id).items.splice(i, 1); renderInspector(); refreshPreview(id); scheduleSave(); }
+function addButton(id) { const n = nodeById(id); if (n.buttons.length < 3) n.buttons.push({ title: '' }); renderInspector(); renderNodes(); renderEdges(); refreshPreview(id); scheduleSave(); }
+function rmButton(id, i) {
+  const n = nodeById(id);
+  // A saída daquele botão perde o dono: sem limpar, sobraria uma aresta
+  // apontando para um caminho que ninguém mais alcança.
+  const alvo = fbNodeOptions(n)[i];
+  n.buttons.splice(i, 1);
+  if (alvo) flowDraft.graph.edges = flowDraft.graph.edges.filter(e => !(e.from === id && e.branch === fbOptBranch(alvo.id)));
+  renderInspector(); renderNodes(); renderEdges(); refreshPreview(id); scheduleSave();
+}
+function addItem(id) { const n = nodeById(id); if (n.items.length < 10) n.items.push({ title: '' }); renderInspector(); renderNodes(); renderEdges(); refreshPreview(id); scheduleSave(); }
+function rmItem(id, i) {
+  const n = nodeById(id);
+  const alvo = fbNodeOptions(n)[i];
+  n.items.splice(i, 1);
+  if (alvo) flowDraft.graph.edges = flowDraft.graph.edges.filter(e => !(e.from === id && e.branch === fbOptBranch(alvo.id)));
+  renderInspector(); renderNodes(); renderEdges(); refreshPreview(id); scheduleSave();
+}
 function addHeader(id) { nodeById(id).headers.push({ key: '', value: '' }); renderInspector(); scheduleSave(); }
 function rmHeader(id, i) { nodeById(id).headers.splice(i, 1); renderInspector(); scheduleSave(); }
 

@@ -292,14 +292,68 @@ async function execNode(acc, node, ctx, deliver) {
   return { ok: true };
 }
 
-// Percorre o grafo em tempo real a partir do gatilho, seguindo as conexões.
-// Suporta ramificação em nós de condição (saídas "Sim"/"Não") e parada em "Fim".
-async function runGraph(acc, flow, ctx, deliver, log) {
+// ---------------------------------------------------------------------------
+// ESPERA POR RESPOSTA DO CLIENTE
+//
+// Um nó com botões (ou itens de lista) pode ter UMA SAÍDA POR OPÇÃO. Quando
+// tem, o fluxo não segue em frente na hora: ele para, anota no contato que
+// está esperando, e só continua quando a pessoa toca num botão — aí retoma
+// pelo caminho daquela opção.
+//
+// Quando o nó tem apenas a saída única e sem rótulo (fluxos montados antes
+// disso existir), o comportamento antigo é preservado: segue direto.
+// ---------------------------------------------------------------------------
+
+// Identificador da saída de uma opção. Usa o id do botão quando existe, senão
+// a posição — é o mesmo id que volta no `replyId` do clique.
+function optBranch(id) { return 'opt:' + id; }
+
+// Opções de um nó, na ordem, já com o id que vai no botão enviado.
+function nodeOptions(node) {
+  if (!node) return [];
+  const brutos = (node.type === 'list') ? (node.items || []) : (node.buttons || []);
+  return brutos.map((o, i) => ({
+    id: (o && o.id) || (node.type === 'list' ? `row_${i + 1}` : `btn_${i + 1}`),
+    title: optTitle(o)
+  })).filter(o => o.title.trim());
+}
+
+// O nó espera resposta? Só se tiver opções E pelo menos uma saída por opção.
+function esperaResposta(node, saidas) {
+  if (!nodeOptions(node).length) return false;
+  return (saidas || []).some(e => String(e.branch || '').startsWith('opt:'));
+}
+
+// Janela de espera: 24h, a mesma da conversa no WhatsApp. Passou disso, a
+// resposta não retoma nada — vira mensagem normal e pode disparar outro fluxo.
+const ESPERA_MS = 24 * 60 * 60 * 1000;
+
+function marcarEspera(acc, ctx, flow, nodeId) {
+  const c = ctx.to ? store.findContact(acc, store.normalizeWaId(ctx.to)) : null;
+  if (!c) return;
+  c.flowWait = { flowId: flow.id, nodeId, at: Date.now(), vars: ctx.vars || {} };
+  db.save();
+}
+
+function limparEspera(acc, contact) {
+  if (contact && contact.flowWait) { delete contact.flowWait; db.save(); }
+}
+
+// Percorre o grafo a partir de um ponto, seguindo as conexões.
+// Ramifica em condição (Sim/Não) e em botões (uma saída por opção).
+// Para em "Fim" e ao chegar num nó que espera resposta.
+async function runGraph(acc, flow, ctx, deliver, log, inicio) {
   const nodes = {};
   for (const n of flow.graph.nodes) nodes[n.id] = n;
   const out = {};
   for (const e of flow.graph.edges) (out[e.from] = out[e.from] || []).push(e);
-  let curId = (flow.graph.nodes.find(n => n.type === 'trigger') || {}).id || 'trigger';
+
+  // Retomada: começa depois da aresta da opção escolhida.
+  let curId = inicio && inicio.nodeId
+    ? inicio.nodeId
+    : (flow.graph.nodes.find(n => n.type === 'trigger') || {}).id || 'trigger';
+  let escolha = inicio ? inicio.optId : null;   // opção clicada, só no 1º salto
+
   let lastCond = false;
   const visited = new Set();
   let steps = 0;
@@ -307,16 +361,30 @@ async function runGraph(acc, flow, ctx, deliver, log) {
     const edges = out[curId] || [];
     const curNode = nodes[curId];
     let edge;
-    if (curNode && curNode.type === 'condition') {
+
+    if (escolha) {
+      // Primeiro salto da retomada: segue a saída do botão que a pessoa tocou.
+      edge = edges.find(e => e.branch === optBranch(escolha));
+      if (!edge) {
+        // Opção sem caminho montado: encerra em silêncio em vez de cair num
+        // ramo aleatório, que mandaria a mensagem errada para o cliente.
+        log.push({ node: 'wait', ok: true, detail: `opção "${escolha}" sem caminho` });
+        break;
+      }
+      escolha = null;
+    } else if (curNode && curNode.type === 'condition') {
       const branch = lastCond ? 'yes' : 'no';
       edge = edges.find(e => e.branch === branch) || edges.find(e => !e.branch) || edges[0];
     } else {
-      edge = edges[0];
+      // Nunca segue uma saída de opção por engano: ela só vale na retomada.
+      edge = edges.find(e => !String(e.branch || '').startsWith('opt:'));
     }
+
     if (!edge) break;
     const nxt = nodes[edge.to];
     if (!nxt || visited.has(nxt.id)) break;
     visited.add(nxt.id);
+
     if (nxt.type === 'end') { log.push({ node: 'end', ok: true, detail: null }); break; }
     if (nxt.type === 'condition') {
       // status do consentimento é lido AGORA (um nó anterior pode tê-lo mudado)
@@ -326,21 +394,30 @@ async function runGraph(acc, flow, ctx, deliver, log) {
       log.push({ node: 'condition', ok: true, detail: lastCond ? 'Sim' : 'Não' });
       curId = nxt.id; continue;
     }
+
     try {
       const r = await execNode(acc, nxt, ctx, deliver);
       log.push({ node: nxt.type, ok: r.ok !== false, detail: r.detail || null });
     } catch (e) {
       log.push({ node: nxt.type, ok: false, detail: e.message });
     }
+
+    // A pergunta foi enviada: para aqui e espera o toque do cliente.
+    if (esperaResposta(nxt, out[nxt.id])) {
+      marcarEspera(acc, ctx, flow, nxt.id);
+      log.push({ node: 'wait', ok: true, detail: 'aguardando resposta do cliente' });
+      break;
+    }
+
     curId = nxt.id;
   }
 }
 
 // Executa uma automação. deliver(acc, to, content, apiResp) persiste+broadcast a saída.
-async function runFlow(acc, flow, ctx, deliver) {
+async function runFlow(acc, flow, ctx, deliver, inicio) {
   const log = [];
   if (flow.graph && Array.isArray(flow.graph.nodes) && flow.graph.nodes.length) {
-    await runGraph(acc, flow, ctx, deliver, log);
+    await runGraph(acc, flow, ctx, deliver, log, inicio);
   } else {
     // compatibilidade: fluxos lineares antigos (flow.nodes[])
     for (const node of flow.nodes || []) {
@@ -359,7 +436,37 @@ async function runFlow(acc, flow, ctx, deliver) {
 }
 
 // Chamado pelo webhook a cada mensagem recebida. kind: 'text' | 'interactive'.
-async function onInbound(acc, contact, text, kind, deliver) {
+// `replyId` identifica o botão/item tocado (vazio em mensagem de texto).
+//
+// Ordem de prioridade: se o contato está no meio de uma automação esperando
+// resposta, o clique dele RETOMA aquela automação. Só quem não está esperando
+// passa pela busca de gatilho — senão um "Sim" no meio de um atendimento
+// dispararia outro fluxo qualquer que tivesse "sim" como palavra-chave.
+async function onInbound(acc, contact, text, kind, deliver, replyId) {
+  const espera = contact && contact.flowWait;
+  if (espera && kind === 'interactive') {
+    const fluxo = (acc.flows || []).find(f => f.id === espera.flowId);
+    const expirou = Date.now() - (espera.at || 0) > ESPERA_MS;
+
+    if (fluxo && fluxo.enabled && !expirou) {
+      // Casa pelo id do botão; se o id não vier, casa pelo título.
+      const opcoes = nodeOptions((fluxo.graph.nodes || []).find(n => n.id === espera.nodeId));
+      const alvo = opcoes.find(o => o.id === replyId)
+        || opcoes.find(o => normText(o.title) === normText(text));
+
+      limparEspera(acc, contact);
+      if (alvo) {
+        await runFlow(acc, fluxo, {
+          to: contact.waId, contactName: contact.name, text, vars: espera.vars || {}
+        }, deliver, { nodeId: espera.nodeId, optId: alvo.id });
+        return fluxo;
+      }
+      // Tocou em algo que não é opção deste passo: segue o caminho normal.
+    } else {
+      limparEspera(acc, contact);   // fluxo apagado, desativado ou expirado
+    }
+  }
+
   const flow = findMatchingFlow(acc, text, kind);
   if (!flow) return null;
   await runFlow(acc, flow, { to: contact.waId, contactName: contact.name, text }, deliver);
@@ -388,7 +495,19 @@ function validateGraph(flow) {
     if (opts.length) {
       const vazio = opts.findIndex(o => !optTitle(o).trim());
       if (vazio >= 0) return `Há um ${palavra} sem texto (opção ${vazio + 1}).`;
-      if (!from(n.id)) return `Um passo pergunta ao cliente mas não tem resposta — conecte a saída ao próximo passo.`;
+
+      // Duas formas de continuar depois de perguntar:
+      //   · uma saída POR OPÇÃO  → o fluxo espera o clique e ramifica (preferida)
+      //   · uma saída única      → segue direto, sem esperar (fluxos antigos)
+      const porOpcao = edges.filter(e => e.from === n.id && String(e.branch || '').startsWith('opt:'));
+      if (porOpcao.length) {
+        // Escolheu ramificar: toda opção precisa levar a algum lugar, senão o
+        // cliente toca num botão e a conversa morre sem resposta.
+        const semCaminho = nodeOptions(n).find(o => !porOpcao.some(e => e.branch === optBranch(o.id)));
+        if (semCaminho) return `O ${palavra} "${semCaminho.title}" não leva a lugar nenhum — conecte a saída dele.`;
+      } else if (!from(n.id)) {
+        return `Um passo pergunta ao cliente mas não tem resposta — conecte a saída de cada ${palavra} ao próximo passo.`;
+      }
     }
     if (n.type === 'text') {
       const url = String(n.url || '').trim(), urlText = String(n.urlText || '').trim();

@@ -205,7 +205,9 @@ function processEvent(body, broadcast) {
           // dispara automações do Flow Builder (palavra-chave/link/botão/lista)
           if ((parsed.type === 'text' || parsed.type === 'interactive') && parsed.text) {
             const kind = parsed.type === 'interactive' ? 'interactive' : 'text';
-            flows.onInbound(acc, contact, parsed.text, kind, makeDeliver(broadcast))
+            // replyId identifica QUAL botão/item foi tocado — é o que permite
+            // retomar um fluxo em espera pelo caminho certo.
+            flows.onInbound(acc, contact, parsed.text, kind, makeDeliver(broadcast), parsed.replyId || '')
               .catch(e => store.logEvent({ type: 'flow_error', accountId: acc.id, error: e.message }));
           }
         }
