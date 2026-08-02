@@ -15,6 +15,18 @@ Os dados ficam em `data/db.json` (criado automaticamente).
 
 Para mudar a porta: `set PORT=8080 && npm start` (Windows) ou `PORT=8080 npm start`.
 
+## Aplicativos iOS e Android
+
+O mesmo painel roda como app nativo na **App Store** e na **Play Store**, via
+Capacitor. Não há segunda base de código: o que muda em `public/app/` vale para
+os dois. Build, push, assinatura e checklist de submissão em
+**[`mobile/README.md`](mobile/README.md)**.
+
+```bash
+cd mobile && npm install
+ELITECHAT_API_URL=https://app.seudominio.com npm run sync
+```
+
 ## Expor o webhook publicamente (desenvolvimento)
 
 A Meta exige uma **URL pública com HTTPS**. Em desenvolvimento use um túnel:

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">EliteChat</string>
+    <string name="title_activity_main">EliteChat</string>
+    <string name="package_name">com.elitechat.app</string>
+    <string name="custom_url_scheme">com.elitechat.app</string>
+</resources>

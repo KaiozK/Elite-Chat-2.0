@@ -13,6 +13,7 @@ const geo = require('./geo');
 const agents = require('./agents');
 const schedule = require('./schedule');
 const push = require('./push');
+const pushNative = require('./pushnative');
 
 module.exports = function (broadcast, clients) {
   const router = express.Router();
@@ -197,6 +198,54 @@ module.exports = function (broadcast, clients) {
 
     res.status(401).json({ error: 'Usuário ou senha inválidos' });
   }));
+
+  // EXCLUSÃO DA CONTA (App Store, diretriz 5.1.1(v): quem cria conta no app
+  // tem que conseguir apagá-la no app, não só por e-mail ou suporte).
+  //
+  // Apaga a conta inteira e tudo que pende dela — conversas, contatos, mensagens,
+  // automações, agendamentos, atendentes — e derruba todas as sessões abertas,
+  // inclusive as dos atendentes. É irreversível de propósito.
+  //
+  // Só o dono da conta pode: atendente não apaga a empresa em que trabalha e o
+  // admin da plataforma não se autoexclui (deixaria o SaaS sem administrador).
+  router.post('/account/delete', auth, (req, res) => {
+    if (req.session.kind === 'admin') {
+      return res.status(403).json({ error: 'A conta de administrador da plataforma não pode ser excluída por aqui' });
+    }
+    if (req.agent) {
+      return res.status(403).json({ error: 'Somente o dono da conta pode excluí-la' });
+    }
+    const { pass, confirm } = req.body || {};
+    if (db.hash(String(pass || '')) !== req.acc.passHash) {
+      return res.status(401).json({ error: 'Senha incorreta' });
+    }
+    // Confirmação digitada — evita exclusão por toque acidental.
+    if (String(confirm || '').trim().toUpperCase() !== 'EXCLUIR') {
+      return res.status(400).json({ error: 'Digite EXCLUIR para confirmar' });
+    }
+
+    const d = db.get();
+    const accId = req.acc.id;
+
+    // Derruba toda sessão ligada a esta conta (dono e atendentes).
+    for (const [tk, s] of Object.entries(d.sessions)) {
+      if (s.accountId === accId) delete d.sessions[tk];
+    }
+    // O registro da conta guarda conversas, contatos, mensagens, flows,
+    // agendamentos, atendentes e assinaturas de push — some tudo junto.
+    d.accounts = d.accounts.filter(a => a.id !== accId);
+
+    // Log operacional: guarda payloads de webhook com dados dos contatos do
+    // cliente, então sai junto com a conta.
+    d.webhookLog = d.webhookLog.filter(e => e.accountId !== accId);
+
+    // `revenue` e `withdrawals` ficam: são registros financeiros da plataforma
+    // (obrigação fiscal). Não têm dado pessoal além do accountId, que a partir
+    // daqui não aponta mais para ninguém.
+    db.save();
+
+    res.json({ ok: true });
+  });
 
   // Config pública da landing (sem auth) — copy do botão conforme dias de teste
   router.get('/public/landing', (req, res) => {
@@ -2604,6 +2653,13 @@ module.exports = function (broadcast, clients) {
       },
       withdrawals: db.get().withdrawals.filter(w => w.accountId === req.acc.id).slice(-10).reverse(),
       wooviReady: woovi.configured(),
+      // Faixas definidas no Admin SaaS. O painel usa para orientar o usuário
+      // ANTES de enviar (mostra o mínimo, trava o campo) — a validação de
+      // verdade continua no servidor, aqui é só conveniência.
+      limitesCarteira: {
+        deposito: { ...db.get().platform.billing.deposit },
+        saque: { ...db.get().platform.affiliate.withdraw }
+      },
       // carteira detalhada: disponível, a liberar e a próxima liberação
       walletDetail: (() => {
         const w = req.acc.wallet;
@@ -2695,7 +2751,14 @@ module.exports = function (broadcast, clients) {
   // Recarga de saldo na carteira via Pix
   router.post('/billing/topup', auth, h(async (req, res) => {
     const amount = Math.round(Number(String((req.body || {}).amount || '0').replace(',', '.')) * 100);
-    if (!amount || amount < 100) return res.status(400).json({ error: 'Valor mínimo de recarga: R$ 1,00' });
+    // Faixa definida pelo admin em Admin SaaS → Pagamentos.
+    const dep = db.get().platform.billing.deposit;
+    if (!amount || amount < dep.min) {
+      return res.status(400).json({ error: `Depósito mínimo: ${elitepay.fmtBRL(dep.min)}` });
+    }
+    if (dep.max > 0 && amount > dep.max) {
+      return res.status(400).json({ error: `Depósito máximo: ${elitepay.fmtBRL(dep.max)}` });
+    }
     const cid = `topup-${req.acc.id}-${Date.now().toString(36)}`;
     const charge = await woovi.createCharge({
       correlationID: cid, value: amount,
@@ -2746,7 +2809,14 @@ module.exports = function (broadcast, clients) {
     const amount = Math.round(Number(String((req.body || {}).amount || '0').replace(',', '.')) * 100);
     const pixKey = String((req.body || {}).pixKey || '').trim();
     if (!pixKey) return res.status(400).json({ error: 'Informe sua chave Pix' });
-    if (!amount || amount < 2000) return res.status(400).json({ error: 'Saque mínimo: R$ 20,00' });
+    // Faixa definida pelo admin em Admin SaaS → Afiliados.
+    const wd = db.get().platform.affiliate.withdraw;
+    if (!amount || amount < wd.min) {
+      return res.status(400).json({ error: `Saque mínimo: ${elitepay.fmtBRL(wd.min)}` });
+    }
+    if (wd.max > 0 && amount > wd.max) {
+      return res.status(400).json({ error: `Saque máximo por vez: ${elitepay.fmtBRL(wd.max)}` });
+    }
     if (amount > req.acc.wallet.balance) return res.status(400).json({ error: 'Saldo insuficiente' });
     // A taxa depende da ORIGEM do dinheiro: venda no cartão tem taxa própria,
     // o resto (Pix, comissões) usa a taxa de PIX Out.
@@ -2766,6 +2836,18 @@ module.exports = function (broadcast, clients) {
     });
     db.save();
     res.json({ ok: true, balance: req.acc.wallet.balance, fee: f.fee, net: f.net });
+  });
+
+  // Resumo da carteira para o cabeçalho: saldo e a faixa de depósito.
+  // É de propósito muito mais leve que GET /billing — o topo recarrega isto a
+  // cada evento `wallet` do SSE, e puxar a tela de assinatura inteira só para
+  // atualizar um número seria desperdício.
+  router.get('/wallet/summary', auth, (req, res) => {
+    res.json({
+      balance: req.acc.wallet.balance,
+      pending: req.acc.wallet.pending,
+      deposito: { ...db.get().platform.billing.deposit }
+    });
   });
 
   // Prévia da taxa antes de confirmar o saque (a UI mostra o líquido ao digitar).
@@ -2945,6 +3027,21 @@ module.exports = function (broadcast, clients) {
     if (b.ctaText !== undefined) p.landing.ctaText = String(b.ctaText).slice(0, 40);
     if (b.percentFirst !== undefined) p.affiliate.percentFirst = Math.min(90, Math.max(0, Number(b.percentFirst) || 0));
     if (b.percentRenewal !== undefined) p.affiliate.percentRenewal = Math.min(90, Math.max(0, Number(b.percentRenewal) || 0));
+
+    // Faixas de depósito (carteira) e de saque (comissão do afiliado).
+    // Máximo 0 = sem teto. O mínimo nunca passa do máximo, senão a faixa
+    // ficaria vazia e ninguém conseguiria transacionar.
+    if (b.depositMin !== undefined) p.billing.deposit.min = Math.max(0, cents(b.depositMin));
+    if (b.depositMax !== undefined) p.billing.deposit.max = Math.max(0, cents(b.depositMax));
+    if (p.billing.deposit.max > 0 && p.billing.deposit.min > p.billing.deposit.max) {
+      p.billing.deposit.min = p.billing.deposit.max;
+    }
+    if (b.withdrawMin !== undefined) p.affiliate.withdraw.min = Math.max(0, cents(b.withdrawMin));
+    if (b.withdrawMax !== undefined) p.affiliate.withdraw.max = Math.max(0, cents(b.withdrawMax));
+    if (p.affiliate.withdraw.max > 0 && p.affiliate.withdraw.min > p.affiliate.withdraw.max) {
+      p.affiliate.withdraw.min = p.affiliate.withdraw.max;
+    }
+
     db.save();
     res.json({ ok: true });
   });
@@ -3640,6 +3737,17 @@ module.exports = function (broadcast, clients) {
   });
   router.post('/push/unsubscribe', auth, (req, res) => {
     if (req.body && req.body.endpoint) push.unsubscribe(req.acc, req.body.endpoint);
+    res.json({ ok: true });
+  });
+
+  // Aparelho do app das lojas (iOS/Android). O token vem do FCM/APNs e é o
+  // endereço para entregar notificação com o app fechado.
+  router.post('/push/device', auth, (req, res) => {
+    const ok = pushNative.registerDevice(req.acc, req.body.token, req.body.platform, req.body.prefs);
+    res.json({ ok, enabled: pushNative.enabled() });
+  });
+  router.post('/push/device/unregister', auth, (req, res) => {
+    if (req.body && req.body.token) pushNative.unregisterDevice(req.acc, req.body.token);
     res.json({ ok: true });
   });
 

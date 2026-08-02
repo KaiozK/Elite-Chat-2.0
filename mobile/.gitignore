@@ -1,0 +1,19 @@
+# Conteúdo web gerado pelo build (npm run build reconstrói a partir de public/)
+www/
+
+# Cópias do www feitas pelo `cap sync` dentro de cada plataforma
+android/app/src/main/assets/public/
+ios/App/App/public/
+
+# Credenciais das lojas e dos serviços de push — NUNCA versionar
+android/app/google-services.json
+ios/App/App/GoogleService-Info.plist
+*.keystore
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+key.properties
+
+# Dependências
+node_modules/

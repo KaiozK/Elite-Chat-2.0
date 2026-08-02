@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cores da marca EliteChat, iguais às do painel (public/app/style.css). -->
+<resources>
+    <color name="colorPrimary">#34D399</color>
+    <color name="colorPrimaryDark">#059669</color>
+    <color name="colorAccent">#34D399</color>
+    <!-- Fundo da splash: mesmo tom claro do app. -->
+    <color name="splashBackground">#ECFDF5</color>
+</resources>

@@ -2,11 +2,38 @@ const express = require('express');
 const path = require('path');
 const db = require('./src/db');
 const push = require('./src/push');
+const pushNative = require('./src/pushnative');
 
 db.load();
 try { push.ensureKeys(); } catch (e) { console.warn('[push] VAPID indisponível:', e.message); }
 
 const app = express();
+
+// CORS para os apps das lojas. O WebView do app nativo não roda no nosso
+// domínio — no iOS a página vem de capacitor://localhost e no Android de
+// https://localhost — então toda chamada à API é cross-origin e o navegador
+// exige estes cabeçalhos. A lista é fechada nessas origens (mais quaisquer
+// extras em CORS_ORIGINS) para não abrir a API para qualquer site.
+const NATIVE_ORIGINS = new Set([
+  'capacitor://localhost',   // iOS
+  'https://localhost',       // Android
+  'http://localhost',        // `npx cap run` com live reload
+  ...String(process.env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean)
+]);
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && NATIVE_ORIGINS.has(origin)) {
+    res.set('Access-Control-Allow-Origin', origin);
+    res.set('Vary', 'Origin');
+    res.set('Access-Control-Allow-Credentials', 'true');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-channel');
+    res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.set('Access-Control-Max-Age', '86400');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+  }
+  next();
+});
+
 app.use(express.json({
   limit: '80mb',
   verify: (req, res, buf) => { req.rawBody = buf; } // corpo bruto p/ validar X-Hub-Signature-256
@@ -40,6 +67,15 @@ function maybePush(event, data) {
   } else if (event === 'attendance' && data.status === 'open' && data.reason === 'inbound') {
     type = 'attendance';
     payload = { title: 'Novo atendimento', body: (data.name || 'Cliente') + ' iniciou uma conversa', tag: 'att:' + data.waId, data: { type, waId: data.waId, url } };
+  } else if (event === 'commission') {
+    // Venda do indicado aprovada — o afiliado recebe o valor da comissão.
+    type = 'commission';
+    payload = {
+      title: 'Venda Aprovada✅',
+      body: 'Sua comissão: ' + require('./src/elitepay').fmtBRL(data.amount || 0),
+      tag: 'com:' + (data.accountId || '') + ':' + Date.now(),
+      data: { type, url: '/app/#/billing' }
+    };
   } else if (event === 'reminder') {
     const ev = data.event || {};
     const when = ev.start ? new Date(ev.start).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
@@ -48,7 +84,9 @@ function maybePush(event, data) {
   }
   if (!type) return;
   const acc = db.findAccount(data.accountId);
-  if (acc) push.sendToAccount(acc, type, payload);
+  if (!acc) return;
+  push.sendToAccount(acc, type, payload);              // navegador (Web Push)
+  pushNative.sendToAccount(acc, type, payload);        // apps das lojas (FCM/APNs)
 }
 
 // Callback do Embedded Signup (fluxo de diálogo OAuth com redirect).
@@ -76,8 +114,11 @@ app.get('/auth/meta/callback', (req, res) => {
         return;
       }
     } catch (e) {}
-    // sem opener: volta para o painel
-    window.location.replace('/app/#/settings');
+    // Sem opener: veio do app das lojas (navegador do sistema). Devolve
+    // pelo deep link; se o app nao estiver instalado, cai no painel web.
+    var deep = 'elitechat://auth/meta?' + new URLSearchParams({ code: payload.code, state: payload.state, error: payload.error, error_description: payload.errorDescription });
+    setTimeout(function () { window.location.replace('/app/#/settings'); }, 1200);
+    window.location.href = deep;
   })();
 </script></body></html>`);
 });
@@ -106,7 +147,9 @@ app.get('/auth/meta-ads/callback', (req, res) => {
         return;
       }
     } catch (e) {}
-    window.location.replace('/app/#/tracking');
+    var deep = 'elitechat://auth/meta-ads?' + new URLSearchParams({ code: payload.code, state: payload.state, error: payload.error });
+    setTimeout(function () { window.location.replace('/app/#/tracking'); }, 1200);
+    window.location.href = deep;
   })();
 </script></body></html>`);
 });
@@ -135,7 +178,9 @@ app.get('/auth/nuvemshop/callback', (req, res) => {
         return;
       }
     } catch (e) {}
-    window.location.replace('/app/#/integrations');
+    var deep = 'elitechat://auth/nuvemshop?' + new URLSearchParams({ code: payload.code, state: payload.state, error: payload.error });
+    setTimeout(function () { window.location.replace('/app/#/integrations'); }, 1200);
+    window.location.href = deep;
   })();
 </script></body></html>`);
 });
@@ -390,6 +435,12 @@ function serveLanding(req, res) {
 }
 app.get('/', serveLanding);
 app.get('/index.html', serveLanding);
+
+// Política de privacidade e termos com URL limpa. App Store e Play Store
+// exigem o link da política no cadastro do app, e ele precisa continuar
+// funcionando enquanto o app estiver publicado.
+app.get('/privacidade', (req, res) => res.sendFile(path.join(__dirname, 'public', 'privacidade.html')));
+app.get('/termos', (req, res) => res.sendFile(path.join(__dirname, 'public', 'termos.html')));
 
 app.use(express.static(path.join(__dirname, 'public')));
 

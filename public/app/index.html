@@ -145,6 +145,10 @@
         <span>Configurações</span></a>
     </nav>
     <div class="sidebar-foot">
+      <!-- Só aparece no celular, onde o menu é enxuto (ver MOBILE_VIEWS em app.js). -->
+      <p class="nav-hint hidden" id="nav-hint">
+        Campanhas, automações, checkout e relatórios ficam no computador.
+      </p>
       <span class="version">Elite Chat v1.0 · API Oficial Meta</span>
     </div>
   </aside>
@@ -171,6 +175,14 @@
           </button>
           <div class="notif-panel hidden" id="notif-panel"></div>
         </div>
+        <!-- Saldo da carteira + depósito rápido. Só aparece no celular, onde a
+             tela de Assinatura fica a dois toques de distância. -->
+        <div class="tb-wallet hidden" id="tb-wallet">
+          <a class="tb-wallet-val" id="tb-wallet-val" href="#/billing" title="Ver carteira">R$ 0,00</a>
+          <button class="tb-wallet-add" onclick="depositModal()" title="Depositar" aria-label="Depositar na carteira">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
         <span id="tb-status" class="status-chip"><i></i> Verificando…</span>
         <!-- Avatar = seletor da conta de WhatsApp em uso (dropdown de canais) -->
         <div class="ch-wrap">
@@ -193,9 +205,17 @@
   </div>
 </div>
 
+<!-- Navegação do celular: barra fixa no rodapé no lugar da gaveta lateral.
+     Montada por buildTabbar() em app.js, que respeita as permissões do usuário. -->
+<nav class="tabbar hidden" id="tabbar" aria-label="Navegação principal"></nav>
+<div class="sheet-back hidden" id="more-back" onclick="toggleMoreSheet(false)"></div>
+<div class="more-sheet hidden" id="more-sheet" role="dialog" aria-label="Mais telas"></div>
+
 <div id="modal-root"></div>
 <div id="toast-root"></div>
 
+<script src="/app/config.js?v=mob4"></script>
+<script src="/app/native.js?v=mob4"></script>
 <script src="/app/notifications.js"></script>
 <script src="/app/vendor/qrcode.js"></script>
 <script src="/app/br-uf.js?v=1"></script>

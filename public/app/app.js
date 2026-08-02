@@ -82,6 +82,9 @@ function onReminder(d) {
 // Pede permissão de notificação uma vez (após login)
 function askNotifPermission() {
   setTimeout(() => { try { if (window.ECNotify) ECNotify.requestPermission(); } catch {} }, 4000);
+  // O token do aparelho pode ter chegado antes do login (o SO entrega assim que
+  // o app abre). Agora que existe sessão, vincula-o à conta.
+  if (window.ECNative) { try { ECNative.sendToken(); } catch {} }
 }
 
 // ---------- Notificação de nova mensagem (via SSE) ----------
@@ -111,6 +114,7 @@ function setTheme(t) {
   const btn = $('#theme-btn'); if (btn) btn.title = t === 'dark' ? 'Mudar para claro' : 'Mudar para escuro';
   const card = $('#appearance-card'); if (card) card.innerHTML = renderThemeSettings();
   const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', t === 'dark' ? '#080a08' : '#34D399');
+  if (window.ECNative) ECNative.syncTheme();   // status bar do app acompanha o tema
 }
 function toggleTheme() { setTheme(currentTheme() === 'dark' ? 'light' : 'dark'); }
 function renderThemeSettings() {
@@ -138,6 +142,30 @@ function notifResync() {
   refreshBadge();
   if (state.view === 'inbox') loadConversations();
 }
+
+// ---------- Ganchos usados pelo app nativo (native.js) ----------
+// No navegador ninguém chama isto; no app das lojas são os pontos de entrada
+// do toque na notificação, da volta do segundo plano e do botão voltar.
+window.__ecOnNotifOpen = notifOpenFromData;
+
+window.__ecOnResume = function () {
+  // O SO derruba a conexão SSE quando o app fica em segundo plano.
+  if (TOKEN) { try { connectSSE(); } catch {} notifResync(); }
+};
+
+// Botão físico de voltar do Android. Retorna true quando já tratou o toque —
+// aí o native.js não navega nem fecha o app.
+window.__ecHandleBack = function () {
+  const modal = $('#modal-root');
+  if (modal && modal.innerHTML.trim()) { closeModal(); return true; }
+  const folha = document.getElementById('more-sheet');
+  if (folha && !folha.classList.contains('hidden')) { toggleMoreSheet(false); return true; }
+  const app = document.getElementById('app');
+  if (app && app.classList.contains('nav-open')) { toggleNav(false); return true; }
+  // Dentro de uma conversa, voltar retorna para a lista em vez de sair do app.
+  if (document.querySelector('.inbox.chat-open')) { closeChatMobile(); return true; }
+  return false;
+};
 function paintNotifBell() {
   if (!window.ECNotify) return;
   const dot = $('#notif-dot'); if (!dot) return;
@@ -221,6 +249,7 @@ function renderNotifSettings() {
       ${ck('types.call', p.types.call, 'Ligações', 'Chamadas de voz recebidas')}
       ${ck('types.attendance', p.types.attendance, 'Atendimentos', 'Novo cliente iniciou conversa')}
       ${ck('types.reminder', p.types.reminder, 'Lembretes', 'Agendamentos da agenda')}
+      ${ck('types.commission', p.types.commission !== false, 'Vendas aprovadas', 'Comissão de indicação na carteira')}
     </div>
     <div class="row" style="margin-top:16px">
       <button class="btn no-grow" onclick="notifTestFire()">${ico('bell', 14)} Testar notificação</button>
@@ -266,8 +295,33 @@ let CH_ID = localStorage.getItem('ec_channel') || '';
 function chActive() { return CHANNELS.find(c => c.id === CH_ID) || CHANNELS[0] || null; }
 function chName(id) { const c = CHANNELS.find(x => x.id === id); return c ? c.label : ''; }
 
+// Base da API: vazia no navegador (mesmo host), absoluta nos apps nativos —
+// lá o HTML vem do bundle e um caminho relativo não chegaria ao backend.
+const API = window.EC_CONFIG || { api: p => '/api' + p, url: p => location.origin + p, webOrigin: location.origin, native: false };
+
+// Abre uma URL fora do painel (download de CSV, link externo, checkout).
+// No navegador é uma aba nova; no app nativo vai para o navegador do sistema,
+// que sabe lidar com download de arquivo — o WebView do app não sabe.
+function openExternal(url) {
+  if (API.native && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
+    window.Capacitor.Plugins.Browser.open({ url }).catch(() => window.open(url, '_blank'));
+    return;
+  }
+  window.open(url, '_blank');
+}
+
+// Abre uma autorização OAuth (Meta, Meta Ads, Nuvemshop).
+// Navegador: popup que devolve o código por postMessage.
+// App nativo: navegador do sistema — não existe popup com `opener` ali, então
+// o retorno vem por deep link (elitechat://auth/...) e o native.js reemite o
+// mesmo postMessage que estes fluxos já escutam.
+function openAuthWindow(url, name, features) {
+  if (API.native && window.ECNative) return ECNative.openAuthWindow(url);
+  return window.open(url, name, features);
+}
+
 async function api(path, opts = {}) {
-  const res = await fetch('/api' + path, {
+  const res = await fetch(API.api(path), {
     method: opts.method || (opts.body ? 'POST' : 'GET'),
     headers: {
       'Content-Type': 'application/json',
@@ -613,6 +667,7 @@ async function enterApp() {
   if (window.ECNotify) { ECNotify.setHooks({ onOpen: notifOpenFromData, onResync: notifResync, onChange: paintNotifBell }); paintNotifBell(); }
   setTheme(currentTheme());   // sincroniza o ícone de tema do topbar
   askNotifPermission();    // permissão + push do WebApp
+  refreshWallet();         // saldo no cabeçalho (celular)
   initSearch();
   await loadChannels();    // canais (conexões WhatsApp) antes de qualquer listagem
   try { const st = await api('/settings'); state.settings = st.settings; state.wa = st.wa; } catch {}
@@ -862,9 +917,21 @@ async function switchChannel(id) {
 
 function connectSSE() {
   if (es) es.close();
-  es = new EventSource('/api/events?token=' + TOKEN);
+  es = new EventSource(API.api('/events?token=' + TOKEN));
   es.addEventListener('message', e => { const d = JSON.parse(e.data || '{}'); maybeNotifyMessage(d); onLive(d); });
   es.addEventListener('status', e => onLive(JSON.parse(e.data || '{}')));
+  // saldo mudou (venda liberada, comissão, recarga paga, saque)
+  es.addEventListener('wallet', () => { refreshWallet(); if (state.view === 'billing') paintBilling(); });
+  // venda do indicado aprovada → comissão na carteira
+  es.addEventListener('commission', e => {
+    const d = JSON.parse(e.data || '{}');
+    if (!window.ECNotify) return;
+    ECNotify.notify({
+      type: 'commission', title: 'Venda Aprovada✅',
+      body: 'Sua comissão: ' + fmtBRL(d.amount || 0),
+      url: '/app/#/billing', tag: 'com:' + (d.kind || '') + ':' + Date.now()
+    });
+  });
   es.addEventListener('campaign', () => { if (state.view === 'campaigns') paintCampaigns(); });
   // opt-in / opt-out (palavra-chave do cliente, flow ou ação manual)
   es.addEventListener('consent', e => {
@@ -949,6 +1016,7 @@ async function refreshBadge() {
     const b = $('#badge-unread');
     if (d.unread > 0) { b.textContent = d.unread; b.classList.remove('hidden'); }
     else b.classList.add('hidden');
+    syncTabbarBadge();
     const chip = $('#tb-status');
     if (chip) {
       const ok = d.configured.connected;
@@ -1013,11 +1081,30 @@ function moduleOfView(v) {
   return v;
 }
 // Esconde do menu lateral os módulos sem permissão de visualizar
+// ---------- MENU ENXUTO NO CELULAR ----------
+// Num aparelho o menu completo vira uma lista infinita e ninguém acha nada.
+// No celular mostramos só o que se usa fora do escritório: atender, consultar
+// cadastro, ver compromisso e conferir a conexão. As demais telas continuam
+// existindo e acessíveis por link direto (inclusive pelo toque na notificação)
+// — elas somem da navegação, não do produto.
+//
+// Construir campanha, desenhar automação no Flow Builder ou montar checkout são
+// trabalhos de tela grande; ficam no navegador do computador.
+const MOBILE_VIEWS = new Set([
+  'dashboard', 'inbox', 'team', 'schedule', 'contacts',
+  'funnel', 'quick', 'billing', 'settings'
+]);
+// 820px é o mesmo ponto em que a sidebar já vira gaveta (style.css).
+const MOBILE_MQ = window.matchMedia('(max-width: 820px)');
+function isMobileLayout() { return API.native || MOBILE_MQ.matches; }
+
 function applyNavPermissions() {
   // Assinatura e Admin são do DONO/admin — atendentes nunca veem
   const ownerOnly = new Set(['billing', 'admin']);
+  const mobile = isMobileLayout();
   $$('.nav-item[data-view]').forEach(n => {
     const v = n.dataset.view;
+    if (mobile && !MOBILE_VIEWS.has(v)) { n.style.display = 'none'; return; }
     if (state.agent && ownerOnly.has(v)) { n.style.display = 'none'; return; }
     if (!planHas(v)) { n.style.display = 'none'; return; }   // fora do plano contratado
     const mod = moduleOfView(v);
@@ -1032,7 +1119,181 @@ function applyNavPermissions() {
     }
     lbl.style.display = anyVisible ? '' : 'none';
   });
+  // Explica no próprio menu onde foi parar o que não está ali.
+  const hint = document.getElementById('nav-hint');
+  if (hint) hint.classList.toggle('hidden', !mobile);
+
+  buildTabbar();   // a barra do rodapé espelha o que sobrou visível aqui
 }
+
+// ---------- BARRA DE NAVEGAÇÃO DO RODAPÉ (celular) ----------
+// No celular a gaveta lateral dá lugar a uma barra fixa embaixo, do jeito que
+// se espera de um aplicativo: o polegar alcança sem esticar a mão.
+// Cabem quatro destinos; o quinto botão abre uma folha com o restante.
+//
+// Os ícones são clonados da própria sidebar — assim a barra nunca diverge
+// visualmente do menu e não existe um segundo conjunto de ícones para manter.
+const TABBAR_VIEWS = ['dashboard', 'inbox', 'contacts', 'schedule'];
+const TABBAR_LABEL = {
+  dashboard: 'Início', inbox: 'Conversas', contacts: 'Contatos', schedule: 'Agenda',
+  team: 'Chat interno', funnel: 'Funil', quick: 'Respostas', billing: 'Assinatura', settings: 'Ajustes'
+};
+
+function navItemVisivel(v) {
+  const el = document.querySelector(`.sidebar .nav-item[data-view="${v}"]`);
+  return !!el && el.style.display !== 'none';
+}
+function iconeDaView(v) {
+  const svg = document.querySelector(`.sidebar .nav-item[data-view="${v}"] svg`);
+  return svg ? svg.outerHTML : '';
+}
+
+function buildTabbar() {
+  const bar = document.getElementById('tabbar');
+  if (!bar) return;
+  const mobile = isMobileLayout();
+  bar.classList.toggle('hidden', !mobile);
+  document.body.classList.toggle('has-tabbar', mobile);
+  if (!mobile) { toggleMoreSheet(false); return; }
+
+  const principais = TABBAR_VIEWS.filter(navItemVisivel);
+  const restantes = [...MOBILE_VIEWS].filter(v => !TABBAR_VIEWS.includes(v) && navItemVisivel(v));
+
+  bar.innerHTML = principais.map(v => `
+    <a class="tabbar-item" data-view="${v}" href="#/${v}">
+      ${iconeDaView(v)}
+      <span>${TABBAR_LABEL[v] || v}</span>
+      ${v === 'inbox' ? '<b class="tabbar-dot hidden" id="tabbar-unread"></b>' : ''}
+    </a>`).join('') + (restantes.length ? `
+    <button class="tabbar-item" id="tabbar-more" onclick="toggleMoreSheet()" aria-haspopup="dialog">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      <span>Mais</span>
+    </button>` : '');
+
+  const folha = document.getElementById('more-sheet');
+  if (folha) {
+    folha.innerHTML = `
+      <div class="sheet-grip"></div>
+      <h3>Mais</h3>
+      <div class="sheet-grid">
+        ${restantes.map(v => `
+          <a class="sheet-item" href="#/${v}" onclick="toggleMoreSheet(false)">
+            ${iconeDaView(v)}<span>${TABBAR_LABEL[v] || TITLES[v] || v}</span>
+          </a>`).join('')}
+      </div>`;
+  }
+  markTabbarActive();
+  syncTabbarBadge();
+}
+
+// Marca o destino atual. Telas que não estão na barra (nem na folha) deixam
+// tudo apagado — é honesto: o usuário chegou ali por um link, não pela barra.
+function markTabbarActive() {
+  const atual = state.view;
+  $$('#tabbar .tabbar-item[data-view]').forEach(a => {
+    a.classList.toggle('on', a.dataset.view === atual);
+  });
+  const more = document.getElementById('tabbar-more');
+  if (more) {
+    const naFolha = [...MOBILE_VIEWS].some(v => v === atual && !TABBAR_VIEWS.includes(v));
+    more.classList.toggle('on', naFolha);
+  }
+}
+
+// Espelha o contador de não lidas da sidebar na barra de baixo.
+function syncTabbarBadge() {
+  const origem = $('#badge-unread'), destino = $('#tabbar-unread');
+  if (!destino) return;
+  const tem = origem && !origem.classList.contains('hidden');
+  destino.textContent = tem ? origem.textContent : '';
+  destino.classList.toggle('hidden', !tem);
+}
+
+// ---------- CARTEIRA NO CABEÇALHO (celular) ----------
+// Saldo sempre à vista e depósito a um toque. No computador o saldo já mora
+// na tela de Assinatura, que está sempre no menu — aqui ele resolve a distância
+// extra que o celular impõe.
+let WALLET = { balance: 0, deposito: { min: 100, max: 0 } };
+
+async function refreshWallet() {
+  const caixa = document.getElementById('tb-wallet');
+  if (!caixa) return;
+  // Atendente não tem carteira própria: a da empresa não é assunto dele.
+  if (state.agent || !isMobileLayout()) { caixa.classList.add('hidden'); return; }
+  try {
+    WALLET = await api('/wallet/summary');
+    const val = document.getElementById('tb-wallet-val');
+    if (val) val.textContent = fmtBRL(WALLET.balance);
+    caixa.classList.remove('hidden');
+  } catch { caixa.classList.add('hidden'); }
+}
+
+// Pop-up de depósito. A faixa vem do Admin SaaS; validamos aqui só para dar
+// resposta imediata — quem decide de verdade é o servidor.
+function depositModal() {
+  const min = WALLET.deposito.min, max = WALLET.deposito.max;
+  const faixa = `Mínimo ${fmtBRL(min)}${max ? ` · máximo ${fmtBRL(max)}` : ''}`;
+  // Atalhos partindo do mínimo, dobrando, sem passar do teto.
+  const sugestoes = [min, min * 2, min * 5, min * 10]
+    .filter(v => !max || v <= max)
+    .filter((v, i, a) => a.indexOf(v) === i)
+    .slice(0, 4);
+
+  openModal(`
+    <h2 style="margin:0 0 6px">${ico('plus')} Depositar na carteira</h2>
+    <p class="muted" style="font-size:13px;margin:0 0 14px">
+      O saldo paga assinatura, conexões extras e disparos. Pagamento por Pix, confirmação automática.
+      <br><b>${faixa}</b>
+    </p>
+    <label>Valor (R$)<input id="dep-val" inputmode="decimal" placeholder="${(min / 100).toFixed(2)}" autocomplete="off"></label>
+    <div class="row" style="gap:7px;margin-top:9px">
+      ${sugestoes.map(v => `<button class="btn small no-grow" onclick="$('#dep-val').value='${(v / 100).toFixed(2)}'">${fmtBRL(v)}</button>`).join('')}
+    </div>
+    <div class="row" style="margin-top:16px">
+      <button class="btn no-grow" onclick="closeModal()">Cancelar</button>
+      <button class="btn primary no-grow" onclick="doDeposit(this)">${ico('zap', 14)} Gerar Pix</button>
+    </div>
+    <div id="dep-pix"></div>`);
+}
+
+async function doDeposit(btn) {
+  const bruto = String($('#dep-val').value || '').replace(',', '.');
+  const cents = Math.round(Number(bruto) * 100);
+  if (!cents || cents < 0) return toast('Informe um valor', 'error');
+  if (cents < WALLET.deposito.min) return toast(`Depósito mínimo: ${fmtBRL(WALLET.deposito.min)}`, 'error');
+  if (WALLET.deposito.max && cents > WALLET.deposito.max) {
+    return toast(`Depósito máximo: ${fmtBRL(WALLET.deposito.max)}`, 'error');
+  }
+  btn.disabled = true;
+  try {
+    const r = await api('/billing/topup', { body: { amount: bruto } });
+    // Mostra o Pix na própria janela: fechar e procurar a tela de Assinatura
+    // no meio do pagamento é o caminho mais curto para desistir.
+    $('#dep-pix').innerHTML = payBoxHtml(r.charge);
+    toast('Pix gerado — pague para creditar o saldo');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function toggleMoreSheet(force) {
+  const folha = document.getElementById('more-sheet');
+  const fundo = document.getElementById('more-back');
+  if (!folha || !fundo) return;
+  const abrir = force === undefined ? folha.classList.contains('hidden') : !!force;
+  folha.classList.toggle('hidden', !abrir);
+  fundo.classList.toggle('hidden', !abrir);
+}
+
+// Girar o aparelho ou redimensionar a janela cruza o limite dos 820px:
+// o menu se reajusta na hora, sem precisar recarregar.
+MOBILE_MQ.addEventListener('change', () => {
+  if (!state.user) return;
+  applyNavPermissions();
+  refreshWallet();   // o saldo no topo só existe no celular
+});
 
 // ---------- menu lateral em gaveta (celular) ----------
 // No celular a sidebar sai do fluxo e desliza por cima, devolvendo a largura
@@ -1106,11 +1367,24 @@ async function renderDashboard() {
       </div>
     </div>
     <div class="dash-tiles">
-      <a class="tile" href="#/inbox"><span class="tile-ic">${ico('message', 19)}</span><b>Conversas</b></a>
-      <a class="tile" href="#/contacts"><span class="tile-ic">${ico('users', 19)}</span><b>Novo contato</b></a>
-      <a class="tile" href="#/campaigns"><span class="tile-ic">${ico('megaphone', 19)}</span><b>Campanha</b></a>
-      <a class="tile" href="#/flows"><span class="tile-ic">${ico('flow', 19)}</span><b>Automação</b></a>
-      <a class="tile" href="#/links"><span class="tile-ic">${ico('link', 19)}</span><b>Link rastreável</b></a>
+      ${(() => {
+        // Os atalhos seguem o mesmo recorte do menu: no celular não faz sentido
+        // oferecer Campanha ou Flow Builder aqui se eles não estão na navegação.
+        const atalhos = [
+          ['inbox', 'message', 'Conversas'],
+          ['contacts', 'users', 'Novo contato'],
+          ['schedule', 'calendar', 'Agendamento'],
+          ['campaigns', 'megaphone', 'Campanha'],
+          ['flows', 'flow', 'Automação'],
+          ['links', 'link', 'Link rastreável']
+        ];
+        const mobile = isMobileLayout();
+        return atalhos
+          .filter(([v]) => (mobile ? MOBILE_VIEWS.has(v) : v !== 'schedule'))
+          .map(([v, icone, rotulo]) =>
+            `<a class="tile" href="#/${v}"><span class="tile-ic">${ico(icone, 19)}</span><b>${rotulo}</b></a>`)
+          .join('');
+      })()}
     </div>
     <div id="dash"><div class="card">${skel(6)}</div></div>
   </div>`;
@@ -1813,7 +2087,7 @@ async function renderContacts() {
     <div class="page">
       <div class="page-head row">
         <div style="flex:1"><h1>Contatos</h1><p>Leads e clientes do seu WhatsApp</p></div>
-        <button class="btn no-grow" onclick="window.open('/api/contacts/export?token=' + TOKEN)" title="CSV com telefones no padrão E.164 aceito pela API">${ico('download-circle', 14)} Exportar CSV</button>
+        <button class="btn no-grow" onclick="openExternal(API.api('/contacts/export?token=' + TOKEN))" title="CSV com telefones no padrão E.164 aceito pela API">${ico('download-circle', 14)} Exportar CSV</button>
         <button class="btn primary no-grow" onclick="newContactModal()">${ico('plus', 14)} Novo contato</button>
       </div>
       <div class="card">
@@ -2818,6 +3092,20 @@ async function renderSettings() {
           <button class="btn primary no-grow" onclick="changePass()">Alterar senha</button>
         </div>
       </div>
+
+      ${state.kind === 'account' && !state.agent ? `<div class="card danger-card">
+        <h2>${ico('trash')} Excluir minha conta</h2>
+        <p class="muted" style="margin:0 0 14px;font-size:13px">
+          Apaga definitivamente sua conta e <b>tudo que está nela</b>: conversas, contatos,
+          mensagens, automações, agendamentos e atendentes. Não há como desfazer nem recuperar depois.
+        </p>
+        <button class="btn danger no-grow" onclick="deleteAccountModal()">Excluir minha conta</button>
+        <p class="muted" style="margin:14px 0 0;font-size:12.5px">
+          <a href="#" onclick="openExternal(API.url('/privacidade'));return false">Política de Privacidade</a>
+          ·
+          <a href="#" onclick="openExternal(API.url('/termos'));return false">Termos de Uso</a>
+        </p>
+      </div>` : ''}
       </div>
     </div>`;
   paintProfilePhoto();
@@ -3368,6 +3656,49 @@ async function changePass() {
   } catch (e) { toast(e.message, 'error'); }
 }
 
+// Exclusão da conta pelo próprio dono — exigência da App Store (5.1.1(v)) e
+// também o caminho correto de LGPD. Pede senha e confirmação escrita porque a
+// operação apaga tudo e não tem volta.
+function deleteAccountModal() {
+  openModal(`
+    <h2 style="margin:0 0 6px">${ico('alert')} Excluir minha conta</h2>
+    <p class="muted" style="font-size:13px;line-height:1.6;margin:0 0 14px">
+      Isto apaga <b>permanentemente</b> a conta <b>${esc(state.user || '')}</b> e todo o seu conteúdo:
+      conversas, contatos, mensagens, automações, agendamentos, atendentes e integrações.
+      <br><br>
+      <b>Não é possível desfazer.</b> Se você tem uma assinatura ativa, cancele-a antes —
+      a exclusão não gera reembolso automático.
+    </p>
+    <label>Sua senha<input id="del-pass" type="password" autocomplete="current-password"></label>
+    <label style="margin-top:9px"><span>Digite <b>EXCLUIR</b> para confirmar</span>
+      <input id="del-confirm" placeholder="EXCLUIR" autocapitalize="characters">
+    </label>
+    <div class="row" style="margin-top:14px">
+      <button class="btn no-grow" onclick="closeModal()">Cancelar</button>
+      <button class="btn danger no-grow" onclick="doDeleteAccount(this)">Excluir definitivamente</button>
+    </div>`);
+}
+
+async function doDeleteAccount(btn) {
+  const pass = $('#del-pass').value;
+  const confirm = $('#del-confirm').value;
+  if (!pass) return toast('Informe sua senha', 'error');
+  if (confirm.trim().toUpperCase() !== 'EXCLUIR') return toast('Digite EXCLUIR para confirmar', 'error');
+  btn.disabled = true;
+  try {
+    await api('/account/delete', { body: { pass, confirm } });
+    closeModal();
+    // A sessão já morreu no servidor; limpa o que ficou no aparelho.
+    try { localStorage.clear(); } catch {}
+    TOKEN = '';
+    toast('Conta excluída. Até logo.');
+    setTimeout(() => location.reload(), 1200);
+  } catch (e) {
+    btn.disabled = false;
+    toast(e.message, 'error');
+  }
+}
+
 // ==================== TOPBAR ====================
 const TITLES = {
   dashboard: 'Dashboard', reports: 'Métricas & Relatórios', inbox: 'Conversas', contacts: 'Contatos',
@@ -3376,11 +3707,14 @@ const TITLES = {
   team: 'Chat interno', flows: 'Flow Builder', links: 'Links rastreáveis',
   integrations: 'Integrações', webhooks: 'Integrações',
   elitepay: 'Elite Pay', 'elitepay/checkout': 'Checkout Builder', checkouts: 'Checkout Builder', tracking: 'Tracking',
+  schedule: 'Agendamentos', consent: 'Opt-in & Opt-out', pixels: 'Pixels & rastreamento',
+  agents: 'Atendentes', billing: 'Assinatura & Carteira', admin: 'Admin SaaS',
   'templates/new': 'Criar modelo', 'campaigns/new': 'Nova campanha'
 };
 function updateTopbar() {
   const t = $('#tb-title');
   if (t) t.textContent = TITLES[state.view] || 'Elite Chat';
+  markTabbarActive();   // o destino aceso na barra de baixo segue a rota
 }
 
 // ==================== GRÁFICOS (SVG puro, sem libs) ====================
@@ -4528,7 +4862,7 @@ async function paintBilling() {
     const [stLbl, stCls] = BILL_ST[b.status] || [b.status, 'pill'];
     const plan = b.plan;
     const pc = b.pendingCharge;
-    const refLink = `${location.origin}/app/?ref=${d.affiliate.code}`;
+    const refLink = `${API.webOrigin}/app/?ref=${d.affiliate.code}`;
     const cardOn = !!(d.card && (d.card.credit || d.card.debit));
     BILL_CACHE = d;
     box.innerHTML = `
@@ -5211,6 +5545,20 @@ async function paintAdmin() {
             <button class="btn primary no-grow" onclick="admSaveConfig({percentFirst:$('#aff-first').value,percentRenewal:$('#aff-ren').value})">${ico('save', 14)} Salvar</button>
           </div>
         </div>
+
+        <div class="card">
+          <h2>${ico('download-circle')} Limites de saque</h2>
+          <p class="muted" style="margin:0 0 12px;font-size:13px">
+            Faixa aceita quando o afiliado saca a comissão da carteira para a chave Pix dele.
+            O máximo vale <b>por saque</b>, não por período — ele pode sacar de novo depois.
+          </p>
+          <div class="row" style="align-items:flex-end">
+            <label>Saque mínimo (R$)<input id="wd-min" value="${(d.config.affiliate.withdraw.min / 100).toFixed(2)}" inputmode="decimal"></label>
+            <label>Saque máximo (R$)<input id="wd-max" value="${d.config.affiliate.withdraw.max ? (d.config.affiliate.withdraw.max / 100).toFixed(2) : ''}" inputmode="decimal" placeholder="sem limite"></label>
+            <button class="btn primary no-grow" onclick="admSaveConfig({withdrawMin:$('#wd-min').value,withdrawMax:$('#wd-max').value||0})">${ico('save', 14)} Salvar</button>
+          </div>
+          <p class="muted" style="font-size:11.5px;margin:8px 0 0">Máximo vazio ou <b>0</b> = sem teto.</p>
+        </div>
         <div class="card">
           <h2>${ico('users')} Top afiliados</h2>
           ${d.accounts.filter(a => a.referrals > 0).length ? `<table><thead><tr><th>Afiliado</th><th>Código</th><th>Indicados</th><th style="text-align:right">Comissões</th></tr></thead><tbody>
@@ -5233,7 +5581,7 @@ async function paintAdmin() {
           <label class="chk" style="margin-top:12px"><input type="checkbox" id="wv-auto" ${d.config.woovi.pixAutomatic ? 'checked' : ''} onchange="admSaveConfig({pixAutomatic:this.checked})"> Tentar Pix Automático (assinatura recorrente), se indisponível, cai para Pix avulso por renovação</label>
           <div class="capi-box" style="margin-top:14px">
             <div class="capi-head">${ico('webhook', 14)} Webhook de confirmação <span class="capi-tag">obrigatório em produção</span></div>
-            <p class="muted" style="font-size:12px;margin:6px 0 0">Em app.woovi.com → Webhooks, cadastre a URL <code>${location.origin}/woovi-webhook</code> para os eventos de <b>cobrança paga</b>. Cada pagamento é verificado de novo na API antes de ativar (anti-fraude).</p>
+            <p class="muted" style="font-size:12px;margin:6px 0 0">Em app.woovi.com → Webhooks, cadastre a URL <code>${API.webOrigin}/woovi-webhook</code> para os eventos de <b>cobrança paga</b>. Cada pagamento é verificado de novo na API antes de ativar (anti-fraude).</p>
           </div>
         </div>
         ${admCardSection(d.card || {}, null)}
@@ -5249,6 +5597,20 @@ async function paintAdmin() {
             <button class="btn primary no-grow" onclick="admSaveConfig({ctaText:$('#bl-cta').value})">${ico('save', 14)} Salvar copy</button>
           </div>
           <p class="muted" style="font-size:11.5px;margin:8px 0 0">Vazio = automático: <b>“Testar por N dias”</b> quando há teste grátis, ou <b>“Começar agora”</b> quando são 0 dias.</p>
+        </div>
+
+        <div class="card">
+          <h2>${ico('plus')} Depósito na carteira</h2>
+          <p class="muted" style="margin:0 0 12px;font-size:13px">
+            Faixa aceita quando o cliente recarrega o saldo pelo botão <b>+</b> no topo do painel.
+            O valor é cobrado por Pix e cai na carteira ao confirmar o pagamento.
+          </p>
+          <div class="row" style="align-items:flex-end">
+            <label>Depósito mínimo (R$)<input id="dep-min" value="${(d.config.billing.deposit.min / 100).toFixed(2)}" inputmode="decimal"></label>
+            <label>Depósito máximo (R$)<input id="dep-max" value="${d.config.billing.deposit.max ? (d.config.billing.deposit.max / 100).toFixed(2) : ''}" inputmode="decimal" placeholder="sem limite"></label>
+            <button class="btn primary no-grow" onclick="admSaveConfig({depositMin:$('#dep-min').value,depositMax:$('#dep-max').value||0})">${ico('save', 14)} Salvar</button>
+          </div>
+          <p class="muted" style="font-size:11.5px;margin:8px 0 0">Máximo vazio ou <b>0</b> = sem teto.</p>
         </div>
       </div>
 
@@ -5277,7 +5639,7 @@ async function paintAdmin() {
       </div>
 
       <div class="tabpane ${activeTab === 'adm-plat' ? 'show' : ''}" data-pane="adm-plat">
-        ${admPlatformCard(d.platform || {}, d.manual || {}, location.origin)}
+        ${admPlatformCard(d.platform || {}, d.manual || {}, API.webOrigin)}
       </div>
 
       <div class="tabpane ${activeTab === 'adm-seo' ? 'show' : ''}" data-pane="adm-seo">
@@ -5470,7 +5832,7 @@ function admSeoForm(seo) {
   return `
     <div class="card">
       <h2>${ico('target')} SEO da página de marketing</h2>
-      <p class="muted" style="margin:0 0 14px;font-size:13px">Personalize como sua página inicial (a landing pública em <code>${location.origin}/</code>) aparece no Google e ao ser compartilhada. As tags são injetadas no HTML lido pelos buscadores.</p>
+      <p class="muted" style="margin:0 0 14px;font-size:13px">Personalize como sua página inicial (a landing pública em <code>${API.webOrigin}/</code>) aparece no Google e ao ser compartilhada. As tags são injetadas no HTML lido pelos buscadores.</p>
       <div class="row">
         <label style="flex:2">Título (title / aba do navegador)<input id="seo-title" maxlength="180" value="${v('title')}" placeholder="EliteChat. CRM de WhatsApp com IA"></label>
         <label style="flex:1">Theme color<input id="seo-theme" value="${v('themeColor')}" placeholder="#34D399"></label>
@@ -5485,10 +5847,10 @@ function admSeoForm(seo) {
         <label style="flex:1">Título ao compartilhar<input id="seo-ogtitle" maxlength="180" value="${v('ogTitle')}" placeholder="(usa o título acima se vazio)"></label>
       </div>
       <label style="margin-top:9px">Descrição ao compartilhar<textarea id="seo-ogdesc" rows="2" maxlength="400" placeholder="(usa a descrição acima se vazio)">${v('ogDescription')}</textarea></label>
-      <label style="margin-top:9px">Imagem de preview (URL. 1200×630 recomendado)<input id="seo-ogimage" maxlength="600" value="${v('ogImage')}" placeholder="${location.origin}/assets/elitechat-logo.png"></label>
+      <label style="margin-top:9px">Imagem de preview (URL. 1200×630 recomendado)<input id="seo-ogimage" maxlength="600" value="${v('ogImage')}" placeholder="${API.webOrigin}/assets/elitechat-logo.png"></label>
       <h3 class="notif-sub">Avançado</h3>
       <div class="row">
-        <label style="flex:2">URL canônica<input id="seo-canonical" maxlength="400" value="${v('canonical')}" placeholder="${location.origin}/"></label>
+        <label style="flex:2">URL canônica<input id="seo-canonical" maxlength="400" value="${v('canonical')}" placeholder="${API.webOrigin}/"></label>
         <label style="flex:1">Robots<input id="seo-robots" maxlength="60" value="${v('robots')}" placeholder="index, follow"></label>
       </div>
       <label style="margin-top:9px">Google Analytics ID (opcional)<input id="seo-ga" maxlength="40" value="${v('gaId')}" placeholder="G-XXXXXXXXXX"></label>
@@ -6853,7 +7215,7 @@ function paintConsentContacts(d) {
         <label style="min-width:150px">Status${ecSelect('co-f-st', statusOpts, coFilters.status, "coFilter('status', val)", 'sm')}</label>
         <label style="min-width:130px">Estado${ecSelect('co-f-uf', ufOpts, coFilters.uf, "coFilter('uf', val)", 'sm')}</label>
         <label style="min-width:150px">Etapa${ecSelect('co-f-sg', stageOpts, coFilters.stage, "coFilter('stage', val)", 'sm')}</label>
-        <a class="btn small no-grow" href="/api/consent/export?status=${coFilters.status}&token=${TOKEN}">${ico('download-circle', 13)} Exportar CSV</a>
+        <a class="btn small no-grow" href="#" onclick="openExternal(API.api('/consent/export?status=${coFilters.status}&token=' + TOKEN));return false">${ico('download-circle', 13)} Exportar CSV</a>
       </div>
     </div>
 
@@ -7305,7 +7667,7 @@ async function saveNsSettings() {
 function connectNs() {
   const state = Math.random().toString(36).slice(2);
   const url = `${nsCfg.authorizeUrl}?state=${encodeURIComponent(state)}`;
-  const win = window.open(url, 'nuvemshop', 'width=560,height=720');
+  const win = openAuthWindow(url, 'nuvemshop', 'width=560,height=720');
   if (!win) return toast('Permita pop-ups para conectar a loja', 'error');
 
   const onMsg = async ev => {
@@ -7483,7 +7845,7 @@ async function testFlow(id) {
 
 // ==================== CANVAS ARRASTA-E-SOLTA (n8n-style) ====================
 const NODE_W = 236;         // largura do nó (px, coords do mundo)
-const PORT_DY = 40;         // âncora vertical das portas
+const PORT_DY = 40;         // legado: âncora antiga (ver portY/portTop)
 const fbV = { s: 1, tx: 60, ty: 40 };
 let fbSel = null, fbInter = null, fbSaveTimer = null;
 
@@ -7699,7 +8061,20 @@ function flowIssues() {
     if (opts.length) {
       const vazio = opts.findIndex(o => !fbOptTitle(o).trim());
       if (vazio >= 0) out.push({ nodeId: n.id, msg: `"${label(n)}": o ${optWord} ${vazio + 1} está sem texto.` });
-      if (!hasEdgeFrom(n.id)) out.push({ nodeId: n.id, msg: `"${label(n)}" pergunta ao cliente mas não tem resposta, conecte a saída ao próximo passo (ou a um nó "Fim").` });
+
+      // Duas formas de continuar depois de perguntar:
+      //   · uma saída POR OPÇÃO → o fluxo espera o toque e ramifica (preferida)
+      //   · uma saída única     → segue direto, sem esperar (fluxos antigos)
+      const porOpcao = edges.filter(e => e.from === n.id && fbIsOptBranch(e.branch));
+      if (porOpcao.length) {
+        for (const o of fbNodeOptions(n)) {
+          if (!porOpcao.some(e => e.branch === fbOptBranch(o.id))) {
+            out.push({ nodeId: n.id, msg: `"${label(n)}": o ${optWord} "${o.title}" não leva a lugar nenhum, conecte a saída dele.` });
+          }
+        }
+      } else if (!hasEdgeFrom(n.id)) {
+        out.push({ nodeId: n.id, msg: `"${label(n)}" pergunta ao cliente mas não tem resposta, conecte a saída de cada ${optWord} ao próximo passo (ou a um nó "Fim").` });
+      }
     }
 
     // CTA de link: botão de link precisa de redirecionamento válido + rótulo
@@ -7767,8 +8142,48 @@ function onCanvasWheel(e) { e.preventDefault(); const r = e.currentTarget.getBou
 function fbFit() { fbV.s = 1; fbV.tx = 60; fbV.ty = 40; applyTransform(); }
 
 function screenToWorld(cx, cy) { const r = $('#fb-canvas').getBoundingClientRect(); return { x: (cx - r.left - fbV.tx) / fbV.s, y: (cy - r.top - fbV.ty) / fbV.s }; }
-function portY(n, branch) { if (n.type === 'condition') return branch === 'no' ? 66 : 36; return PORT_DY; }
-function portPos(n, side, branch) { return { x: n.x + (side === 'out' ? NODE_W : 0), y: n.y + (side === 'out' ? portY(n, branch) : PORT_DY) }; }
+// ---------- SAÍDAS POR OPÇÃO (um caminho por botão / item de lista) ----------
+// Perguntar e ramificar é a mesma coisa para quem monta o fluxo: cada botão
+// tem a sua própria saída, e o fluxo espera o toque do cliente antes de seguir.
+// O motor (src/flows.js) usa exatamente estes mesmos identificadores.
+function fbNodeOptions(n) {
+  if (!n) return [];
+  const brutos = (n.type === 'list') ? (n.items || []) : (n.buttons || []);
+  return brutos
+    .map((o, i) => ({ id: (o && o.id) || (n.type === 'list' ? `row_${i + 1}` : `btn_${i + 1}`), title: fbOptTitle(o) }))
+    .filter(o => o.title.trim());
+}
+function fbOptBranch(id) { return 'opt:' + id; }
+function fbIsOptBranch(b) { return String(b || '').startsWith('opt:'); }
+
+// ---------- GEOMETRIA DAS PORTAS ----------
+// A bolinha é posicionada pelo TOPO (CSS `top`), mas a linha tem que sair do
+// CENTRO dela. Misturar as duas referências é o que deixava as conexões tortas:
+// a linha nascia 7,5px acima do ponto.
+//
+// Por isso o topo de cada porta é declarado uma vez aqui e o ponto de ancoragem
+// da linha é sempre `topo + FB_PORT_HALF`. Quem mexer na posição de uma porta
+// mexe nos dois ao mesmo tempo, e não há como um sair do lugar sem o outro.
+const FB_PORT_HALF = 7.5;          // do topo da bolinha até o centro dela
+const FB_PORT_TOP = 33;            // porta única (entrada e saída)
+const FB_COND_TOP = { yes: 29, no: 59 };
+const FB_OPT_TOP = 62, FB_OPT_STEP = 26;   // 1ª saída de opção e o passo entre elas
+
+function fbOptTop(i) { return FB_OPT_TOP + Math.max(0, i) * FB_OPT_STEP; }
+
+// Topo (CSS) da porta — usado para desenhar a bolinha.
+function portTop(n, branch) {
+  if (n.type === 'condition') return branch === 'no' ? FB_COND_TOP.no : FB_COND_TOP.yes;
+  if (fbIsOptBranch(branch)) return fbOptTop(fbNodeOptions(n).findIndex(o => fbOptBranch(o.id) === branch));
+  return FB_PORT_TOP;
+}
+// Centro da porta — é daqui que a linha sai/chega.
+function portY(n, branch) { return portTop(n, branch) + FB_PORT_HALF; }
+function portPos(n, side, branch) {
+  // A entrada tem posição fixa; a saída depende do ramo (condição ou opção).
+  const dy = side === 'out' ? portY(n, branch) : FB_PORT_TOP + FB_PORT_HALF;
+  return { x: n.x + (side === 'out' ? NODE_W : 0), y: n.y + dy };
+}
 function edgeD(a, b) { const dx = Math.max(46, Math.abs(b.x - a.x) / 2); return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`; }
 
 function renderNodes() {
@@ -7782,10 +8197,18 @@ function renderNodes() {
     el.className = 'fb-n type-' + n.type + (fbSel === n.id ? ' sel' : '') + (n.type === 'trigger' ? ' trig' : '');
     el.dataset.id = n.id;
     el.style.left = n.x + 'px'; el.style.top = n.y + 'px'; el.style.width = NODE_W + 'px';
+    // O card cresce para caber as saídas das opções sem que elas vazem.
+    const nOpts = fbNodeOptions(n).length;
+    if (nOpts) el.style.minHeight = (fbOptTop(nOpts - 1) + FB_PORT_HALF * 2 + 10) + 'px';
+    const opcoes = fbNodeOptions(n);
     const ports = n.type === 'condition'
       ? `<span class="fb-port out yes" data-id="${n.id}" data-side="out" data-branch="yes"><em>Sim</em></span>
          <span class="fb-port out no" data-id="${n.id}" data-side="out" data-branch="no"><em>Não</em></span>`
-      : (n.type === 'end' ? '' : `<span class="fb-port out" data-id="${n.id}" data-side="out"></span>`);
+      : n.type === 'end' ? ''
+      : opcoes.length
+        // Uma saída por botão: o fluxo espera o toque e segue o caminho da opção.
+        ? opcoes.map((o, i) => `<span class="fb-port out opt" data-id="${n.id}" data-side="out" data-branch="${esc(fbOptBranch(o.id))}" style="top:${fbOptTop(i)}px"><em>${esc(o.title.slice(0, 14))}</em></span>`).join('')
+        : `<span class="fb-port out" data-id="${n.id}" data-side="out"></span>`;
     el.innerHTML = `
       ${n.type !== 'trigger' ? `<span class="fb-port in" data-id="${n.id}" data-side="in"></span>` : ''}
       ${ports}
@@ -8118,14 +8541,14 @@ function nodeInspector(n) {
 // ---------- setters ----------
 function refreshPreview(id) { const el = $(`.fb-n[data-id="${id}"] .fb-n-prev`); if (el) el.textContent = nodeSummary(nodeById(id)); }
 function fbSetNode(id, k, v) { nodeById(id)[k] = v; refreshPreview(id); if (k === 'field' || k === 'op' || k === 'kind') renderInspector(); scheduleSave(); }
-function fbSetBtn(id, i, v) { nodeById(id).buttons[i].title = v; refreshPreview(id); scheduleSave(); }
+function fbSetBtn(id, i, v) { nodeById(id).buttons[i].title = v; renderNodes(); renderEdges(); refreshPreview(id); scheduleSave(); }
 function fbBtnMode(id, mode) {
   const n = nodeById(id);
   if (mode === 'url') { if (!n.url) n.url = 'https://'; if (!n.urlText) n.urlText = 'Abrir link'; }
   else { n.url = ''; n.urlText = ''; }
   renderInspector(); refreshPreview(id); scheduleSave();
 }
-function fbSetItem(id, i, v) { nodeById(id).items[i].title = v; refreshPreview(id); scheduleSave(); }
+function fbSetItem(id, i, v) { nodeById(id).items[i].title = v; renderNodes(); renderEdges(); refreshPreview(id); scheduleSave(); }
 function fbSetHdr(id, i, k, v) { nodeById(id).headers[i][k] = v; scheduleSave(); }
 function fbSetTrig(k, v) {
   flowDraft.trigger[k] = v; refreshPreview('trigger');
@@ -8150,7 +8573,8 @@ function addNodeAt(type, x, y) {
   flowDraft.graph.nodes.push(node);
   const src = fbSel && fbSel !== id ? fbSel : 'trigger';
   const srcNode = nodeById(src);
-  if (srcNode && srcNode.type !== 'condition' && srcNode.type !== 'end' && !flowDraft.graph.edges.some(e => e.from === src && !e.branch)) {
+  const srcTemOpcoes = srcNode && fbNodeOptions(srcNode).length;
+  if (srcNode && srcNode.type !== 'condition' && srcNode.type !== 'end' && !srcTemOpcoes && !flowDraft.graph.edges.some(e => e.from === src && !e.branch)) {
     flowDraft.graph.edges.push({ id: 'e' + Date.now().toString(36), from: src, to: id });
   }
   renderNodes(); renderEdges(); selectNode(id); scheduleSave();
@@ -8162,10 +8586,24 @@ function removeNode(id) {
   if (fbSel === id) fbSel = null;
   renderNodes(); renderEdges(); renderInspector(); scheduleSave();
 }
-function addButton(id) { const n = nodeById(id); if (n.buttons.length < 3) n.buttons.push({ title: '' }); renderInspector(); refreshPreview(id); scheduleSave(); }
-function rmButton(id, i) { nodeById(id).buttons.splice(i, 1); renderInspector(); refreshPreview(id); scheduleSave(); }
-function addItem(id) { const n = nodeById(id); if (n.items.length < 10) n.items.push({ title: '' }); renderInspector(); refreshPreview(id); scheduleSave(); }
-function rmItem(id, i) { nodeById(id).items.splice(i, 1); renderInspector(); refreshPreview(id); scheduleSave(); }
+function addButton(id) { const n = nodeById(id); if (n.buttons.length < 3) n.buttons.push({ title: '' }); renderInspector(); renderNodes(); renderEdges(); refreshPreview(id); scheduleSave(); }
+function rmButton(id, i) {
+  const n = nodeById(id);
+  // A saída daquele botão perde o dono: sem limpar, sobraria uma aresta
+  // apontando para um caminho que ninguém mais alcança.
+  const alvo = fbNodeOptions(n)[i];
+  n.buttons.splice(i, 1);
+  if (alvo) flowDraft.graph.edges = flowDraft.graph.edges.filter(e => !(e.from === id && e.branch === fbOptBranch(alvo.id)));
+  renderInspector(); renderNodes(); renderEdges(); refreshPreview(id); scheduleSave();
+}
+function addItem(id) { const n = nodeById(id); if (n.items.length < 10) n.items.push({ title: '' }); renderInspector(); renderNodes(); renderEdges(); refreshPreview(id); scheduleSave(); }
+function rmItem(id, i) {
+  const n = nodeById(id);
+  const alvo = fbNodeOptions(n)[i];
+  n.items.splice(i, 1);
+  if (alvo) flowDraft.graph.edges = flowDraft.graph.edges.filter(e => !(e.from === id && e.branch === fbOptBranch(alvo.id)));
+  renderInspector(); renderNodes(); renderEdges(); refreshPreview(id); scheduleSave();
+}
 function addHeader(id) { nodeById(id).headers.push({ key: '', value: '' }); renderInspector(); scheduleSave(); }
 function rmHeader(id, i) { nodeById(id).headers.splice(i, 1); renderInspector(); scheduleSave(); }
 
@@ -8302,7 +8740,7 @@ async function esFinish(code, usedRedirect) {
     const r = await api('/wa/connect', {
       body: {
         code,
-        redirectUri: usedRedirect ? location.origin + '/auth/meta/callback' : undefined,
+        redirectUri: usedRedirect ? API.webOrigin + '/auth/meta/callback' : undefined,
         sessionInfo: esSessionInfo
       }
     });
@@ -8352,14 +8790,14 @@ async function connectWhatsApp() {
   }
 
   // Fallback: diálogo OAuth oficial em popup com redirect p/ /auth/meta/callback
-  const redirectUri = location.origin + '/auth/meta/callback';
+  const redirectUri = API.webOrigin + '/auth/meta/callback';
   const url = `https://www.facebook.com/${cfg.graphVersion}/dialog/oauth` +
     `?client_id=${encodeURIComponent(cfg.appId)}` +
     `&redirect_uri=${encodeURIComponent(redirectUri)}` +
     `&state=${encodeURIComponent(esOAuthState)}` +
     `&response_type=code` +
     `&scope=${encodeURIComponent('business_management,whatsapp_business_management,whatsapp_business_messaging')}`;
-  const pop = window.open(url, 'elitechat_es', 'width=700,height=780');
+  const pop = openAuthWindow(url, 'elitechat_es', 'width=700,height=780');
   if (!pop) esFail('Popup bloqueado pelo navegador. Libere popups para este site.');
 }
 
@@ -8489,7 +8927,7 @@ async function epSubmitOnboarding() {
     if ($('#ep-ob-repname')) { body.repName = $('#ep-ob-repname').value; body.repDocument = $('#ep-ob-repdoc').value; }
     const r = await api('/elitepay/subaccount', { body });
     // Modo KYC: abre a verificação hospedada da Woovi em nova aba
-    if (r.onboardingUrl) { window.open(r.onboardingUrl, '_blank', 'noopener'); toast('Conclua a verificação KYC na aba que abriu'); }
+    if (r.onboardingUrl) { openExternal(r.onboardingUrl); toast('Conclua a verificação KYC na aba que abriu'); }
     else toast(r.subaccount.status === 'active' ? 'Conta Elite Pay criada e ativada! 🎉' : 'Conta criada, aguardando aprovação');
     renderElitePay();
   } catch (e) { const el = $('#ep-ob-err'); if (el) el.textContent = e.message; toast(e.message, 'error'); }
@@ -9979,7 +10417,7 @@ async function trkMetaConnect() {
   try { dados = await api('/tracking/meta/auth-url'); }
   catch (e) { return toast(e.message, 'error'); }
 
-  const w = window.open(dados.url, 'metaads', 'width=620,height=720');
+  const w = openAuthWindow(dados.url, 'metaads', 'width=620,height=720');
   if (!w) return toast('Libere pop-ups para conectar o Meta Ads', 'error');
 
   const aoReceber = async ev => {
@@ -10095,7 +10533,7 @@ async function trkSaveAlerts() {
 }
 
 function trkSnippetModal() {
-  const url = `${location.origin}/t.js?a=${state.accountId}`;
+  const url = `${API.webOrigin}/t.js?a=${state.accountId}`;
   openModal(`<h2>${ico('code')} Instalar o Tracking no seu site</h2>
     <p class="muted" style="font-size:13px;margin:4px 0 12px">Cole antes do <b>&lt;/body&gt;</b> das suas páginas (landing, vendas, obrigado). Ele captura <b>fbclid, gclid, ttclid e UTMs</b> e liga cada visita à venda no Elite Pay.</p>
     <div class="ep-copy"><input readonly value='<script src="${esc(url)}"></script>' onclick="this.select()">

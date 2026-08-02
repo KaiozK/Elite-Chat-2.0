@@ -10,6 +10,11 @@
 (function () {
   'use strict';
 
+  // No app nativo a API mora em outro host e o push não é Web Push: quem
+  // entrega é o FCM/APNs, via ECNative. O resto da engine (sons, vibração,
+  // centro de notificações, prefs) é idêntico nos dois ambientes.
+  var EC = window.EC_CONFIG || { api: function (p) { return '/api' + p; }, native: false };
+
   var LS_PREFS = 'ec_notif_prefs';
   var LS_CENTER = 'ec_notif_center';
   var CENTER_MAX = 60;
@@ -19,7 +24,7 @@
     sounds: true,      // sons
     vibrate: true,     // vibração
     badge: true,       // badge no ícone do app
-    types: { message: true, call: true, attendance: true, reminder: true }
+    types: { message: true, call: true, attendance: true, reminder: true, commission: true }
   };
 
   var state = {
@@ -97,7 +102,10 @@
     message:    function () { tone(880, 0, 0.12, 'sine', 0.12); tone(1180, 0.10, 0.16, 'sine', 0.12); },
     call:       function () { for (var i = 0; i < 3; i++) { tone(680, i * 0.34, 0.18, 'triangle', 0.16); tone(540, i * 0.34 + 0.16, 0.18, 'triangle', 0.14); } },
     attendance: function () { tone(620, 0, 0.14, 'sine', 0.12); tone(820, 0.12, 0.18, 'sine', 0.12); },
-    reminder:   function () { tone(990, 0, 0.16, 'sine', 0.13); tone(760, 0.15, 0.2, 'sine', 0.12); tone(990, 0.32, 0.22, 'sine', 0.12); }
+    reminder:   function () { tone(990, 0, 0.16, 'sine', 0.13); tone(760, 0.15, 0.2, 'sine', 0.12); tone(990, 0.32, 0.22, 'sine', 0.12); },
+    // venda aprovada: acorde ascendente, distinto de mensagem para o afiliado
+    // reconhecer sem olhar a tela
+    commission: function () { tone(660, 0, 0.14, 'sine', 0.13); tone(880, 0.12, 0.16, 'sine', 0.13); tone(1180, 0.26, 0.26, 'sine', 0.12); }
   };
   function playSound(type) { if (!state.prefs.sounds) return; try { (SOUNDS[type] || SOUNDS.message)(); } catch (e) {} }
 
@@ -108,16 +116,24 @@
   }
 
   /* ---------------- Permissão + Service Worker + Push ---------------- */
-  function supported() { return 'serviceWorker' in navigator; }
-  function permission() { return ('Notification' in window) ? Notification.permission : 'unsupported'; }
+  function supported() { return EC.native ? true : ('serviceWorker' in navigator); }
+  function permission() {
+    if (EC.native) return window.ECNative ? ECNative.pushPermission() : 'default';
+    return ('Notification' in window) ? Notification.permission : 'unsupported';
+  }
 
   function requestPermission() {
+    // Nativo: quem pede é o sistema operacional (APNs/FCM), não a API web.
+    if (EC.native) return window.ECNative ? ECNative.requestPush() : Promise.resolve('unsupported');
     if (!('Notification' in window)) return Promise.resolve('unsupported');
     if (Notification.permission !== 'default') return Promise.resolve(Notification.permission);
     return Notification.requestPermission().then(function (p) { if (p === 'granted') subscribePush(); return p; }).catch(function () { return 'denied'; });
   }
 
   function register() {
+    // Service Worker não se aplica ao WebView nativo: os arquivos já vêm no
+    // bundle (não há o que cachear) e o push chega pelo canal do sistema.
+    if (EC.native) { if (window.ECNative) ECNative.initPush(); return Promise.resolve(null); }
     if (!supported()) return Promise.resolve(null);
     return navigator.serviceWorker.register('/app/sw.js', { scope: '/app/' })
       .then(function (reg) {
@@ -147,7 +163,7 @@
   }
   function subscribePush() {
     if (!state.reg || !state.reg.pushManager) return;
-    fetch('/api/push/vapid', { headers: authHeaders() })
+    fetch(EC.api('/push/vapid'), { headers: authHeaders() })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (cfg) {
         if (!cfg || !cfg.publicKey) return;
@@ -159,13 +175,13 @@
       .then(function (sub) {
         if (!sub) return;
         state._sub = sub;
-        return fetch('/api/push/subscribe', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ subscription: sub, prefs: state.prefs }) });
+        return fetch(EC.api('/push/subscribe'), { method: 'POST', headers: authHeaders(), body: JSON.stringify({ subscription: sub, prefs: state.prefs }) });
       })
       .catch(function (e) { console.warn('[ECNotify] push subscribe:', e && e.message); });
   }
   function syncSubPrefs() {
     if (!state._sub) return;
-    fetch('/api/push/subscribe', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ subscription: state._sub, prefs: state.prefs }) }).catch(function () {});
+    fetch(EC.api('/push/subscribe'), { method: 'POST', headers: authHeaders(), body: JSON.stringify({ subscription: state._sub, prefs: state.prefs }) }).catch(function () {});
   }
 
   /* ---------------- Notificar ---------------- */
@@ -202,7 +218,10 @@
         requireInteraction: type === 'call' || !!opts.requireInteraction,
         vibrate: state.prefs.vibrate ? (type === 'call' ? [200, 100, 200] : [90]) : undefined
       };
-      if (state.reg && state.reg.showNotification) {
+      if (EC.native) {
+        // WebView não tem Notification API: quem desenha na bandeja é o plugin nativo.
+        if (window.ECNative) ECNative.localNotify(payload);
+      } else if (state.reg && state.reg.showNotification) {
         try { state.reg.showNotification(payload.title, payload); } catch (e) { fallbackNotif(payload); }
       } else fallbackNotif(payload);
     }
