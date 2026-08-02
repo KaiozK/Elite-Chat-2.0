@@ -544,6 +544,10 @@ module.exports = function (broadcast, clients) {
       try {
         health = await wa.getPhoneInfo(req.wctx);
         req.wctx.wa.lastHealth = { at: Date.now(), ...health };
+        // aproveita a resposta para manter número e nome em dia
+        if (health.display_phone_number) req.wctx.wa.displayPhoneNumber = health.display_phone_number;
+        if (health.verified_name) req.wctx.wa.verifiedName = health.verified_name;
+        req.wctx.wa.identityAt = Date.now();
         db.save();
       } catch (e) {
         health = { error: e.message };
@@ -578,20 +582,65 @@ module.exports = function (broadcast, clients) {
       displayPhoneNumber: w.displayPhoneNumber || '',
       verifiedName: w.verifiedName || '',
       profilePictureUrl: w.profilePictureUrl || '',
+      qualityRating: w.qualityRating || '',
+      identityError: w.identityError || '',
       unread: acc.contacts.filter(c => (c.chId || dflt) === ch.id).reduce((s, c) => s + (c.unread || 0), 0),
       contacts: acc.contacts.filter(c => (c.chId || dflt) === ch.id).length
     };
   }
 
-  router.get('/channels', auth, (req, res) => {
+  // SINCRONIA DA IDENTIDADE DO NÚMERO
+  // O Embedded Signup grava display_phone_number/verified_name, mas quem conecta
+  // por credenciais manuais (token + phoneNumberId) fica sem esses campos, e a
+  // tela dizia "não conectado" para um número que estava funcionando.
+  // Aqui buscamos na Graph e gravamos, com cache de 6h para não pesar.
+  async function syncPhoneIdentity(acc, ch, { force } = {}) {
+    const w = ch.wa;
+    if (!w || !w.phoneNumberId || !wa.tokenOf(db.chanCtx(acc, ch))) return false;
+    const fresco = w.identityAt && (Date.now() - w.identityAt) < 6 * 3600 * 1000;
+    if (!force && w.displayPhoneNumber && fresco) return false;
+    try {
+      const info = await wa.getPhoneInfo(db.chanCtx(acc, ch));
+      if (info && (info.display_phone_number || info.verified_name)) {
+        w.displayPhoneNumber = info.display_phone_number || w.displayPhoneNumber || '';
+        w.verifiedName = info.verified_name || w.verifiedName || '';
+        w.qualityRating = info.quality_rating || w.qualityRating || '';
+        w.connected = true;                 // a Graph respondeu: o número existe e o token vale
+        w.identityAt = Date.now();
+        db.save();
+        return true;
+      }
+    } catch (e) {
+      // token revogado/numero removido: registra e marca como desconectado
+      w.identityError = String(e.message || e).slice(0, 160);
+      w.identityAt = Date.now();
+      if (/OAuth|token|permission|(#10)|190/i.test(w.identityError)) w.connected = false;
+      db.save();
+    }
+    return false;
+  }
+
+  router.get('/channels', auth, h(async (req, res) => {
     const acc = req.acc;
+    // completa a identidade dos números conectados que ainda não têm o telefone
+    // (conexão manual). Falha aqui nunca derruba a listagem.
+    await Promise.all(acc.channels.filter(c => !c.archived && c.wa.connected && !c.wa.displayPhoneNumber)
+      .map(c => syncPhoneIdentity(acc, c).catch(() => false)));
     const rep = limits.report(acc);
     res.json({
       channels: acc.channels.filter(c => !c.archived).map(c => channelPublic(acc, c)),
       current: req.chId,
       limit: rep.whatsapps
     });
-  });
+  }));
+
+  // Força a re-sincronização da identidade (botão "Sincronizar" na aba Contas)
+  router.post('/channels/:id/sync', auth, h(async (req, res) => {
+    const ch = (req.acc.channels || []).find(c => c.id === req.params.id);
+    if (!ch) return res.status(404).json({ error: 'Canal não encontrado' });
+    await syncPhoneIdentity(req.acc, ch, { force: true });
+    res.json({ channel: channelPublic(req.acc, ch), error: ch.wa.identityError || '' });
+  }));
 
   router.post('/channels', auth, h(async (req, res) => {
     const acc = req.acc;

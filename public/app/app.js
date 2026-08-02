@@ -648,13 +648,17 @@ function channelsCard() {
              onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();renameChannel('${c.id}')}">
           <b>${esc(c.label)}</b>${c.isDefault ? ' <span class="pill" style="font-size:10px">principal</span>' : ''}
           <div class="muted" style="font-size:12px;margin-top:2px">
-            ${c.displayPhoneNumber ? esc(c.displayPhoneNumber) : '<b style="color:var(--amber)">não conectado</b>'}
+            ${c.connected
+              ? (c.displayPhoneNumber ? esc(c.displayPhoneNumber) : '<b style="color:var(--verde-deep)">conectado</b>')
+              : '<b style="color:var(--amber)">não conectado</b>'}
             · ${fmtN(c.contacts)} contato(s)${c.unread ? ` · ${fmtN(c.unread)} não lida(s)` : ''}
+            ${c.identityError ? `<div style="color:var(--red);font-size:11px;margin-top:2px">${esc(c.identityError)}</div>` : ''}
           </div>
         </div>
         ${c.id === at.id
           ? '<span class="pill done">em uso</span>'
           : `<button class="btn small no-grow" onclick="switchChannel('${c.id}')">Usar</button>`}
+        <button class="icon-btn" title="Sincronizar número com a Meta" onclick="syncChannel('${c.id}', this)">${ico('refresh', 14)}</button>
         <button class="icon-btn" title="Renomear" onclick="renameChannel('${c.id}')">${ico('edit', 14)}</button>
         ${c.isDefault ? '' : `<button class="icon-btn danger" title="Remover" onclick="removeChannel('${c.id}')">${ico('trash', 14)}</button>`}
       </div>`).join('')}
@@ -682,6 +686,22 @@ async function createChannel() {
 // Renomear a conta de WhatsApp. Usa o modal do app: o prompt() nativo é
 // bloqueado em vários navegadores e no app instalado (PWA), e o botão parecia
 // simplesmente não fazer nada.
+// Busca na Meta o número e o nome verificado deste canal e regrava, para a
+// tela nunca mais dizer "não conectado" para um número que está funcionando.
+async function syncChannel(id, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await api('/channels/' + id + '/sync', { method: 'POST', body: {} });
+    await loadChannels();
+    route();
+    if (r.error) toast(r.error, 'error');
+    else toast(r.channel.displayPhoneNumber
+      ? 'Número sincronizado: ' + r.channel.displayPhoneNumber
+      : 'Sincronizado com a Meta');
+  } catch (e) { toast(e.message, 'error'); }
+  finally { if (btn) btn.disabled = false; }
+}
+
 function renameChannel(id) {
   const ch = CHANNELS.find(c => c.id === id) || {};
   openModal(`
@@ -778,7 +798,9 @@ function paintChannelPicker() {
         <i class="ch-dot ${c.connected ? 'on' : 'off'}"></i>
         <span class="ch-item-txt">
           <b>${esc(c.label)}</b>
-          <em>${c.displayPhoneNumber ? esc(c.displayPhoneNumber) : 'número não conectado'} · ${fmtN(c.contacts)} contato(s)</em>
+          <em>${c.connected
+            ? (c.displayPhoneNumber ? esc(c.displayPhoneNumber) : 'conectado')
+            : 'número não conectado'} · ${fmtN(c.contacts)} contato(s)</em>
         </span>
         ${c.unread ? `<b class="ch-badge">${c.unread > 99 ? '99+' : c.unread}</b>` : ''}
         ${c.id === at.id ? ico('check', 14) : ''}
