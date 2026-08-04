@@ -22,7 +22,8 @@ const LABEL = {
   flows: 'fluxos de automação',
   pixels: 'pixels de rastreamento',
   links: 'links rastreáveis',
-  whatsapps: 'conexões WhatsApp'
+  whatsapps: 'conexões WhatsApp',
+  sms: 'SMS por ciclo'
 };
 
 function planOf(acc) {
@@ -80,7 +81,11 @@ function usage(acc) {
     flows: (acc.flows || []).length,
     pixels: (acc.pixels || []).length,
     links: (acc.links || []).length,
-    whatsapps: (acc.channels || []).filter(c => !c.archived).length
+    whatsapps: (acc.channels || []).filter(c => !c.archived).length,
+    // SMS conta por SEGMENTO enviado no ciclo (é assim que o provedor cobra)
+    sms: (acc.smsLog || [])
+      .filter(m => m.ts >= t0 && m.status !== 'failed')
+      .reduce((n, m) => n + (Number(m.segments) || 1), 0)
   };
 }
 
@@ -153,7 +158,8 @@ const FEATURE_LABEL = {
   links: 'Links rastreáveis',
   pixels: 'Pixels de rastreamento',
   tracking: 'Tracking (atribuição)',
-  integrations: 'Integrações (webhooks/Nuvemshop)'
+  integrations: 'Integrações (webhooks/Nuvemshop)',
+  sms: 'Disparos de SMS'
 };
 
 // Módulos do plano vigente. Trial/sem plano usa o plano mais barato publicado

@@ -1161,7 +1161,7 @@ const views = {
   dashboard: renderDashboard, inbox: renderInbox, contacts: renderContacts,
   funnel: renderFunnel, campaigns: renderCampaigns, templates: renderTemplates, quick: renderQuick,
   logs: renderLogs, settings: renderSettings, team: renderTeam, flows: renderFlows, links: renderLinks,
-  pixels: renderPixels, billing: renderBilling, admin: renderAdmin,
+  pixels: renderPixels, billing: renderBilling, admin: renderAdmin, sms: renderSms,
   integrations: renderIntegrations, webhooks: renderIntegrations, // #/webhooks continua funcionando
   elitepay: renderElitePay, tracking: renderTracking,
   consent: renderConsent, agents: renderAgents, 'agents/perf': renderAgentPerf,
@@ -3837,7 +3837,7 @@ const TITLES = {
   integrations: 'Integrações', webhooks: 'Integrações',
   elitepay: 'Elite Pay', 'elitepay/checkout': 'Checkout Builder', checkouts: 'Checkout Builder', tracking: 'Tracking',
   schedule: 'Agendamentos', consent: 'Opt-in & Opt-out', pixels: 'Pixels & rastreamento',
-  agents: 'Atendentes', billing: 'Assinatura & Carteira', admin: 'Admin SaaS',
+  agents: 'Atendentes', billing: 'Assinatura & Carteira', admin: 'Admin SaaS', sms: 'Disparos de SMS',
   'templates/new': 'Criar modelo', 'campaigns/new': 'Nova campanha'
 };
 function updateTopbar() {
@@ -5638,6 +5638,7 @@ async function renderAdmin() {
       <button data-tab="adm-wd" onclick="showSettingsTab('adm-wd')">Saques</button>
       <button data-tab="adm-ep" onclick="showSettingsTab('adm-ep');admEpPaint()">Elite Pay</button>
       <button data-tab="adm-int" onclick="showSettingsTab('adm-int');admNsLoad()">Integrações</button>
+      <button data-tab="adm-sms" onclick="showSettingsTab('adm-sms');admSmsLoad()">SMS</button>
       <button data-tab="adm-plat" onclick="showSettingsTab('adm-plat')">Plataforma</button>
       <button data-tab="adm-seo" onclick="showSettingsTab('adm-seo')">SEO</button>
     </div>
@@ -5976,6 +5977,10 @@ async function paintAdmin() {
         <div id="adm-int-box">${skel(4)}</div>
       </div>
 
+      <div class="tabpane ${activeTab === 'adm-sms' ? 'show' : ''}" data-pane="adm-sms">
+        <div id="adm-sms-box">${skel(4)}</div>
+      </div>
+
       <div class="tabpane ${activeTab === 'adm-plat' ? 'show' : ''}" data-pane="adm-plat">
         ${admPlatformCard(d.platform || {}, d.manual || {}, API.webOrigin)}
       </div>
@@ -6003,7 +6008,8 @@ const FEATURE_META = [
   { key: 'links',        label: 'Links rastreáveis' },
   { key: 'pixels',       label: 'Pixels de rastreamento' },
   { key: 'tracking',     label: 'Tracking (atribuição)' },
-  { key: 'integrations', label: 'Integrações' }
+  { key: 'integrations', label: 'Integrações' },
+  { key: 'sms',          label: 'Disparos de SMS' }
 ];
 
 // Grade de toggles: um por funcionalidade. Sem texto livre, sem erro de digitação.
@@ -6037,7 +6043,8 @@ const LIMIT_META = [
   // `buy` é como o item é chamado na hora de contratar unidades a mais — os
   // rótulos acima descrevem o que o PLANO inclui, e ficam estranhos no "Contratar…".
   { key: 'links',     label: 'Links rastreáveis grátis',  short: 'Links',    ph: '1', extra: true, buy: 'links rastreáveis' },
-  { key: 'whatsapps', label: 'WhatsApps inclusos',        short: 'WhatsApp', ph: '1', extra: true, buy: 'conexões de WhatsApp' }
+  { key: 'whatsapps', label: 'WhatsApps inclusos',        short: 'WhatsApp', ph: '1', extra: true, buy: 'conexões de WhatsApp' },
+  { key: 'sms',       label: 'SMS por ciclo',             short: 'SMS',      ph: '0' }
 ];
 
 function planLimitFields(scope, lims) {
@@ -6088,6 +6095,148 @@ async function admDelPlan(id) {
   if (!await confirmModal({ title: 'Arquivar plano', text: 'Novos clientes não poderão assiná-lo. Assinantes atuais continuam até cancelarem.', ok: 'Arquivar', danger: true })) return;
   try { await api('/admin/plans/' + id, { method: 'DELETE' }); paintAdmin(); setTimeout(() => showSettingsTab('adm-pl'), 60); } catch (e) { toast(e.message, 'error'); }
 }
+// ---- Admin → SMS (Integra X) ----
+// Um interruptor liga a funcionalidade para os clientes; o token e o remetente
+// são da plataforma e nunca voltam para o navegador.
+let admSms = null;
+async function admSmsLoad() {
+  const box = $('#adm-sms-box'); if (!box) return;
+  try { admSms = (await api('/admin/sms')).sms; }
+  catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
+  admSmsPaint();
+}
+
+function admSmsPaint() {
+  const box = $('#adm-sms-box'); if (!box || !admSms) return;
+  const c = admSms;
+  const b = c.lastBalance;
+  box.innerHTML = `
+  <div class="card">
+    <div class="row" style="align-items:center;margin-bottom:6px">
+      <h2 style="margin:0;flex:1">${ico('message')} Disparos de SMS · Integra X</h2>
+      <span class="pill ${c.configured ? 'done' : 'pending'}">${c.configured ? 'ativo' : c.enabled ? 'falta o token' : 'desligado'}</span>
+    </div>
+    <p class="muted" style="margin:0 0 14px;font-size:13px">
+      Com o interruptor ligado, os planos que incluem o módulo <b>SMS</b> passam a exibir a
+      tela de disparos no painel do cliente. O crédito é consumido da conta da plataforma
+      na Integra X.
+    </p>
+
+    <label class="chk"><input type="checkbox" ${c.enabled ? 'checked' : ''}
+      onchange="admSmsSave({enabled:this.checked})"> Oferecer SMS aos clientes</label>
+
+    <div class="capi-box" style="margin-top:16px">
+      <div class="capi-head">${ico('lock', 14)} Credenciais da Integra X
+        <span class="capi-tag">${c.hasToken ? 'token salvo' : 'pendente'}</span></div>
+      <div class="row" style="margin-top:10px;align-items:flex-end">
+        <label style="flex:1.4">Token da API
+          <input id="sms-token" type="password" placeholder="${c.hasToken ? '•••••••• (mantém o atual)' : 'cole o token aqui'}"></label>
+        <label style="max-width:190px">Remetente
+          <input id="sms-from" value="${esc(c.from)}" placeholder="ex.: EliteChat"></label>
+      </div>
+      <div class="row" style="margin-top:10px;align-items:flex-end">
+        <label style="flex:1">URL da API <em class="lim-extra">deixe vazio para o padrão</em>
+          <input id="sms-base" value="${esc(c.base)}" placeholder="${esc(c.baseEfetiva)}"></label>
+        <button class="btn primary no-grow" onclick="admSmsSaveForm(this)">${ico('save', 14)} Salvar</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn no-grow" onclick="admSmsTest(this)">${ico('activity', 13)} Testar conexão</button>
+        ${c.hasToken ? `<button class="btn danger no-grow" onclick="admSmsClearToken()">Remover token</button>` : ''}
+      </div>
+      <div id="sms-test"></div>
+    </div>
+
+    <div class="row" style="margin-top:16px;align-items:flex-end">
+      <label style="max-width:220px">Caracteres por SMS
+        <input id="sms-maxlen" value="${c.maxLen}" inputmode="numeric"></label>
+      <label style="max-width:220px">Preço cobrado do cliente (R$/SMS)
+        <input id="sms-price" value="${(c.priceCents / 100).toFixed(2)}" inputmode="decimal"></label>
+      <button class="btn no-grow" onclick="admSmsSave({maxLen:$('#sms-maxlen').value,priceCents:$('#sms-price').value})">${ico('save', 14)} Salvar</button>
+    </div>
+    <p class="muted" style="font-size:11.5px;margin:8px 0 0">
+      Acima do limite de caracteres a operadora cobra mais de um SMS — é assim que o consumo é contado no plano do cliente.
+    </p>
+
+    <div class="fee-sep"></div>
+    <h2 style="font-size:14px">${ico('link')} Status de entrega</h2>
+    <p class="muted" style="margin:2px 0 10px;font-size:13px">
+      Informe esta URL no painel da Integra X para receber a confirmação de entrega de cada SMS:
+    </p>
+    <div class="copywrap"><input readonly value="${esc(API.webOrigin || location.origin)}/sms-webhook" onclick="this.select()"></div>
+    <label style="margin-top:12px">URL de callback enviada em cada disparo
+      <input id="sms-cb" value="${esc(c.callbackUrl)}" placeholder="${esc(API.webOrigin || location.origin)}/sms-webhook"></label>
+    <div class="row" style="margin-top:10px;justify-content:flex-end">
+      <button class="btn no-grow" onclick="admSmsSave({callbackUrl:$('#sms-cb').value})">${ico('save', 14)} Salvar callback</button>
+    </div>
+
+    ${b ? `<div class="fee-sep"></div>
+      <div class="wallet-bal">
+        <div><span class="muted" style="font-size:12px">Créditos na Integra X</span>
+          <div style="font-size:24px;font-weight:800;color:var(--verde-deep)">${fmtN(b.creditos)}</div></div>
+        <div style="text-align:right"><span class="muted" style="font-size:12px">consultado</span>
+          <div style="font-size:13px;font-weight:700">${timeAgo(b.ts)}</div></div>
+      </div>` : ''}
+
+    ${(c.logs || []).length ? `<div class="fee-sep"></div>
+      <h2 style="font-size:14px">${ico('list')} Últimos eventos</h2>
+      <div class="tx-list">${c.logs.slice(0, 12).map(l => `<div class="tx">
+        <span class="tx-lbl"><b>${esc(l.type)}</b>
+          <em style="display:block;font-style:normal;color:var(--muted);font-size:11.5px">${esc(l.error || l.etapa || ('créditos: ' + (l.creditos ?? '')))}</em></span>
+        <span class="muted" style="font-size:11px">${timeAgo(l.ts)}</span></div>`).join('')}</div>` : ''}
+  </div>`;
+}
+
+async function admSmsSave(patch) {
+  try {
+    admSms = (await api('/admin/sms', { method: 'PUT', body: patch })).sms;
+    toast('SMS atualizado');
+    admSmsPaint();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function admSmsSaveForm(btn) {
+  const patch = { from: $('#sms-from').value, base: $('#sms-base').value };
+  const tok = ($('#sms-token').value || '').trim();
+  if (tok) patch.token = tok;
+  admSmsSave(patch);
+}
+
+async function admSmsClearToken() {
+  if (!await confirmModal({
+    title: 'Remover o token?',
+    text: 'O envio de SMS para de funcionar até um novo token ser informado.',
+    ok: 'Remover', danger: true
+  })) return;
+  admSmsSave({ token: null });
+}
+
+async function admSmsTest(btn) {
+  const out = $('#sms-test');
+  const txt = btn.innerHTML; btn.disabled = true; btn.textContent = 'Testando…';
+  try {
+    const r = await api('/admin/sms/test', { body: {} });
+    admSms = (await api('/admin/sms')).sms;
+    if (r.ok) {
+      out.innerHTML = `<p class="hint" style="margin-top:10px;color:var(--verde-deep)">
+        ${ico('check', 12)} Conectado. Créditos: <b>${fmtN(r.saldo.creditos)}</b> ${esc(r.saldo.moeda || '')}.</p>`;
+    } else {
+      // O teste diz QUAL parte do contrato falhou, para não caçar no escuro.
+      const dica = {
+        BASE: 'Não foi possível alcançar o servidor. Confira a URL da API.',
+        AUTH: 'O token foi recusado. Confira o valor e se ele tem permissão de leitura.',
+        ROTAS: 'O caminho consultado não existe nesta conta. Ajuste as rotas em src/sms.js (bloco CONTRATO).',
+        CAMPOS: 'A conexão funcionou, mas a resposta veio em outro formato. Ajuste a leitura em src/sms.js (bloco CONTRATO).'
+      }[r.etapa] || '';
+      out.innerHTML = `<div class="danger-box" style="margin-top:10px">
+        <b>${ico('alert', 13)} Falhou em: ${esc(r.etapa)}</b>
+        <p style="margin:0 0 6px">${esc(dica)}</p>
+        <p style="margin:0"><code>${esc(r.base || '')}${esc(r.rota || '')}</code> — ${esc(r.msg || '')}</p>
+      </div>`;
+    }
+  } catch (e) { out.innerHTML = `<div class="danger-box" style="margin-top:10px"><b>${esc(e.message)}</b></div>`; }
+  finally { btn.disabled = false; btn.innerHTML = txt; }
+}
+
 // ---- Admin → Integrações → Nuvemshop (app único da plataforma) ----
 let admNs = null;
 async function admNsLoad() {
@@ -7356,6 +7505,186 @@ const CO_STATUS = {
   pending: { label: 'Pendente', cls: 'pending' }
 };
 
+// ==================== SMS (Integra X) ====================
+// Envio avulso, disparo em massa por filtro e histórico com status de entrega.
+let SMS_CACHE = null;
+
+async function renderSms() {
+  $('#view').innerHTML = `<div class="page">
+    <div class="page-head"><h1>Disparos de SMS</h1><p>Mensagens de texto para o celular do lead, direto do painel</p></div>
+    <div id="sms-box">${skel(4)}</div>
+  </div>`;
+  await loadSms();
+}
+
+async function loadSms() {
+  try { SMS_CACHE = await api('/sms'); }
+  catch (e) { $('#sms-box').innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; return; }
+  paintSms();
+}
+
+function paintSms() {
+  const d = SMS_CACHE || {};
+  const u = d.usage || {};
+  const box = $('#sms-box'); if (!box) return;
+
+  if (!d.available) {
+    box.innerHTML = `<div class="card">
+      <h2>${ico('alert')} SMS indisponível</h2>
+      <p class="muted" style="margin:8px 0 0;font-size:13px">
+        O envio de SMS não está habilitado para a sua conta. Fale com o suporte ou
+        verifique o seu plano em <a href="#/billing"><b>Assinatura</b></a>.
+      </p></div>`;
+    return;
+  }
+
+  const restante = u.unlimited ? '∞' : fmtN(Math.max(0, (u.limit || 0) - (u.used || 0)));
+  box.innerHTML = `
+  <div class="two-col">
+    <div class="card">
+      <h2>${ico('send')} Enviar SMS</h2>
+      <p class="muted" style="margin:2px 0 14px;font-size:13px">
+        ${d.from ? `Remetente <b>${esc(d.from)}</b>. ` : ''}Cada ${fmtN(d.maxLen)} caracteres contam como um SMS.
+      </p>
+      <label>Número do destinatário<input id="sms-to" inputmode="tel" placeholder="(11) 98765-4321"></label>
+      <label style="margin-top:10px">Mensagem
+        <textarea id="sms-text" rows="4" maxlength="1600" placeholder="Escreva a mensagem…"
+                  oninput="smsCount()"></textarea></label>
+      <div class="row" style="align-items:center;margin-top:8px">
+        <span class="muted" style="flex:1;font-size:12px" id="sms-count">0 caractere(s) · 1 SMS</span>
+        <button class="btn primary no-grow" onclick="sendSms(this)">${ico('send', 14)} Enviar</button>
+      </div>
+      <p class="hint" style="margin-top:12px">${ico('shield', 12)} Contatos em opt-out são bloqueados automaticamente, como no WhatsApp.</p>
+    </div>
+
+    <div class="card">
+      <h2>${ico('activity')} Consumo do ciclo</h2>
+      <div class="wallet-bal" style="margin-top:12px">
+        <div><span class="muted" style="font-size:12px">SMS enviados</span>
+          <div style="font-size:26px;font-weight:800;color:var(--verde-deep)">${fmtN(u.used || 0)}</div></div>
+        <div style="text-align:right"><span class="muted" style="font-size:12px">Disponível</span>
+          <div style="font-size:20px;font-weight:800">${restante}</div></div>
+      </div>
+      ${u.unlimited ? '' : `<div class="lim-bar" style="margin-top:12px"><i style="width:${Math.min(100, u.percent || 0)}%"></i></div>`}
+      <div class="fee-sep"></div>
+      <h2 style="font-size:14px">${ico('users')} Disparo em massa</h2>
+      <p class="muted" style="margin:2px 0 12px;font-size:13px">Envie para um grupo de contatos filtrado por etiqueta ou etapa do funil.</p>
+      <div class="row">
+        <label style="flex:1">Etapa do funil
+          <select id="sms-stage"><option value="">Todas</option>
+            ${(state.settings && state.settings.stages || []).map(x => `<option>${esc(x)}</option>`).join('')}
+          </select></label>
+        <label style="flex:1">Etiqueta<input id="sms-tag" placeholder="opcional"></label>
+      </div>
+      <label class="chk" style="margin-top:10px"><input type="checkbox" id="sms-ch" checked>
+        Somente contatos da conexão em uso</label>
+      <label style="margin-top:10px">Mensagem
+        <textarea id="sms-bulk-text" rows="3" maxlength="1600" placeholder="Escreva a mensagem do disparo…"></textarea></label>
+      <div class="row" style="margin-top:10px">
+        <button class="btn no-grow" onclick="previewSmsBulk()">${ico('search', 13)} Ver quem vai receber</button>
+      </div>
+      <div id="sms-prev"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="row" style="align-items:center;margin-bottom:8px">
+      <h2 style="margin:0;flex:1">${ico('list')} Histórico de envios</h2>
+      <button class="btn small no-grow" onclick="loadSms()">${ico('refresh', 13)} Atualizar</button>
+    </div>
+    ${(d.log || []).length ? `<div class="tx-list">
+      ${d.log.slice(0, 100).map(m => `<div class="tx">
+        <span class="tx-lbl">
+          <b>${esc(m.name || m.to)}</b>${m.name ? ` · ${esc(m.to)}` : ''}
+          <em style="display:block;font-style:normal;color:var(--muted);font-size:11.5px;margin-top:2px">
+            ${esc(m.text.slice(0, 90))}${m.text.length > 90 ? '…' : ''}
+          </em>
+          <em style="display:block;font-style:normal;color:var(--faint);font-size:11px;margin-top:2px">
+            ${new Date(m.ts).toLocaleString('pt-BR')} · ${m.segments} SMS · ${SMS_ORIGEM[m.origem] || m.origem}${m.error ? ` · ${esc(m.error)}` : ''}
+          </em>
+        </span>
+        <span class="pill ${SMS_PILL[m.status] || ''}">${SMS_STATUS[m.status] || m.status}</span>
+      </div>`).join('')}
+    </div>` : '<p class="muted">Nenhum SMS enviado ainda.</p>'}
+  </div>`;
+  smsCount();
+}
+
+const SMS_STATUS = {
+  queued: 'na fila', sent: 'enviado', delivered: 'entregue',
+  undelivered: 'não entregue', failed: 'falhou'
+};
+const SMS_PILL = { delivered: 'done', failed: 'danger', undelivered: 'pending', queued: 'pending' };
+const SMS_ORIGEM = { manual: 'avulso', massa: 'disparo em massa', flow: 'automação', api: 'API' };
+
+function smsCount() {
+  const el = $('#sms-text'), out = $('#sms-count');
+  if (!el || !out) return;
+  const n = el.value.length;
+  const max = (SMS_CACHE && SMS_CACHE.maxLen) || 160;
+  const seg = Math.max(1, Math.ceil(n / max));
+  out.textContent = `${fmtN(n)} caractere(s) · ${seg} SMS`;
+}
+
+async function sendSms(btn) {
+  const to = ($('#sms-to').value || '').trim();
+  const text = ($('#sms-text').value || '').trim();
+  if (!to) return toast('Informe o número do destinatário', 'error');
+  if (!text) return toast('Escreva a mensagem', 'error');
+  const txt = btn.innerHTML; btn.disabled = true; btn.textContent = 'Enviando…';
+  try {
+    await api('/sms/send', { body: { to, text } });
+    toast('SMS enviado!');
+    $('#sms-text').value = '';
+    await loadSms();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; btn.innerHTML = txt; }
+}
+
+function smsBulkFiltro() {
+  return {
+    stage: ($('#sms-stage') || {}).value || '',
+    tag: (($('#sms-tag') || {}).value || '').trim(),
+    channelOnly: !!($('#sms-ch') || {}).checked,
+    text: ($('#sms-bulk-text') || {}).value || ''
+  };
+}
+
+async function previewSmsBulk() {
+  const f = smsBulkFiltro();
+  if (!f.text.trim()) return toast('Escreva a mensagem do disparo', 'error');
+  try {
+    const p = await api('/sms/bulk/preview', { body: f });
+    $('#sms-prev').innerHTML = `
+      <div class="extra-buy" style="margin-top:12px">
+        <div class="extra-buy-head">${ico('users', 15)}
+          <div style="flex:1"><b>${fmtN(p.enviaveis)} contato(s) vão receber</b>
+            <em>${fmtN(p.creditos)} SMS no total (${p.segmentos} por contato)${p.bloqueados ? ` · ${fmtN(p.bloqueados)} em opt-out serão pulados` : ''}${p.invalidos ? ` · ${fmtN(p.invalidos)} com número inválido` : ''}</em>
+          </div></div>
+        ${p.amostra.length ? `<p class="muted" style="font-size:12px;margin:0 0 10px">
+          Ex.: ${p.amostra.map(c => esc(c.name || c.waId)).join(', ')}${p.enviaveis > p.amostra.length ? '…' : ''}</p>` : ''}
+        <button class="btn primary" ${p.enviaveis ? '' : 'disabled'} onclick="sendSmsBulk(this)">
+          ${ico('send', 14)} Disparar para ${fmtN(p.enviaveis)} contato(s)</button>
+      </div>`;
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function sendSmsBulk(btn) {
+  const f = smsBulkFiltro();
+  const ok = await confirmModal({
+    title: 'Confirmar o disparo?',
+    text: 'Os SMS serão enviados agora e o consumo do ciclo será debitado. Contatos em opt-out são pulados automaticamente.',
+    ok: 'Disparar'
+  });
+  if (!ok) return;
+  const txt = btn.innerHTML; btn.disabled = true; btn.textContent = 'Disparando…';
+  try {
+    const r = await api('/sms/bulk', { body: f });
+    toast(`${r.enviados} enviado(s)${r.falhas ? ` · ${r.falhas} falha(s)` : ''}${r.bloqueados ? ` · ${r.bloqueados} em opt-out` : ''}`);
+    await loadSms();
+  } catch (e) { toast(e.message, 'error'); btn.disabled = false; btn.innerHTML = txt; }
+}
+
 async function renderConsent() {
   $('#view').innerHTML = `<div class="page">
     <div class="page-head"><h1>Opt-in &amp; Opt-out</h1><p>Consentimento dos contatos, palavras-chave de cancelamento e reativação</p></div>
@@ -8072,13 +8401,14 @@ const NODE_TYPES = {
   reactivate: { icon: 'refresh', label: 'Reativar contato', sub: 'Consentimento', color: 'blue', cat: 'consent' },
   http: { icon: 'globe', label: 'HTTP Request', sub: 'Integração', color: 'orange', cat: 'logic' },
   payment: { icon: 'pix', label: 'Cobrança Pix', sub: 'Elite Pay', color: 'green', cat: 'messages' },
+  sms: { icon: 'message', label: 'Enviar SMS', sub: 'Integra X', color: 'blue', cat: 'messages' },
   end: { icon: 'square', label: 'Fim', sub: 'Encerrar', color: 'gray', cat: 'logic' }
 };
 const FB_PALETTE = {
   triggers: { label: 'Gatilhos', items: ['keyword', 'webhook', 'link', 'button', 'list'] },
   // "Enviar texto" cobre botões e lista (opcionais). Os nós antigos `buttons` e
   // `list` continuam funcionando em automações já criadas, mas saíram da paleta.
-  messages: { label: 'Mensagens', items: ['text', 'media', 'template', 'payment', 'ai'] },
+  messages: { label: 'Mensagens', items: ['text', 'media', 'template', 'payment', 'ai', 'sms'] },
   logic: { label: 'Lógica', items: ['delay', 'condition', 'addtag', 'removetag', 'movestage', 'http', 'end'] },
   consent: { label: 'Opt-in & Opt-out', items: ['optin', 'optout', 'reactivate'] }
 };
@@ -8239,6 +8569,7 @@ function nodeSummary(n) {
     case 'payment': return `Pix de R$ ${n.value || '—'}${n.description ? ' · ' + n.description.slice(0, 24) : ''}`;
     case 'delay': return `Aguardar ${n.seconds || 0}s`;
     case 'condition': return `Se ${n.field || 'texto'} ${OP_LBL[n.op] || 'contém'} "${(n.value || '').slice(0, 18)}"`;
+    case 'sms': return n.text ? `SMS: ${String(n.text).slice(0, 40)}${n.text.length > 40 ? '…' : ''}` : 'SMS sem mensagem';
     case 'addtag': return `+ tag "${n.tag || '—'}"`;
     case 'removetag': return `− tag "${n.tag || '—'}"`;
     case 'movestage': return `→ ${n.stage || '—'}`;
@@ -8260,6 +8591,7 @@ function nodeDefaults(type) {
   else if (type === 'movestage') d.stage = (state.settings && state.settings.stages && state.settings.stages[0]) || '';
   else if (type === 'http') { d.method = 'POST'; d.url = ''; d.headers = []; d.body = ''; }
   else if (type === 'payment') { d.value = ''; d.description = ''; d.sendMessage = true; d.sendQr = false; }
+  else if (type === 'sms') { d.text = ''; d.to = ''; }
   return d;
 }
 
@@ -8430,6 +8762,11 @@ function flowIssues() {
     if (n.type === 'condition') {
       if (!hasEdgeFrom(n.id, 'yes')) out.push({ nodeId: n.id, msg: `"${label(n)}": a saída <b>Sim</b> não leva a lugar nenhum.` });
       if (!hasEdgeFrom(n.id, 'no')) out.push({ nodeId: n.id, msg: `"${label(n)}": a saída <b>Não</b> não leva a lugar nenhum.` });
+    }
+
+    // SMS sem texto não envia nada — o servidor recusa, então acusamos aqui
+    if (n.type === 'sms' && !String(n.text || n.body || '').trim()) {
+      out.push({ nodeId: n.id, msg: `"${label(n)}": a mensagem do SMS está vazia.` });
     }
   }
   return out;
@@ -8859,6 +9196,12 @@ function nodeInspector(n) {
       <label>Operador${ecSelect('fb-cond-op', opOpts, n.op || 'contains', `fbSetNode('${n.id}','op',val)`)}</label>
       ${n.op === 'exists' || n.op === 'empty' ? '' : `<label>Valor<input value="${esc(n.value || '')}" ${set('value')} placeholder="ex.: sim"></label>`}
       <p class="muted" style="font-size:11.5px">Conecte a saída <b>Sim</b> e a saída <b>Não</b> a caminhos diferentes.</p>`;
+  } else if (n.type === 'sms') {
+    body = `<p class="fb-insp-desc">Envia um <b>SMS</b> pela Integra X para o mesmo número do contato.
+      Use <code>{{nome}}</code> e as demais variáveis normalmente. Contatos em opt-out são pulados.</p>
+      <label>Mensagem<textarea rows="4" ${set('text')} placeholder="Olá {{nome}}, ...">${esc(n.text || '')}</textarea></label>
+      <label>Enviar para outro número <em class="lim-extra">opcional</em>
+        <input value="${esc(n.to || '')}" ${set('to')} placeholder="deixe vazio para usar o número do contato"></label>`;
   } else if (n.type === 'addtag' || n.type === 'removetag') {
     body = `<label>Tag<input value="${esc(n.tag || '')}" ${set('tag')} placeholder="ex.: lead-quente"></label>`;
   } else if (n.type === 'movestage') {

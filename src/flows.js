@@ -208,6 +208,22 @@ async function execNode(acc, node, ctx, deliver) {
     await new Promise(r => setTimeout(r, s * 1000));
     return { ok: true, detail: `${s}s` };
   }
+  // ENVIAR SMS (Integra X). Vai para o mesmo número do contato, a menos que a
+  // etapa informe outro. Falhar aqui não derruba o fluxo: o passo é registrado
+  // como não executado e o restante do caminho continua.
+  if (node.type === 'sms') {
+    const sms = require('./sms');
+    const texto = interpolate(node.text || node.body || '', ctx).trim();
+    if (!texto) return { ok: false, detail: 'mensagem vazia' };
+    const destino = interpolate(node.to || '', ctx).trim() || to;
+    if (!destino) return { ok: false, detail: 'sem destinatário' };
+    try {
+      const r = await sms.enviar(acc, { to: destino, text: texto, origem: 'flow' });
+      return { ok: true, detail: `SMS para ${r.to} (${r.segments} seg.)` };
+    } catch (e) {
+      return { ok: false, detail: e.message };
+    }
+  }
   if (node.type === 'addtag' || node.type === 'removetag') {
     const c = store.findContact(acc, to);
     if (!c) return { ok: false, detail: 'contato não encontrado' };
@@ -518,6 +534,9 @@ function validateGraph(flow) {
     if (n.type === 'condition') {
       if (!from(n.id, 'yes')) return 'A saída "Sim" de uma condição não leva a lugar nenhum.';
       if (!from(n.id, 'no')) return 'A saída "Não" de uma condição não leva a lugar nenhum.';
+    }
+    if (n.type === 'sms' && !String(n.text || n.body || '').trim()) {
+      return 'Uma etapa de SMS está sem mensagem.';
     }
   }
   return null;

@@ -20,6 +20,7 @@ const MODULES = [
   { key: 'consent', label: 'Opt-in & Opt-out', view: 'consent' },
   { key: 'flows', label: 'Flow Builder', view: 'flows' },
   { key: 'campaigns', label: 'Campanhas', view: 'campaigns' },
+  { key: 'sms', label: 'SMS', view: 'sms' },
   { key: 'templates', label: 'Modelos', view: 'templates' },
   { key: 'quick', label: 'Respostas Rápidas', view: 'quick' },
   { key: 'webhooks', label: 'Webhooks', view: 'webhooks' },

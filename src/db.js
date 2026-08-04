@@ -47,6 +47,13 @@ const DEFAULTS = {
       // Faixa aceita ao recarregar a carteira (centavos). max 0 = sem teto.
       deposit: { min: 100, max: 0 }
     },
+    // ---- SMS (provedor Integra X) ----
+    // Desligado por padrão: o admin liga, informa o token e escolhe em quais
+    // planos o módulo `sms` fica disponível.
+    sms: {
+      enabled: false, token: '', from: '', base: '', callbackUrl: '',
+      maxLen: 160, priceCents: 0, lastBalance: null, logs: []
+    },
     // % de comissão do afiliado + faixa aceita ao sacar a comissão (centavos).
     affiliate: { percentFirst: 30, percentRenewal: 15, withdraw: { min: 2000, max: 0 } },
     landing: { ctaText: '' } // copy do botão principal da landing (vazio = automático pelos dias de teste)
@@ -69,9 +76,9 @@ const DEFAULT_STAGES = ['Novo', 'Em atendimento', 'Qualificado', 'Negociação',
 //   N   = teto
 // `whatsapps` e `links` são os INCLUSOS no plano; acima disso o cliente compra
 // unidades extras (preço em platform.billing.extras).
-const LIMIT_KEYS = ['sends', 'contacts', 'flows', 'pixels', 'links', 'whatsapps'];
+const LIMIT_KEYS = ['sends', 'contacts', 'flows', 'pixels', 'links', 'whatsapps', 'sms'];
 function defaultLimits() {
-  return { sends: -1, contacts: -1, flows: -1, pixels: -1, links: 1, whatsapps: 1 };
+  return { sends: -1, contacts: -1, flows: -1, pixels: -1, links: 1, whatsapps: 1, sms: 0 };
 }
 // ---------------------------------------------------------------------------
 // FUNCIONALIDADES POR PLANO (toggles)
@@ -79,7 +86,7 @@ function defaultLimits() {
 // aqui é booleano: desligado, o módulo some do menu do cliente e as rotas
 // recusam com 402. Módulos essenciais (conversas, contatos, funil, modelos,
 // LGPD) não entram na lista: fazem parte de qualquer plano.
-const FEATURE_KEYS = ['campaigns', 'flows', 'schedule', 'team', 'agents', 'elitepay', 'links', 'pixels', 'tracking', 'integrations'];
+const FEATURE_KEYS = ['campaigns', 'flows', 'schedule', 'team', 'agents', 'elitepay', 'links', 'pixels', 'tracking', 'integrations', 'sms'];
 function defaultFeatures() {
   const o = {};
   for (const k of FEATURE_KEYS) o[k] = true;   // plano sem config libera tudo

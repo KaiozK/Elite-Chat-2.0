@@ -373,6 +373,10 @@ app.post('/woovi-webhook', require('./src/woovi').webhookHandler(broadcast));
 // estorno e aprovação do recebedor. Autenticado + reconferido na API.
 app.post('/card-webhook', require('./src/elitepay').cardWebhookHandler(broadcast));
 
+// Status de entrega dos SMS (DLR da Integra X). Informe esta URL no campo
+// "callback" do Admin SaaS → SMS: <SEU_DOMINIO>/sms-webhook
+app.post('/sms-webhook', require('./src/sms').webhookHandler(broadcast));
+
 // Eventos da loja Nuvemshop (pedido criado/pago/cancelado, cliente novo).
 // Assinado com HMAC-SHA256 — a validação usa req.rawBody.
 app.set('flowDeliver', flowDeliver);
