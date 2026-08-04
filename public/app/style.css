@@ -1365,6 +1365,42 @@ h1, h2, .brand-name { letter-spacing: -.03em; }
 .pay-qr { flex: none; width: 190px; }
 .pay-qr img { width: 190px; height: 190px; border-radius: 14px; border: 1px solid var(--border); background: var(--card); }
 .pay-qr-ph { width: 190px; height: 190px; border-radius: 14px; border: 1.5px dashed var(--border2); display: grid; place-items: center; color: var(--faint); }
+
+/* ---- Contratar unidades extras (conexões WhatsApp, links) ---- */
+.extra-buy {
+  margin-top: 14px; padding: 14px; border-radius: 14px;
+  border: 1.5px solid var(--brand-border); background: linear-gradient(150deg, var(--brand-bg), transparent);
+}
+.extra-buy-head { display: flex; align-items: center; gap: 10px; color: var(--verde-deep); margin-bottom: 12px; }
+.extra-buy-head b { display: block; font-size: 14px; color: var(--text); }
+.extra-buy-head em { display: block; font-style: normal; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.extra-buy-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.qty { display: inline-flex; align-items: stretch; border: 1px solid var(--border2); border-radius: 11px; overflow: hidden; background: var(--card); }
+.qty-b {
+  width: 38px; border: 0; background: transparent; color: var(--verde-deep);
+  font-size: 19px; line-height: 1; cursor: pointer; padding: 0;
+}
+.qty-b:hover { background: var(--brand-bg); }
+.qty-i {
+  width: 56px; border: 0; border-left: 1px solid var(--border2); border-right: 1px solid var(--border2);
+  text-align: center; font-weight: 700; font-size: 15px; background: transparent; color: var(--text);
+  padding: 9px 0; margin: 0; border-radius: 0; -moz-appearance: textfield;
+}
+.qty-i:focus { outline: 0; box-shadow: none; }
+.qty-i::-webkit-outer-spin-button, .qty-i::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.extra-total { line-height: 1.15; }
+.extra-total b { font-size: 19px; color: var(--verde-deep); }
+.extra-total em { display: block; font-style: normal; font-size: 11px; color: var(--muted); }
+.pay-methods { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.pay-method {
+  display: flex; align-items: center; gap: 9px; cursor: pointer; margin: 0;
+  border: 1.5px solid var(--border2); border-radius: 12px; padding: 11px 12px; background: var(--card);
+}
+.pay-method:hover { border-color: var(--brand-border); }
+.pay-method:has(input:checked) { border-color: var(--verde); background: var(--brand-bg); }
+.pay-method input { margin: 0; flex: none; accent-color: var(--verde); }
+.pay-method b { display: block; font-size: 13.5px; }
+.pay-method em { display: block; font-style: normal; font-size: 11px; color: var(--muted); margin-top: 1px; }
 .wallet-bal {
   display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
   background: linear-gradient(150deg, var(--brand-bg), #fff); border: 1px solid var(--brand-border);

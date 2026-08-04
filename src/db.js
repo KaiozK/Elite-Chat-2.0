@@ -262,6 +262,7 @@ function emptyBilling() {
     periodEnd: 0,          // fim do período pago/trial (ms)
     wooviSubId: '',        // globalID da assinatura na Woovi (Pix Automático)
     subCorrelationID: '',  // correlationID da assinatura (casa cobranças de renovação)
+    subValue: 0,           // valor da recorrência hoje (plano + extras); muda ao comprar extra
     pendingCharge: null,   // { correlationID, kind, planId, amount, brCode, qrCodeImage, paymentLinkUrl, ts }
     startedAt: 0, canceledAt: 0,
     // ---- Meio de pagamento da assinatura ----

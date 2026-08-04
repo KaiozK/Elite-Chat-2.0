@@ -74,18 +74,81 @@ async function cancelSubscription(id) {
   catch (e) { return { error: e.message }; }
 }
 
+// ---- Manter a recorrência valendo o que a conta realmente custa hoje ----
+// Comprar (ou perder) uma conexão extra muda o valor mensal. A assinatura da
+// Woovi guarda um valor fixo, então quem já paga por Pix Automático precisa ter
+// a assinatura refeita — senão o extra é cobrado uma vez e nunca mais.
+// A API não expõe edição de valor: cancelamos e recriamos com o total novo.
+async function syncSubscription(acc, motivo) {
+  const b = acc.billing || {};
+  if (!b.wooviSubId || !configured()) return { skipped: true };
+  const limits = require('./limits');
+  const plan = limits.planOf(acc);
+  if (!plan) return { skipped: true };
+
+  const total = limits.chargeTotal(acc, plan);
+  if (total === b.subValue) return { skipped: true, reason: 'valor igual' };
+
+  const cid = `sub-${acc.id}-${plan.id}-${Date.now().toString(36)}`;
+  try {
+    await cancelSubscription(b.wooviSubId);
+    const sub = await createSubscription({
+      correlationID: cid, value: total,
+      customer: { name: acc.name, email: acc.email },
+      comment: `EliteChat: ${plan.name} (mensal)`
+    });
+    b.wooviSubId = sub.globalID || sub.id || '';
+    b.subCorrelationID = cid;
+    b.subValue = total;
+    db.save();
+    store.logEvent({ type: 'woovi_sub_synced', accountId: acc.id, value: total, motivo: motivo || '' });
+    return { ok: true, value: total };
+  } catch (e) {
+    // A recorrência antiga já foi cancelada: sem valor gravado, a próxima
+    // varredura tenta de novo em vez de deixar a conta cobrando o valor errado.
+    b.wooviSubId = ''; b.subCorrelationID = ''; b.subValue = 0;
+    db.save();
+    store.logEvent({ type: 'woovi_sub_sync_failed', accountId: acc.id, error: e.message });
+    return { ok: false, error: e.message };
+  }
+}
+
 // ============ Processamento de pagamento confirmado ============
 // Chamado pelo webhook (após verificação server-side) e pelo polling do painel.
-// correlationID: sub-<accId>-<planId>-<rand> | topup-<accId>-<rand>
-// (separador "-" porque os IDs internos contêm "_")
+// Formatos de correlationID que chegam aqui (separador "-" porque os IDs
+// internos usam "_"):
+//
+//   sub-<conta>-<plano>-<r>            assinatura paga no Pix
+//   topup-<conta>-<r>                  recarga da carteira
+//   xtr-<conta>-<recurso>-<qtd>-<r>    unidade extra paga no Pix
+//   card-sub-<conta>-<plano>-<r>       assinatura no cartão
+//   card-ren-<conta>-<plano>-<r>       renovação no cartão
+//   wallet-sub-<conta>-<plano>-<r>     assinatura pelo saldo
+//   wallet-ren-<conta>-<plano>-<r>     renovação pelo saldo
+//   (qualquer outro)                   renovação gerada pela recorrência Woovi
 function applyPayment(charge, broadcast) {
   const data = db.get();
   const cid = charge.correlationID || '';
   const paid = Number(charge.value) || 0;
   if (data.revenue.some(r => r.chargeId === cid && r.chargeId)) return { ok: true, duplicate: true };
 
-  let acc = null, kind = '', planId = '';
-  if (cid.startsWith('sub-') || cid.startsWith('topup-')) {
+  let acc = null, kind = '', planId = '', extraKey = '', extraQty = 0;
+  // Cartão e saldo pagam com prefixo próprio ("card-" / "wallet-"). Sem tratar
+  // esses prefixos, a cobrança era aprovada mas a assinatura nunca ativava.
+  const meio = /^(card|wallet)-(sub|ren)-(.+)$/.exec(cid);
+  if (meio) {
+    const parts = meio[3].split('-');
+    acc = db.findAccount(parts[0]);
+    kind = meio[2] === 'sub' ? 'first' : 'renewal';
+    planId = parts[1] || '';
+  } else if (cid.startsWith('xtr-')) {
+    // unidade extra paga no Pix: xtr-<contaId>-<recurso>-<qtd>-<aleatório>
+    const parts = cid.split('-');
+    acc = db.findAccount(parts[1]);
+    kind = 'extra';
+    extraKey = parts[2] || '';
+    extraQty = Math.max(0, Number(parts[3]) || 0);
+  } else if (cid.startsWith('sub-') || cid.startsWith('topup-')) {
     const parts = cid.split('-');
     acc = db.findAccount(parts[1]);
     kind = parts[0] === 'sub' ? 'first' : 'topup';
@@ -107,6 +170,19 @@ function applyPayment(charge, broadcast) {
   if (kind === 'topup') {
     acc.wallet.balance += paid;
     acc.wallet.transactions.push({ id: db.genId('tx'), ts: Date.now(), amount: paid, type: 'topup', label: 'Recarga via Pix' });
+  } else if (kind === 'extra') {
+    // Libera as unidades na hora e coloca o valor dentro da recorrência: a
+    // partir daqui o extra é cobrado todo mês junto com o plano.
+    const limits = require('./limits');
+    acc.billing.extras[extraKey] = (Number(acc.billing.extras[extraKey]) || 0) + extraQty;
+    acc.billing.pendingCharge = null;
+    db.save();
+    syncSubscription(acc, 'extra pago no Pix').catch(() => {});
+    store.logEvent({ type: 'saas_extra_paid', accountId: acc.id, key: extraKey, qty: extraQty, value: paid, via: 'pix' });
+    data.revenue.push({ ts: Date.now(), accountId: acc.id, planId: acc.billing.planId, amount: paid, kind: 'extra', chargeId: cid });
+    db.save();
+    if (broadcast) { broadcast('billing', { accountId: acc.id }); broadcast('channels', { accountId: acc.id }); }
+    return { ok: true, kind, accountId: acc.id, key: extraKey, qty: limits.limitOf(acc, extraKey) };
   } else {
     // ativa/renova a assinatura
     const period = (plan && plan.periodDays ? plan.periodDays : 30) * 86400000;
@@ -188,4 +264,7 @@ function webhookHandler(broadcast) {
   };
 }
 
-module.exports = { configured, call, createCharge, getCharge, deleteCharge, createSubscription, cancelSubscription, applyPayment, webhookHandler };
+module.exports = {
+  configured, call, createCharge, getCharge, deleteCharge,
+  createSubscription, cancelSubscription, syncSubscription, applyPayment, webhookHandler
+};

@@ -66,6 +66,15 @@ module.exports = function (broadcast, clients) {
   const adminOnly = (req, res, next) =>
     req.session.kind === 'admin' ? next() : res.status(403).json({ error: 'Apenas o administrador da plataforma' });
 
+  // GUARD DE DONO — dinheiro da conta (assinatura, carteira, saque) é do titular.
+  // O menu já esconde essas telas do atendente, mas esconder não é proteger: sem
+  // esta guarda um atendente autenticado chamava as rotas na mão e conseguia
+  // cancelar a assinatura, ver o saldo e pedir saque para a própria chave Pix.
+  const ownerOnly = (req, res, next) =>
+    req.agent
+      ? res.status(403).json({ error: 'Assinatura e carteira são do titular da conta.', code: 'owner_only' })
+      : next();
+
   // GUARD DE FUNCIONALIDADE DO PLANO — módulo desligado no plano responde 402.
   // O admin da plataforma nunca é barrado (precisa operar qualquer conta).
   const feat = key => (req, res, next) => {
@@ -2639,7 +2648,7 @@ module.exports = function (broadcast, clients) {
     };
   }
 
-  router.get('/billing', auth, (req, res) => {
+  router.get('/billing', auth, ownerOnly, (req, res) => {
     const cfg = db.get().platform.affiliate || {};
     const myRefs = db.get().accounts.filter(a => a.affiliate && a.affiliate.refBy === req.acc.affiliate.code);
     res.json({
@@ -2690,7 +2699,7 @@ module.exports = function (broadcast, clients) {
 
   // ---- Assinar o plano pagando no CARTÃO (crédito/débito) ----
   // Diferente do Pix, o cartão é síncrono: aprovou, a assinatura já ativa.
-  router.post('/billing/subscribe-card', auth, h(async (req, res) => {
+  router.post('/billing/subscribe-card', auth, ownerOnly, h(async (req, res) => {
     const b = req.body || {};
     const plan = db.get().plans.find(p => p.id === b.planId && !p.archived);
     if (!plan) return res.status(400).json({ error: 'Plano não encontrado' });
@@ -2698,37 +2707,42 @@ module.exports = function (broadcast, clients) {
   }));
 
   // ---- Assinar usando o SALDO da carteira (vendas no cartão viram plano) ----
-  router.post('/billing/subscribe-wallet', auth, h(async (req, res) => {
+  router.post('/billing/subscribe-wallet', auth, ownerOnly, h(async (req, res) => {
     const plan = db.get().plans.find(p => p.id === (req.body || {}).planId && !p.archived);
     if (!plan) return res.status(400).json({ error: 'Plano não encontrado' });
     res.json(saas.subscribeWallet(req.acc, plan, broadcast));
   }));
 
   // ---- Comprar unidades EXTRAS (WhatsApp / links rastreáveis adicionais) ----
-  router.post('/billing/extras', auth, h(async (req, res) => {
+  router.post('/billing/extras', auth, ownerOnly, h(async (req, res) => {
     const b = req.body || {};
     res.json(await saas.buyExtra(req.acc, String(b.key || ''), b.qty, b, broadcast));
   }));
 
   // Assinar um plano: cria assinatura recorrente (Pix Automático) quando habilitado
   // e a cobrança Pix do 1º pagamento — QR exibido inline na página (sem pop-up).
-  router.post('/billing/subscribe', auth, h(async (req, res) => {
+  router.post('/billing/subscribe', auth, ownerOnly, h(async (req, res) => {
     const plan = db.get().plans.find(p => p.id === (req.body || {}).planId && !p.archived);
     if (!plan) return res.status(400).json({ error: 'Plano não encontrado' });
     const acc = req.acc;
 
     const customer = { name: acc.name, email: acc.email };
     const cid = `sub-${acc.id}-${plan.id}-${Date.now().toString(36)}`;
+    // Plano + unidades extras já contratadas. Cobrar só `plan.price` faria a
+    // recorrência nascer menor que a conta real e os extras nunca mais seriam
+    // cobrados — o cartão sempre usou este mesmo total.
+    const total = limits.chargeTotal(acc, plan);
 
     // Pix Automático (assinatura recorrente na Woovi) — a 1ª cobrança vem junto
     if (db.get().platform.woovi.pixAutomatic) {
       try {
         const sub = await woovi.createSubscription({
-          correlationID: cid, value: plan.price, customer,
+          correlationID: cid, value: total, customer,
           comment: `EliteChat: ${plan.name} (mensal)`
         });
         acc.billing.wooviSubId = sub.globalID || sub.id || '';
         acc.billing.subCorrelationID = cid;
+        acc.billing.subValue = total;
       } catch (e) {
         store.logEvent({ type: 'woovi_sub_fallback', accountId: acc.id, error: e.message });
         // segue com cobrança avulsa (renovação manual)
@@ -2736,11 +2750,11 @@ module.exports = function (broadcast, clients) {
     }
 
     const charge = await woovi.createCharge({
-      correlationID: cid, value: plan.price, customer,
+      correlationID: cid, value: total, customer,
       comment: `EliteChat: assinatura ${plan.name}`
     });
     acc.billing.pendingCharge = {
-      correlationID: cid, kind: 'sub', planId: plan.id, amount: plan.price,
+      correlationID: cid, kind: 'sub', planId: plan.id, amount: total,
       brCode: charge.brCode || '', qrCodeImage: charge.qrCodeImage || '',
       paymentLinkUrl: charge.paymentLinkUrl || '', ts: Date.now()
     };
@@ -2749,7 +2763,7 @@ module.exports = function (broadcast, clients) {
   }));
 
   // Recarga de saldo na carteira via Pix
-  router.post('/billing/topup', auth, h(async (req, res) => {
+  router.post('/billing/topup', auth, ownerOnly, h(async (req, res) => {
     const amount = Math.round(Number(String((req.body || {}).amount || '0').replace(',', '.')) * 100);
     // Faixa definida pelo admin em Admin SaaS → Pagamentos.
     const dep = db.get().platform.billing.deposit;
@@ -2775,7 +2789,7 @@ module.exports = function (broadcast, clients) {
   }));
 
   // Polling do pagamento pendente (o webhook é a via principal; isto cobre localhost)
-  router.get('/billing/pending', auth, h(async (req, res) => {
+  router.get('/billing/pending', auth, ownerOnly, h(async (req, res) => {
     const pc = req.acc.billing.pendingCharge;
     if (!pc) return res.json({ paid: false, none: true });
     const charge = await woovi.getCharge(pc.correlationID);
@@ -2786,14 +2800,14 @@ module.exports = function (broadcast, clients) {
     res.json({ paid: false, status: charge && charge.status });
   }));
 
-  router.post('/billing/pending/cancel', auth, h(async (req, res) => {
+  router.post('/billing/pending/cancel', auth, ownerOnly, h(async (req, res) => {
     const pc = req.acc.billing.pendingCharge;
     if (pc) { await woovi.deleteCharge(pc.correlationID); req.acc.billing.pendingCharge = null; db.save(); }
     res.json({ ok: true });
   }));
 
   // Cancelar assinatura (mantém acesso até o fim do período pago)
-  router.post('/billing/cancel', auth, h(async (req, res) => {
+  router.post('/billing/cancel', auth, ownerOnly, h(async (req, res) => {
     const b = req.acc.billing;
     if (b.wooviSubId) { await woovi.cancelSubscription(b.wooviSubId); b.wooviSubId = ''; }
     b.subCorrelationID = '';
@@ -2805,7 +2819,7 @@ module.exports = function (broadcast, clients) {
   }));
 
   // Saque do saldo da carteira (comissões de afiliado) — admin aprova e paga
-  router.post('/wallet/withdraw', auth, (req, res) => {
+  router.post('/wallet/withdraw', auth, ownerOnly, (req, res) => {
     const amount = Math.round(Number(String((req.body || {}).amount || '0').replace(',', '.')) * 100);
     const pixKey = String((req.body || {}).pixKey || '').trim();
     if (!pixKey) return res.status(400).json({ error: 'Informe sua chave Pix' });
@@ -2842,7 +2856,7 @@ module.exports = function (broadcast, clients) {
   // É de propósito muito mais leve que GET /billing — o topo recarrega isto a
   // cada evento `wallet` do SSE, e puxar a tela de assinatura inteira só para
   // atualizar um número seria desperdício.
-  router.get('/wallet/summary', auth, (req, res) => {
+  router.get('/wallet/summary', auth, ownerOnly, (req, res) => {
     res.json({
       balance: req.acc.wallet.balance,
       pending: req.acc.wallet.pending,
@@ -2851,7 +2865,7 @@ module.exports = function (broadcast, clients) {
   });
 
   // Prévia da taxa antes de confirmar o saque (a UI mostra o líquido ao digitar).
-  router.get('/wallet/withdraw/quote', auth, (req, res) => {
+  router.get('/wallet/withdraw/quote', auth, ownerOnly, (req, res) => {
     const amount = Math.round(Number(String(req.query.amount || '0').replace(',', '.')) * 100);
     if (!amount || amount < 0) return res.json({ amount: 0, fee: 0, net: 0 });
     res.json({ amount, ...elitepay.computeWithdrawFee(req.acc, amount) });

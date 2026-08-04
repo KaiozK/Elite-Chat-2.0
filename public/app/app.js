@@ -720,12 +720,63 @@ function channelsCard() {
     </div>
     <div class="row" style="margin-top:14px;align-items:flex-end">
       <label style="flex:1;max-width:280px">Nome do novo canal<input id="ch-new" placeholder="ex.: Vendas · Suporte · Filial SP"></label>
-      <button class="btn primary no-grow" ${cheio ? 'disabled' : ''} onclick="createChannel()">${ico('plus', 14)} Adicionar conexão</button>
+      ${cheio && lim.buyable && lim.extraPrice
+        ? `<button class="btn primary no-grow" onclick="openExtraPay('whatsapps')">${ico('plus', 14)} Contratar mais uma</button>`
+        : `<button class="btn primary no-grow" ${cheio ? 'disabled' : ''} onclick="createChannel()">${ico('plus', 14)} Adicionar conexão</button>`}
     </div>
-    ${cheio ? `<p class="hint" style="margin-top:10px">${ico('alert', 12)} Você atingiu o limite de <b>${fmtN(lim.limit)}</b> conexão(ões) do seu plano.
-      ${lim.extraPrice ? `Compre uma conexão adicional por <b>${fmtBRL(lim.extraPrice)}/mês</b> em <a href="#/billing"><b>Assinatura</b></a>.` : 'Faça upgrade de plano para conectar mais números.'}</p>`
+    ${cheio ? `<p class="hint" style="margin-top:10px">${ico('alert', 12)} Você atingiu o limite de <b>${fmtN(lim.limit)}</b> conexão(ões) do seu plano.</p>`
     : '<p class="hint" style="margin-top:10px">Depois de criar o canal, selecione-o no topo e clique em <b>Conectar WhatsApp</b> abaixo para vincular o número.</p>'}
+    ${extraChannelsBox(lim)}
   </div>`;
+}
+
+// Contratar conexões a mais sem sair da tela de Conexões: escolhe a quantidade,
+// vê o total somando e paga no pop-up. É mensal — entra na renovação.
+function extraChannelsBox(lim) {
+  if (state.agent || !lim.buyable || !lim.extraPrice) return '';
+  return `<div class="extra-buy" id="extra-buy-whatsapps">
+    <div class="extra-buy-head">
+      ${ico('plus', 15)}
+      <div style="flex:1;min-width:0">
+        <b>Precisa de mais números?</b>
+        <em>${fmtBRL(lim.extraPrice)}/mês por conexão adicional${lim.extras ? ` · você já tem ${fmtN(lim.extras)} contratada(s)` : ''}</em>
+      </div>
+    </div>
+    <div class="extra-buy-row">
+      <div class="qty">
+        <button type="button" class="qty-b" onclick="extraQty('whatsapps',-1)" aria-label="Menos uma">−</button>
+        <input id="xq-whatsapps" class="qty-i" type="number" min="1" max="20" value="1"
+               inputmode="numeric" oninput="extraQty('whatsapps',0)" aria-label="Quantas conexões">
+        <button type="button" class="qty-b" onclick="extraQty('whatsapps',1)" aria-label="Mais uma">+</button>
+      </div>
+      <div class="extra-total">
+        <b id="xt-whatsapps">${fmtBRL(lim.extraPrice)}</b>
+        <em>por mês</em>
+      </div>
+      <button class="btn primary no-grow" onclick="openExtraPay('whatsapps')">
+        ${ico('card', 14)} Contratar</button>
+    </div>
+  </div>`;
+}
+
+// +/- na quantidade (d=0 só recalcula depois de digitar) e total ao vivo.
+function extraQty(key, d) {
+  const el = document.getElementById('xq-' + key);
+  const out = document.getElementById('xt-' + key);
+  if (!el) return;
+  let n = Math.floor(Number(el.value) || 1) + d;
+  n = Math.max(1, Math.min(20, n));
+  el.value = n;
+  const preco = extraUnitPrice(key);
+  if (out) out.textContent = fmtBRL(preco * n);
+  return n;
+}
+
+// Preço unitário do extra: o card de Conexões usa o limite já carregado; a tela
+// de Assinatura usa o cache dela.
+function extraUnitPrice(key) {
+  if (key === 'whatsapps' && CH_LIMIT && CH_LIMIT.extraPrice) return CH_LIMIT.extraPrice;
+  return (((BILL_CACHE || {}).usage || {})[key] || {}).extraPrice || 0;
 }
 
 async function createChannel() {
@@ -5054,39 +5105,175 @@ function usageSection(d) {
               <b>${esc(m.label)}</b>
               <div class="muted" style="font-size:12px;margin-top:2px">${fmtBRL(r.extraPrice)}/mês por unidade · você tem ${fmtN(r.extras)} extra(s)</div>
             </div>
-            <input class="extra-qty" id="ex-q-${m.key}" value="1" inputmode="numeric" aria-label="Quantidade">
-            ${d.wallet.balance >= r.extraPrice ? `<button class="btn no-grow" onclick="buyExtra('${m.key}','wallet')">${ico('briefcase', 13)} Usar saldo</button>` : ''}
-            <button class="btn primary no-grow" ${cardOn ? '' : 'disabled title="Cartão não ativado pela plataforma"'}
-              onclick="buyExtra('${m.key}')">${ico('card', 13)} Cartão</button>
+            <div class="qty">
+              <button type="button" class="qty-b" onclick="extraQty('${m.key}',-1)" aria-label="Menos uma">−</button>
+              <input id="xq-${m.key}" class="qty-i" type="number" min="1" max="20" value="1"
+                     inputmode="numeric" oninput="extraQty('${m.key}',0)" aria-label="Quantidade">
+              <button type="button" class="qty-b" onclick="extraQty('${m.key}',1)" aria-label="Mais uma">+</button>
+            </div>
+            <div class="extra-total"><b id="xt-${m.key}">${fmtBRL(r.extraPrice)}</b><em>por mês</em></div>
+            <button class="btn primary no-grow" onclick="openExtraPay('${m.key}')">${ico('card', 13)} Contratar</button>
           </div>`;
         }).join('')}
       </div>
       ${d.extrasCost ? `<p class="hint" style="margin-top:12px">Seus extras somam <b>${fmtBRL(d.extrasCost)}/mês</b>, cobrados junto com o plano na renovação.</p>` : ''}
-      ${cardOn ? '' : '<p class="hint" style="margin-top:12px">A compra de extras é feita no cartão, a plataforma ainda não ativou esse meio.</p>'}`
+      ${d.wooviReady || cardOn ? '' : '<p class="hint" style="margin-top:12px">Nenhum meio de pagamento foi ativado pela plataforma ainda.</p>'}`
     : ''}
   </div>`;
 }
 
-async function buyExtra(key, pay) {
-  const el = $('#ex-q-' + key);
-  const qty = Math.max(1, Number(el ? el.value : 1) || 1);
-  const r = ((BILL_CACHE || {}).usage || {})[key] || {};
-  const total = (r.extraPrice || 0) * qty;
-
-  if (pay !== 'wallet') return openCardPay('extra', key, total, qty);
-
+async function payExtraWallet(key, qty, total) {
   const ok = await confirmModal({
     title: 'Pagar com o saldo?',
-    text: `${qty}x ${(LIMIT_META.find(m => m.key === key) || {}).label || key}, ${fmtBRLp(total)} serão debitados da sua carteira.`,
+    text: `${qty}x ${extraLabel(key)}, ${fmtBRLp(total)} serão debitados da sua carteira. A partir do próximo mês esse valor entra na renovação.`,
     ok: 'Confirmar'
   });
   if (!ok) return;
   try {
     await api('/billing/extras', { body: { key, qty, pay: 'wallet' } });
-    toast('Extra liberado!');
-    paintBilling();
-    if (key === 'whatsapps') loadChannels();
+    closeModal();
+    toast('Contratado! Já pode usar.');
+    afterExtraBought(key);
   } catch (e) { toast(e.message, 'error'); }
+}
+
+function extraLabel(key) {
+  const m = LIMIT_META.find(x => x.key === key) || {};
+  return m.buy || m.label || key;
+}
+
+// Recarrega o que mudou depois de contratar: os canais liberam na hora e a tela
+// de Assinatura passa a mostrar o novo custo mensal.
+function afterExtraBought(key) {
+  if (key === 'whatsapps') loadChannels().then(() => { if (state.view === 'settings') renderSettings(); });
+  if (state.view === 'billing') paintBilling();
+}
+
+// ---------------------------------------------------------------------------
+// POP-UP DE CONTRATAÇÃO DE EXTRAS — quantidade + escolha do meio de pagamento.
+// É assinatura: o valor passa a ser cobrado em toda renovação, seja no Pix
+// Automático, no cartão salvo ou no saldo.
+// ---------------------------------------------------------------------------
+let EXTRA_CTX = null, extraPoll = null;
+
+async function openExtraPay(key) {
+  const qty = extraQty(key, 0) || 1;
+  let d = BILL_CACHE;
+  if (!d) { try { d = BILL_CACHE = await api('/billing'); } catch (e) { return toast(e.message, 'error'); } }
+
+  const unit = extraUnitPrice(key) || (((d.usage || {})[key] || {}).extraPrice || 0);
+  if (!unit) return toast('O administrador ainda não definiu o preço deste item', 'error');
+  EXTRA_CTX = { key, qty, unit };
+
+  const c = d.card || {};
+  const saldo = (d.wallet || {}).balance || 0;
+  const meios = [
+    d.wooviReady && ['pix', 'Pix', 'Confirmação em segundos'],
+    (c.credit || c.debit) && ['card', 'Cartão', 'Crédito ou débito'],
+    ['wallet', 'Saldo', `Você tem ${fmtBRL(saldo)}`]
+  ].filter(Boolean);
+
+  openModal(`
+    <h2>${ico('plus')} Contratar ${esc(extraLabel(key))}</h2>
+    <p class="muted" style="margin:0 0 14px;font-size:13px">
+      ${fmtBRL(unit)} por unidade, <b>por mês</b>. Some quantas precisar.
+    </p>
+    <div class="extra-buy-row" style="margin-bottom:14px">
+      <div class="qty">
+        <button type="button" class="qty-b" onclick="modalQty(-1)" aria-label="Menos uma">−</button>
+        <input id="mq" class="qty-i" type="number" min="1" max="20" value="${qty}"
+               inputmode="numeric" oninput="modalQty(0)" aria-label="Quantidade">
+        <button type="button" class="qty-b" onclick="modalQty(1)" aria-label="Mais uma">+</button>
+      </div>
+      <div class="extra-total"><b id="mt">${fmtBRL(unit * qty)}</b><em>por mês</em></div>
+    </div>
+    <label style="margin-bottom:6px">Como quer pagar?</label>
+    <div class="pay-methods">
+      ${meios.map(([v, l, sub], i) => `<label class="pay-method">
+        <input type="radio" name="xpm" value="${v}" ${i === 0 ? 'checked' : ''}>
+        <span><b>${l}</b><em>${esc(sub)}</em></span>
+      </label>`).join('')}
+    </div>
+    <p class="hint" style="margin-top:12px">${ico('refresh', 12)} Cobrança mensal recorrente: o valor entra junto com a sua assinatura em toda renovação. Dá para cancelar depois.</p>
+    <div class="row" style="margin-top:14px">
+      <button class="btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn primary" onclick="confirmExtraPay(this)">Continuar</button>
+    </div>`);
+}
+
+function modalQty(d) {
+  const el = $('#mq'); if (!el || !EXTRA_CTX) return;
+  let n = Math.max(1, Math.min(20, Math.floor(Number(el.value) || 1) + d));
+  el.value = n; EXTRA_CTX.qty = n;
+  const t = $('#mt'); if (t) t.textContent = fmtBRL(EXTRA_CTX.unit * n);
+}
+
+async function confirmExtraPay(btn) {
+  if (!EXTRA_CTX) return;
+  modalQty(0);
+  const { key, qty, unit } = EXTRA_CTX;
+  const total = unit * qty;
+  const m = document.querySelector('input[name="xpm"]:checked');
+  const meio = m ? m.value : 'pix';
+
+  if (meio === 'card') { closeModal(); return openCardPay('extra', key, total, qty); }
+  if (meio === 'wallet') return payExtraWallet(key, qty, total);
+
+  const txt = btn.innerHTML; btn.disabled = true; btn.textContent = 'Gerando Pix…';
+  try {
+    const r = await api('/billing/extras', { body: { key, qty, pay: 'pix' } });
+    extraPixModal(r.charge);
+  } catch (e) {
+    toast(e.message, 'error');
+    btn.disabled = false; btn.innerHTML = txt;
+  }
+}
+
+// QR do Pix dentro do próprio pop-up, com confirmação automática.
+function extraPixModal(pc) {
+  const img = pc.qrCodeImage ? esc(pc.qrCodeImage) : localQrDataUrl(pc.brCode);
+  openModal(`
+    <h2>${ico('zap')} Pague o Pix para liberar</h2>
+    <p class="muted" style="margin:0 0 12px;font-size:13px">
+      ${fmtN(pc.extraQty)}x ${esc(extraLabel(pc.extraKey))}, <b style="color:var(--verde-deep)">${fmtBRL(pc.amount)}</b>.
+      Libera automaticamente assim que o pagamento cair.
+    </p>
+    <div class="pay-qr" style="margin:0 auto 12px">${img
+      ? `<img src="${img}" alt="QR Code Pix">`
+      : `<div class="pay-qr-ph">${ico('clock', 26)}</div>`}</div>
+    ${pc.brCode ? `<label>Pix copia-e-cola<textarea readonly rows="3" style="font-size:11px" onclick="this.select()">${esc(pc.brCode)}</textarea></label>` : ''}
+    <div class="row" style="margin-top:10px">
+      ${pc.brCode ? `<button class="btn no-grow" onclick="copyText(${JSON.stringify(esc(pc.brCode))})">${ico('copy', 13)} Copiar código</button>` : ''}
+      <button class="btn no-grow" onclick="checkExtraPix(true)">${ico('refresh', 13)} Já paguei</button>
+      <button class="btn danger no-grow" onclick="cancelExtraPix()">Cancelar</button>
+    </div>
+    <p class="muted" id="xpix-status" style="font-size:12px;margin:10px 0 0">${ico('clock', 12)} Aguardando pagamento…</p>`);
+  clearInterval(extraPoll);
+  extraPoll = setInterval(() => {
+    if (!document.getElementById('xpix-status')) return clearInterval(extraPoll);
+    checkExtraPix(false);
+  }, 5000);
+}
+
+async function checkExtraPix(manual) {
+  try {
+    const r = await api('/billing/pending');
+    if (r.paid) {
+      clearInterval(extraPoll);
+      closeModal();
+      toast('Pagamento confirmado! 🎉');
+      afterExtraBought(EXTRA_CTX ? EXTRA_CTX.key : 'whatsapps');
+    } else if (manual) {
+      const el = $('#xpix-status');
+      if (el) el.innerHTML = `${ico('clock', 12)} Ainda não identificamos o pagamento (${esc(r.status || 'aguardando')}). Confirma em segundos após o Pix.`;
+    }
+  } catch (e) { if (manual) toast(e.message, 'error'); }
+}
+
+async function cancelExtraPix() {
+  clearInterval(extraPoll);
+  try { await api('/billing/pending/cancel', { body: {} }); } catch {}
+  closeModal();
 }
 
 // Assinar/renovar abatendo do saldo da carteira (dinheiro das vendas no cartão).
@@ -5191,9 +5378,9 @@ async function submitCardPay(btn) {
     if (ctx.mode === 'plan') await api('/billing/subscribe-card', { body: { ...body, planId: ctx.id } });
     else await api('/billing/extras', { body: { ...body, key: ctx.id, qty: ctx.qty } });
     closeModal();
-    toast(ctx.mode === 'plan' ? 'Assinatura ativada! 🎉' : 'Extra liberado!');
-    paintBilling();
-    if (ctx.mode === 'extra' && ctx.id === 'whatsapps') loadChannels();
+    toast(ctx.mode === 'plan' ? 'Assinatura ativada! 🎉' : 'Contratado! Já pode usar.');
+    if (ctx.mode === 'plan') paintBilling();
+    else afterExtraBought(ctx.id);
   } catch (e) {
     toast(e.message, 'error');
     btn.disabled = false; btn.innerHTML = txt;
@@ -5696,8 +5883,10 @@ const LIMIT_META = [
   { key: 'contacts',  label: 'Contatos (leads)',          short: 'Leads',    ph: 'ilimitado' },
   { key: 'flows',     label: 'Fluxos de automação',       short: 'Fluxos',   ph: 'ilimitado' },
   { key: 'pixels',    label: 'Pixels de rastreamento',    short: 'Pixels',   ph: 'ilimitado' },
-  { key: 'links',     label: 'Links rastreáveis grátis',  short: 'Links',    ph: '1', extra: true },
-  { key: 'whatsapps', label: 'WhatsApps inclusos',        short: 'WhatsApp', ph: '1', extra: true }
+  // `buy` é como o item é chamado na hora de contratar unidades a mais — os
+  // rótulos acima descrevem o que o PLANO inclui, e ficam estranhos no "Contratar…".
+  { key: 'links',     label: 'Links rastreáveis grátis',  short: 'Links',    ph: '1', extra: true, buy: 'links rastreáveis' },
+  { key: 'whatsapps', label: 'WhatsApps inclusos',        short: 'WhatsApp', ph: '1', extra: true, buy: 'conexões de WhatsApp' }
 ];
 
 function planLimitFields(scope, lims) {

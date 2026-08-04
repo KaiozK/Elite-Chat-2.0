@@ -138,6 +138,14 @@ function subscribeWallet(acc, plan, broadcast) {
   ep.spendWallet(acc, total, `Assinatura ${plan.name}`, broadcast);   // 402 se faltar saldo
   acc.billing.method = 'wallet';
   acc.billing.pendingCharge = null;
+  // trocou de meio: desliga a recorrência do Pix para não cobrar duas vezes
+  // (a renovação passa a sair do saldo, na varredura diária)
+  if (acc.billing.wooviSubId) {
+    try { require('./woovi').cancelSubscription(acc.billing.wooviSubId); } catch {}
+    acc.billing.wooviSubId = '';
+    acc.billing.subCorrelationID = '';
+    acc.billing.subValue = 0;
+  }
   db.save();
 
   require('./woovi').applyPayment({ correlationID: cid, value: total }, broadcast);
@@ -156,6 +164,27 @@ async function buyExtra(acc, key, qty, body, broadcast) {
   const unit = limits.extraPrices()[key];
   if (!unit) throw erro('O administrador ainda não definiu o preço deste extra');
   const total = unit * n;
+
+  // ---- Pix: assíncrono. Devolve o QR e só libera quando o pagamento cai. ----
+  if (body.pay === 'pix') {
+    const woovi = require('./woovi');
+    if (!woovi.configured()) throw erro('Pix indisponível no momento');
+    const cid = `xtr-${acc.id}-${key}-${n}-${Date.now().toString(36)}`;
+    const charge = await woovi.createCharge({
+      correlationID: cid, value: total,
+      customer: { name: acc.name, email: acc.email },
+      comment: `EliteChat: ${n}x ${limits.LABEL[key]}`
+    });
+    acc.billing.pendingCharge = {
+      correlationID: cid, kind: 'extra', planId: acc.billing.planId, amount: total,
+      extraKey: key, extraQty: n,
+      brCode: charge.brCode || '', qrCodeImage: charge.qrCodeImage || '',
+      paymentLinkUrl: charge.paymentLinkUrl || '', ts: Date.now()
+    };
+    db.save();
+    return { ok: true, pix: true, charge: acc.billing.pendingCharge };
+  }
+
   const cid = `${body.pay === 'wallet' ? 'wallet' : 'card'}-extra-${acc.id}-${key}-${Date.now().toString(36)}`;
 
   // Pode pagar com o SALDO da carteira (dinheiro das vendas no cartão) ou
@@ -178,8 +207,12 @@ async function buyExtra(acc, key, qty, body, broadcast) {
     amount: total, kind: 'extra', chargeId: cid
   });
   db.save();
+  // O extra é RECORRENTE: entra no valor de toda renovação. No cartão isso é
+  // automático (chargeTotal), mas a assinatura do Pix Automático guarda um
+  // valor fixo e precisa ser refeita com o total novo.
+  require('./woovi').syncSubscription(acc, `compra de ${n}x ${key}`).catch(() => {});
   store.logEvent({ type: 'saas_extra_paid', accountId: acc.id, key, qty: n, value: total, gatewayId: r.gatewayId });
-  if (broadcast) broadcast('billing', { accountId: acc.id });
+  if (broadcast) { broadcast('billing', { accountId: acc.id }); broadcast('channels', { accountId: acc.id }); }
   return { ok: true, key, qty: acc.billing.extras[key], amount: total };
 }
 
@@ -226,21 +259,52 @@ async function renew(acc, broadcast) {
   }
 }
 
-// Varre as contas e renova as que vencem nas próximas 24h.
-async function runRenewals(broadcast) {
-  if (!available()) return { skipped: true };
-  const limite = Date.now() + 86400000;
-  const alvos = db.get().accounts.filter(a =>
-    a.billing && ['credit', 'debit'].includes(a.billing.method) &&
-    a.billing.status === 'active' && a.billing.card && a.billing.card.token &&
-    a.billing.periodEnd && a.billing.periodEnd <= limite);
-  let ok = 0, fail = 0;
-  for (const acc of alvos) {
-    const r = await renew(acc, broadcast);
-    r.ok ? ok++ : fail++;
+// ---------------------------------------------------------------------------
+// RENOVAÇÃO AUTOMÁTICA pelo SALDO da carteira.
+// Quem assinou com o saldo também tem assinatura mensal: no fim do ciclo o
+// valor (plano + extras) é debitado sozinho. Sem saldo, vai para `past_due`.
+// ---------------------------------------------------------------------------
+function renewWallet(acc, broadcast) {
+  const plan = limits.planOf(acc);
+  if (!plan) return { ok: false, reason: 'sem plano' };
+  const total = limits.chargeTotal(acc, plan);
+  const cid = `wallet-ren-${acc.id}-${plan.id}-${Date.now().toString(36)}`;
+  try {
+    require('./elitepay').spendWallet(acc, total, `Renovação ${plan.name}`, broadcast);
+    require('./woovi').applyPayment({ correlationID: cid, value: total }, broadcast);
+    store.logEvent({ type: 'saas_wallet_renewed', accountId: acc.id, value: total });
+    return { ok: true, amount: total };
+  } catch (e) {
+    acc.billing.status = 'past_due';
+    db.save();
+    store.logEvent({ type: 'saas_wallet_renew_failed', accountId: acc.id, error: e.message });
+    if (broadcast) broadcast('billing', { accountId: acc.id });
+    return { ok: false, reason: e.message };
   }
-  if (alvos.length) store.logEvent({ type: 'saas_card_renew_batch', total: alvos.length, ok, fail });
-  return { total: alvos.length, ok, fail };
+}
+
+// Varre as contas e renova as que vencem nas próximas 24h.
+// Cartão e saldo são renovados aqui; o Pix Automático é renovado pela própria
+// Woovi (a assinatura recorrente gera a cobrança e o webhook confirma).
+async function runRenewals(broadcast) {
+  const limite = Date.now() + 86400000;
+  const vencendo = a => a.billing && a.billing.status === 'active' &&
+    a.billing.periodEnd && a.billing.periodEnd <= limite;
+
+  const noCartao = available()
+    ? db.get().accounts.filter(a => vencendo(a) &&
+        ['credit', 'debit'].includes(a.billing.method) &&
+        a.billing.card && a.billing.card.token)
+    : [];
+  const naCarteira = db.get().accounts.filter(a => vencendo(a) && a.billing.method === 'wallet');
+
+  let ok = 0, fail = 0;
+  for (const acc of noCartao) { (await renew(acc, broadcast)).ok ? ok++ : fail++; }
+  for (const acc of naCarteira) { renewWallet(acc, broadcast).ok ? ok++ : fail++; }
+
+  const total = noCartao.length + naCarteira.length;
+  if (total) store.logEvent({ type: 'saas_renew_batch', total, cartao: noCartao.length, carteira: naCarteira.length, ok, fail });
+  return { total, ok, fail };
 }
 
 // Tick diário (com uma primeira passada 1min após subir o servidor).
@@ -250,4 +314,7 @@ function startRenewalJob(broadcast) {
   setInterval(tick, 24 * 3600 * 1000);
 }
 
-module.exports = { available, methods, charge, subscribe, subscribeWallet, buyExtra, renew, runRenewals, startRenewalJob };
+module.exports = {
+  available, methods, charge, subscribe, subscribeWallet, buyExtra,
+  renew, renewWallet, runRenewals, startRenewalJob
+};
