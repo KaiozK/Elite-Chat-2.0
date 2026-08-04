@@ -1,9 +1,9 @@
 // ============================================================================
-// COBRANÇA DOS PLANOS DO ELITECHAT NO CARTÃO (crédito/débito)
+// COBRANÇA DOS PLANOS DO ELITECHAT NO CARTÃO DE CRÉDITO E NO BOLETO
 //
-// O Pix (Woovi) continua sendo um meio; este módulo adiciona o CARTÃO para o
-// próprio SaaS: o cliente assina o EliteChat pagando no cartão, com renovação
-// automática usando o cartão salvo.
+// O Pix (Woovi) continua sendo um meio; este módulo adiciona o CARTÃO DE
+// CRÉDITO e o BOLETO para o próprio SaaS. No cartão a renovação é automática
+// pelo token salvo; no boleto o que se automatiza é a emissão do próximo.
 //
 // Usa o MESMO adquirente configurado pelo admin (Admin SaaS → Pagamentos), mas
 // SEM split: aqui o dinheiro é da plataforma, não de um lojista.
@@ -27,7 +27,8 @@ function methods() {
   const on = available();
   return {
     credit: on && !!c.credit,
-    debit: on && !!c.debit && c.provider === 'pagarme',
+    boleto: on && !!c.boleto,
+    boletoDueDays: Math.max(1, Number(c.boletoDueDays) || 3),
     maxInstallments: Math.min(12, Math.max(1, Number(c.maxInstallments) || 1))
   };
 }
@@ -46,23 +47,20 @@ function validate(body) {
 
 // ---------------------------------------------------------------------------
 // Cobra um valor no cartão em nome da PLATAFORMA.
-// `kind`: 'credit' | 'debit'
+// Só existe crédito: à vista o Pix é melhor para as duas pontas.
 // ---------------------------------------------------------------------------
-async function charge({ acc, valueCents, kind, body, description, correlationID }) {
+async function charge({ acc, valueCents, body, description, correlationID }) {
   const cfg = cardCfg();
   const m = methods();
-  if (!m.credit && !m.debit) throw erro('Pagamento com cartão indisponível. O administrador ainda não configurou o adquirente');
-  if (kind === 'credit' && !m.credit) throw erro('Cartão de crédito indisponível');
-  if (kind === 'debit' && !m.debit) throw erro('Cartão de débito indisponível');
+  if (!m.credit) throw erro('Pagamento com cartão indisponível. O administrador ainda não configurou o adquirente');
 
   const { c, doc } = validate(body);
-  const parcelas = kind === 'debit' ? 1 : Math.max(1, Math.min(Number(body.installments) || 1, m.maxInstallments));
+  const parcelas = Math.max(1, Math.min(Number(body.installments) || 1, m.maxInstallments));
 
   const r = await cards.driver(cfg).charge({
     cfg: cards.creds(cfg),
     valueCents,
     installments: parcelas,
-    kind,
     card: c,
     holder: body.holder || {},
     customer: {
@@ -80,7 +78,7 @@ async function charge({ acc, valueCents, kind, body, description, correlationID 
   if (!r || r.status !== 'paid') {
     throw erro(r && r.message ? r.message : 'Pagamento recusado pelo emissor do cartão');
   }
-  return { ...r, installments: parcelas, kind };
+  return { ...r, installments: parcelas, kind: 'credit' };
 }
 
 // ---------------------------------------------------------------------------
@@ -88,18 +86,17 @@ async function charge({ acc, valueCents, kind, body, description, correlationID 
 // hora (cartão é síncrono — diferente do Pix, que espera o webhook).
 // ---------------------------------------------------------------------------
 async function subscribe(acc, plan, body, broadcast) {
-  const kind = body.kind === 'debit' ? 'debit' : 'credit';
   const total = plan.price + limits.extrasCost(acc);
   const cid = `card-sub-${acc.id}-${plan.id}-${Date.now().toString(36)}`;
 
   const r = await charge({
-    acc, valueCents: total, kind, body,
+    acc, valueCents: total, body,
     description: `EliteChat: ${plan.name}`,
     correlationID: cid
   });
 
   // Guarda o cartão para renovar sozinho no próximo ciclo (só o token/últimos 4).
-  acc.billing.method = kind;
+  acc.billing.method = 'credit';
   acc.billing.card = {
     token: r.cardToken || r.token || '',
     brand: r.brand || '',
@@ -120,9 +117,68 @@ async function subscribe(acc, plan, body, broadcast) {
   require('./woovi').applyPayment({ correlationID: cid, value: total }, broadcast);
   store.logEvent({
     type: 'saas_card_paid', accountId: acc.id, planId: plan.id,
-    value: total, kind, gatewayId: r.gatewayId, brand: r.brand, last4: r.last4
+    value: total, kind: 'credit', gatewayId: r.gatewayId, brand: r.brand, last4: r.last4
   });
   return { ok: true, amount: total, brand: r.brand, last4: r.last4, installments: r.installments };
+}
+
+// ---------------------------------------------------------------------------
+// BOLETO — para a plataforma. Como o Pix, é assíncrono: gera a cobrança, mostra
+// a linha digitável e o PDF, e a liberação sai quando o banco compensa.
+// ---------------------------------------------------------------------------
+async function gerarBoleto({ acc, valueCents, description, correlationID }) {
+  const cfg = cardCfg();
+  if (!methods().boleto) throw erro('Boleto indisponível. O administrador ainda não habilitou esse meio');
+  const doc = String((acc.billing && acc.billing.taxId) || '').replace(/\D/g, '');
+  const r = await cards.driver(cfg).boleto({
+    cfg: cards.creds(cfg),
+    valueCents,
+    customer: { name: acc.name, email: acc.email, taxId: doc },
+    description, correlationID,
+    dueDays: methods().boletoDueDays
+  });
+  return {
+    correlationID, amount: valueCents,
+    gatewayId: r.gatewayId || '',
+    boletoUrl: r.url || '', boletoLine: r.line || '', boletoBarcode: r.barcode || '',
+    dueDate: r.dueDate || 0, ts: Date.now()
+  };
+}
+
+// Assinar o plano no boleto: fica pendente até compensar.
+async function subscribeBoleto(acc, plan, body, broadcast) {
+  const total = limits.chargeTotal(acc, plan);
+  const cid = `bol-sub-${acc.id}-${plan.id}-${Date.now().toString(36)}`;
+  if (body && body.taxId) acc.billing.taxId = String(body.taxId).replace(/\D/g, '');
+
+  const b = await gerarBoleto({
+    acc, valueCents: total, correlationID: cid,
+    description: `EliteChat: assinatura ${plan.name}`
+  });
+  acc.billing.method = 'boleto';
+  acc.billing.pendingCharge = { ...b, kind: 'sub', via: 'boleto', planId: plan.id };
+  // boleto não debita sozinho: a recorrência Pix sairia por cima
+  if (acc.billing.wooviSubId) {
+    try { require('./woovi').cancelSubscription(acc.billing.wooviSubId); } catch {}
+    acc.billing.wooviSubId = ''; acc.billing.subCorrelationID = ''; acc.billing.subValue = 0;
+  }
+  db.save();
+  store.logEvent({ type: 'saas_boleto_issued', accountId: acc.id, planId: plan.id, value: total });
+  if (broadcast) broadcast('billing', { accountId: acc.id });
+  return { ok: true, boleto: true, charge: acc.billing.pendingCharge };
+}
+
+// Consulta o boleto pendente no adquirente e aplica o pagamento se compensou.
+async function checkBoleto(acc, broadcast) {
+  const pc = acc.billing.pendingCharge;
+  if (!pc || !pc.gatewayId) return { paid: false, none: !pc };
+  const cfg = cardCfg();
+  const r = await cards.driver(cfg).getCharge({ cfg: cards.creds(cfg), gatewayId: pc.gatewayId });
+  if (r && r.status === 'paid') {
+    require('./woovi').applyPayment({ correlationID: pc.correlationID, value: pc.amount }, broadcast);
+    return { paid: true };
+  }
+  return { paid: false, status: r && r.status };
 }
 
 // ---------------------------------------------------------------------------
@@ -176,13 +232,29 @@ async function buyExtra(acc, key, qty, body, broadcast) {
       comment: `EliteChat: ${n}x ${limits.LABEL[key]}`
     });
     acc.billing.pendingCharge = {
-      correlationID: cid, kind: 'extra', planId: acc.billing.planId, amount: total,
+      correlationID: cid, kind: 'extra', via: 'pix', planId: acc.billing.planId, amount: total,
       extraKey: key, extraQty: n,
       brCode: charge.brCode || '', qrCodeImage: charge.qrCodeImage || '',
       paymentLinkUrl: charge.paymentLinkUrl || '', ts: Date.now()
     };
     db.save();
     return { ok: true, pix: true, charge: acc.billing.pendingCharge };
+  }
+
+  // ---- Boleto: também assíncrono, libera quando o banco compensa. ----
+  if (body.pay === 'boleto') {
+    const cid = `xtr-${acc.id}-${key}-${n}-${Date.now().toString(36)}`;
+    if (body.taxId) acc.billing.taxId = String(body.taxId).replace(/\D/g, '');
+    const b = await gerarBoleto({
+      acc, valueCents: total, correlationID: cid,
+      description: `EliteChat: ${n}x ${limits.LABEL[key]}`
+    });
+    acc.billing.pendingCharge = {
+      ...b, kind: 'extra', via: 'boleto', planId: acc.billing.planId,
+      extraKey: key, extraQty: n
+    };
+    db.save();
+    return { ok: true, boleto: true, charge: acc.billing.pendingCharge };
   }
 
   const cid = `${body.pay === 'wallet' ? 'wallet' : 'card'}-extra-${acc.id}-${key}-${Date.now().toString(36)}`;
@@ -193,9 +265,8 @@ async function buyExtra(acc, key, qty, body, broadcast) {
   if (body.pay === 'wallet') {
     require('./elitepay').spendWallet(acc, total, `${n}x ${limits.LABEL[key]}`, broadcast);
   } else {
-    const kind = body.kind === 'debit' ? 'debit' : 'credit';
     r = await charge({
-      acc, valueCents: total, kind, body,
+      acc, valueCents: total, body,
       description: `EliteChat: ${n}x ${limits.LABEL[key]}`,
       correlationID: cid
     });
@@ -231,14 +302,12 @@ async function renew(acc, broadcast) {
   const total = limits.chargeTotal(acc, plan);
   const cid = `card-ren-${acc.id}-${plan.id}-${Date.now().toString(36)}`;
   const cfg = cardCfg();
-  const kind = b.method === 'debit' ? 'debit' : 'credit';
 
   try {
     const r = await cards.driver(cfg).charge({
       cfg: cards.creds(cfg),
       valueCents: total,
       installments: 1,
-      kind,
       card: { token: b.card.token },        // sem PAN: o adquirente resolve pelo token
       holder: {},
       customer: { name: acc.name, email: acc.email },
@@ -283,38 +352,146 @@ function renewWallet(acc, broadcast) {
   }
 }
 
-// Varre as contas e renova as que vencem nas próximas 24h.
-// Cartão e saldo são renovados aqui; o Pix Automático é renovado pela própria
-// Woovi (a assinatura recorrente gera a cobrança e o webhook confirma).
+// ---------------------------------------------------------------------------
+// RENOVAÇÃO por BOLETO. Boleto não debita sozinho, então o que dá para
+// automatizar é a emissão: alguns dias antes do vencimento o próximo boleto é
+// gerado e fica pendente para o cliente pagar. Se não pagar, o gate de envio
+// trata o vencimento normalmente.
+// ---------------------------------------------------------------------------
+async function renewBoleto(acc, broadcast) {
+  const plan = limits.planOf(acc);
+  if (!plan) return { ok: false, reason: 'sem plano' };
+  if (acc.billing.pendingCharge) return { ok: true, reason: 'boleto já emitido' };
+
+  const total = limits.chargeTotal(acc, plan);
+  const cid = `bol-ren-${acc.id}-${plan.id}-${Date.now().toString(36)}`;
+  try {
+    const b = await gerarBoleto({
+      acc, valueCents: total, correlationID: cid,
+      description: `EliteChat: renovação ${plan.name}`
+    });
+    acc.billing.pendingCharge = { ...b, kind: 'sub', planId: plan.id, via: 'boleto' };
+    db.save();
+    store.logEvent({ type: 'saas_boleto_renewal_issued', accountId: acc.id, value: total });
+    if (broadcast) broadcast('billing', { accountId: acc.id });
+    return { ok: true, amount: total };
+  } catch (e) {
+    store.logEvent({ type: 'saas_boleto_renewal_failed', accountId: acc.id, error: e.message });
+    return { ok: false, reason: e.message };
+  }
+}
+
+// Varre as contas e renova as que vencem em breve.
+// Cartão e saldo são cobrados aqui; o boleto da renovação é emitido com
+// antecedência (o prazo de vencimento + 2 dias de folga); o Pix Automático é
+// renovado pela própria Woovi (a recorrência gera a cobrança e o webhook confirma).
 async function runRenewals(broadcast) {
-  const limite = Date.now() + 86400000;
-  const vencendo = a => a.billing && a.billing.status === 'active' &&
-    a.billing.periodEnd && a.billing.periodEnd <= limite;
+  const agora = Date.now();
+  const limite = agora + 86400000;
+  const ativa = a => a.billing && a.billing.status === 'active' && a.billing.periodEnd;
+  const vencendo = a => ativa(a) && a.billing.periodEnd <= limite;
 
   const noCartao = available()
     ? db.get().accounts.filter(a => vencendo(a) &&
-        ['credit', 'debit'].includes(a.billing.method) &&
-        a.billing.card && a.billing.card.token)
+        a.billing.method === 'credit' && a.billing.card && a.billing.card.token)
     : [];
   const naCarteira = db.get().accounts.filter(a => vencendo(a) && a.billing.method === 'wallet');
+
+  // boleto precisa de tempo para o cliente pagar e o banco compensar
+  const folga = (methods().boletoDueDays + 2) * 86400000;
+  const noBoleto = methods().boleto
+    ? db.get().accounts.filter(a => ativa(a) && a.billing.method === 'boleto' &&
+        a.billing.periodEnd <= agora + folga && !a.billing.pendingCharge)
+    : [];
 
   let ok = 0, fail = 0;
   for (const acc of noCartao) { (await renew(acc, broadcast)).ok ? ok++ : fail++; }
   for (const acc of naCarteira) { renewWallet(acc, broadcast).ok ? ok++ : fail++; }
+  for (const acc of noBoleto) { (await renewBoleto(acc, broadcast)).ok ? ok++ : fail++; }
 
-  const total = noCartao.length + naCarteira.length;
-  if (total) store.logEvent({ type: 'saas_renew_batch', total, cartao: noCartao.length, carteira: naCarteira.length, ok, fail });
+  const total = noCartao.length + naCarteira.length + noBoleto.length;
+  if (total) {
+    store.logEvent({
+      type: 'saas_renew_batch', total, ok, fail,
+      cartao: noCartao.length, carteira: naCarteira.length, boleto: noBoleto.length
+    });
+  }
   return { total, ok, fail };
+}
+
+// ---------------------------------------------------------------------------
+// CANCELAMENTO DE CONEXÃO EXTRA.
+//
+// Cancelar não desliga na hora: o cliente já pagou o ciclo, então a conexão
+// continua funcionando até o vencimento. Quando a data chega, o canal é apagado
+// junto com tudo que é dele e a unidade extra sai da cobrança — é o que o
+// cliente confirmou ao cancelar, e está escrito no aviso.
+// ---------------------------------------------------------------------------
+function agendarCancelamento(acc, ch) {
+  const fim = Math.max(Date.now(), Number(acc.billing.periodEnd) || 0);
+  ch.canceledAt = Date.now();
+  ch.cancelAt = fim;
+  db.save();
+  store.logEvent({ type: 'channel_cancel_scheduled', accountId: acc.id, channelId: ch.id, at: fim });
+  return ch;
+}
+
+function desfazerCancelamento(acc, ch) {
+  ch.canceledAt = 0;
+  ch.cancelAt = 0;
+  db.save();
+  store.logEvent({ type: 'channel_cancel_undone', accountId: acc.id, channelId: ch.id });
+  return ch;
+}
+
+// Varre os cancelamentos vencidos e executa a exclusão.
+async function runChannelCancellations(broadcast) {
+  const agora = Date.now();
+  let apagados = 0;
+  for (const acc of db.get().accounts) {
+    const vencidos = (acc.channels || []).filter((c, i) => i > 0 && c.cancelAt && c.cancelAt <= agora);
+    for (const ch of vencidos) {
+      // solta o número na Meta antes de sumir com o canal
+      try {
+        const w = ch.wa || {};
+        if (w.wabaId && w.accessToken) await require('./meta').unsubscribeApp(w.accessToken, w.wabaId);
+      } catch {}
+      const removido = store.purgeChannel(acc, ch.id);
+      // a unidade deixa de ser cobrada a partir da próxima renovação
+      const atual = Number(acc.billing.extras.whatsapps) || 0;
+      if (atual > 0) acc.billing.extras.whatsapps = atual - 1;
+      db.save();
+      require('./woovi').syncSubscription(acc, 'cancelamento de conexão').catch(() => {});
+      store.logEvent({
+        type: 'channel_purged', accountId: acc.id, channelId: ch.id,
+        label: ch.label, ...removido
+      });
+      if (broadcast) {
+        broadcast('channels', { accountId: acc.id });
+        broadcast('billing', { accountId: acc.id });
+      }
+      apagados++;
+    }
+  }
+  if (apagados) store.logEvent({ type: 'channel_purge_batch', total: apagados });
+  return { apagados };
 }
 
 // Tick diário (com uma primeira passada 1min após subir o servidor).
 function startRenewalJob(broadcast) {
-  const tick = () => runRenewals(broadcast).catch(e => store.logEvent({ type: 'saas_renew_error', error: e.message }));
+  const tick = async () => {
+    try { await runRenewals(broadcast); }
+    catch (e) { store.logEvent({ type: 'saas_renew_error', error: e.message }); }
+    try { await runChannelCancellations(broadcast); }
+    catch (e) { store.logEvent({ type: 'channel_purge_error', error: e.message }); }
+  };
   setTimeout(tick, 60000);
   setInterval(tick, 24 * 3600 * 1000);
 }
 
 module.exports = {
-  available, methods, charge, subscribe, subscribeWallet, buyExtra,
-  renew, renewWallet, runRenewals, startRenewalJob
+  available, methods, charge, subscribe, subscribeWallet, subscribeBoleto,
+  gerarBoleto, checkBoleto, buyExtra,
+  renew, renewWallet, renewBoleto, runRenewals, startRenewalJob,
+  agendarCancelamento, desfazerCancelamento, runChannelCancellations
 };

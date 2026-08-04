@@ -167,7 +167,7 @@ function defaultCheckout() {
     badges: { on: true },       // selos de segurança no rodapé
     // formas de pagamento aceitas NESTE checkout. Cartão só surte efeito se o
     // admin ligou o adquirente E o lojista concluiu a conta de cartão (KYC).
-    methods: { pix: true, credit: true, debit: false }
+    methods: { pix: true, credit: true, boleto: false }
   };
 }
 // ordem padrão dos blocos do checkout (arrastáveis no builder)
@@ -913,7 +913,7 @@ function checkoutBranding(acc, opts) {
     blocks: Array.isArray(ck.blocks) && ck.blocks.length ? ck.blocks : defaultBlocks(),
     timer: ck.timer || {}, benefits: ck.benefits || {}, testimonial: ck.testimonial || {},
     guarantee: ck.guarantee || {}, faq: ck.faq || {}, notice: ck.notice || {}, badges: ck.badges || {},
-    methods: Object.assign({ pix: true, credit: true, debit: false }, ck.methods || {}),
+    methods: Object.assign({ pix: true, credit: true, boleto: false }, ck.methods || {}),
     checkoutName: ck.name || '', productId: prod ? prod.id : '', checkoutId: ck.id || ''
   };
 }
@@ -1137,10 +1137,11 @@ function cardCapability(acc) {
     ready,
     mode: card.settleMode || 'wallet',
     settleCredit: cards.settleDays(card, 'credit'),
-    settleDebit: cards.settleDays(card, 'debit'),
+    settleBoleto: cards.settleDays(card, 'boleto'),
     settleRules: cards.SETTLE_RULES[card.provider] || cards.SETTLE_RULES.pagarme,
     credit: ready && !!pub.credit,
-    debit: ready && !!pub.debit
+    boleto: ready && !!pub.boleto,
+    boletoDueDays: pub.boletoDueDays
   };
 }
 
@@ -1192,12 +1193,11 @@ async function payWithCard(chargeId, body, broadcast) {
   if (ch.status !== 'active') { const e = new Error('Esta cobrança não está mais ativa'); e.status = 400; throw e; }
   if (ch.expiresAt && ch.expiresAt < Date.now()) { const e = new Error('Esta cobrança expirou'); e.status = 400; throw e; }
 
-  const kind = body.kind === 'debit' ? 'debit' : 'credit';
-  if (kind === 'credit' && !card.credit) { const e = new Error('Cartão de crédito indisponível'); e.status = 400; throw e; }
-  if (kind === 'debit' && !card.debit) { const e = new Error('Cartão de débito indisponível'); e.status = 400; throw e; }
+  const kind = 'credit';   // não há débito: à vista o Pix cobre melhor
+  if (!card.credit) { const e = new Error('Cartão de crédito indisponível'); e.status = 400; throw e; }
   // Blindagem por checkout: o lojista pode ter desligado o cartão nesta página.
   // Não confia no front — revalida contra o que foi salvo no checkout.
-  const ckMethods = Object.assign({ pix: true, credit: true, debit: false }, (findCheckout(acc, ch.checkoutId) || {}).methods || {});
+  const ckMethods = Object.assign({ pix: true, credit: true, boleto: false }, (findCheckout(acc, ch.checkoutId) || {}).methods || {});
   if (!ckMethods[kind]) { const e = new Error('Este checkout não aceita esse método de pagamento'); e.status = 400; throw e; }
 
   const c = body.card || {};
@@ -1210,7 +1210,7 @@ async function payWithCard(chargeId, body, broadcast) {
   if (!nome) { const e = new Error('Informe o nome do titular'); e.status = 400; throw e; }
   if (doc.length !== 11 && doc.length !== 14) { const e = new Error('Informe um CPF ou CNPJ válido'); e.status = 400; throw e; }
 
-  const parcelas = kind === 'debit' ? 1 : Math.max(1, Math.min(Number(body.installments) || 1, Number(card.maxInstallments) || 1));
+  const parcelas = Math.max(1, Math.min(Number(body.installments) || 1, Number(card.maxInstallments) || 1));
   const fee = cards.computeCardFee(card, ch.value);
 
   // REPASSE. No modo 'wallet' NÃO há split: o valor cheio entra na conta da
@@ -1279,6 +1279,86 @@ async function payWithCard(chargeId, body, broadcast) {
   const e = new Error(cardRefusalMessage(r.message));
   e.status = 400;
   throw e;
+}
+
+// ---------------------------------------------------------------------------
+// BOLETO no checkout do lojista.
+// Diferente do cartão, não aprova na hora: emitimos, devolvemos a linha
+// digitável e o PDF, e a cobrança só vira 'paid' quando o adquirente avisa a
+// compensação pelo /card-webhook (que já reconfere o status na API).
+// ---------------------------------------------------------------------------
+async function payWithBoleto(chargeId, body, broadcast) {
+  const found = findChargeAnywhere(chargeId);
+  if (!found) { const e = new Error('Cobrança não encontrada'); e.status = 404; throw e; }
+  const { acc, ch } = found;
+
+  const card = cardConfig();
+  const pronto = card.settleMode === 'wallet' ? { ok: true, ca: {} } : cardReady(acc);
+  if (!pronto.ok) { const e = new Error(pronto.reason); e.status = 400; throw e; }
+  if (ch.status === 'paid') { const e = new Error('Esta cobrança já foi paga'); e.status = 400; throw e; }
+  if (ch.status !== 'active') { const e = new Error('Esta cobrança não está mais ativa'); e.status = 400; throw e; }
+  if (!card.boleto) { const e = new Error('Boleto indisponível'); e.status = 400; throw e; }
+
+  const ckMethods = Object.assign({ pix: true, credit: true, boleto: false }, (findCheckout(acc, ch.checkoutId) || {}).methods || {});
+  if (!ckMethods.boleto) { const e = new Error('Este checkout não aceita boleto'); e.status = 400; throw e; }
+
+  const pagador = body.customer || {};
+  const nome = String(pagador.name || (ch.payer && ch.payer.name) || ch.contactName || '').trim();
+  const doc = String(pagador.taxId || (ch.payer && ch.payer.taxID) || '').replace(/\D/g, '');
+  if (!nome) { const e = new Error('Informe o nome do pagador'); e.status = 400; throw e; }
+  if (doc.length !== 11 && doc.length !== 14) { const e = new Error('Informe um CPF ou CNPJ válido'); e.status = 400; throw e; }
+
+  const fee = cards.computeCardFee(card, ch.value);
+  const ca = pronto.ca;
+  const split = card.settleMode === 'wallet' ? null : cards.driver(card).splitFor({
+    recipientId: ca.recipientId,
+    walletId: ca.walletId,
+    platformRecipientId: card.platformRecipientId,
+    platformWalletId: (card.asaas && card.asaas.walletId) || '',
+    valueCents: ch.value,
+    platformCut: fee.platformCut
+  });
+
+  let r;
+  try {
+    r = await cards.driver(card).boleto({
+      cfg: cards.creds(card),
+      valueCents: ch.value,
+      customer: { name: nome, taxId: doc, email: pagador.email || (ch.payer && ch.payer.email) || '', phone: pagador.phone || ch.waId || '' },
+      description: ch.comment || 'Pagamento',
+      correlationID: ch.correlationID,
+      dueDays: Math.max(1, Number(card.boletoDueDays) || 3),
+      split
+    });
+  } catch (e) {
+    log(acc, { type: 'boleto_error', chargeId: ch.id, detail: e.message });
+    plog({ type: 'boleto_error', accountId: acc.id, accountName: acc.name, error: e.message });
+    db.save();
+    throw e;
+  }
+
+  ch.method = 'boleto';
+  // Reaproveita `ch.card` de propósito: é onde o webhook procura o gatewayId.
+  ch.card = {
+    provider: card.provider, kind: 'boleto', installments: 1,
+    brand: '', last4: '',
+    status: r.status, gatewayId: r.gatewayId, authCode: '',
+    boletoUrl: r.url || '', boletoLine: r.line || '', boletoBarcode: r.barcode || '',
+    dueDate: r.dueDate || 0,
+    attemptedAt: Date.now()
+  };
+  ch.feePercent = fee.feePercent;
+  ch.feeFixed = fee.feeFixed;
+  ch.platformCut = fee.platformCut;
+  db.save();
+
+  log(acc, { type: 'boleto_issued', chargeId: ch.id, detail: `Boleto emitido, ${fmtBRL(ch.value)}` });
+  plog({ type: 'boleto_issued', accountId: acc.id, accountName: acc.name, amount: ch.value, provider: card.provider });
+  return {
+    ok: true, status: 'pending',
+    boleto: { url: r.url || '', line: r.line || '', barcode: r.barcode || '', dueDate: r.dueDate || 0 },
+    message: 'Boleto emitido. A confirmação chega assim que o banco compensar o pagamento.'
+  };
 }
 
 // Traduz o retorno do adquirente para algo que o pagador entenda.
@@ -1519,7 +1599,7 @@ module.exports = {
   identifyPayer, fmtCpfCnpj, findProduct, findCheckout, checkoutBranding,
   TPL_ROLES, TPL_VARS, tplValues, roleOf, setTemplateRole, templatesByRole, pickTemplate,
   findChargeAnywhere,
-  cardConfig, cardPublic, payWithCard, refreshCardStatus, installmentOptions,
+  cardConfig, cardPublic, payWithCard, payWithBoleto, refreshCardStatus, installmentOptions,
   cardAccount, cardAccountView, cardCapability, cardReady, registerCardAccount, syncCardAccount,
   creditCardSale, releaseFor, releaseReceivables, spendWallet, computeWithdrawFee, debitWithdraw,
   cardWebhookHandler, cardWebhookToken,

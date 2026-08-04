@@ -114,6 +114,10 @@ function emptyChannel(label) {
     label: label || 'WhatsApp',
     createdAt: Date.now(),
     archived: false,
+    // Cancelamento de conexão EXTRA: continua funcionando até `cancelAt` e, na
+    // virada, o canal é apagado com tudo que é dele (ver store.purgeChannel).
+    canceledAt: 0,
+    cancelAt: 0,
     wa: emptyWa(),
     // Os MODELOS aprovados pertencem à WABA, e cada canal tem a sua. Guardar o
     // cache por canal evita mostrar (e disparar) um template que não existe no
@@ -266,7 +270,8 @@ function emptyBilling() {
     pendingCharge: null,   // { correlationID, kind, planId, amount, brCode, qrCodeImage, paymentLinkUrl, ts }
     startedAt: 0, canceledAt: 0,
     // ---- Meio de pagamento da assinatura ----
-    method: 'pix',         // pix | credit | debit, como o cliente paga o EliteChat
+    method: 'pix',         // pix | credit | boleto | wallet, como o cliente paga o EliteChat
+    taxId: '',             // CPF/CNPJ do titular — exigido para emitir boleto
     card: {                // cartão tokenizado para renovar automaticamente
       token: '', brand: '', last4: '', holderName: '', gatewayCustomerId: ''
     },

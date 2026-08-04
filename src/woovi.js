@@ -121,10 +121,12 @@ async function syncSubscription(acc, motivo) {
 //   sub-<conta>-<plano>-<r>            assinatura paga no Pix
 //   topup-<conta>-<r>                  recarga da carteira
 //   xtr-<conta>-<recurso>-<qtd>-<r>    unidade extra paga no Pix
-//   card-sub-<conta>-<plano>-<r>       assinatura no cartão
-//   card-ren-<conta>-<plano>-<r>       renovação no cartão
+//   card-sub-<conta>-<plano>-<r>       assinatura no cartão de crédito
+//   card-ren-<conta>-<plano>-<r>       renovação no cartão de crédito
 //   wallet-sub-<conta>-<plano>-<r>     assinatura pelo saldo
 //   wallet-ren-<conta>-<plano>-<r>     renovação pelo saldo
+//   bol-sub-<conta>-<plano>-<r>        assinatura no boleto
+//   bol-ren-<conta>-<plano>-<r>        renovação no boleto
 //   (qualquer outro)                   renovação gerada pela recorrência Woovi
 function applyPayment(charge, broadcast) {
   const data = db.get();
@@ -133,9 +135,9 @@ function applyPayment(charge, broadcast) {
   if (data.revenue.some(r => r.chargeId === cid && r.chargeId)) return { ok: true, duplicate: true };
 
   let acc = null, kind = '', planId = '', extraKey = '', extraQty = 0;
-  // Cartão e saldo pagam com prefixo próprio ("card-" / "wallet-"). Sem tratar
-  // esses prefixos, a cobrança era aprovada mas a assinatura nunca ativava.
-  const meio = /^(card|wallet)-(sub|ren)-(.+)$/.exec(cid);
+  // Cartão, saldo e boleto pagam com prefixo próprio. Sem tratar esses
+  // prefixos, a cobrança era aprovada mas a assinatura nunca ativava.
+  const meio = /^(card|wallet|bol)-(sub|ren)-(.+)$/.exec(cid);
   if (meio) {
     const parts = meio[3].split('-');
     acc = db.findAccount(parts[0]);

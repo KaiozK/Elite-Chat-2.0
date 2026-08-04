@@ -643,7 +643,10 @@ module.exports = function (broadcast, clients) {
       qualityRating: w.qualityRating || '',
       identityError: w.identityError || '',
       unread: acc.contacts.filter(c => (c.chId || dflt) === ch.id).reduce((s, c) => s + (c.unread || 0), 0),
-      contacts: acc.contacts.filter(c => (c.chId || dflt) === ch.id).length
+      contacts: acc.contacts.filter(c => (c.chId || dflt) === ch.id).length,
+      // cancelamento agendado: a conexão segue ativa até `cancelAt`
+      canceledAt: ch.canceledAt || 0,
+      cancelAt: ch.cancelAt || 0
     };
   }
 
@@ -737,6 +740,53 @@ module.exports = function (broadcast, clients) {
     agents.log(acc, req.who, 'channel_delete', `Removeu o canal ${ch.label}`);
     res.json({ ok: true });
   }));
+
+  // ---- Cancelar uma conexão EXTRA ----
+  // Não desliga na hora: o ciclo já foi pago, então a conexão segue ativa até o
+  // vencimento. Na virada, o canal é APAGADO com tudo que é dele (conversas,
+  // contatos, funil, agendamentos) e a unidade sai da cobrança. Sem volta.
+  router.post('/channels/:id/cancel', auth, ownerOnly, (req, res) => {
+    const acc = req.acc;
+    const idx = (acc.channels || []).findIndex(c => c.id === req.params.id);
+    if (idx < 0) return res.status(404).json({ error: 'Conexão não encontrada' });
+    if (idx === 0) return res.status(400).json({ error: 'A conexão principal do plano não pode ser cancelada' });
+    const ch = acc.channels[idx];
+    if (ch.cancelAt) return res.json({ channel: channelPublic(acc, ch) });
+    saas.agendarCancelamento(acc, ch);
+    agents.log(acc, req.who, 'channel_cancel', `Cancelou a conexão ${ch.label}`);
+    res.json({ channel: channelPublic(acc, ch) });
+  });
+
+  // Voltar atrás enquanto a data não chegou.
+  router.post('/channels/:id/cancel/undo', auth, ownerOnly, (req, res) => {
+    const ch = (req.acc.channels || []).find(c => c.id === req.params.id);
+    if (!ch) return res.status(404).json({ error: 'Conexão não encontrada' });
+    saas.desfazerCancelamento(req.acc, ch);
+    agents.log(req.acc, req.who, 'channel_cancel_undo', `Reativou a conexão ${ch.label}`);
+    res.json({ channel: channelPublic(req.acc, ch) });
+  });
+
+  // O que some junto com a conexão — a tela mostra isso ANTES de confirmar.
+  router.get('/channels/:id/cancel/preview', auth, ownerOnly, (req, res) => {
+    const acc = req.acc;
+    const idx = (acc.channels || []).findIndex(c => c.id === req.params.id);
+    if (idx < 0) return res.status(404).json({ error: 'Conexão não encontrada' });
+    if (idx === 0) return res.status(400).json({ error: 'A conexão principal do plano não pode ser cancelada' });
+    const padrao = store.defChId(acc);
+    const doCanal = o => (o.chId || padrao) === req.params.id;
+    const contatos = (acc.contacts || []).filter(doCanal);
+    const waIds = new Set(contatos.map(c => c.waId));
+    res.json({
+      label: acc.channels[idx].label,
+      until: Math.max(Date.now(), Number(acc.billing.periodEnd) || 0),
+      apaga: {
+        contacts: contatos.length,
+        messages: (acc.messages || []).filter(doCanal).length,
+        campaigns: (acc.campaigns || []).filter(doCanal).length,
+        schedules: (acc.schedules || []).filter(e => e.contactWaId && waIds.has(e.contactWaId)).length
+      }
+    });
+  });
 
   // ============ USO x LIMITES DO PLANO ============
   router.get('/limits', auth, (req, res) => {
@@ -2697,13 +2747,21 @@ module.exports = function (broadcast, clients) {
     });
   });
 
-  // ---- Assinar o plano pagando no CARTÃO (crédito/débito) ----
+  // ---- Assinar o plano no CARTÃO DE CRÉDITO ----
   // Diferente do Pix, o cartão é síncrono: aprovou, a assinatura já ativa.
   router.post('/billing/subscribe-card', auth, ownerOnly, h(async (req, res) => {
     const b = req.body || {};
     const plan = db.get().plans.find(p => p.id === b.planId && !p.archived);
     if (!plan) return res.status(400).json({ error: 'Plano não encontrado' });
     res.json(await saas.subscribe(req.acc, plan, b, broadcast));
+  }));
+
+  // ---- Assinar o plano no BOLETO (compensa em 1 a 2 dias úteis) ----
+  router.post('/billing/subscribe-boleto', auth, ownerOnly, h(async (req, res) => {
+    const b = req.body || {};
+    const plan = db.get().plans.find(p => p.id === b.planId && !p.archived);
+    if (!plan) return res.status(400).json({ error: 'Plano não encontrado' });
+    res.json(await saas.subscribeBoleto(req.acc, plan, b, broadcast));
   }));
 
   // ---- Assinar usando o SALDO da carteira (vendas no cartão viram plano) ----
@@ -2788,10 +2846,13 @@ module.exports = function (broadcast, clients) {
     res.json({ charge: req.acc.billing.pendingCharge });
   }));
 
-  // Polling do pagamento pendente (o webhook é a via principal; isto cobre localhost)
+  // Polling do pagamento pendente (o webhook é a via principal; isto cobre localhost).
+  // Cada meio consulta onde a cobrança realmente foi criada: Pix na Woovi,
+  // boleto no adquirente.
   router.get('/billing/pending', auth, ownerOnly, h(async (req, res) => {
     const pc = req.acc.billing.pendingCharge;
     if (!pc) return res.json({ paid: false, none: true });
+    if (pc.via === 'boleto') return res.json(await saas.checkBoleto(req.acc, broadcast));
     const charge = await woovi.getCharge(pc.correlationID);
     if (charge && /COMPLETED|CONFIRMED|PAID/i.test(charge.status || '')) {
       woovi.applyPayment(charge, broadcast);
@@ -2802,7 +2863,10 @@ module.exports = function (broadcast, clients) {
 
   router.post('/billing/pending/cancel', auth, ownerOnly, h(async (req, res) => {
     const pc = req.acc.billing.pendingCharge;
-    if (pc) { await woovi.deleteCharge(pc.correlationID); req.acc.billing.pendingCharge = null; db.save(); }
+    // O boleto não é apagado no adquirente: se o cliente pagar depois, o webhook
+    // ainda casa a cobrança. Aqui só sai da tela.
+    if (pc && pc.via !== 'boleto') await woovi.deleteCharge(pc.correlationID);
+    if (pc) { req.acc.billing.pendingCharge = null; db.save(); }
     res.json({ ok: true });
   }));
 
@@ -3180,10 +3244,17 @@ module.exports = function (broadcast, clients) {
     res.json({ ok: true, view: elitepay.publicChargeView(req.params.id) });
   }));
 
-  // Pagamento com CARTÃO da cobrança (crédito/débito), quando o admin habilitou.
+  // Pagamento com CARTÃO DE CRÉDITO da cobrança, quando o admin habilitou.
   // Os dados do cartão só transitam: nada de número completo ou CVV é gravado.
   router.post('/public/pay/:id/card', h(async (req, res) => {
     const r = await elitepay.payWithCard(req.params.id, req.body || {}, broadcast);
+    res.json(r);
+  }));
+
+  // Emissão de BOLETO da cobrança. Assíncrono: a confirmação chega pelo webhook
+  // do adquirente quando o banco compensa.
+  router.post('/public/pay/:id/boleto', h(async (req, res) => {
+    const r = await elitepay.payWithBoleto(req.params.id, req.body || {}, broadcast);
     res.json(r);
   }));
 
@@ -3685,7 +3756,8 @@ module.exports = function (broadcast, clients) {
     if (typeof b.enabled === 'boolean') card.enabled = b.enabled;
     if (b.provider === 'pagarme' || b.provider === 'asaas') card.provider = b.provider;
     if (typeof b.credit === 'boolean') card.credit = b.credit;
-    if (typeof b.debit === 'boolean') card.debit = b.debit;
+    if (typeof b.boleto === 'boolean') card.boleto = b.boleto;
+    if (b.boletoDueDays !== undefined) card.boletoDueDays = Math.max(1, Math.min(30, Number(b.boletoDueDays) || 3));
     if (b.maxInstallments !== undefined) card.maxInstallments = Math.max(1, Math.min(12, Number(b.maxInstallments) || 1));
     if (b.feeCardPercent !== undefined) card.feeCardPercent = pct(b.feeCardPercent);
     if (b.feeCardFixed !== undefined) card.feeCardFixed = Math.max(0, Math.round(Number(b.feeCardFixed) || 0));
@@ -3700,6 +3772,8 @@ module.exports = function (broadcast, clients) {
     // (cards.SETTLE_RULES). Trocar de adquirente já troca o prazo junto.
     delete card.settleCredit;
     delete card.settleDebit;
+    delete card.settleBoleto;
+    delete card.debit;            // débito saiu: à vista o Pix cobre melhor
     // chaves: vazio = manter a que já está salva (o painel nunca recebe o valor)
     if (b.pagarme) {
       if (typeof b.pagarme.secretKey === 'string' && b.pagarme.secretKey.trim()) card.pagarme.secretKey = b.pagarme.secretKey.trim();

@@ -483,7 +483,7 @@
   function metodoPago() {
     if (data.method !== 'card' || !data.paidCard) return 'Pix';
     var c = data.paidCard;
-    var partes = [c.kind === 'debit' ? 'Débito' : 'Crédito'];
+    var partes = [c.kind === 'boleto' ? 'Boleto' : 'Crédito'];
     if (c.brand) partes.push(String(c.brand).toUpperCase());
     if (c.last4) partes.push('••••' + c.last4);
     if (c.installments > 1) partes.push(c.installments + 'x');
@@ -499,28 +499,95 @@
     var c = data.card || {}, m = (data.checkout && data.checkout.methods) || {};
     var pix = m.pix !== false;
     var credit = !!c.credit && !!m.credit && !data.demo;
-    var debit = !!c.debit && !!m.debit && !data.demo;
-    if (!pix && !credit && !debit) pix = true;
-    return { pix: pix, credit: credit, debit: debit };
+    var boleto = !!c.boleto && !!m.boleto && !data.demo;
+    if (!pix && !credit && !boleto) pix = true;
+    return { pix: pix, credit: credit, boleto: boleto };
   }
-  function cardOn() { var pm = payMethods(); return pm.credit || pm.debit; }
+  function cardOn() { return payMethods().credit; }
 
   function payMain(ck) {
     var pm = payMethods();
-    // aba selecionada precisa existir; se o Pix está off, começa no cartão
-    if (payTab === 'pix' && !pm.pix) payTab = 'card';
-    if (payTab === 'card' && !cardOn()) payTab = 'pix';
-    // só mostra o seletor de abas quando há Pix E cartão para escolher
-    var abas = (pm.pix && cardOn())
-      ? '<div class="paytabs">' +
-          '<button class="' + (payTab === 'pix' ? 'on' : '') + '" data-tab="pix">' + pix + ' Pix</button>' +
-          '<button class="' + (payTab === 'card' ? 'on' : '') + '" data-tab="card">' + icoCard() + ' Cartão</button>' +
-        '</div>'
+    // aba selecionada precisa existir de verdade — cai na primeira disponível
+    var disponiveis = [];
+    if (pm.pix) disponiveis.push('pix');
+    if (pm.credit) disponiveis.push('card');
+    if (pm.boleto) disponiveis.push('boleto');
+    if (disponiveis.indexOf(payTab) < 0) payTab = disponiveis[0] || 'pix';
+
+    var rotulo = { pix: pix + ' Pix', card: icoCard() + ' Cartão', boleto: icoBoleto() + ' Boleto' };
+    var abas = disponiveis.length > 1
+      ? '<div class="paytabs">' + disponiveis.map(function (t) {
+          return '<button class="' + (payTab === t ? 'on' : '') + '" data-tab="' + t + '">' + rotulo[t] + '</button>';
+        }).join('') + '</div>'
       : '';
+    var painel = payTab === 'card' ? cardForm() : (payTab === 'boleto' ? boletoForm() : pixPane());
     return '<div class="card fade-in">' + stepsBar(2) +
-      '<div class="pad">' + abas +
-        (payTab === 'card' ? cardForm() : pixPane()) +
+      '<div class="pad">' + abas + painel +
       '</div></div>';
+  }
+
+  function icoBoleto() {
+    return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 5v14M7 5v14M10 5v14M14 5v14M17 5v14M20 5v14"/></svg>';
+  }
+
+  // Formulário do boleto: só precisa de nome e documento do pagador.
+  function boletoForm() {
+    return '<h2 class="sect">Pague com boleto</h2>' +
+      '<div class="sect-sub">O boleto é gerado na hora. A confirmação chega quando o banco compensar o pagamento, o que costuma levar até 2 dias úteis.</div>' +
+      '<div class="form-err" id="berr"></div>' +
+      (data.payerName ? '<div class="payer-chip">' + ico('lock', 13) + ' Pagando como <b>' + esc(data.payerName) + '</b></div>' :
+        '<div class="frow">' +
+          '<div class="fld"><label>Nome do pagador</label><input id="b-holder" placeholder="Nome completo"></div>' +
+          '<div class="fld"><label>CPF ou CNPJ</label><input id="b-doc" inputmode="numeric" placeholder="000.000.000-00"></div>' +
+        '</div>') +
+      (data.payerName ? '<div class="fld"><label>CPF ou CNPJ do pagador</label><input id="b-doc" inputmode="numeric" placeholder="000.000.000-00"></div>' : '') +
+      '<button class="btn" id="b-go">Gerar boleto de ' + brl(data.value) + '</button>' +
+      '<div id="b-out"></div>';
+  }
+
+  function bindBoleto() {
+    var btn = document.getElementById('b-go');
+    if (!btn) return;
+    btn.onclick = function () {
+      var erro = document.getElementById('berr');
+      var docEl = document.getElementById('b-doc');
+      var nomeEl = document.getElementById('b-holder');
+      var doc = docEl ? docEl.value.replace(/\D/g, '') : '';
+      erro.style.display = 'none';
+      if (doc.length !== 11 && doc.length !== 14) {
+        erro.textContent = 'Informe um CPF ou CNPJ válido.';
+        erro.style.display = 'block';
+        return;
+      }
+      var original = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Emitindo…';
+      fetch('/api/public/pay/' + encodeURIComponent(id) + '/boleto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customer: { name: nomeEl ? nomeEl.value.trim() : (data.payerName || ''), taxId: doc } })
+      }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+          if (!res.ok) throw new Error(res.j.error || 'Não foi possível emitir o boleto');
+          var b = res.j.boleto || {};
+          document.getElementById('b-out').innerHTML =
+            '<div class="orlbl">LINHA DIGITÁVEL</div>' +
+            '<div class="copywrap"><input readonly id="bline" value="' + esc(b.line || '') + '" onclick="this.select()"><button class="cbtn" id="bcopy">Copiar</button></div>' +
+            (b.url ? '<a class="btn" style="margin-top:12px;display:block;text-align:center;text-decoration:none" href="' + esc(b.url) + '" target="_blank" rel="noopener">Abrir boleto em PDF</a>' : '') +
+            '<div class="sum-note">' + ico('clock', 12) + ' Assim que o banco compensar, o pagamento é confirmado automaticamente.</div>';
+          btn.style.display = 'none';
+          var cp = document.getElementById('bcopy');
+          if (cp) cp.onclick = function () {
+            var el = document.getElementById('bline'); el.select();
+            (navigator.clipboard ? navigator.clipboard.writeText(el.value) : Promise.reject())
+              .then(function () { toast('Linha digitável copiada!'); })
+              .catch(function () { document.execCommand('copy'); toast('Linha digitável copiada!'); });
+          };
+        })
+        .catch(function (e) {
+          erro.textContent = e.message; erro.style.display = 'block';
+          btn.disabled = false; btn.textContent = original;
+        });
+    };
   }
 
   function pixPane() {
@@ -548,15 +615,8 @@
     var pm = payMethods();
     var parcelas = c.installments || [];
     var tipos = '';
-    if (pm.credit && pm.debit) {
-      tipos = '<div class="kindrow">' +
-        '<label class="kind on"><input type="radio" name="ckind" value="credit" checked> Crédito</label>' +
-        '<label class="kind"><input type="radio" name="ckind" value="debit"> Débito</label>' +
-      '</div>';
-    } else {
-      // um único tipo: fixa o valor num campo oculto para o submit
-      tipos = '<input type="hidden" name="ckind" value="' + (pm.credit ? 'credit' : 'debit') + '">';
-    }
+    // só existe crédito no cartão: à vista, o Pix cobre melhor os dois lados
+    tipos = '<input type="hidden" name="ckind" value="credit">';
     var selParcelas = (pm.credit && parcelas.length > 1)
       ? '<div class="fld" id="inst-wrap"><label>Parcelas</label><select id="c-inst">' +
           parcelas.map(function (p) { return '<option value="' + p.n + '">' + esc(p.label) + '</option>'; }).join('') +
@@ -587,6 +647,7 @@
       tabs[i].onclick = function () { payTab = this.getAttribute('data-tab'); render(); };
     }
     if (payTab === 'card') return bindCard();
+    if (payTab === 'boleto') return bindBoleto();
 
     var c2 = document.getElementById('copy2'); if (!c2) return;
     c2.onclick = function () {
@@ -620,7 +681,7 @@
     for (var i = 0; i < radios.length; i++) {
       radios[i].onchange = function () {
         var wrap = document.getElementById('inst-wrap');
-        if (wrap) wrap.style.display = this.value === 'debit' ? 'none' : '';
+        if (wrap) wrap.style.display = '';
         var labels = document.querySelectorAll('.kind');
         for (var j = 0; j < labels.length; j++) labels[j].classList.remove('on');
         this.parentNode.classList.add('on');
@@ -641,7 +702,7 @@
     var btn = document.getElementById('c-go');
     // radio marcado (2 tipos) OU o input oculto (tipo único)
     var kindEl = document.querySelector('input[name="ckind"]:checked') || document.querySelector('input[type="hidden"][name="ckind"]');
-    var kind = kindEl ? kindEl.value : (payMethods().credit ? 'credit' : 'debit');
+    var kind = 'credit';
     var num = document.getElementById('c-num').value.replace(/\D/g, '');
     var nome = document.getElementById('c-name').value.trim();
     var exp = document.getElementById('c-exp').value.split('/');

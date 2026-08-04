@@ -1,15 +1,22 @@
 // ============================================================================
-// ADQUIRENTES DE CARTÃO — crédito e débito no Elite Pay.
+// ADQUIRENTES — cartão de CRÉDITO e BOLETO.
 //
-// O Pix (Woovi) segue sendo o meio principal e NÃO passa por aqui. Este módulo
-// cuida só do cartão, com dois adquirentes intercambiáveis: o admin escolhe um
-// no Admin SaaS e o resto do sistema não muda nada.
+// Os três meios aceitos no EliteChat são Pix, crédito e boleto. O Pix (Woovi)
+// não passa por aqui; crédito e boleto sim, com dois adquirentes
+// intercambiáveis: o admin escolhe um no Admin SaaS e o resto do sistema não
+// muda nada.
+//
+// Não há cartão de débito: para pagamento à vista o Pix resolve melhor (cai na
+// hora, sem taxa de adquirente). Registros antigos com kind 'debit' continuam
+// sendo lidos para não quebrar o histórico de recebíveis.
 //
 // Interface única de cada driver:
 //   configured(cfg)                      -> bool
-//   charge({ cfg, valueCents, installments, kind, card, holder, customer,
+//   charge({ cfg, valueCents, installments, card, holder, customer,
 //            description, correlationID, softDescriptor })
 //        -> { ok, status, gatewayId, brand, last4, authCode, message, raw }
+//   boleto({ cfg, valueCents, customer, description, correlationID, dueDays })
+//        -> { ok, status, gatewayId, url, line, barcode, dueDate }
 //   getCharge({ cfg, gatewayId })        -> { status, paidAt }
 //   refund({ cfg, gatewayId, valueCents })-> { ok }
 //
@@ -52,14 +59,13 @@ const pagarme = {
     return data;
   },
 
-  async charge({ cfg, valueCents, installments, kind, card, holder, customer, description, correlationID, softDescriptor, split }) {
-    const metodo = kind === 'debit' ? 'debit_card' : 'credit_card';
+  async charge({ cfg, valueCents, installments, card, holder, customer, description, correlationID, softDescriptor, split }) {
+    const metodo = 'credit_card';
     const pagamento = {
       payment_method: metodo,
       split: split && split.length ? split : undefined,
       [metodo]: {
-        operation_type: kind === 'debit' ? 'auth_and_capture' : undefined,
-        installments: kind === 'debit' ? 1 : Math.max(1, Number(installments) || 1),
+        installments: Math.max(1, Number(installments) || 1),
         statement_descriptor: (softDescriptor || '').slice(0, 13) || undefined,
         card: card.token
           ? undefined
@@ -114,6 +120,47 @@ const pagarme = {
       authCode: tx.acquirer_auth_code || '',
       message: tx.acquirer_message || charge.status || '',
       raw: undefined
+    };
+  },
+
+  // ---- BOLETO ----
+  // Assíncrono por natureza: nasce 'pending' e só vira 'paid' quando o banco
+  // compensa (1 a 2 dias úteis). Quem confirma é a consulta/webhook, igual Pix.
+  async boleto({ cfg, valueCents, customer, description, correlationID, dueDays, split }) {
+    const venc = new Date(Date.now() + (Number(dueDays) || 3) * 86400000);
+    const body = {
+      closed: true,
+      code: correlationID,
+      customer: {
+        name: customer.name,
+        email: customer.email || 'sem-email@elitechat.com.br',
+        type: onlyDigits(customer.taxId).length > 11 ? 'company' : 'individual',
+        document: onlyDigits(customer.taxId),
+        document_type: onlyDigits(customer.taxId).length > 11 ? 'CNPJ' : 'CPF'
+      },
+      items: [{ amount: valueCents, description: (description || 'Pagamento').slice(0, 60), quantity: 1 }],
+      payments: [{
+        payment_method: 'boleto',
+        split: split && split.length ? split : undefined,
+        boleto: {
+          instructions: (description || 'Pagamento EliteChat').slice(0, 255),
+          due_at: venc.toISOString(),
+          document_number: String(correlationID).slice(-16)
+        }
+      }]
+    };
+    const d = await pagarme.call(cfg, 'POST', '/orders', body);
+    const charge = (d.charges && d.charges[0]) || {};
+    const tx = charge.last_transaction || {};
+    return {
+      ok: true,
+      status: mapPagarme(charge.status) || 'pending',
+      gatewayId: charge.id || d.id || '',
+      url: tx.pdf || tx.url || '',
+      line: tx.line || '',
+      barcode: tx.barcode || '',
+      dueDate: venc.getTime(),
+      message: charge.status || ''
     };
   },
 
@@ -289,8 +336,7 @@ const asaas = {
     return novo.id;
   },
 
-  async charge({ cfg, valueCents, installments, kind, card, holder, customer, description, correlationID, split }) {
-    if (kind === 'debit') throw erro('O Asaas não processa cartão de débito, use crédito ou troque o adquirente para Pagar.me');
+  async charge({ cfg, valueCents, installments, card, holder, customer, description, correlationID, split }) {
     const customerId = await asaas.ensureCustomer(cfg, customer);
     const parcelas = Math.max(1, Number(installments) || 1);
     const valor = valueCents / 100;
@@ -331,6 +377,39 @@ const asaas = {
       authCode: '',
       message: d.status || '',
       raw: undefined
+    };
+  },
+
+  // ---- BOLETO ----
+  async boleto({ cfg, valueCents, customer, description, correlationID, dueDays, split }) {
+    const customerId = await asaas.ensureCustomer(cfg, customer);
+    const venc = new Date(Date.now() + (Number(dueDays) || 3) * 86400000);
+    const body = {
+      customer: customerId,
+      billingType: 'BOLETO',
+      value: valueCents / 100,
+      dueDate: venc.toISOString().slice(0, 10),
+      description: (description || 'Pagamento').slice(0, 500),
+      externalReference: correlationID
+    };
+    if (split && split.length) body.split = split;
+
+    const d = await asaas.call(cfg, 'POST', '/payments', body);
+    // A linha digitável vem num endpoint separado.
+    let line = '', barcode = '';
+    try {
+      const b = await asaas.call(cfg, 'GET', `/payments/${encodeURIComponent(d.id)}/identificationField`);
+      line = b.identificationField || '';
+      barcode = b.barCode || '';
+    } catch {}
+    return {
+      ok: true,
+      status: mapAsaas(d.status) || 'pending',
+      gatewayId: d.id || '',
+      url: d.bankSlipUrl || d.invoiceUrl || '',
+      line, barcode,
+      dueDate: venc.getTime(),
+      message: d.status || ''
     };
   },
 
@@ -433,23 +512,25 @@ const SETTLE_RULES = {
   pagarme: {
     label: 'Pagar.me',
     credit: { days: 30, business: false, perInstallment: true, text: 'D+30 corridos, uma parcela por mês' },
-    debit: { days: 1, business: true, perInstallment: false, text: 'D+1 útil' }
+    boleto: { days: 2, business: true, perInstallment: false, text: 'D+2 úteis após a compensação' }
   },
   asaas: {
     label: 'Asaas',
     credit: { days: 32, business: false, perInstallment: true, text: 'D+32 corridos, uma parcela por mês' },
-    debit: { days: 3, business: true, perInstallment: false, text: 'D+3 úteis' }
+    boleto: { days: 1, business: true, perInstallment: false, text: 'D+1 útil após a compensação' }
   }
 };
 // compat: alguns pontos só querem o número de dias
 const SETTLE_DEFAULTS = Object.fromEntries(
-  Object.entries(SETTLE_RULES).map(([k, v]) => [k, { credit: v.credit.days, debit: v.debit.days }])
+  Object.entries(SETTLE_RULES).map(([k, v]) => [k, { credit: v.credit.days, boleto: v.boleto.days }])
 );
 
-// Regra vigente para um adquirente + tipo de cartão.
+// Regra vigente para um adquirente + meio de pagamento.
+// 'debit' ainda é aceito aqui porque existem recebíveis antigos gravados com
+// esse tipo; o prazo do boleto é o mais próximo e evita quebrar o histórico.
 function settleRule(card, kind) {
   const r = SETTLE_RULES[(card && card.provider)] || SETTLE_RULES.pagarme;
-  return kind === 'debit' ? r.debit : r.credit;
+  return (kind === 'boleto' || kind === 'debit') ? r.boleto : r.credit;
 }
 
 // Soma dias corridos ou úteis a partir de uma data.
@@ -494,8 +575,9 @@ function emptyCard() {
   return {
     enabled: false,             // cartão ligado/desligado no Elite Pay
     provider: 'pagarme',        // pagarme | asaas
-    credit: true,               // aceita crédito
-    debit: false,               // aceita débito (só Pagar.me)
+    credit: true,               // aceita cartão de crédito
+    boleto: false,              // aceita boleto bancário
+    boletoDueDays: 3,           // prazo de vencimento do boleto, em dias
     maxInstallments: 12,        // parcelas máximas no crédito
     feeCardPercent: 0,          // taxa da PLATAFORMA sobre o valor (além da do adquirente)
     feeCardFixed: 0,            // taxa fixa da plataforma, em centavos
@@ -588,7 +670,7 @@ function driver(card) { return DRIVERS[card.provider] || DRIVERS.pagarme; }
 function creds(card) { return card.provider === 'asaas' ? card.asaas : card.pagarme; }
 function isConfigured(card) { return driver(card).configured(creds(card)); }
 // Só existe para o cliente se estiver ligado, configurado e com algum meio ativo.
-function isAvailable(card) { return !!(card.enabled && isConfigured(card) && (card.credit || card.debit)); }
+function isAvailable(card) { return !!(card.enabled && isConfigured(card) && (card.credit || card.boleto)); }
 
 // Taxa da PLATAFORMA sobre a venda no cartão (o que o admin cobra do cliente
 // Elite Pay, por cima do que o adquirente já cobra) — espelha o modelo do Pix.
@@ -604,7 +686,8 @@ function publicCard(card) {
   return {
     available: isAvailable(card),
     credit: !!card.credit && isAvailable(card),
-    debit: !!card.debit && card.provider === 'pagarme' && isAvailable(card),
+    boleto: !!card.boleto && isAvailable(card),
+    boletoDueDays: Math.max(1, Number(card.boletoDueDays) || 3),
     maxInstallments: Math.min(12, Math.max(1, Number(card.maxInstallments) || 1)),
     provider: card.provider
   };
@@ -614,13 +697,14 @@ function publicCard(card) {
 function adminCard(card) {
   return {
     enabled: !!card.enabled, provider: card.provider,
-    credit: !!card.credit, debit: !!card.debit,
+    credit: !!card.credit, boleto: !!card.boleto,
+    boletoDueDays: Math.max(1, Number(card.boletoDueDays) || 3),
     maxInstallments: card.maxInstallments,
     feeCardPercent: card.feeCardPercent, feeCardFixed: card.feeCardFixed,
     feeOutCardPercent: card.feeOutCardPercent, feeOutCardFixed: card.feeOutCardFixed,
     settleMode: card.settleMode || 'wallet',
     // prazos: só leitura — vêm da adquirente, não do banco
-    settleCredit: settleDays(card, 'credit'), settleDebit: settleDays(card, 'debit'),
+    settleCredit: settleDays(card, 'credit'), settleBoleto: settleDays(card, 'boleto'),
     settleRules: SETTLE_RULES[card.provider] || SETTLE_RULES.pagarme,
     softDescriptor: card.softDescriptor,
     platformRecipientId: card.platformRecipientId || '',

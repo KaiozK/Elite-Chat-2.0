@@ -708,6 +708,10 @@ function channelsCard() {
               : '<b style="color:var(--amber)">não conectado</b>'}
             · ${fmtN(c.contacts)} contato(s)${c.unread ? ` · ${fmtN(c.unread)} não lida(s)` : ''}
             ${c.identityError ? `<div style="color:var(--red);font-size:11px;margin-top:2px">${esc(c.identityError)}</div>` : ''}
+            ${c.cancelAt ? `<div class="ch-cancel-note">${ico('alert', 11)}
+              Cancelada. Funciona até <b>${new Date(c.cancelAt).toLocaleDateString('pt-BR')}</b> e, nessa data,
+              a conexão e todos os dados dela serão excluídos.
+              <button class="linkish" onclick="undoCancelChannel('${c.id}')">Reativar</button></div>` : ''}
           </div>
         </div>
         ${c.id === at.id
@@ -715,19 +719,93 @@ function channelsCard() {
           : `<button class="btn small no-grow" onclick="switchChannel('${c.id}')">Usar</button>`}
         <button class="icon-btn" title="Sincronizar número com a Meta" onclick="syncChannel('${c.id}', this)">${ico('refresh', 14)}</button>
         <button class="icon-btn" title="Renomear" onclick="renameChannel('${c.id}')">${ico('edit', 14)}</button>
-        ${c.isDefault ? '' : `<button class="icon-btn danger" title="Remover" onclick="removeChannel('${c.id}')">${ico('trash', 14)}</button>`}
+        ${c.isDefault || state.agent || c.cancelAt ? '' :
+          `<button class="icon-btn danger" title="Cancelar esta conexão" onclick="cancelChannel('${c.id}')">${ico('trash', 14)}</button>`}
       </div>`).join('')}
     </div>
     <div class="row" style="margin-top:14px;align-items:flex-end">
-      <label style="flex:1;max-width:280px">Nome do novo canal<input id="ch-new" placeholder="ex.: Vendas · Suporte · Filial SP"></label>
+      <label style="flex:1;max-width:280px">Nome da nova conexão<input id="ch-new" placeholder="ex.: Vendas · Suporte · Filial SP"></label>
       ${cheio && lim.buyable && lim.extraPrice
-        ? `<button class="btn primary no-grow" onclick="openExtraPay('whatsapps')">${ico('plus', 14)} Contratar mais uma</button>`
+        ? `<button class="btn primary no-grow" onclick="openExtraPay('whatsapps')">${ico('plus', 14)} Adicionar conexão</button>`
         : `<button class="btn primary no-grow" ${cheio ? 'disabled' : ''} onclick="createChannel()">${ico('plus', 14)} Adicionar conexão</button>`}
     </div>
-    ${cheio ? `<p class="hint" style="margin-top:10px">${ico('alert', 12)} Você atingiu o limite de <b>${fmtN(lim.limit)}</b> conexão(ões) do seu plano.</p>`
-    : '<p class="hint" style="margin-top:10px">Depois de criar o canal, selecione-o no topo e clique em <b>Conectar WhatsApp</b> abaixo para vincular o número.</p>'}
+    ${cheio ? `<p class="hint" style="margin-top:10px">${ico('alert', 12)} Você já utiliza as <b>${fmtN(lim.limit)}</b> conexão(ões) disponíveis no seu plano.</p>`
+    : '<p class="hint" style="margin-top:10px">Depois de criar a conexão, selecione-a no seletor do topo e clique em <b>Conectar WhatsApp</b> para vincular o número.</p>'}
     ${extraChannelsBox(lim)}
   </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// CANCELAR UMA CONEXÃO EXTRA.
+// O aviso é o ponto central: cancelar não é desativar, é excluir. Mostramos o
+// que será apagado, a data em que isso acontece, e exigimos que o cliente
+// digite o nome da conexão para confirmar.
+// ---------------------------------------------------------------------------
+async function cancelChannel(id) {
+  let p;
+  try { p = await api('/channels/' + id + '/cancel/preview'); }
+  catch (e) { return toast(e.message, 'error'); }
+
+  const data = new Date(p.until).toLocaleDateString('pt-BR');
+  const itens = [
+    [p.apaga.contacts, 'contato(s), com histórico e posição no funil'],
+    [p.apaga.messages, 'mensagem(ns) de conversa'],
+    [p.apaga.campaigns, 'campanha(s)'],
+    [p.apaga.schedules, 'agendamento(s)']
+  ].filter(([n]) => n > 0);
+
+  openModal(`
+    <h2 style="color:var(--red)">${ico('alert')} Cancelar a conexão ${esc(p.label)}</h2>
+    <p class="muted" style="margin:0 0 12px;font-size:13px">
+      A conexão permanece ativa até <b>${data}</b>, data em que o período já pago se encerra.
+      A partir dela, a cobrança mensal desta unidade deixa de ser feita.
+    </p>
+    <div class="danger-box">
+      <b>${ico('trash', 13)} Em ${data}, tudo desta conexão será excluído em definitivo:</b>
+      <ul>
+        ${itens.length
+          ? itens.map(([n, l]) => `<li>${fmtN(n)} ${l}</li>`).join('')
+          : '<li>nenhum dado registrado até agora</li>'}
+        <li>o número deixa de estar vinculado à sua conta na Meta</li>
+      </ul>
+      <p>Esta ação <b>não pode ser desfeita</b> depois da data e os dados <b>não poderão ser recuperados</b>.
+      Se precisar do histórico, exporte seus contatos antes.</p>
+    </div>
+    <label style="margin-top:14px"><span>Para confirmar, digite <b>${esc(p.label)}</b></span>
+      <input id="ch-conf" autocomplete="off" placeholder="${esc(p.label)}"
+             data-alvo="${esc(p.label)}" oninput="confChannelName(this)"></label>
+    <div class="row" style="margin-top:14px">
+      <button class="btn" onclick="closeModal()">Manter conexão</button>
+      <button class="btn danger" id="ch-go" disabled onclick="doCancelChannel('${id}', this)">
+        ${ico('trash', 14)} Cancelar e agendar exclusão</button>
+    </div>`);
+}
+
+// O nome esperado vai num data-attribute: interpolar a string direto no
+// oninput quebraria o HTML em nomes com aspas.
+function confChannelName(el) {
+  const btn = $('#ch-go');
+  if (btn) btn.disabled = el.value.trim() !== (el.dataset.alvo || '');
+}
+
+async function doCancelChannel(id, btn) {
+  btn.disabled = true; btn.textContent = 'Cancelando…';
+  try {
+    const r = await api('/channels/' + id + '/cancel', { body: {} });
+    closeModal();
+    toast(`Conexão cancelada. Ativa até ${new Date(r.channel.cancelAt).toLocaleDateString('pt-BR')}.`);
+    await loadChannels();
+    if (state.view === 'settings') renderSettings();
+  } catch (e) { toast(e.message, 'error'); btn.disabled = false; btn.textContent = 'Tentar de novo'; }
+}
+
+async function undoCancelChannel(id) {
+  try {
+    await api('/channels/' + id + '/cancel/undo', { body: {} });
+    toast('Conexão reativada, a cobrança mensal continua normalmente.');
+    await loadChannels();
+    if (state.view === 'settings') renderSettings();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 // Contratar conexões a mais sem sair da tela de Conexões: escolhe a quantidade,
@@ -738,8 +816,8 @@ function extraChannelsBox(lim) {
     <div class="extra-buy-head">
       ${ico('plus', 15)}
       <div style="flex:1;min-width:0">
-        <b>Precisa de mais números?</b>
-        <em>${fmtBRL(lim.extraPrice)}/mês por conexão adicional${lim.extras ? ` · você já tem ${fmtN(lim.extras)} contratada(s)` : ''}</em>
+        <b>Amplie sua operação</b>
+        <em>Conexões adicionais por ${fmtBRL(lim.extraPrice)}/mês cada${lim.extras ? ` · ${fmtN(lim.extras)} já contratada(s)` : ''}</em>
       </div>
     </div>
     <div class="extra-buy-row">
@@ -754,7 +832,7 @@ function extraChannelsBox(lim) {
         <em>por mês</em>
       </div>
       <button class="btn primary no-grow" onclick="openExtraPay('whatsapps')">
-        ${ico('card', 14)} Contratar</button>
+        ${ico('card', 14)} Adicionar conexão</button>
     </div>
   </div>`;
 }
@@ -846,9 +924,9 @@ async function renameChannelSave(id, btn) {
 
 async function removeChannel(id) {
   const ok = await confirmModal({
-    title: 'Remover conexão?',
-    text: `O número "${chName(id)}" será desconectado. As conversas ficam no histórico, mas somem do painel.`,
-    ok: 'Remover', danger: true
+    title: 'Desconectar este número?',
+    text: `O número "${chName(id)}" deixa de enviar e receber mensagens. As conversas permanecem no histórico da conta.`,
+    ok: 'Desconectar', danger: true
   });
   if (!ok) return;
   try {
@@ -4914,7 +4992,7 @@ async function paintBilling() {
     const plan = b.plan;
     const pc = b.pendingCharge;
     const refLink = `${API.webOrigin}/app/?ref=${d.affiliate.code}`;
-    const cardOn = !!(d.card && (d.card.credit || d.card.debit));
+    const cardOn = !!(d.card && d.card.credit);
     BILL_CACHE = d;
     box.innerHTML = `
       ${d.wooviReady ? '' : `<div class="card warn-card">${ico('alert', 16)} <b>Pagamentos ainda não configurados.</b> ${state.kind === 'admin' ? 'Informe o AppID da Woovi em <a href="#/admin">Admin SaaS → Pagamentos</a>.' : 'A plataforma ainda não ativou os pagamentos, fale com o suporte.'}</div>`}
@@ -4956,13 +5034,14 @@ async function paintBilling() {
               : `<div class="pl-btns">
                   <button class="btn primary block" ${d.wooviReady ? '' : 'disabled'} onclick="subscribePlan('${p.id}')">${ico('pix', 14)} Pix</button>
                   ${cardOn ? `<button class="btn block" onclick="openCardPay('plan','${p.id}',${p.price})">${ico('card', 14)} Cartão</button>` : ''}
+                  ${(d.card || {}).boleto ? `<button class="btn block" onclick="subscribeBoleto('${p.id}')">${ico('file', 14)} Boleto</button>` : ''}
                 </div>
                 ${d.wallet.balance >= p.price + (d.extrasCost || 0) ? `<button class="btn block" style="margin-top:7px" onclick="payWithWallet('${p.id}')">${ico('briefcase', 13)} Usar saldo (${fmtBRL(d.wallet.balance)})</button>` : ''}`}
           </div>`).join('')}</div>
           <p class="muted" style="font-size:12px;margin:12px 0 0">${ico('shield', 13)}
-            <b>Pix</b> pela Woovi (com renovação por Pix Automático quando o seu banco suporta)${cardOn
-              ? ` ou <b>cartão de ${[d.card.credit && 'crédito', d.card.debit && 'débito'].filter(Boolean).join(' e ')}</b>, com ativação na hora e renovação automática no cartão salvo.`
-              : '. O pagamento com cartão ainda não foi ativado pela plataforma.'}</p>`
+            Formas de pagamento aceitas: <b>Pix</b> pela Woovi, com renovação automática por Pix Automático quando o seu banco oferece o recurso${cardOn
+              ? `; <b>cartão de crédito</b>, com ativação imediata e renovação no cartão salvo` : ''}${(d.card || {}).boleto
+              ? `; e <b>boleto bancário</b>, com liberação após a compensação` : ''}.</p>`
           : '<p class="muted">Nenhum plano publicado ainda.</p>'}
       </div>
 
@@ -5024,7 +5103,7 @@ function walletCard(d) {
     <p class="hint" style="margin-top:12px;text-align:left">${ico('clock', 12)}
       O dinheiro do cartão é liberado <b>no mesmo prazo da adquirente</b>:
       crédito <b>${esc(((ca.settleRules || {}).credit || {}).text || 'D+30')}</b> ·
-      débito <b>${esc(((ca.settleRules || {}).debit || {}).text || 'D+1 útil')}</b>.
+      boleto <b>${esc(((ca.settleRules || {}).boleto || {}).text || 'D+2 úteis')}</b>.
       Até lá o valor fica em “a liberar”.
       O saldo disponível pode <b>pagar o seu plano, conexões WhatsApp e links extras</b>, sem taxa de saque.
     </p>
@@ -5032,7 +5111,7 @@ function walletCard(d) {
     ${w.receivables && w.receivables.length ? `
       <span class="fb-sub" style="margin-top:14px">Próximas liberações</span>
       <div class="tx-list">${w.receivables.map(r => `
-        <div class="tx"><span class="tx-lbl">${r.kind === 'debit' ? 'Débito' : 'Crédito'}${r.installments > 1 ? ` · parcela ${r.installment}/${r.installments}` : ''} · libera ${new Date(r.at).toLocaleDateString('pt-BR')}</span>
+        <div class="tx"><span class="tx-lbl">${{ debit: 'Débito', boleto: 'Boleto' }[r.kind] || 'Crédito'}${r.installments > 1 ? ` · parcela ${r.installment}/${r.installments}` : ''} · libera ${new Date(r.at).toLocaleDateString('pt-BR')}</span>
         <b class="tx-in">${fmtBRL(r.amount)}</b></div>`).join('')}</div>` : ''}
 
     <div class="row" style="margin-top:14px">
@@ -5073,7 +5152,7 @@ function wdQuote() {
 
 function usageSection(d) {
   const u = d.usage || {};
-  const cardOn = !!(d.card && (d.card.credit || d.card.debit));
+  const cardOn = !!(d.card && d.card.credit);
   const compraveis = LIMIT_META.filter(m => m.extra && (u[m.key] || {}).extraPrice);
 
   return `<div class="card">
@@ -5168,36 +5247,41 @@ async function openExtraPay(key) {
   const c = d.card || {};
   const saldo = (d.wallet || {}).balance || 0;
   const meios = [
-    d.wooviReady && ['pix', 'Pix', 'Confirmação em segundos'],
-    (c.credit || c.debit) && ['card', 'Cartão', 'Crédito ou débito'],
-    ['wallet', 'Saldo', `Você tem ${fmtBRL(saldo)}`]
+    d.wooviReady && ['pix', 'Pix', 'Liberação imediata'],
+    c.credit && ['card', 'Cartão de crédito', 'Liberação imediata'],
+    c.boleto && ['boleto', 'Boleto', `Compensa em até ${c.boletoDueDays || 3} dias úteis`],
+    saldo > 0 && ['wallet', 'Saldo em carteira', `Disponível: ${fmtBRL(saldo)}`]
   ].filter(Boolean);
 
+  const nome = esc(extraLabel(key));
   openModal(`
-    <h2>${ico('plus')} Contratar ${esc(extraLabel(key))}</h2>
-    <p class="muted" style="margin:0 0 14px;font-size:13px">
-      ${fmtBRL(unit)} por unidade, <b>por mês</b>. Some quantas precisar.
+    <h2>${ico('plus')} Adicionar ${nome}</h2>
+    <p class="muted" style="margin:0 0 16px;font-size:13px">
+      Amplie a capacidade do seu plano com ${nome} adicionais.
+      <b>${fmtBRL(unit)} por unidade ao mês</b>, liberadas assim que o pagamento for confirmado.
     </p>
-    <div class="extra-buy-row" style="margin-bottom:14px">
+    <label style="margin-bottom:6px">Quantas unidades você precisa?</label>
+    <div class="extra-buy-row" style="margin-bottom:16px">
       <div class="qty">
-        <button type="button" class="qty-b" onclick="modalQty(-1)" aria-label="Menos uma">−</button>
+        <button type="button" class="qty-b" onclick="modalQty(-1)" aria-label="Diminuir">−</button>
         <input id="mq" class="qty-i" type="number" min="1" max="20" value="${qty}"
                inputmode="numeric" oninput="modalQty(0)" aria-label="Quantidade">
-        <button type="button" class="qty-b" onclick="modalQty(1)" aria-label="Mais uma">+</button>
+        <button type="button" class="qty-b" onclick="modalQty(1)" aria-label="Aumentar">+</button>
       </div>
       <div class="extra-total"><b id="mt">${fmtBRL(unit * qty)}</b><em>por mês</em></div>
     </div>
-    <label style="margin-bottom:6px">Como quer pagar?</label>
+    ${meios.length ? `<label style="margin-bottom:6px">Forma de pagamento</label>
     <div class="pay-methods">
       ${meios.map(([v, l, sub], i) => `<label class="pay-method">
         <input type="radio" name="xpm" value="${v}" ${i === 0 ? 'checked' : ''}>
         <span><b>${l}</b><em>${esc(sub)}</em></span>
       </label>`).join('')}
-    </div>
-    <p class="hint" style="margin-top:12px">${ico('refresh', 12)} Cobrança mensal recorrente: o valor entra junto com a sua assinatura em toda renovação. Dá para cancelar depois.</p>
-    <div class="row" style="margin-top:14px">
-      <button class="btn" onclick="closeModal()">Cancelar</button>
-      <button class="btn primary" onclick="confirmExtraPay(this)">Continuar</button>
+    </div>`
+    : '<p class="hint">Nenhuma forma de pagamento está habilitada no momento. Fale com o suporte.</p>'}
+    <p class="hint" style="margin-top:14px">${ico('refresh', 12)} <b>Assinatura mensal.</b> O valor passa a compor a sua fatura e é cobrado a cada renovação. Você pode cancelar quando quiser, com uso garantido até o fim do período já pago.</p>
+    <div class="row" style="margin-top:16px">
+      <button class="btn" onclick="closeModal()">Voltar</button>
+      <button class="btn primary" ${meios.length ? '' : 'disabled'} onclick="confirmExtraPay(this)">Continuar</button>
     </div>`);
 }
 
@@ -5219,14 +5303,90 @@ async function confirmExtraPay(btn) {
   if (meio === 'card') { closeModal(); return openCardPay('extra', key, total, qty); }
   if (meio === 'wallet') return payExtraWallet(key, qty, total);
 
-  const txt = btn.innerHTML; btn.disabled = true; btn.textContent = 'Gerando Pix…';
+  const txt = btn.innerHTML;
+  btn.disabled = true;
+  btn.textContent = meio === 'boleto' ? 'Emitindo boleto…' : 'Gerando Pix…';
   try {
-    const r = await api('/billing/extras', { body: { key, qty, pay: 'pix' } });
-    extraPixModal(r.charge);
+    const body = { key, qty, pay: meio };
+    if (meio === 'boleto') {
+      const doc = await pedirCpfCnpj();
+      if (!doc) { btn.disabled = false; btn.innerHTML = txt; return; }
+      body.taxId = doc;
+    }
+    const r = await api('/billing/extras', { body });
+    if (meio === 'boleto') boletoModal(r.charge, () => afterExtraBought(key));
+    else extraPixModal(r.charge);
   } catch (e) {
     toast(e.message, 'error');
     btn.disabled = false; btn.innerHTML = txt;
   }
+}
+
+// O boleto sai no nome do titular: sem CPF/CNPJ o adquirente recusa a emissão.
+function pedirCpfCnpj() {
+  return new Promise(resolve => {
+    const salvo = ((BILL_CACHE || {}).savedCard || {}).taxId || '';
+    openModal(`
+      <h2>${ico('user')} Dados do pagador</h2>
+      <p class="muted" style="margin:0 0 14px;font-size:13px">
+        O boleto é emitido em nome do titular da conta. Informe o CPF ou CNPJ para prosseguir.
+      </p>
+      <label>CPF ou CNPJ<input id="bol-doc" inputmode="numeric" value="${esc(salvo)}" placeholder="000.000.000-00"></label>
+      <div class="row" style="margin-top:14px">
+        <button class="btn" onclick="closeModal();window.__docResolve&&window.__docResolve('')">Cancelar</button>
+        <button class="btn primary" onclick="window.__docResolve&&window.__docResolve(($('#bol-doc').value||'').replace(/\\D/g,''))">Emitir boleto</button>
+      </div>`);
+    window.__docResolve = valor => {
+      if (valor && valor.length !== 11 && valor.length !== 14) return toast('Informe um CPF ou CNPJ válido', 'error');
+      window.__docResolve = null;
+      resolve(valor);
+    };
+  });
+}
+
+// Boleto emitido: linha digitável, PDF e confirmação automática ao compensar.
+function boletoModal(pc, aoPagar) {
+  const venc = pc.dueDate ? new Date(pc.dueDate).toLocaleDateString('pt-BR') : '';
+  openModal(`
+    <h2>${ico('file')} Boleto emitido</h2>
+    <p class="muted" style="margin:0 0 14px;font-size:13px">
+      <b style="color:var(--verde-deep)">${fmtBRL(pc.amount)}</b>${venc ? ` · vence em ${venc}` : ''}.
+      A liberação é automática assim que o banco compensar o pagamento, o que costuma levar até 2 dias úteis.
+    </p>
+    ${pc.boletoLine ? `<label>Linha digitável<textarea readonly rows="2" style="font-size:12px;letter-spacing:.3px" onclick="this.select()">${esc(pc.boletoLine)}</textarea></label>` : ''}
+    <div class="row" style="margin-top:10px">
+      ${pc.boletoLine ? `<button class="btn no-grow" onclick="copyText(${JSON.stringify(esc(pc.boletoLine))})">${ico('copy', 13)} Copiar linha digitável</button>` : ''}
+      ${pc.boletoUrl ? `<a class="btn primary no-grow" href="${esc(pc.boletoUrl)}" target="_blank" rel="noopener">${ico('link', 13)} Abrir boleto</a>` : ''}
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn no-grow" onclick="checkBoletoPago()">${ico('refresh', 13)} Já paguei</button>
+      <button class="btn no-grow" onclick="closeModal()">Fechar</button>
+    </div>
+    <p class="muted" id="bol-status" style="font-size:12px;margin:12px 0 0">${ico('clock', 12)} Aguardando compensação bancária…</p>`);
+  BOLETO_AFTER = aoPagar || null;
+  clearInterval(extraPoll);
+  extraPoll = setInterval(() => {
+    if (!document.getElementById('bol-status')) return clearInterval(extraPoll);
+    checkBoletoPago(true);
+  }, 15000);
+}
+let BOLETO_AFTER = null;
+
+async function checkBoletoPago(silencioso) {
+  try {
+    const r = await api('/billing/pending');
+    if (r.paid) {
+      clearInterval(extraPoll);
+      closeModal();
+      toast('Pagamento confirmado! 🎉');
+      if (BOLETO_AFTER) BOLETO_AFTER();
+      else paintBilling();
+      BOLETO_AFTER = null;
+    } else if (!silencioso) {
+      const el = $('#bol-status');
+      if (el) el.innerHTML = `${ico('clock', 12)} O banco ainda não informou a compensação. Boletos costumam levar até 2 dias úteis após o pagamento.`;
+    }
+  } catch (e) { if (!silencioso) toast(e.message, 'error'); }
 }
 
 // QR do Pix dentro do próprio pop-up, com confirmação automática.
@@ -5305,21 +5465,16 @@ let CARD_CTX = null;
 function openCardPay(mode, id, amount, qty) {
   const d = BILL_CACHE || {};
   const c = d.card || {};
-  if (!c.credit && !c.debit) return toast('Pagamento com cartão indisponível', 'error');
+  if (!c.credit) return toast('Pagamento com cartão indisponível', 'error');
   CARD_CTX = { mode, id, amount, qty: qty || 1 };
-  const kinds = [c.credit && ['credit', 'Crédito'], c.debit && ['debit', 'Débito']].filter(Boolean);
   const maxP = Math.max(1, c.maxInstallments || 1);
 
   openModal(`
     <h2>${ico('card')} Pagar no cartão</h2>
     <p class="muted" style="margin:0 0 14px;font-size:13px">
-      ${mode === 'plan' ? 'Assinatura do EliteChat' : `${qty}x ${esc((LIMIT_META.find(m => m.key === id) || {}).label || id)}`}
+      ${mode === 'plan' ? 'Assinatura do EliteChat' : `${qty}x ${esc(extraLabel(id))}`}
      , <b style="color:var(--verde-deep)">${fmtBRL(amount)}</b>. A ativação é imediata após a aprovação.
     </p>
-    ${kinds.length > 1 ? `<div class="row" style="gap:8px;margin-bottom:12px">
-      ${kinds.map(([v, l], i) => `<label class="chk" style="flex:0 0 auto">
-        <input type="radio" name="cpk" value="${v}" ${i === 0 ? 'checked' : ''} onchange="cardKindChange()"> ${l}</label>`).join('')}
-    </div>` : `<input type="hidden" id="cp-kind-fixed" value="${kinds[0][0]}">`}
     <label>Número do cartão<input id="cp-num" inputmode="numeric" autocomplete="cc-number" placeholder="0000 0000 0000 0000" oninput="maskCardNum(this)"></label>
     <label>Nome impresso no cartão<input id="cp-holder" autocomplete="cc-name" placeholder="COMO ESTÁ NO CARTÃO"></label>
     <div class="row">
@@ -5339,31 +5494,17 @@ function openCardPay(mode, id, amount, qty) {
       <button class="btn" onclick="closeModal()">Cancelar</button>
       <button class="btn primary" onclick="submitCardPay(this)">${ico('lock', 14)} Pagar ${fmtBRL(amount)}</button>
     </div>`);
-  cardKindChange();
 }
 
-function cardKindChange() {
-  const kind = cardKind();
-  const w = $('#cp-inst-wrap');
-  // débito não parcela
-  if (w) w.style.display = kind === 'debit' ? 'none' : '';
-}
-function cardKind() {
-  const fixed = $('#cp-kind-fixed');
-  if (fixed) return fixed.value;
-  const r = document.querySelector('input[name="cpk"]:checked');
-  return r ? r.value : 'credit';
-}
 function maskCardNum(el) {
   el.value = el.value.replace(/\D/g, '').slice(0, 19).replace(/(.{4})/g, '$1 ').trim();
 }
 
 async function submitCardPay(btn) {
   const ctx = CARD_CTX; if (!ctx) return;
-  const kind = cardKind();
   const body = {
-    kind,
-    installments: kind === 'debit' ? 1 : Number(($('#cp-inst') || {}).value || 1),
+    kind: 'credit',
+    installments: Number(($('#cp-inst') || {}).value || 1),
     card: {
       number: ($('#cp-num').value || '').replace(/\D/g, ''),
       holderName: ($('#cp-holder').value || '').trim(),
@@ -5450,6 +5591,16 @@ async function subscribePlan(planId) {
     setTimeout(() => $('#pay-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
   } catch (e) { toast(e.message, 'error'); }
 }
+// Assinar o plano no boleto: emite e mostra a linha digitável no pop-up.
+async function subscribeBoleto(planId) {
+  const doc = await pedirCpfCnpj();
+  if (!doc) return;
+  try {
+    const r = await api('/billing/subscribe-boleto', { body: { planId, taxId: doc } });
+    boletoModal(r.charge, () => paintBilling());
+  } catch (e) { toast(e.message, 'error'); }
+}
+
 async function topupWallet() {
   try {
     await api('/billing/topup', { body: { amount: $('#wal-amount').value } });
@@ -6141,8 +6292,8 @@ function admFeesSection(cfg, c, t) {
       <div class="settle-rows">
         <div class="settle-row"><span>Crédito</span><b>D+${(c.settleRules || {}).credit ? c.settleRules.credit.days : c.settleCredit}</b>
           <em>${esc((c.settleRules || {}).credit ? c.settleRules.credit.text : '')}</em></div>
-        <div class="settle-row"><span>Débito</span><b>D+${(c.settleRules || {}).debit ? c.settleRules.debit.days : c.settleDebit}</b>
-          <em>${esc((c.settleRules || {}).debit ? c.settleRules.debit.text : '')}</em></div>
+        <div class="settle-row"><span>Boleto</span><b>D+${(c.settleRules || {}).boleto ? c.settleRules.boleto.days : c.settleBoleto}</b>
+          <em>${esc((c.settleRules || {}).boleto ? c.settleRules.boleto.text : '')}</em></div>
       </div>
       <p class="hint" style="margin:10px 0 0;text-align:left">
         Não são editáveis de propósito: o EliteChat libera o saldo <b>no mesmo dia em que a adquirente repassa</b>.
@@ -6237,7 +6388,7 @@ function admCardSection(c, t) {
 
   return `<div class="card">
     <div class="row" style="align-items:center;margin-bottom:6px">
-      <h2 style="margin:0;flex:1">${ico('card')} Cartão de crédito & débito</h2>
+      <h2 style="margin:0;flex:1">${ico('card')} Cartão de crédito & boleto</h2>
       ${status}
     </div>
     <p class="muted" style="margin:0 0 14px;font-size:13px">
@@ -6252,10 +6403,11 @@ function admCardSection(c, t) {
       <label style="max-width:260px">Adquirente${ecSelect('adm-card-prov',
         (c.drivers || []).map(d => ({ value: d.id, label: d.label })), c.provider, `admCardSave({provider:val})`)}</label>
       <label class="chk" style="flex:0 0 auto;margin-bottom:10px"><input type="checkbox" ${c.credit ? 'checked' : ''} onchange="admCardSave({credit:this.checked})"> Crédito</label>
-      <label class="chk" style="flex:0 0 auto;margin-bottom:10px" title="${isPag ? '' : 'O Asaas não processa débito'}">
-        <input type="checkbox" ${c.debit ? 'checked' : ''} ${isPag ? '' : 'disabled'} onchange="admCardSave({debit:this.checked})"> Débito</label>
+      <label class="chk" style="flex:0 0 auto;margin-bottom:10px"><input type="checkbox" ${c.boleto ? 'checked' : ''} onchange="admCardSave({boleto:this.checked})"> Boleto</label>
+      <label style="max-width:190px">Vencimento do boleto (dias)
+        <input value="${c.boletoDueDays || 3}" inputmode="numeric" onchange="admCardSave({boletoDueDays:this.value})"></label>
     </div>
-    ${isPag ? '' : '<p class="hint" style="margin-top:8px">O Asaas não processa cartão de <b>débito</b>, para aceitar débito, use o Pagar.me.</p>'}
+    <p class="hint" style="margin-top:8px">Não há cartão de débito: para pagamento à vista o <b>Pix</b> aprova na hora e sai mais barato para os dois lados.</p>
 
     <div class="capi-box" style="margin-top:16px">
       <div class="capi-head">${ico('gear', 14)} Credenciais, ${esc(isPag ? 'Pagar.me' : 'Asaas')} <span class="capi-tag">${c.configured ? 'configurado' : 'pendente'}</span></div>
@@ -9517,7 +9669,7 @@ async function renderCheckoutBuilder() {
     faq: Object.assign({ on: false, items: [] }, ck.faq || {}),
     notice: Object.assign({ on: false, text: '' }, ck.notice || {}),
     badges: Object.assign({ on: true }, ck.badges || {}),
-    methods: Object.assign({ pix: true, credit: true, debit: false }, ck.methods || {})
+    methods: Object.assign({ pix: true, credit: true, boleto: false }, ck.methods || {})
   };
   epkPrevStep = 1;
   epkSection = null;          // null = paleta de componentes (estilo Kiwify)
@@ -9594,7 +9746,7 @@ const EPK_SECTIONS = [
   { key: 'guarantee',  icon: 'shield',   label: 'Garantia',   hint: 'Selo de garantia',        tab: 'comp' },
   { key: 'faq',        icon: 'help',     label: 'FAQ',        hint: 'Perguntas frequentes',    tab: 'comp' },
   { key: 'notice',     icon: 'help',     label: 'Aviso',      hint: 'Faixa de destaque',       tab: 'comp' },
-  { key: 'pagamento',  icon: 'card',     label: 'Pagamento',  hint: 'Pix, crédito e débito aceitos', tab: 'cfg' },
+  { key: 'pagamento',  icon: 'card',     label: 'Pagamento',  hint: 'Pix, crédito e boleto aceitos', tab: 'cfg' },
   { key: 'ordem',      icon: 'flow',     label: 'Ordem',      hint: 'Arraste os blocos da página', tab: 'cfg' },
   { key: 'mensagens',  icon: 'chat2',    label: 'Mensagens',  hint: 'Pós-pagamento e suporte', tab: 'cfg' },
   { key: 'fluxo',      icon: 'zap',      label: 'Fluxo',      hint: 'Como o checkout funciona',tab: 'cfg' }
@@ -9714,7 +9866,7 @@ function epkPaintForm() {
         <textarea rows="3" maxlength="200" placeholder="Ex.: O acesso é liberado em até 5 minutos após o pagamento." oninput="epkState.notice.text=this.value;epkPrev()">${esc(ck.notice.text)}</textarea></label>
       <label class="chk" style="margin-top:14px"><input type="checkbox" ${ck.badges.on ? 'checked' : ''} onchange="epkState.badges.on=this.checked;epkPrev()"> Exibir selos de segurança no rodapé</label>`;
   } else if (epkSection === 'pagamento') {
-    const cap = (state.epInfo && state.epInfo.card) || { ready: false, credit: false, debit: false };
+    const cap = (state.epInfo && state.epInfo.card) || { ready: false, credit: false, boleto: false };
     const m = ck.methods;
     // linha de toggle: se o método não está liberado, trava e explica por quê
     const linha = (key, titulo, sub, liberado, motivo) => `
@@ -9729,8 +9881,8 @@ function epkPaintForm() {
       ${linha('pix', 'Pix', 'Aprovação na hora, menor taxa', true, '')}
       ${linha('credit', 'Cartão de crédito', 'Parcelável, aprovação imediata', cap.credit,
         cap.ready ? 'Crédito não liberado pela plataforma' : `Indisponível, ${setupLink}`)}
-      ${linha('debit', 'Cartão de débito', 'À vista no cartão', cap.debit,
-        cap.ready ? 'Débito exige o adquirente Pagar.me' : `Indisponível, ${setupLink}`)}
+      ${linha('boleto', 'Boleto bancário', 'Compensa em até 2 dias úteis', cap.boleto,
+        cap.ready ? 'Boleto não liberado pela plataforma' : `Indisponível, ${setupLink}`)}
       <p class="hint" style="margin-top:14px">${ico('shield', 12)} O dinheiro do cartão cai direto na <b>sua</b> conta do adquirente, o EliteChat só intermedeia.</p>`;
   } else if (epkSection === 'ordem') {
     body = `

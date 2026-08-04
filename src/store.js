@@ -110,4 +110,46 @@ function logEvent(entry) {
   db.save();
 }
 
-module.exports = { normalizeWaId, defChId, findContact, upsertContact, addMessage, storeOutbound, logEvent };
+// ---------------------------------------------------------------------------
+// APAGAR UMA CONEXÃO E TUDO QUE É DELA.
+//
+// Usado quando o cliente cancela uma conexão extra e o período pago termina.
+// Não é arquivamento: some mesmo — conversas, mensagens, contatos (com o funil e
+// o consentimento, que moram no contato), campanhas e agendamentos daquele
+// número. Os outros canais da conta não são tocados.
+//
+// Devolve o que foi removido, para registrar no log e avisar o cliente.
+function purgeChannel(acc, chId) {
+  const padrao = defChId(acc);
+  const doCanal = o => (o.chId || padrao) === chId;
+
+  const contatos = (acc.contacts || []).filter(doCanal);
+  const waIds = new Set(contatos.map(c => c.waId));
+  const conta = {
+    contacts: contatos.length,
+    messages: (acc.messages || []).filter(doCanal).length,
+    campaigns: (acc.campaigns || []).filter(doCanal).length,
+    schedules: (acc.schedules || []).filter(e => e.contactWaId && waIds.has(e.contactWaId)).length
+  };
+
+  acc.contacts = (acc.contacts || []).filter(c => !doCanal(c));
+  acc.messages = (acc.messages || []).filter(m => !doCanal(m));
+  acc.campaigns = (acc.campaigns || []).filter(c => !doCanal(c));
+  acc.schedules = (acc.schedules || []).filter(e => !(e.contactWaId && waIds.has(e.contactWaId)));
+
+  // conversas do chat interno atreladas a esses contatos
+  if (acc.chatThreads && typeof acc.chatThreads === 'object') {
+    for (const k of Object.keys(acc.chatThreads)) {
+      if (waIds.has(String(k).replace(/^wa:/, ''))) delete acc.chatThreads[k];
+    }
+  }
+
+  acc.channels = (acc.channels || []).filter(c => c.id !== chId);
+  db.save();
+  return conta;
+}
+
+module.exports = {
+  normalizeWaId, defChId, findContact, upsertContact, addMessage,
+  storeOutbound, logEvent, purgeChannel
+};
