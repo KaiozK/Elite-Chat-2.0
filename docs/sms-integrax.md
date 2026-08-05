@@ -23,7 +23,9 @@ Sem o passo 1 nenhum cliente vê a tela. Sem o passo 2, só os planos marcados v
 - **Tela SMS** no menu: envio avulso, disparo em massa filtrado por etapa do
   funil / etiqueta / conexão, e histórico com status de entrega.
 - **Etapa "Enviar SMS"** no Flow Builder, com as mesmas variáveis (`{{nome}}` etc.).
-- Contatos em **opt-out são bloqueados** no backend, igual ao WhatsApp.
+- O opt-in/opt-out do EliteChat é do **WhatsApp** e não vale para SMS: as
+  palavras-chave de cancelamento chegam por mensagem recebida, que é um caminho
+  que o SMS não tem. Quem dispara responde pela lista que usa.
 - O consumo é contado por **segmento**: acima do limite de caracteres a operadora
   cobra mais de um SMS, e o EliteChat conta do mesmo jeito.
 
@@ -68,7 +70,7 @@ provável que só `base` e `rotas` precisem de ajuste.
 
 | Arquivo | Papel |
 |---|---|
-| `src/sms.js` | contrato da API, envio, opt-out, limites, histórico, webhook |
+| `src/sms.js` | contrato da API, envio, limites, histórico, webhook |
 | `src/api.js` | rotas `/sms*` do cliente e `/admin/sms*` do administrador |
 | `src/flows.js` | etapa `sms` do Flow Builder |
 | `server.js` | `POST /sms-webhook` (status de entrega) |

@@ -7498,8 +7498,10 @@ function scEditWithGoto(e) {
 }
 
 // ==================== OPT-IN & OPT-OUT ====================
-// Consentimento do contato: quem pediu para sair (opt-out) é bloqueado no
-// BACKEND em todos os envios — inclusive templates e campanhas.
+// Consentimento do contato no WhatsApp: quem pediu para sair (opt-out) é
+// bloqueado no BACKEND em todos os envios do canal — inclusive templates e
+// campanhas. Não alcança o SMS, que é outro canal e não tem palavra-chave de
+// cancelamento chegando de volta.
 let coCfg = null, coMeta = null, coRows = [], coFilters = { status: 'opted_out', uf: '', stage: '', search: '' };
 
 const CO_STATUS = {
@@ -7557,7 +7559,7 @@ function paintSms() {
         <span class="muted" style="flex:1;font-size:12px" id="sms-count">0 caractere(s) · 1 SMS</span>
         <button class="btn primary no-grow" onclick="sendSms(this)">${ico('send', 14)} Enviar</button>
       </div>
-      <p class="hint" style="margin-top:12px">${ico('shield', 12)} Contatos em opt-out são bloqueados automaticamente, como no WhatsApp.</p>
+      <p class="hint" style="margin-top:12px">${ico('shield', 12)} Envie apenas para quem autorizou receber suas mensagens.</p>
     </div>
 
     <div class="card">
@@ -7662,7 +7664,7 @@ async function previewSmsBulk() {
       <div class="extra-buy" style="margin-top:12px">
         <div class="extra-buy-head">${ico('users', 15)}
           <div style="flex:1"><b>${fmtN(p.enviaveis)} contato(s) vão receber</b>
-            <em>${fmtN(p.creditos)} SMS no total (${p.segmentos} por contato)${p.bloqueados ? ` · ${fmtN(p.bloqueados)} em opt-out serão pulados` : ''}${p.invalidos ? ` · ${fmtN(p.invalidos)} com número inválido` : ''}</em>
+            <em>${fmtN(p.creditos)} SMS no total (${p.segmentos} por contato)${p.invalidos ? ` · ${fmtN(p.invalidos)} com número inválido` : ''}</em>
           </div></div>
         ${p.amostra.length ? `<p class="muted" style="font-size:12px;margin:0 0 10px">
           Ex.: ${p.amostra.map(c => esc(c.name || c.waId)).join(', ')}${p.enviaveis > p.amostra.length ? '…' : ''}</p>` : ''}
@@ -7676,14 +7678,14 @@ async function sendSmsBulk(btn) {
   const f = smsBulkFiltro();
   const ok = await confirmModal({
     title: 'Confirmar o disparo?',
-    text: 'Os SMS serão enviados agora e o consumo do ciclo será debitado. Contatos em opt-out são pulados automaticamente.',
+    text: 'Os SMS serão enviados agora e o consumo do ciclo será debitado.',
     ok: 'Disparar'
   });
   if (!ok) return;
   const txt = btn.innerHTML; btn.disabled = true; btn.textContent = 'Disparando…';
   try {
     const r = await api('/sms/bulk', { body: f });
-    toast(`${r.enviados} enviado(s)${r.falhas ? ` · ${r.falhas} falha(s)` : ''}${r.bloqueados ? ` · ${r.bloqueados} em opt-out` : ''}`);
+    toast(`${r.enviados} enviado(s)${r.falhas ? ` · ${r.falhas} falha(s)` : ''}`);
     await loadSms();
   } catch (e) { toast(e.message, 'error'); btn.disabled = false; btn.innerHTML = txt; }
 }
@@ -7728,7 +7730,7 @@ function paintConsentCfg() {
       <div class="sv-form">
         <div class="card">
           <h2>${ico('shield')} Sistema de consentimento</h2>
-          <p class="muted" style="margin:0 0 12px;font-size:13px">Com o módulo ativo, contatos em opt-out são <b>bloqueados no backend</b> em qualquer envio (mensagem, template ou campanha), até serem reativados.</p>
+          <p class="muted" style="margin:0 0 12px;font-size:13px">Com o módulo ativo, contatos em opt-out são <b>bloqueados no backend</b> em qualquer envio do WhatsApp (mensagem, template ou campanha), até serem reativados. Não se aplica ao SMS, que é outro canal.</p>
           <label class="chk"><input type="checkbox" ${coCfg.enabled ? 'checked' : ''} onchange="coSet('enabled', this.checked)"> Ativar o sistema de Opt-in / Opt-out</label>
           <label class="chk" style="margin-top:10px"><input type="checkbox" ${coCfg.autoOptIn ? 'checked' : ''} onchange="coSet('autoOptIn', this.checked)"> Opt-in automático quando o cliente enviar uma mensagem</label>
         </div>
@@ -9201,7 +9203,7 @@ function nodeInspector(n) {
       <p class="muted" style="font-size:11.5px">Conecte a saída <b>Sim</b> e a saída <b>Não</b> a caminhos diferentes.</p>`;
   } else if (n.type === 'sms') {
     body = `<p class="fb-insp-desc">Envia um <b>SMS</b> pela Integra X para o mesmo número do contato.
-      Use <code>{{nome}}</code> e as demais variáveis normalmente. Contatos em opt-out são pulados.</p>
+      Use <code>{{nome}}</code> e as demais variáveis normalmente.</p>
       <label>Mensagem<textarea rows="4" ${set('text')} placeholder="Olá {{nome}}, ...">${esc(n.text || '')}</textarea></label>
       <label>Enviar para outro número <em class="lim-extra">opcional</em>
         <input value="${esc(n.to || '')}" ${set('to')} placeholder="deixe vazio para usar o número do contato"></label>`;

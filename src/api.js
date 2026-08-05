@@ -835,11 +835,10 @@ module.exports = function (broadcast, clients) {
     const comTag = c => !b.tag || (c.tags || []).includes(b.tag);
     const noEstagio = c => !b.stage || c.stage === b.stage;
     const alvo = (req.acc.contacts || []).filter(c => doCanal(c) && comTag(c) && noEstagio(c));
-    const bloqueados = alvo.filter(c => consent.isOptedOut(c)).length;
-    const validos = alvo.filter(c => !consent.isOptedOut(c) && sms.valido(c.waId));
+    const validos = alvo.filter(c => sms.valido(c.waId));
     const seg = sms.segmentos(b.text || '');
     res.json({
-      total: alvo.length, bloqueados, invalidos: alvo.length - bloqueados - validos.length,
+      total: alvo.length, invalidos: alvo.length - validos.length,
       enviaveis: validos.length, segmentos: seg, creditos: seg * validos.length,
       amostra: validos.slice(0, 5).map(c => ({ name: c.name, waId: c.waId }))
     });

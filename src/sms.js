@@ -6,13 +6,16 @@
 // planos que tiverem o módulo `sms` passam a enxergar a tela.
 //
 // Tudo que é específico do provedor mora no bloco CONTRATO logo abaixo. O
-// restante do arquivo (fila, opt-out, limites, histórico, variáveis) não sabe
-// qual provedor está atrás e não muda se ele mudar.
+// restante do arquivo (fila, limites, histórico, variáveis) não sabe qual
+// provedor está atrás e não muda se ele mudar.
+//
+// O opt-in/opt-out do EliteChat é do WhatsApp: as palavras-chave chegam por
+// mensagem recebida e valem para aquele canal. O SMS não participa desse
+// controle — quem for enviar responde pela lista que usa.
 // ============================================================================
 
 const db = require('./db');
 const store = require('./store');
-const consent = require('./consent');
 const limits = require('./limits');
 
 // ============================================================================
@@ -192,9 +195,7 @@ async function enviar(acc, { to, text, contato = null, origem = 'manual', por = 
   const numero = normalizarNumero(to);
   if (!valido(numero)) throw erro(`Número inválido: ${to}`);
 
-  // Opt-out vale para SMS igual vale para WhatsApp: quem pediu para sair, sai.
   const c = contato || store.findContact(acc, numero);
-  if (c && consent.isOptedOut(c)) throw erro('Este contato pediu para não receber mensagens (opt-out)');
 
   limits.enforce(acc, 'sms', segmentos(corpo));
 
@@ -248,10 +249,9 @@ async function enviarMassa(acc, { numeros, text, por = null }) {
   const seg = segmentos(text);
   limits.enforce(acc, 'sms', seg * lista.length);
 
-  const r = { total: lista.length, enviados: 0, falhas: 0, bloqueados: 0, erros: [] };
+  const r = { total: lista.length, enviados: 0, falhas: 0, erros: [] };
   for (const numero of lista) {
     const c = store.findContact(acc, numero);
-    if (c && consent.isOptedOut(c)) { r.bloqueados++; continue; }
     try {
       await enviar(acc, { to: numero, text, contato: c, origem: 'massa', por });
       r.enviados++;
