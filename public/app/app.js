@@ -5637,8 +5637,7 @@ async function renderAdmin() {
       <button data-tab="adm-pay" onclick="showSettingsTab('adm-pay')">Pagamentos</button>
       <button data-tab="adm-wd" onclick="showSettingsTab('adm-wd')">Saques</button>
       <button data-tab="adm-ep" onclick="showSettingsTab('adm-ep');admEpPaint()">Elite Pay</button>
-      <button data-tab="adm-int" onclick="showSettingsTab('adm-int');admNsLoad()">Integrações</button>
-      <button data-tab="adm-sms" onclick="showSettingsTab('adm-sms');admSmsLoad()">SMS</button>
+      <button data-tab="adm-int" onclick="showSettingsTab('adm-int');admIntLoad()">Integrações</button>
       <button data-tab="adm-plat" onclick="showSettingsTab('adm-plat')">Plataforma</button>
       <button data-tab="adm-seo" onclick="showSettingsTab('adm-seo')">SEO</button>
     </div>
@@ -5975,10 +5974,7 @@ async function paintAdmin() {
 
       <div class="tabpane ${activeTab === 'adm-int' ? 'show' : ''}" data-pane="adm-int">
         <div id="adm-int-box">${skel(4)}</div>
-      </div>
-
-      <div class="tabpane ${activeTab === 'adm-sms' ? 'show' : ''}" data-pane="adm-sms">
-        <div id="adm-sms-box">${skel(4)}</div>
+        <div id="adm-sms-box" style="margin-top:16px">${skel(3)}</div>
       </div>
 
       <div class="tabpane ${activeTab === 'adm-plat' ? 'show' : ''}" data-pane="adm-plat">
@@ -5989,7 +5985,7 @@ async function paintAdmin() {
         ${admSeoForm(d.seo || {})}
       </div>`;
     if (activeTab === 'adm-ep') admEpPaint();
-    if (activeTab === 'adm-int') admNsLoad();
+    if (activeTab === 'adm-int') admIntLoad();
   } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 }
 
@@ -6097,6 +6093,13 @@ async function admDelPlan(id) {
 }
 // ---- Admin → SMS (Integra X) ----
 // Um interruptor liga a funcionalidade para os clientes; o token e o remetente
+// A aba Integrações do Admin reúne tudo que a PLATAFORMA conecta uma vez e
+// oferece a todos os clientes: a loja Nuvemshop e o SMS da Integra X.
+function admIntLoad() {
+  admNsLoad();
+  admSmsLoad();
+}
+
 // são da plataforma e nunca voltam para o navegador.
 let admSms = null;
 async function admSmsLoad() {

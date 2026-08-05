@@ -7,7 +7,7 @@ que assinou.
 
 ## Como ligar
 
-1. **Admin SaaS → SMS**
+1. **Admin SaaS → Integrações → Disparos de SMS**
    - ligue *Oferecer SMS aos clientes*
    - cole o **token da API** da Integra X e informe o **remetente** (sender id)
    - clique em **Testar conexão** — ele consulta o saldo e confirma que está tudo certo
