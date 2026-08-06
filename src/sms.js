@@ -21,64 +21,81 @@ const limits = require('./limits');
 // ============================================================================
 // CONTRATO DA API DA INTEGRA X  ← ÚNICO PONTO A AJUSTAR
 //
-// Documentação: https://www.integrax.app/dashboard/external/docs (exige login
-// no painel da Integra X, então os nomes abaixo seguem o padrão REST que a
-// própria Integra X descreve publicamente: token no header Authorization e
-// corpo JSON). Confira os quatro itens ao conectar a conta de verdade:
+// Documentação oficial (painel → /dashboard/external). Três pontos merecem
+// atenção porque fogem do REST comum:
 //
-//   1. BASE          — host da API
-//   2. AUTH          — como o token viaja
-//   3. ROTAS         — caminho de envio, saldo e consulta de status
-//   4. CAMPOS        — nomes dos campos que entram e que voltam
+//   1. O TOKEN VIAJA NO CAMINHO, não em header:
+//        POST https://sms.aresfun.com/v1/integration/{TOKEN}/send-sms
+//      Por isso a URL é secreta e nunca aparece inteira em log nem em erro
+//      (ver `mascarar`).
+//   2. `to` é uma LISTA, mesmo para um destinatário só. É o que permite mandar
+//      o disparo em massa numa chamada só (ver LOTE).
+//   3. Sucesso vem com `success` / `error: 0`; erro vem com HTTP 4xx e
+//      `message`.
 //
-// O teste de conexão do Admin SaaS aponta exatamente qual dos quatro está
-// errado quando a resposta não bate.
+// A API não expõe consulta de status por mensagem no SMS (só a chamada de voz
+// tem campo `dlr`), então o histórico marca "enviado" quando o provedor aceita
+// e só muda se um webhook de entrega chegar.
 // ============================================================================
 const CONTRATO = {
-  base: 'https://api.integrax.app',
+  base: 'https://sms.aresfun.com',
 
-  auth: (cfg, headers) => {
-    headers['Authorization'] = `Bearer ${cfg.token}`;
-    return headers;
-  },
+  // Quantos destinatários por chamada. A doc não publica um teto; 100 é
+  // conservador e mantém o corpo pequeno.
+  LOTE: 100,
 
   rotas: {
-    enviar: '/v1/sms/send',
-    saldo: '/v1/account/balance',
-    status: id => `/v1/sms/${encodeURIComponent(id)}`
+    enviar: token => `/v1/integration/${encodeURIComponent(token)}/send-sms`,
+    saldo: token => `/v1/integration/${encodeURIComponent(token)}/consult/credits`
   },
 
-  // Corpo do envio. `to` já vai em E.164 sem o "+" (ex.: 5511999998888).
-  corpoEnvio: ({ to, text, from, referencia, callbackUrl }) => ({
-    to,
-    message: text,
+  // Corpo do envio. `to` é sempre lista, em E.164 sem "+" (5511999998888).
+  corpoEnvio: ({ to, text, from }) => ({
+    to: Array.isArray(to) ? to : [to],
     from: from || undefined,
-    reference: referencia || undefined,
-    callback_url: callbackUrl || undefined
+    message: text
   }),
 
-  // Lê a resposta do envio. Devolve sempre { id, status, erro }.
-  lerEnvio: d => ({
-    id: d.id || d.messageId || d.message_id || (d.data && (d.data.id || d.data.messageId)) || '',
-    status: normalizarStatus(d.status || (d.data && d.data.status) || 'sent'),
-    erro: d.error || d.message_error || ''
-  }),
+  // Lê a resposta do envio. A doc não documenta id por mensagem no SMS, então
+  // aceitamos o que vier e seguimos sem id quando não houver.
+  lerEnvio: d => {
+    const dd = (d && d.data) || d || {};
+    const falhou = d && (d.error === 1 || d.error === true || d.success === false);
+    return {
+      id: dd.id || dd.messageId || dd.message_id || '',
+      status: falhou ? 'failed' : normalizarStatus(dd.status || 'sent'),
+      erro: falhou ? (d.message || dd.message || 'recusado pelo provedor') : ''
+    };
+  },
 
-  // Lê o saldo. Devolve { creditos, moeda }.
-  lerSaldo: d => ({
-    creditos: Number(d.balance ?? d.credits ?? (d.data && (d.data.balance ?? d.data.credits)) ?? 0),
-    moeda: d.currency || (d.data && d.data.currency) || 'BRL'
-  }),
+  // Lê o saldo de créditos.
+  lerSaldo: d => {
+    const dd = (d && d.data) || d || {};
+    return {
+      creditos: Number(dd.credits ?? dd.balance ?? dd.saldo ?? dd.amount ?? 0),
+      moeda: dd.currency || 'BRL'
+    };
+  },
 
-  // Lê a consulta de status de uma mensagem.
-  lerStatus: d => normalizarStatus(d.status || (d.data && d.data.status) || ''),
-
-  // Corpo do webhook de entrega (DLR) → { id, status }.
-  lerWebhook: b => ({
-    id: b.id || b.messageId || b.message_id || (b.data && (b.data.id || b.data.messageId)) || '',
-    status: normalizarStatus(b.status || (b.data && b.data.status) || '')
-  })
+  // Corpo do webhook de entrega (DLR) → { id, to, status }.
+  // O número importa: no disparo em lote uma única resposta do provedor cobre
+  // vários destinatários, então só o id não diz de quem é o status.
+  lerWebhook: b => {
+    const dd = (b && b.data) || b || {};
+    return {
+      id: dd.id || dd.messageId || dd.message_id || '',
+      to: String(dd.to || dd.phone || dd.msisdn || dd.number || ''),
+      status: normalizarStatus(dd.status || '')
+    };
+  }
 };
+
+// O token faz parte da URL: nunca deixar a URL crua vazar em log ou mensagem.
+function mascarar(txt) {
+  const t = (cfg().token || '').trim();
+  if (!t) return String(txt || '');
+  return String(txt || '').split(t).join('***');
+}
 
 // Status normalizado do EliteChat, independente do vocabulário do provedor:
 //   queued | sent | delivered | undelivered | failed
@@ -131,20 +148,23 @@ function plog(entry) {
 
 // ---------------------------------------------------------------------------
 // Chamada HTTP genérica ao provedor.
+// `rota` é uma função que recebe o token — ele faz parte do caminho.
 // ---------------------------------------------------------------------------
-async function call(method, path, body) {
+async function call(method, rota, body) {
   const c = cfg();
-  if (!c.token) throw erro('SMS não configurado: informe o token da Integra X no Admin SaaS');
+  const token = (c.token || '').trim();
+  if (!token) throw erro('SMS não configurado: informe o token da Integra X no Admin SaaS');
 
-  const headers = CONTRATO.auth(c, { 'Content-Type': 'application/json', 'Accept': 'application/json' });
+  const url = baseUrl() + rota(token);
   let r;
   try {
-    r = await fetch(baseUrl() + path, {
-      method, headers,
+    r = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: body ? JSON.stringify(body) : undefined
     });
   } catch (e) {
-    throw erro(`Não foi possível falar com a Integra X: ${e.message}`, 502);
+    throw erro(`Não foi possível falar com a Integra X: ${mascarar(e.message)}`, 502);
   }
 
   const texto = await r.text();
@@ -152,9 +172,13 @@ async function call(method, path, body) {
   try { data = texto ? JSON.parse(texto) : {}; } catch { data = { raw: texto }; }
 
   if (!r.ok) {
-    const msg = data.error || data.message || data.detail ||
+    const msg = data.message || data.error || data.detail ||
       (data.raw ? String(data.raw).slice(0, 200) : `Integra X respondeu HTTP ${r.status}`);
-    throw erro(msg, r.status === 401 || r.status === 403 ? 400 : 502);
+    // 404 aqui costuma ser token inválido: o token faz parte do caminho, então
+    // token errado vira "rota inexistente" em vez de 401.
+    const e = erro(mascarar(String(msg)), r.status === 401 || r.status === 403 ? 400 : 502);
+    e.http = r.status;
+    throw e;
   }
   return data;
 }
@@ -216,11 +240,9 @@ async function enviar(acc, { to, text, contato = null, origem = 'manual', por = 
 
   try {
     const d = await call('POST', CONTRATO.rotas.enviar, CONTRATO.corpoEnvio({
-      to: numero,
+      to: [numero],
       text: corpo,
-      from: cfgSms.from,
-      referencia: registro.id,
-      callbackUrl: cfgSms.callbackUrl
+      from: cfgSms.from
     }));
     const lido = CONTRATO.lerEnvio(d);
     registro.providerId = lido.id;
@@ -232,34 +254,68 @@ async function enviar(acc, { to, text, contato = null, origem = 'manual', por = 
     plog({ type: 'sms_error', accountId: acc.id, to: numero, error: e.message });
   }
 
-  historico(acc).unshift(registro);
-  const h = historico(acc);
-  if (h.length > 2000) h.length = 2000;
-  db.save();
-
+  guardar(acc, registro);
   if (registro.status === 'failed') throw erro(registro.error || 'Falha ao enviar o SMS');
   return registro;
 }
 
-// Disparo em massa. Devolve o resumo; os erros individuais ficam no histórico.
+// ---------------------------------------------------------------------------
+// DISPARO EM MASSA.
+// A Integra X recebe `to` como lista, então mandamos em lotes em vez de uma
+// chamada por número: menos viagem de rede e menos chance de esbarrar em limite
+// de requisições. Cada destinatário continua com a própria linha no histórico.
+// ---------------------------------------------------------------------------
 async function enviarMassa(acc, { numeros, text, por = null }) {
+  if (!configured()) throw erro('O envio de SMS não está disponível na plataforma');
+  const bloqueio = limits.checkFeature(acc, 'sms');
+  if (bloqueio) throw erro(bloqueio, 402);
+
+  const corpo = String(text || '').trim();
+  if (!corpo) throw erro('Escreva a mensagem');
   const lista = [...new Set((numeros || []).map(normalizarNumero).filter(valido))];
   if (!lista.length) throw erro('Nenhum número válido na seleção');
 
-  const seg = segmentos(text);
+  const seg = segmentos(corpo);
   limits.enforce(acc, 'sms', seg * lista.length);
 
-  const r = { total: lista.length, enviados: 0, falhas: 0, erros: [] };
-  for (const numero of lista) {
-    const c = store.findContact(acc, numero);
+  const cfgSms = cfg();
+  const r = { total: lista.length, enviados: 0, falhas: 0, lotes: 0, erros: [] };
+
+  for (let i = 0; i < lista.length; i += CONTRATO.LOTE) {
+    const lote = lista.slice(i, i + CONTRATO.LOTE);
+    r.lotes++;
+    let status = 'sent', falha = '', providerId = '';
     try {
-      await enviar(acc, { to: numero, text, contato: c, origem: 'massa', por });
-      r.enviados++;
+      const d = await call('POST', CONTRATO.rotas.enviar, CONTRATO.corpoEnvio({
+        to: lote, text: corpo, from: cfgSms.from
+      }));
+      const lido = CONTRATO.lerEnvio(d);
+      providerId = lido.id;
+      status = lido.status;
+      if (lido.erro) { status = 'failed'; falha = lido.erro; }
     } catch (e) {
-      r.falhas++;
-      if (r.erros.length < 10) r.erros.push({ to: numero, erro: e.message });
+      status = 'failed';
+      falha = e.message;
+      plog({ type: 'sms_error', accountId: acc.id, lote: lote.length, error: e.message });
+    }
+
+    for (const numero of lote) {
+      const c = store.findContact(acc, numero);
+      guardar(acc, {
+        id: db.genId('sms'), ts: Date.now(), to: numero,
+        name: (c && c.name) || '', text: corpo, segments: seg,
+        origem: 'massa', por: por || null,
+        status, providerId, error: falha
+      });
+    }
+    if (status === 'failed') {
+      r.falhas += lote.length;
+      if (r.erros.length < 10) r.erros.push({ lote: lote.length, erro: falha });
+    } else {
+      r.enviados += lote.length;
     }
   }
+
   store.logEvent({ type: 'sms_bulk', accountId: acc.id, ...r, erros: undefined });
   return r;
 }
@@ -267,6 +323,14 @@ async function enviarMassa(acc, { numeros, text, por = null }) {
 function historico(acc) {
   if (!Array.isArray(acc.smsLog)) acc.smsLog = [];
   return acc.smsLog;
+}
+
+function guardar(acc, registro) {
+  const h = historico(acc);
+  h.unshift(registro);
+  if (h.length > 2000) h.length = 2000;
+  db.save();
+  return registro;
 }
 
 // ---------------------------------------------------------------------------
@@ -280,53 +344,68 @@ async function saldo() {
   return s;
 }
 
+// Caminho da rota com o token escondido — para mostrar na tela sem vazar nada.
+function rotaVisivel(rota) { return rota('{TOKEN}'); }
+
 // Teste de conexão do Admin SaaS: diz qual parte do contrato falhou.
 async function testar() {
   const c = cfg();
-  if (!c.token) return { ok: false, etapa: 'AUTH', msg: 'Informe o token da Integra X' };
+  const rota = rotaVisivel(CONTRATO.rotas.saldo);
+  if (!c.token) return { ok: false, etapa: 'AUTH', msg: 'Informe o token da Integra X', base: baseUrl(), rota };
   try {
     const s = await saldo();
     plog({ type: 'sms_test_ok', creditos: s.creditos });
-    return { ok: true, saldo: s, base: baseUrl(), rota: CONTRATO.rotas.saldo };
+    return { ok: true, saldo: s, base: baseUrl(), rota };
   } catch (e) {
-    const etapa = /HTTP 404|not found/i.test(e.message) ? 'ROTAS'
-      : /401|403|token|unauthor/i.test(e.message) ? 'AUTH'
-      : /Não foi possível falar/i.test(e.message) ? 'BASE'
+    // O token viaja no caminho: token errado devolve 404 ("rota inexistente"),
+    // não 401. Por isso 404 aponta para AUTH, e não para ROTAS.
+    const etapa = /Não foi possível falar/i.test(e.message) ? 'BASE'
+      : [401, 403, 404].includes(e.http) ? 'AUTH'
+      : e.http >= 400 && e.http < 500 ? 'ROTAS'
       : 'CAMPOS';
-    plog({ type: 'sms_test_fail', etapa, error: e.message });
-    return { ok: false, etapa, msg: e.message, base: baseUrl(), rota: CONTRATO.rotas.saldo };
+    plog({ type: 'sms_test_fail', etapa, http: e.http || 0, error: e.message });
+    return { ok: false, etapa, msg: e.message, http: e.http || 0, base: baseUrl(), rota };
   }
 }
 
 // ---------------------------------------------------------------------------
 // STATUS DE ENTREGA
-// O provedor avisa por webhook; a consulta manual existe para quem não tem URL
-// pública configurada (desenvolvimento) e para reconferir um envio específico.
+//
+// A API da Integra X não expõe consulta de status por mensagem no SMS — só a
+// chamada de VOZ tem campo `dlr`. Então o histórico marca "enviado" quando o
+// provedor aceita o disparo, e só muda se um webhook de entrega chegar em
+// /sms-webhook. Se a conta tiver DLR habilitado, é só apontar para lá.
 // ---------------------------------------------------------------------------
-function aplicarStatus(providerId, status, broadcast) {
+// `to` opcional: quando vem, é ele que diz de qual destinatário é o status —
+// no envio em lote o mesmo providerId cobre a lista inteira. Sem `to`, o status
+// vale para todo o lote.
+function aplicarStatus(providerId, status, broadcast, to) {
   if (!providerId) return { ok: false, reason: 'sem id' };
-  for (const acc of db.get().accounts) {
-    const reg = (acc.smsLog || []).find(x => x.providerId === providerId);
-    if (!reg) continue;
-    reg.status = status;
-    reg.updatedAt = Date.now();
-    db.save();
-    if (broadcast) broadcast('sms', { accountId: acc.id, id: reg.id, status });
-    return { ok: true, accountId: acc.id, id: reg.id };
-  }
-  plog({ type: 'sms_webhook_unmatched', providerId, status });
-  return { ok: false, reason: 'não encontrado' };
-}
+  const numero = to ? normalizarNumero(to) : '';
+  const atingidos = [];
 
-async function consultarStatus(acc, id, broadcast) {
-  const reg = (acc.smsLog || []).find(x => x.id === id);
-  if (!reg) throw erro('Envio não encontrado', 404);
-  if (!reg.providerId) return reg;
-  const d = await call('GET', CONTRATO.rotas.status(reg.providerId));
-  const st = CONTRATO.lerStatus(d);
-  if (st) { reg.status = st; reg.updatedAt = Date.now(); db.save(); }
-  if (broadcast) broadcast('sms', { accountId: acc.id, id: reg.id, status: reg.status });
-  return reg;
+  for (const acc of db.get().accounts) {
+    const alvos = (acc.smsLog || []).filter(x =>
+      x.providerId === providerId && (!numero || x.to === numero));
+    if (!alvos.length) continue;
+    for (const reg of alvos) {
+      reg.status = status;
+      reg.updatedAt = Date.now();
+      atingidos.push({ accountId: acc.id, id: reg.id });
+    }
+    if (broadcast) broadcast('sms', { accountId: acc.id, status });
+    // Para na primeira conta que casa. O id é do provedor e não deveria se
+    // repetir entre contas, mas se repetir um DLR nunca pode mexer no
+    // histórico de outro cliente.
+    break;
+  }
+
+  if (!atingidos.length) {
+    plog({ type: 'sms_webhook_unmatched', providerId, to: numero, status });
+    return { ok: false, reason: 'não encontrado' };
+  }
+  db.save();
+  return { ok: true, total: atingidos.length, ...atingidos[0] };
 }
 
 // Webhook público de entrega (DLR). Não confia no corpo para nada além do id e
@@ -335,9 +414,9 @@ function webhookHandler(broadcast) {
   return (req, res) => {
     res.json({ ok: true });
     try {
-      const { id, status } = CONTRATO.lerWebhook(req.body || {});
+      const { id, to, status } = CONTRATO.lerWebhook(req.body || {});
       if (!id || !status) return;
-      aplicarStatus(id, status, broadcast);
+      aplicarStatus(id, status, broadcast, to);
     } catch (e) {
       plog({ type: 'sms_webhook_error', error: e.message });
     }
@@ -373,7 +452,12 @@ function adminView() {
     priceCents: c.priceCents || 0,
     lastBalance: c.lastBalance || null,
     configured: configured(),
-    rotas: CONTRATO.rotas,
+    lote: CONTRATO.LOTE,
+    // caminho com o token substituído por {TOKEN} — a URL real é secreta
+    rotas: {
+      enviar: rotaVisivel(CONTRATO.rotas.enviar),
+      saldo: rotaVisivel(CONTRATO.rotas.saldo)
+    },
     logs: (c.logs || []).slice(0, 30)
   };
 }
@@ -381,7 +465,7 @@ function adminView() {
 module.exports = {
   CONTRATO, cfg, emptyConfig, configured, baseUrl,
   normalizarNumero, valido, segmentos, normalizarStatus,
-  enviar, enviarMassa, historico, saldo, testar,
-  aplicarStatus, consultarStatus, webhookHandler,
+  enviar, enviarMassa, historico, saldo, testar, rotaVisivel,
+  aplicarStatus, webhookHandler,
   publicView, adminView
 };

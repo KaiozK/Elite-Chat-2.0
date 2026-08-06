@@ -29,42 +29,54 @@ Sem o passo 1 nenhum cliente vê a tela. Sem o passo 2, só os planos marcados v
 - O consumo é contado por **segmento**: acima do limite de caracteres a operadora
   cobra mais de um SMS, e o EliteChat conta do mesmo jeito.
 
-## Ajustar o contrato da API
+## O contrato da API
 
-A documentação da Integra X fica atrás do login do painel
-(`https://www.integrax.app/dashboard/external/docs`), então **todo o contrato HTTP
-está isolado num único bloco** no topo de `src/sms.js`:
+Baseado na documentação oficial da Integra X (painel → `/dashboard/external`).
+Está todo num único bloco no topo de `src/sms.js`:
 
-```js
-const CONTRATO = {
-  base:  'https://api.integrax.app',
-  auth:  (cfg, headers) => { headers['Authorization'] = `Bearer ${cfg.token}`; ... },
-  rotas: { enviar: '/v1/sms/send', saldo: '/v1/account/balance', status: id => ... },
-  corpoEnvio: ({ to, text, from, referencia, callbackUrl }) => ({ ... }),
-  lerEnvio:   d => ({ id, status, erro }),
-  lerSaldo:   d => ({ creditos, moeda }),
-  lerStatus:  d => '...',
-  lerWebhook: b => ({ id, status })
-};
-```
-
-Nada fora desse bloco conhece a Integra X. Para adaptar ao que a documentação
-disser, mexa só nele.
-
-O botão **Testar conexão** aponta qual das quatro partes está errada:
-
-| Etapa reportada | O que corrigir |
+| | |
 |---|---|
-| `BASE` | o host não respondeu — confira `base` (ou o campo *URL da API*) |
-| `AUTH` | o token foi recusado — confira o valor e o formato em `auth` |
-| `ROTAS` | o caminho não existe nessa conta — confira `rotas` |
+| Host | `https://sms.aresfun.com` |
+| Envio | `POST /v1/integration/{TOKEN}/send-sms` |
+| Saldo | `GET /v1/integration/{TOKEN}/consult/credits` |
+| Corpo do envio | `{ "to": ["5511999999999"], "from": "29094", "message": "..." }` |
+| Sucesso | `error: 0` / `success` |
+| Erro | HTTP 4xx com `message` |
+
+Três detalhes da API que moldaram a implementação:
+
+**1. O token viaja no caminho, não em header.** A URL inteira é secreta. Por
+isso ela nunca aparece em log, em mensagem de erro nem na resposta do admin —
+`mascarar()` troca o token por `***`, e a tela mostra o caminho com `{TOKEN}`.
+Efeito colateral: um token errado responde **404** ("rota não existe"), não 401.
+O teste de conexão sabe disso e aponta `AUTH` nesse caso.
+
+**2. `to` é uma lista.** O disparo em massa aproveita isso e vai em **lotes de
+100 números por chamada**, em vez de uma requisição por destinatário. Cada
+número continua com a própria linha no histórico.
+
+**3. Não existe consulta de status por mensagem no SMS.** Só a chamada de voz
+tem campo `dlr`. Então o histórico marca *enviado* quando o provedor aceita, e
+só vira *entregue* se um webhook chegar em `/sms-webhook`. Quando o corpo do
+webhook traz o número, o status vai para aquele destinatário; sem número, vale
+para o lote inteiro daquela conta.
+
+Se algo mudar do lado da Integra X, o ajuste é no bloco `CONTRATO` e em mais
+lugar nenhum. O botão **Testar conexão** aponta onde:
+
+| Etapa | O que corrigir |
+|---|---|
+| `BASE` | o host não respondeu — confira a *URL da API* |
+| `AUTH` | token recusado (404 ou 401) — confira se copiou o valor inteiro |
+| `ROTAS` | o endereço existe mas a conta não tem acesso — confira o plano na Integra X |
 | `CAMPOS` | conectou, mas a resposta veio em outro formato — confira `lerSaldo`/`lerEnvio` |
 
-Os leitores (`lerEnvio`, `lerSaldo`, `lerStatus`, `lerWebhook`) já aceitam as
-grafias mais comuns (`id` / `messageId` / `message_id`, `balance` / `credits`,
-com ou sem envelope `data`), e `normalizarStatus()` traduz o vocabulário do
-provedor para `queued | sent | delivered | undelivered | failed`. Na prática, é
-provável que só `base` e `rotas` precisem de ajuste.
+## O que a API oferece e ainda não usamos
+
+A mesma integração expõe, com o mesmo token: **OTP** (`send-otp` / `verify-otp`),
+**RCS** (texto, card e carrossel), **chamada de voz** (TTS ou MP3), **consulta de
+CPF e de telefone** e **números virtuais**. Nada disso está implementado — só o
+SMS. É só pedir.
 
 ## Onde fica cada coisa
 

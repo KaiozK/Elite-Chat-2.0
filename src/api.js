@@ -844,10 +844,6 @@ module.exports = function (broadcast, clients) {
     });
   });
 
-  router.get('/sms/:id/status', auth, feat('sms'), can('sms'), h(async (req, res) => {
-    res.json({ sms: await sms.consultarStatus(req.acc, req.params.id, broadcast) });
-  }));
-
   // ============ USO x LIMITES DO PLANO ============
   router.get('/limits', auth, (req, res) => {
     res.json({ limits: limits.report(req.acc), extraPrices: limits.extraPrices() });

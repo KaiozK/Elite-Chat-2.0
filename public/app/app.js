@@ -6132,16 +6132,19 @@ function admSmsPaint() {
       <div class="capi-head">${ico('lock', 14)} Credenciais da Integra X
         <span class="capi-tag">${c.hasToken ? 'token salvo' : 'pendente'}</span></div>
       <div class="row" style="margin-top:10px;align-items:flex-end">
-        <label style="flex:1.4">Token da API
+        <label style="flex:1.4">Token da integração <em class="lim-extra">painel da Integra X → /dashboard/external</em>
           <input id="sms-token" type="password" placeholder="${c.hasToken ? '•••••••• (mantém o atual)' : 'cole o token aqui'}"></label>
-        <label style="max-width:190px">Remetente
-          <input id="sms-from" value="${esc(c.from)}" placeholder="ex.: EliteChat"></label>
+        <label style="max-width:190px">Remetente <em class="lim-extra">short code</em>
+          <input id="sms-from" value="${esc(c.from)}" placeholder="ex.: 29094"></label>
       </div>
       <div class="row" style="margin-top:10px;align-items:flex-end">
         <label style="flex:1">URL da API <em class="lim-extra">deixe vazio para o padrão</em>
           <input id="sms-base" value="${esc(c.base)}" placeholder="${esc(c.baseEfetiva)}"></label>
         <button class="btn primary no-grow" onclick="admSmsSaveForm(this)">${ico('save', 14)} Salvar</button>
       </div>
+      <p class="hint" style="margin:10px 0 0">${ico('lock', 12)}
+        O token da Integra X viaja <b>dentro do endereço</b> (<code>${esc(c.rotas ? c.rotas.enviar : '')}</code>),
+        então ele nunca aparece em log nem em mensagem de erro.</p>
       <div class="row" style="margin-top:10px">
         <button class="btn no-grow" onclick="admSmsTest(this)">${ico('activity', 13)} Testar conexão</button>
         ${c.hasToken ? `<button class="btn danger no-grow" onclick="admSmsClearToken()">Remover token</button>` : ''}
@@ -6179,6 +6182,12 @@ function admSmsPaint() {
         <div style="text-align:right"><span class="muted" style="font-size:12px">consultado</span>
           <div style="font-size:13px;font-weight:700">${timeAgo(b.ts)}</div></div>
       </div>` : ''}
+
+    <div class="fee-sep"></div>
+    <p class="muted" style="font-size:11.5px;margin:0">
+      ${ico('zap', 12)} O disparo em massa vai em lotes de <b>${fmtN(c.lote || 100)}</b> números por chamada —
+      a Integra X aceita vários destinatários de uma vez.
+    </p>
 
     ${(c.logs || []).length ? `<div class="fee-sep"></div>
       <h2 style="font-size:14px">${ico('list')} Últimos eventos</h2>
@@ -6226,8 +6235,8 @@ async function admSmsTest(btn) {
       // O teste diz QUAL parte do contrato falhou, para não caçar no escuro.
       const dica = {
         BASE: 'Não foi possível alcançar o servidor. Confira a URL da API.',
-        AUTH: 'O token foi recusado. Confira o valor e se ele tem permissão de leitura.',
-        ROTAS: 'O caminho consultado não existe nesta conta. Ajuste as rotas em src/sms.js (bloco CONTRATO).',
+        AUTH: 'O token foi recusado. Como ele faz parte do endereço, um token errado responde 404 — confira se copiou o valor inteiro do painel da Integra X.',
+        ROTAS: 'O endereço existe, mas a conta não tem acesso a esta rota. Confira o plano contratado na Integra X.',
         CAMPOS: 'A conexão funcionou, mas a resposta veio em outro formato. Ajuste a leitura em src/sms.js (bloco CONTRATO).'
       }[r.etapa] || '';
       out.innerHTML = `<div class="danger-box" style="margin-top:10px">
