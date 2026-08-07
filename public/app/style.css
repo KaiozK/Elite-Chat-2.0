@@ -3200,7 +3200,7 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
 .sheet-item:active { background: var(--border2); }
 
 /* ---------------------------------------------------------------------------
-   SALDO DA CARTEIRA NO CABEÇALHO (celular)
+   SALDO DA CARTEIRA NO CABEÇALHO
    Valor sempre à vista e depósito a um toque. O "+" usa o gradiente da marca
    (--verde → --verde-deep) para se ler como ação principal, não como ícone.
    --------------------------------------------------------------------------- */
@@ -3209,7 +3209,7 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
   padding: 3px 3px 3px 10px; border-radius: 99px;
   background: var(--bg2); border: 1px solid var(--border);
 }
-body.has-tabbar .tb-wallet:not(.hidden) { display: flex; }
+.tb-wallet:not(.hidden) { display: flex; }
 .tb-wallet-val {
   font-size: 12.5px; font-weight: 800; color: var(--tinta, var(--text));
   text-decoration: none; letter-spacing: -.01em; white-space: nowrap;

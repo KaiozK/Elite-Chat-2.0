@@ -67,6 +67,17 @@ function maybePush(event, data) {
   } else if (event === 'attendance' && data.status === 'open' && data.reason === 'inbound') {
     type = 'attendance';
     payload = { title: 'Novo atendimento', body: (data.name || 'Cliente') + ' iniciou uma conversa', tag: 'att:' + data.waId, data: { type, waId: data.waId, url } };
+  } else if (event === 'elitepay' && data.status === 'paid') {
+    // VENDA APROVADA no Elite Pay. O dinheiro entrou: é a notificação que o
+    // lojista mais espera, e era a única do fluxo de venda que não existia.
+    const fmt = require('./src/elitepay').fmtBRL;
+    type = 'sale';
+    payload = {
+      title: 'Venda aprovada ✅',
+      body: fmt(data.amount || 0) + (data.contactName ? ' · ' + data.contactName : ''),
+      tag: 'sale:' + (data.chargeId || Date.now()),
+      data: { type, waId: data.waId || null, url: '/app/#/elitepay' }
+    };
   } else if (event === 'commission') {
     // Venda do indicado aprovada — o afiliado recebe o valor da comissão.
     type = 'commission';

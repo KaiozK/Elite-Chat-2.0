@@ -332,7 +332,8 @@ function renderNotifSettings() {
       ${ck('types.call', p.types.call, 'Ligações', 'Chamadas de voz recebidas')}
       ${ck('types.attendance', p.types.attendance, 'Atendimentos', 'Novo cliente iniciou conversa')}
       ${ck('types.reminder', p.types.reminder, 'Lembretes', 'Agendamentos da agenda')}
-      ${ck('types.commission', p.types.commission !== false, 'Vendas aprovadas', 'Comissão de indicação na carteira')}
+      ${ck('types.sale', p.types.sale !== false, 'Vendas aprovadas', 'Pagamento confirmado no Elite Pay')}
+      ${ck('types.commission', p.types.commission !== false, 'Comissões de indicação', 'Sua parte na venda de um indicado')}
     </div>
     <div class="row" style="margin-top:16px">
       <button class="btn no-grow" onclick="notifTestFire()">${ico('bell', 14)} Testar notificação</button>
@@ -750,7 +751,7 @@ async function enterApp() {
   if (window.ECNotify) { ECNotify.setHooks({ onOpen: notifOpenFromData, onResync: notifResync, onChange: paintNotifBell }); paintNotifBell(); }
   setTheme(currentTheme());   // sincroniza o ícone de tema do topbar
   askNotifPermission();    // permissão + push do WebApp
-  refreshWallet();         // saldo no cabeçalho (celular)
+  refreshWallet();         // saldo no cabeçalho
   initSearch();
   await loadChannels();    // canais (conexões WhatsApp) antes de qualquer listagem
   try { const st = await api('/settings'); state.settings = st.settings; state.wa = st.wa; } catch {}
@@ -1393,17 +1394,17 @@ function syncTabbarBadge() {
   destino.classList.toggle('hidden', !tem);
 }
 
-// ---------- CARTEIRA NO CABEÇALHO (celular) ----------
-// Saldo sempre à vista e depósito a um toque. No computador o saldo já mora
-// na tela de Assinatura, que está sempre no menu — aqui ele resolve a distância
-// extra que o celular impõe.
+// ---------- CARTEIRA NO CABEÇALHO ----------
+// Saldo sempre à vista e depósito a um toque, no celular e no computador. O
+// saldo também mora na tela de Assinatura, mas é o número que o lojista mais
+// confere: deixar no cabeçalho evita uma viagem de tela a cada consulta.
 let WALLET = { balance: 0, deposito: { min: 100, max: 0 } };
 
 async function refreshWallet() {
   const caixa = document.getElementById('tb-wallet');
   if (!caixa) return;
   // Atendente não tem carteira própria: a da empresa não é assunto dele.
-  if (state.agent || !isMobileLayout()) { caixa.classList.add('hidden'); return; }
+  if (state.agent) { caixa.classList.add('hidden'); return; }
   try {
     WALLET = await api('/wallet/summary');
     const val = document.getElementById('tb-wallet-val');
@@ -1476,7 +1477,7 @@ function toggleMoreSheet(force) {
 MOBILE_MQ.addEventListener('change', () => {
   if (!state.user) return;
   applyNavPermissions();
-  refreshWallet();   // o saldo no topo só existe no celular
+  refreshWallet();   // saldo do topo acompanha a troca de layout/conta
 });
 
 // ---------- menu lateral em gaveta (celular) ----------
