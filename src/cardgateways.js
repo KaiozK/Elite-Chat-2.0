@@ -67,6 +67,10 @@ const pagarme = {
       [metodo]: {
         installments: Math.max(1, Number(installments) || 1),
         statement_descriptor: (softDescriptor || '').slice(0, 13) || undefined,
+        // `card_id` é o cartão que o próprio Pagar.me já guardou (vem em
+        // last_transaction.card.id de uma cobrança aprovada). É o que permite
+        // cobrar de novo sem pedir o número outra vez.
+        card_id: card.token || undefined,
         card: card.token
           ? undefined
           : {
@@ -83,7 +87,6 @@ const pagarme = {
               country: 'BR'
             } : undefined
           },
-        card_token: card.token || undefined
       }
     };
 
@@ -117,6 +120,9 @@ const pagarme = {
       gatewayId: charge.id || d.id || '',
       brand: tx.card ? tx.card.brand : '',
       last4: tx.card ? tx.card.last_four_digits : '',
+      // id do cartão salvo no adquirente — guardado para a próxima cobrança
+      cardToken: (tx.card && tx.card.id) || '',
+      holderName: (tx.card && tx.card.holder_name) || '',
       authCode: tx.acquirer_auth_code || '',
       message: tx.acquirer_message || charge.status || '',
       raw: undefined
@@ -348,14 +354,17 @@ const asaas = {
       dueDate: new Date().toISOString().slice(0, 10),
       description: (description || 'Pagamento').slice(0, 500),
       externalReference: correlationID,
-      creditCard: {
+      // Com o cartão já tokenizado, `creditCardToken` SUBSTITUI `creditCard` e
+      // `creditCardHolderInfo` — mandar os três junto é recusado.
+      creditCardToken: card.token || undefined,
+      creditCard: card.token ? undefined : {
         holderName: card.holderName,
         number: onlyDigits(card.number),
         expiryMonth: String(card.expMonth).padStart(2, '0'),
         expiryYear: String(card.expYear).length === 2 ? '20' + card.expYear : String(card.expYear),
         ccv: String(card.cvv)
       },
-      creditCardHolderInfo: {
+      creditCardHolderInfo: card.token ? undefined : {
         name: card.holderName,
         email: customer.email || 'sem-email@elitechat.com.br',
         cpfCnpj: onlyDigits(customer.taxId),
@@ -374,6 +383,11 @@ const asaas = {
       gatewayId: d.id || '',
       brand: (d.creditCard && d.creditCard.creditCardBrand) || '',
       last4: (d.creditCard && d.creditCard.creditCardNumber) || '',
+      // Token para cobrar de novo sem pedir o cartão. Em produção a Asaas só
+      // devolve depois de liberar a tokenização com o gerente da conta; sem
+      // isso ele vem vazio e o cliente segue digitando o cartão.
+      cardToken: (d.creditCard && d.creditCard.creditCardToken) || '',
+      holderName: card.holderName || '',
       authCode: '',
       message: d.status || '',
       raw: undefined

@@ -894,7 +894,29 @@ async function undoCancelChannel(id) {
 // Contratar conexões a mais sem sair da tela de Conexões: escolhe a quantidade,
 // vê o total somando e paga no pop-up. É mensal — entra na renovação.
 function extraChannelsBox(lim) {
-  if (state.agent || !lim.buyable || !lim.extraPrice) return '';
+  if (state.agent) return '';   // atendente não contrata nada
+
+  // Sem preço de conexão extra definido no Admin, o card de compra sumia da
+  // tela inteiro: quem batia no limite via só "1 de 1" e nenhum caminho para
+  // adicionar outro número — parecia defeito. Agora o limite esgotado sempre
+  // diz o que fazer, mesmo quando a compra não está habilitada.
+  if (!lim.buyable || !lim.extraPrice) {
+    if (!lim.exceeded && !(lim.limit && lim.used >= lim.limit)) return '';
+    return `<div class="extra-buy" id="extra-buy-whatsapps">
+      <div class="extra-buy-head">
+        ${ico('info', 15)}
+        <div style="flex:1;min-width:0">
+          <b>Você usou as ${fmtN(lim.limit)} conexão(ões) do seu plano</b>
+          <em>Conexões adicionais não estão à venda no momento. Mude de plano para conectar mais números.</em>
+        </div>
+      </div>
+      <div class="extra-buy-row">
+        <div style="flex:1"></div>
+        <a class="btn primary no-grow" href="#/billing">${ico('arrowright', 14)} Ver planos</a>
+      </div>
+    </div>`;
+  }
+
   return `<div class="extra-buy" id="extra-buy-whatsapps">
     <div class="extra-buy-head">
       ${ico('plus', 15)}
@@ -5677,31 +5699,68 @@ function openCardPay(mode, id, amount, qty) {
   CARD_CTX = { mode, id, amount, qty: qty || 1 };
   const maxP = Math.max(1, c.maxInstallments || 1);
 
+  // CARTÃO JÁ CADASTRADO NA FATURA
+  //
+  // Quem já pagou o EliteChat no cartão não deveria digitar tudo de novo.
+  // `reusable` só é verdadeiro quando o adquirente devolveu um identificador
+  // reaproveitável — aí a compra sai em um clique. Quando não devolveu (a
+  // tokenização da Asaas, por exemplo, precisa ser liberada na conta), ainda
+  // assim conhecemos o titular e o CPF/CNPJ, e o formulário já vem preenchido:
+  // só o número, a validade e o CVV ficam para o cliente.
+  const s = d.savedCard || {};
+  const temCartao = !!(s.last4 && s.reusable);
+  const rotulo = `${esc(s.brand || 'Cartão')} •••• ${esc(s.last4 || '')}`;
+
   openModal(`
     <h2>${ico('card')} Pagar no cartão</h2>
     <p class="muted" style="margin:0 0 14px;font-size:13px">
       ${mode === 'plan' ? 'Assinatura do EliteChat' : `${qty}x ${esc(extraLabel(id))}`}
      , <b style="color:var(--verde-deep)">${fmtBRL(amount)}</b>. A ativação é imediata após a aprovação.
     </p>
+    ${temCartao ? `<div class="pay-methods" style="margin-bottom:14px">
+      <label class="pay-method">
+        <input type="radio" name="cpsrc" value="saved" checked onchange="cardSrcToggle()">
+        <span><b>${ico('card', 13)} Usar ${rotulo}</b><em>O cartão que você já cadastrou na fatura</em></span>
+      </label>
+      <label class="pay-method">
+        <input type="radio" name="cpsrc" value="new" onchange="cardSrcToggle()">
+        <span><b>Usar outro cartão</b><em>Passa a valer também para as próximas renovações</em></span>
+      </label>
+    </div>` : ''}
+    <div id="cp-form" ${temCartao ? 'hidden' : ''}>
+    ${!temCartao && s.last4 ? `<p class="hint" style="margin:0 0 10px;text-align:left">
+      ${ico('info', 12)} Cartão da sua fatura: <b>${rotulo}</b>. O adquirente não permite cobrar de novo sem os dados, então confirme o número abaixo.</p>` : ''}
     <label>Número do cartão<input id="cp-num" inputmode="numeric" autocomplete="cc-number" placeholder="0000 0000 0000 0000" oninput="maskCardNum(this)"></label>
-    <label>Nome impresso no cartão<input id="cp-holder" autocomplete="cc-name" placeholder="COMO ESTÁ NO CARTÃO"></label>
+    <label>Nome impresso no cartão<input id="cp-holder" autocomplete="cc-name" placeholder="COMO ESTÁ NO CARTÃO" value="${esc(s.holderName || '')}"></label>
     <div class="row">
       <label style="max-width:110px">Mês<input id="cp-mm" inputmode="numeric" maxlength="2" placeholder="MM"></label>
       <label style="max-width:110px">Ano<input id="cp-yy" inputmode="numeric" maxlength="4" placeholder="AAAA"></label>
       <label style="max-width:110px">CVV<input id="cp-cvv" inputmode="numeric" maxlength="4" placeholder="123"></label>
     </div>
-    <div class="row">
-      <label style="flex:1.2">CPF ou CNPJ do titular<input id="cp-doc" inputmode="numeric" placeholder="000.000.000-00"></label>
-      <label style="flex:1" id="cp-inst-wrap">Parcelas
-        <select id="cp-inst">${Array.from({ length: maxP }, (_, i) =>
-          `<option value="${i + 1}">${i + 1}x de ${fmtBRL(Math.round(amount / (i + 1)))}${i ? '' : ' à vista'}</option>`).join('')}</select>
-      </label>
+    <label>CPF ou CNPJ do titular<input id="cp-doc" inputmode="numeric" placeholder="000.000.000-00" value="${esc(s.taxId || '')}"></label>
     </div>
+    <label id="cp-inst-wrap">Parcelas
+      <select id="cp-inst">${Array.from({ length: maxP }, (_, i) =>
+        `<option value="${i + 1}">${i + 1}x de ${fmtBRL(Math.round(amount / (i + 1)))}${i ? '' : ' à vista'}</option>`).join('')}</select>
+    </label>
     <p class="hint" style="margin-top:10px">${ico('lock', 12)} Os dados vão direto para o adquirente, o EliteChat guarda só a bandeira e os 4 últimos dígitos para renovar.</p>
     <div class="row" style="margin-top:14px">
       <button class="btn" onclick="closeModal()">Cancelar</button>
       <button class="btn primary" onclick="submitCardPay(this)">${ico('lock', 14)} Pagar ${fmtBRL(amount)}</button>
     </div>`);
+}
+
+// Mostra ou esconde o formulário conforme a escolha entre o cartão salvo e um
+// cartão novo. As parcelas ficam de fora: valem para os dois casos.
+function cardSrcToggle() {
+  const novo = usandoCartaoNovo();
+  const f = $('#cp-form');
+  if (f) f.hidden = !novo;
+}
+
+function usandoCartaoNovo() {
+  const r = document.querySelector('input[name="cpsrc"]:checked');
+  return !r || r.value === 'new';
 }
 
 function maskCardNum(el) {
@@ -5710,23 +5769,34 @@ function maskCardNum(el) {
 
 async function submitCardPay(btn) {
   const ctx = CARD_CTX; if (!ctx) return;
+  const novo = usandoCartaoNovo();
+  const salvo = ((BILL_CACHE || {}).savedCard) || {};
+  const nome = novo ? (($('#cp-holder') || {}).value || '').trim() : (salvo.holderName || '');
+  const doc = novo ? (($('#cp-doc') || {}).value || '').replace(/\D/g, '') : (salvo.taxId || '');
+
   const body = {
     kind: 'credit',
     installments: Number(($('#cp-inst') || {}).value || 1),
-    card: {
+    // No cartão salvo nada do cartão viaja: o servidor usa o identificador que
+    // guardou do adquirente.
+    useSaved: !novo,
+    card: novo ? {
       number: ($('#cp-num').value || '').replace(/\D/g, ''),
-      holderName: ($('#cp-holder').value || '').trim(),
+      holderName: nome,
       expMonth: ($('#cp-mm').value || '').trim(),
       expYear: ($('#cp-yy').value || '').trim(),
       cvv: ($('#cp-cvv').value || '').trim()
-    },
-    customer: { name: ($('#cp-holder').value || '').trim(), taxId: ($('#cp-doc').value || '').replace(/\D/g, '') }
+    } : undefined,
+    customer: { name: nome, taxId: doc }
   };
   const txt = btn.innerHTML; btn.disabled = true; btn.textContent = 'Processando…';
   try {
     if (ctx.mode === 'plan') await api('/billing/subscribe-card', { body: { ...body, planId: ctx.id } });
     else await api('/billing/extras', { body: { ...body, key: ctx.id, qty: ctx.qty } });
     closeModal();
+    // o cartão acabou de ser salvo: o cache precisa reler para a próxima
+    // compra já oferecer "usar o cartão salvo"
+    BILL_CACHE = null;
     toast(ctx.mode === 'plan' ? 'Assinatura ativada! 🎉' : 'Contratado! Já pode usar.');
     if (ctx.mode === 'plan') paintBilling();
     else afterExtraBought(ctx.id);
@@ -6299,16 +6369,16 @@ async function admDelPlan(id) {
   if (!await confirmModal({ title: 'Arquivar plano', text: 'Novos clientes não poderão assiná-lo. Assinantes atuais continuam até cancelarem.', ok: 'Arquivar', danger: true })) return;
   try { await api('/admin/plans/' + id, { method: 'DELETE' }); paintAdmin(); setTimeout(() => showSettingsTab('adm-pl'), 60); } catch (e) { toast(e.message, 'error'); }
 }
-// ---- Admin → SMS (Integra X) ----
-// Um interruptor liga a funcionalidade para os clientes; o token e o remetente
-// A aba Integrações do Admin reúne tudo que a PLATAFORMA conecta uma vez e
-// oferece a todos os clientes: a loja Nuvemshop e o SMS da Integra X.
+// ---- Admin → Integrações da PLATAFORMA ----
+// Reúne o que a plataforma conecta uma vez e oferece a todos os clientes: a
+// loja Nuvemshop e os disparos de SMS da Integra X.
 function admIntLoad() {
   admNsLoad();
   admSmsLoad();
 }
 
-// são da plataforma e nunca voltam para o navegador.
+// Um interruptor liga o SMS para os clientes; o token e o remetente são da
+// plataforma e nunca voltam para o navegador.
 let admSms = null;
 async function admSmsLoad() {
   const box = $('#adm-sms-box'); if (!box) return;

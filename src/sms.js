@@ -172,12 +172,24 @@ async function call(method, rota, body) {
   try { data = texto ? JSON.parse(texto) : {}; } catch { data = { raw: texto }; }
 
   if (!r.ok) {
-    const msg = data.message || data.error || data.detail ||
+    let msg = data.message || data.error || data.detail ||
       (data.raw ? String(data.raw).slice(0, 200) : `Integra X respondeu HTTP ${r.status}`);
-    // 404 aqui costuma ser token inválido: o token faz parte do caminho, então
-    // token errado vira "rota inexistente" em vez de 401.
+    // O token faz PARTE DO CAMINHO, então um token errado não devolve 401: a
+    // Integra X responde 404 com `INTEGRATION_NOT_FOUND`, que lido cru vira um
+    // "Erro 404" e faz parecer que a integração do EliteChat está quebrada.
+    // Traduzimos para o que realmente aconteceu. (As rotas foram conferidas
+    // contra o host: uma rota inexistente devolve `Cannot GET ...`, texto
+    // diferente deste — dá para distinguir os dois casos com segurança.)
+    if (data.code === 'INTEGRATION_NOT_FOUND' || /integration not found/i.test(String(msg))) {
+      msg = 'A Integra X não reconheceu este token. Confira se o valor foi copiado inteiro '
+          + 'do painel (Integrações → API) e se a integração continua ativa por lá.';
+    } else if (r.status === 404 && /cannot (get|post)/i.test(String(msg))) {
+      msg = `A Integra X não tem a rota ${mascarar(rota('{TOKEN}'))}. A API do provedor mudou; `
+          + 'ajuste o bloco CONTRATO em src/sms.js.';
+    }
     const e = erro(mascarar(String(msg)), r.status === 401 || r.status === 403 ? 400 : 502);
     e.http = r.status;
+    e.code = data.code || '';
     throw e;
   }
   return data;
@@ -360,7 +372,8 @@ async function testar() {
     // O token viaja no caminho: token errado devolve 404 ("rota inexistente"),
     // não 401. Por isso 404 aponta para AUTH, e não para ROTAS.
     const etapa = /Não foi possível falar/i.test(e.message) ? 'BASE'
-      : [401, 403, 404].includes(e.http) ? 'AUTH'
+      : e.code === 'INTEGRATION_NOT_FOUND' || [401, 403].includes(e.http) ? 'AUTH'
+      : e.http === 404 ? 'ROTAS'
       : e.http >= 400 && e.http < 500 ? 'ROTAS'
       : 'CAMPOS';
     plog({ type: 'sms_test_fail', etapa, http: e.http || 0, error: e.message });

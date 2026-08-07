@@ -36,11 +36,27 @@ function methods() {
 function erro(msg, status = 400) { const e = new Error(msg); e.status = status; return e; }
 
 // Valida os dados do cartão e do titular antes de bater no adquirente.
-function validate(body) {
-  const c = body.card || {};
-  const faltando = ['number', 'holderName', 'expMonth', 'expYear', 'cvv'].filter(k => !String(c[k] || '').trim());
-  if (faltando.length) throw erro('Preencha todos os dados do cartão');
-  const doc = String((body.customer || {}).taxId || '').replace(/\D/g, '');
+// Valida o pagamento no cartão. São dois caminhos:
+//   • cartão salvo  → só o token viaja; o número nunca passou por aqui
+//   • cartão novo   → o formulário completo
+// `acc` entra para reaproveitar o CPF/CNPJ e o titular já guardados, para não
+// pedir de novo o que o cliente já informou na fatura.
+function validate(body, acc) {
+  const bill = (acc && acc.billing) || {};
+  const salvo = bill.card || {};
+
+  const c = body.useSaved
+    ? { token: salvo.token || '', holderName: salvo.holderName || '' }
+    : (body.card || {});
+
+  if (body.useSaved) {
+    if (!c.token) throw erro('Nenhum cartão salvo nesta conta. Informe os dados do cartão.');
+  } else {
+    const faltando = ['number', 'holderName', 'expMonth', 'expYear', 'cvv'].filter(k => !String(c[k] || '').trim());
+    if (faltando.length) throw erro('Preencha todos os dados do cartão');
+  }
+
+  const doc = String((body.customer || {}).taxId || bill.taxId || '').replace(/\D/g, '');
   if (doc.length !== 11 && doc.length !== 14) throw erro('Informe um CPF ou CNPJ válido');
   return { c, doc };
 }
@@ -54,8 +70,10 @@ async function charge({ acc, valueCents, body, description, correlationID }) {
   const m = methods();
   if (!m.credit) throw erro('Pagamento com cartão indisponível. O administrador ainda não configurou o adquirente');
 
-  const { c, doc } = validate(body);
+  const { c, doc } = validate(body, acc);
   const parcelas = Math.max(1, Math.min(Number(body.installments) || 1, m.maxInstallments));
+  // o CPF/CNPJ confirmado aqui serve para o boleto e para a próxima compra
+  if (doc && acc.billing.taxId !== doc) { acc.billing.taxId = doc; db.save(); }
 
   const r = await cards.driver(cfg).charge({
     cfg: cards.creds(cfg),
@@ -82,6 +100,30 @@ async function charge({ acc, valueCents, body, description, correlationID }) {
 }
 
 // ---------------------------------------------------------------------------
+// Guarda o cartão da conta depois de uma cobrança aprovada.
+//
+// O que fica aqui é só o que dá para reusar sem risco: o identificador que o
+// adquirente devolve (nunca o número), a bandeira, os 4 últimos dígitos e o
+// titular. É isso que permite oferecer "pagar no cartão salvo" na próxima
+// compra e preencher o formulário sozinho.
+//
+// Pagando COM o cartão salvo não existe formulário: nesse caso preservamos o
+// que já estava gravado, em vez de sobrescrever com campos vazios.
+// ---------------------------------------------------------------------------
+function guardarCartao(acc, r, body) {
+  const antigo = acc.billing.card || {};
+  const digitado = (!body.useSaved && body.card) || {};
+  acc.billing.card = {
+    token: r.cardToken || r.token || antigo.token || '',
+    brand: r.brand || antigo.brand || '',
+    last4: r.last4 || String(digitado.number || '').replace(/\D/g, '').slice(-4) || antigo.last4 || '',
+    holderName: digitado.holderName || r.holderName || antigo.holderName || '',
+    gatewayCustomerId: r.customerId || antigo.gatewayCustomerId || ''
+  };
+  db.save();
+}
+
+// ---------------------------------------------------------------------------
 // Assinar um plano no cartão. Cobra plano + extras já contratados e ativa na
 // hora (cartão é síncrono — diferente do Pix, que espera o webhook).
 // ---------------------------------------------------------------------------
@@ -97,13 +139,7 @@ async function subscribe(acc, plan, body, broadcast) {
 
   // Guarda o cartão para renovar sozinho no próximo ciclo (só o token/últimos 4).
   acc.billing.method = 'credit';
-  acc.billing.card = {
-    token: r.cardToken || r.token || '',
-    brand: r.brand || '',
-    last4: r.last4 || String(body.card.number || '').replace(/\D/g, '').slice(-4),
-    holderName: body.card.holderName || '',
-    gatewayCustomerId: r.customerId || ''
-  };
+  guardarCartao(acc, r, body);
   // cancela a recorrência Pix, se existia — o cliente trocou de meio
   if (acc.billing.wooviSubId) {
     try { require('./woovi').cancelSubscription(acc.billing.wooviSubId); } catch {}
@@ -270,6 +306,8 @@ async function buyExtra(acc, key, qty, body, broadcast) {
       description: `EliteChat: ${n}x ${limits.LABEL[key]}`,
       correlationID: cid
     });
+    // comprou um extra no cartão: guarda para a próxima compra já vir pronta
+    guardarCartao(acc, r, body);
   }
 
   acc.billing.extras[key] = (Number(acc.billing.extras[key]) || 0) + n;

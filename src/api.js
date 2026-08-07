@@ -2828,9 +2828,15 @@ module.exports = function (broadcast, clients) {
       extraPrices: limits.extraPrices(),
       extras: req.acc.billing.extras,
       extrasCost: limits.extrasCost(req.acc),
+      // O cartão que a conta já usou na fatura. Sai daqui o suficiente para a
+      // tela preencher sozinha e oferecer "pagar no cartão salvo" — nunca o
+      // número nem o token, que ficam no servidor.
       savedCard: {
         last4: req.acc.billing.card.last4 || '',
         brand: req.acc.billing.card.brand || '',
+        holderName: req.acc.billing.card.holderName || '',
+        taxId: req.acc.billing.taxId || '',
+        reusable: !!req.acc.billing.card.token,
         method: req.acc.billing.method || 'pix'
       }
     });
