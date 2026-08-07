@@ -3240,3 +3240,22 @@ body.has-tabbar .tb-wallet:not(.hidden) { display: flex; }
 .ch-row-main { flex: 1; min-width: 0; cursor: pointer; border-radius: 9px; padding: 2px 6px; margin: -2px -6px; transition: background .15s; }
 .ch-row-main:hover { background: color-mix(in srgb, var(--verde) 10%, transparent); }
 .ch-row-main:focus-visible { outline: 2px solid var(--verde-esc); outline-offset: 1px; }
+
+/* Modal de opt-in das notificações (mostrado no login) */
+.notif-perks { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; }
+.notif-perks > div { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 600; color: var(--text2); }
+.notif-perks svg { color: var(--verde-esc); flex-shrink: 0; }
+
+/* Editor de etapas do Pipeline (fica dentro da própria aba) */
+.pipe-cfg { margin-bottom: 14px; }
+.pipe-rows { display: flex; flex-direction: column; gap: 8px; }
+.pipe-row { display: flex; align-items: center; gap: 8px; }
+.pipe-row input { flex: 1; margin: 0; }
+.pipe-row .btn { padding: 7px 10px; line-height: 1; }
+.pipe-row .btn[disabled] { opacity: .35; pointer-events: none; }
+.pipe-num {
+  width: 24px; height: 24px; flex: none; border-radius: 7px;
+  display: grid; place-items: center;
+  background: var(--bg2); color: var(--muted);
+  font-size: 12px; font-weight: 700;
+}

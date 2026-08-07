@@ -79,12 +79,95 @@ function onReminder(d) {
     });
   } else { toast(`⏰ ${d.label}: ${body}`); }
 }
-// Pede permissão de notificação uma vez (após login)
+// ---------------------------------------------------------------------------
+// PERMISSÃO DE NOTIFICAÇÃO (PWA)
+//
+// O navegador só concede a permissão quando o pedido nasce de um GESTO do
+// usuário. Antes, requestPermission() era chamado dentro de um setTimeout, sem
+// clique nenhum: o Safari/iOS ignorava e o Chrome tratava como pedido abusivo.
+// Agora: mostramos NOSSO modal (não custa permissão) e o clique em "Ativar"
+// dispara o pedido real. A escolha fica salva para não perguntar todo login.
+// ---------------------------------------------------------------------------
+const LS_NOTIF_ASK = 'ec_notif_ask';   // '' | 'on' | 'off' | 'blocked'
+
+function notifChoice() { try { return localStorage.getItem(LS_NOTIF_ASK) || ''; } catch { return ''; } }
+function setNotifChoice(v) { try { localStorage.setItem(LS_NOTIF_ASK, v); } catch {} }
+function notifPermission() {
+  try { return window.ECNotify ? ECNotify.permission() : 'unsupported'; } catch { return 'unsupported'; }
+}
+
 function askNotifPermission() {
-  setTimeout(() => { try { if (window.ECNotify) ECNotify.requestPermission(); } catch {} }, 4000);
   // O token do aparelho pode ter chegado antes do login (o SO entrega assim que
   // o app abre). Agora que existe sessão, vincula-o à conta.
   if (window.ECNative) { try { ECNative.sendToken(); } catch {} }
+  if (!window.ECNotify) return;
+
+  const perm = notifPermission();
+  if (perm === 'unsupported') return;
+
+  // Já concedida: só garante a inscrição (troca de aparelho, cache limpo).
+  if (perm === 'granted') {
+    try { ECNotify.subscribePush(); } catch {}
+    setNotifChoice('on');
+    return;
+  }
+
+  // Bloqueada: pedir de novo não abre nada. Avisa uma vez como reverter.
+  if (perm === 'denied') {
+    if (notifChoice() !== 'blocked') {
+      setNotifChoice('blocked');
+      setTimeout(() => toast('Notificações bloqueadas no navegador. Libere no cadeado da barra de endereços.', 'error'), 1500);
+    }
+    return;
+  }
+
+  if (notifChoice() === 'off') return;          // já disse não
+  setTimeout(() => notifOptInModal(), 1200);    // deixa a tela pintar antes
+}
+
+// Nosso modal: não consome a permissão do navegador.
+function notifOptInModal() {
+  if (document.querySelector('.modal')) return;   // não atropela outro modal
+  openModal(`
+    <h2>${ico('bell')} Ativar notificações?</h2>
+    <p class="muted" style="margin:0 0 12px;font-size:13.5px">
+      Receba o aviso na hora em que um cliente mandar mensagem, mesmo com o
+      EliteChat fechado. Sem isso, você só vê a mensagem ao abrir o painel.
+    </p>
+    <div class="notif-perks">
+      <div>${ico('message', 14)} Nova mensagem de cliente</div>
+      <div>${ico('phone', 14)} Chamada de voz recebida</div>
+      <div>${ico('clock', 14)} Lembrete de agendamento</div>
+    </div>
+    <p class="hint" style="margin-top:12px;text-align:left">Você escolhe quais avisos quer em Configurações e pode desligar quando quiser.</p>
+    <div class="row" style="margin-top:16px">
+      <button class="btn" onclick="notifOptIn(false)">Agora não</button>
+      <button class="btn primary" onclick="notifOptIn(true)">${ico('bell', 14)} Ativar notificações</button>
+    </div>`);
+}
+
+// Chamado pelo CLIQUE: é este gesto que autoriza o pedido ao navegador.
+async function notifOptIn(sim) {
+  closeModal();
+  if (!sim) {
+    setNotifChoice('off');
+    toast('Tudo bem. Você pode ativar depois em Configurações.');
+    return;
+  }
+  try {
+    const r = await ECNotify.requestPermission();
+    if (r === 'granted') {
+      setNotifChoice('on');
+      ECNotify.setPref('enabled', true);
+      toast('Notificações ativadas! 🔔');
+    } else if (r === 'denied') {
+      setNotifChoice('blocked');
+      toast('O navegador bloqueou. Libere no cadeado da barra de endereços.', 'error');
+    } else {
+      setNotifChoice('');   // fechou sem escolher: perguntamos depois
+    }
+  } catch (e) { toast('Não foi possível ativar: ' + e.message, 'error'); }
+  if (typeof paintNotifBell === 'function') paintNotifBell();
 }
 
 // ---------- Notificação de nova mensagem (via SSE) ----------
@@ -1557,7 +1640,7 @@ async function renderDashboard() {
       </div>
       <div class="two-col even">
         <div class="card">
-          <h2>${ico('columns')} Funil de vendas</h2>
+          <h2>${ico('columns')} Pipeline</h2>
           ${funnelChart(rep.stages || d.stageCounts)}
         </div>
         <div class="card">
@@ -2383,7 +2466,11 @@ async function deleteContact(waId) {
 async function renderFunnel() {
   $('#view').innerHTML = `
     <div class="page">
-      <div class="page-head"><h1>Funil de vendas</h1><p>Arraste os cards entre as etapas</p></div>
+      <div class="page-head row">
+        <div style="flex:1"><h1>Pipeline</h1><p>Arraste os cards entre as etapas</p></div>
+        <button class="btn no-grow" onclick="togglePipeCfg()" id="pipe-cfg-btn">${ico('gear', 14)} Configurar etapas</button>
+      </div>
+      <div id="pipe-cfg"></div>
       <div id="fn-scope"></div>
       <div class="kanban" id="kanban"></div>
     </div>`;
@@ -2409,8 +2496,137 @@ async function renderFunnel() {
       </div>`;
     }).join('');
     wireKanban();
+    paintPipeCfg();   // o quadro foi repintado; o editor mora nesta aba
   } catch (e) { toast(e.message, 'error'); }
 }
+
+// ---------------------------------------------------------------------------
+// EDITOR DE ETAPAS DO PIPELINE
+//
+// Antes as etapas eram um textarea "uma por linha": trocar uma letra num nome
+// já existente equivalia a apagar a etapa e criar outra, e todo contato que
+// estava lá sumia do quadro. Agora cada etapa é uma linha com controles, e o
+// que mudou vai para o servidor como um mapa antigo->novo, que migra os
+// contatos, a etapa padrão do cadastro e os nós "mover etapa" das automações.
+// ---------------------------------------------------------------------------
+let pipeCfg = null;   // { open, orig: [...], list: [{ id, nome, de }] }
+
+function togglePipeCfg() {
+  if (pipeCfg && pipeCfg.open) { pipeCfg.open = false; paintPipeCfg(); return; }
+  const stages = (state.settings && state.settings.stages) || [];
+  pipeCfg = {
+    open: true,
+    orig: stages.slice(),
+    // `de` guarda o nome com que a etapa chegou: é o que permite detectar rename
+    list: stages.map((s, i) => ({ id: 'sg' + i + '_' + Date.now(), nome: s, de: s }))
+  };
+  paintPipeCfg();
+}
+
+function paintPipeCfg() {
+  const box = $('#pipe-cfg');
+  const btn = $('#pipe-cfg-btn');
+  if (!box) return;
+  if (!pipeCfg || !pipeCfg.open) {
+    box.innerHTML = '';
+    if (btn) btn.innerHTML = ico('gear', 14) + ' Configurar etapas';
+    return;
+  }
+  if (btn) btn.innerHTML = ico('x', 14) + ' Fechar configuração';
+
+  const n = pipeCfg.list.length;
+  box.innerHTML = `
+    <div class="card pipe-cfg">
+      <h2>${ico('columns')} Etapas do Pipeline</h2>
+      <p class="muted" style="margin:0 0 12px;font-size:13px">
+        A ordem aqui é a ordem das colunas. Ao renomear uma etapa, os contatos vão
+        junto; ao remover, eles caem na primeira etapa da lista.
+      </p>
+      <div class="pipe-rows">
+        ${pipeCfg.list.map((s, i) => `
+          <div class="pipe-row">
+            <span class="pipe-num">${i + 1}</span>
+            <input value="${esc(s.nome)}" maxlength="40" placeholder="Nome da etapa"
+                   oninput="pipeSet('${s.id}', this.value)">
+            <button class="btn small no-grow" title="Subir" ${i === 0 ? 'disabled' : ''}
+                    onclick="pipeMove('${s.id}', -1)">↑</button>
+            <button class="btn small no-grow" title="Descer" ${i === n - 1 ? 'disabled' : ''}
+                    onclick="pipeMove('${s.id}', 1)">↓</button>
+            <button class="btn small danger no-grow" title="Remover" ${n === 1 ? 'disabled' : ''}
+                    onclick="pipeDel('${s.id}')">${ico('trash', 13)}</button>
+          </div>`).join('')}
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn no-grow" onclick="pipeAdd()">${ico('plus', 14)} Adicionar etapa</button>
+        <div style="flex:1"></div>
+        <button class="btn no-grow" onclick="togglePipeCfg()">Cancelar</button>
+        <button class="btn primary no-grow" onclick="pipeSave()">${ico('save', 14)} Salvar etapas</button>
+      </div>
+    </div>`;
+}
+
+function pipeFind(id) { return pipeCfg.list.find(s => s.id === id); }
+
+// O input não é repintado a cada tecla: o cursor pularia para o fim.
+function pipeSet(id, v) { const s = pipeFind(id); if (s) s.nome = v; }
+
+function pipeAdd() {
+  pipeCfg.list.push({ id: 'sg_' + Date.now(), nome: '', de: '' });
+  paintPipeCfg();
+  const ins = $$('.pipe-row input');
+  if (ins.length) ins[ins.length - 1].focus();
+}
+
+function pipeMove(id, dir) {
+  const i = pipeCfg.list.findIndex(s => s.id === id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= pipeCfg.list.length) return;
+  const [s] = pipeCfg.list.splice(i, 1);
+  pipeCfg.list.splice(j, 0, s);
+  paintPipeCfg();
+}
+
+function pipeDel(id) {
+  if (pipeCfg.list.length <= 1) return;   // o pipeline não pode ficar sem coluna
+  const s = pipeFind(id);
+  const usados = pipeContagem(s && s.de);
+  const aviso = usados
+    ? `Remover "${s.de}"? Os ${usados} contato(s) dessa etapa vão para a primeira da lista.`
+    : 'Remover esta etapa?';
+  if (s && s.de && !confirm(aviso)) return;
+  pipeCfg.list = pipeCfg.list.filter(x => x.id !== id);
+  paintPipeCfg();
+}
+
+// Quantos cards estão hoje naquela coluna (já pintados no quadro).
+function pipeContagem(nome) {
+  if (!nome) return 0;
+  const col = $$('.kcol').find(c => c.dataset.stage === nome);
+  return col ? col.querySelectorAll('.kcard').length : 0;
+}
+
+async function pipeSave() {
+  const list = pipeCfg.list.map(s => ({ ...s, nome: s.nome.trim() })).filter(s => s.nome);
+  if (!list.length) return toast('O Pipeline precisa de pelo menos uma etapa.', 'error');
+  const nomes = list.map(s => s.nome);
+  const dup = nomes.find((x, i) => nomes.indexOf(x) !== i);
+  if (dup) return toast('Etapa repetida: "' + dup + '".', 'error');
+
+  // só renomeadas entram no mapa; as removidas o servidor realoca sozinho
+  const stageMap = {};
+  for (const s of list) if (s.de && s.de !== s.nome) stageMap[s.de] = s.nome;
+
+  try {
+    await api('/settings', { method: 'PUT', body: { stages: nomes, stageMap } });
+    // a rota responde só { ok: true } — o estado local é atualizado aqui, com a
+    // mesma higiene que o servidor aplicou (aparar, sem vazios, sem repetidos).
+    state.settings = { ...(state.settings || {}), stages: nomes };
+    pipeCfg.open = false;
+    toast('Etapas salvas');
+    renderFunnel();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
 
 function wireKanban() {
   let dragged = null;
@@ -3207,11 +3423,12 @@ async function renderSettings() {
         <span class="lc-arrow">${ico('arrowright', 18)}</span>
       </a>
 
-      <div class="card">
-        <h2>${ico('columns')} Etapas do funil</h2>
-        <label>Uma etapa por linha<textarea id="st-stages" rows="5">${esc((s.stages || []).join('\n'))}</textarea></label>
-        <div class="row" style="margin-top:10px"><button class="btn primary no-grow" onclick="saveStages()">${ico('save', 14)} Salvar etapas</button></div>
-      </div>
+      <a class="card link-card" href="#/funnel">
+        <div class="lc-ico">${ico('columns')}</div>
+        <div style="flex:1"><h2 style="margin:0 0 3px">Etapas do Pipeline</h2>
+          <p class="muted" style="margin:0;font-size:13px">As etapas passaram a ser configuradas dentro da própria aba Pipeline, junto do quadro.</p></div>
+        <span class="lc-arrow">${ico('arrowright', 18)}</span>
+      </a>
 
       <div class="card">
         <h2>${ico('lock')} Segurança, senha de acesso ${state.mustChangePassword ? '<span class="bad-dot">(troque a senha padrão!)</span>' : ''}</h2>
@@ -3767,15 +3984,6 @@ async function phoneAction(action, body) {
   catch (e) { diagOut('ERRO: ' + e.message + (e.meta ? '\n\n' + JSON.stringify(e.meta, null, 2) : '')); toast(e.message, 'error'); }
 }
 
-async function saveStages() {
-  try {
-    const stages = $('#st-stages').value.split('\n').map(x => x.trim()).filter(Boolean);
-    const r = await api('/settings', { method: 'PUT', body: { stages } });
-    state.settings = r.settings;
-    toast('Etapas salvas');
-  } catch (e) { toast(e.message, 'error'); }
-}
-
 async function changePass() {
   try {
     await api('/settings/password', { body: { current: $('#pw-cur').value, next: $('#pw-new').value } });
@@ -3831,7 +4039,7 @@ async function doDeleteAccount(btn) {
 // ==================== TOPBAR ====================
 const TITLES = {
   dashboard: 'Dashboard', reports: 'Métricas & Relatórios', inbox: 'Conversas', contacts: 'Contatos',
-  funnel: 'Funil de vendas', campaigns: 'Campanhas', templates: 'Modelos de mensagem',
+  funnel: 'Pipeline', campaigns: 'Campanhas', templates: 'Modelos de mensagem',
   quick: 'Respostas rápidas', logs: 'Webhook & Logs', settings: 'Configurações',
   team: 'Chat interno', flows: 'Flow Builder', links: 'Links rastreáveis',
   integrations: 'Integrações', webhooks: 'Integrações',

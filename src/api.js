@@ -867,10 +867,43 @@ module.exports = function (broadcast, clients) {
   });
 
   router.put('/settings', auth, (req, res) => {
-    // etapas do funil (qualquer conta)
+    // ETAPAS DO PIPELINE (qualquer conta)
+    //
+    // Renomear ou apagar uma etapa não pode deixar contato apontando para uma
+    // etapa que não existe mais — ele sumiria do quadro. O front manda
+    // `stageMap` ({nomeAntigo: nomeNovo}) descrevendo o que mudou; quem foi
+    // apagado vem com destino vazio e cai na primeira etapa da lista nova.
     if (Array.isArray(req.body.stages)) {
-      const stages = req.body.stages.map(x => String(x).trim()).filter(Boolean);
-      if (stages.length) req.acc.stages = stages;
+      const stages = [];
+      for (const x of req.body.stages) {
+        const s = String(x).trim();
+        if (s && !stages.includes(s)) stages.push(s);   // sem vazios nem repetidos
+      }
+      if (stages.length) {
+        const map = (req.body.stageMap && typeof req.body.stageMap === 'object') ? req.body.stageMap : {};
+        req.acc.stages = stages;
+
+        for (const c of req.acc.contacts || []) {
+          if (stages.includes(c.stage)) continue;              // continua válida
+          const alvo = String(map[c.stage] || '').trim();
+          c.stage = stages.includes(alvo) ? alvo : stages[0];  // renomeada ou realocada
+        }
+        // a etapa padrão do cadastro automático segue a mesma regra
+        const cfg = req.acc.consent || {};
+        if (cfg.defaultStage && !stages.includes(cfg.defaultStage)) {
+          const alvo = String(map[cfg.defaultStage] || '').trim();
+          cfg.defaultStage = stages.includes(alvo) ? alvo : stages[0];
+        }
+        // automações que movem para uma etapa apagada apontariam para o vazio
+        for (const f of req.acc.flows || []) {
+          for (const n of ((f.graph && f.graph.nodes) || [])) {
+            if (n.type === 'movestage' && n.stage && !stages.includes(n.stage)) {
+              const alvo = String(map[n.stage] || '').trim();
+              if (stages.includes(alvo)) n.stage = alvo;
+            }
+          }
+        }
+      }
     }
     // domínio personalizado dos links rastreáveis (qualquer conta)
     if (typeof req.body.linkDomain === 'string') {
