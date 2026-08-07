@@ -808,9 +808,15 @@ function channelsCard() {
     </div>
     <div class="row" style="margin-top:14px;align-items:flex-end">
       <label style="flex:1;max-width:280px">Nome da nova conexão<input id="ch-new" placeholder="ex.: Vendas · Suporte · Filial SP"></label>
-      ${cheio && lim.buyable && lim.extraPrice
-        ? `<button class="btn primary no-grow" onclick="openExtraPay('whatsapps')">${ico('plus', 14)} Adicionar conexão</button>`
-        : `<button class="btn primary no-grow" ${cheio ? 'disabled' : ''} onclick="createChannel()">${ico('plus', 14)} Adicionar conexão</button>`}
+      ${cheio
+        // Limite cheio: a conexão passa a ser paga. O botão mostra o valor
+        // adicional ao lado e abre o pagamento — nunca fica desabilitado nem
+        // manda o cliente para outra aba no meio da compra.
+        ? `<button class="btn primary no-grow" onclick="openExtraPay('whatsapps')">
+             ${ico('plus', 14)} Adicionar conexão
+             ${lim.extraPrice ? `<span class="btn-price">+${fmtBRL(lim.extraPrice)}/mês</span>` : ''}
+           </button>`
+        : `<button class="btn primary no-grow" onclick="createChannel()">${ico('plus', 14)} Adicionar conexão</button>`}
     </div>
     ${cheio ? `<p class="hint" style="margin-top:10px">${ico('alert', 12)} Você já utiliza as <b>${fmtN(lim.limit)}</b> conexão(ões) disponíveis no seu plano.</p>`
     : '<p class="hint" style="margin-top:10px">Depois de criar a conexão, selecione-a no seletor do topo e clique em <b>Conectar WhatsApp</b> para vincular o número.</p>'}
@@ -896,26 +902,10 @@ async function undoCancelChannel(id) {
 function extraChannelsBox(lim) {
   if (state.agent) return '';   // atendente não contrata nada
 
-  // Sem preço de conexão extra definido no Admin, o card de compra sumia da
-  // tela inteiro: quem batia no limite via só "1 de 1" e nenhum caminho para
-  // adicionar outro número — parecia defeito. Agora o limite esgotado sempre
-  // diz o que fazer, mesmo quando a compra não está habilitada.
-  if (!lim.buyable || !lim.extraPrice) {
-    if (!lim.exceeded && !(lim.limit && lim.used >= lim.limit)) return '';
-    return `<div class="extra-buy" id="extra-buy-whatsapps">
-      <div class="extra-buy-head">
-        ${ico('info', 15)}
-        <div style="flex:1;min-width:0">
-          <b>Você usou as ${fmtN(lim.limit)} conexão(ões) do seu plano</b>
-          <em>Conexões adicionais não estão à venda no momento. Mude de plano para conectar mais números.</em>
-        </div>
-      </div>
-      <div class="extra-buy-row">
-        <div style="flex:1"></div>
-        <a class="btn primary no-grow" href="#/billing">${ico('arrowright', 14)} Ver planos</a>
-      </div>
-    </div>`;
-  }
+  // Sem preço definido no Admin não há o que cobrar: o card de quantidade some,
+  // mas o botão "Adicionar conexão" continua abrindo o pagamento — a compra se
+  // resolve ali mesmo, sem jogar o cliente para a aba de planos.
+  if (!lim.buyable || !lim.extraPrice) return '';
 
   return `<div class="extra-buy" id="extra-buy-whatsapps">
     <div class="extra-buy-head">
@@ -5471,7 +5461,17 @@ async function openExtraPay(key) {
   if (!d) { try { d = BILL_CACHE = await api('/billing'); } catch (e) { return toast(e.message, 'error'); } }
 
   const unit = extraUnitPrice(key) || (((d.usage || {})[key] || {}).extraPrice || 0);
-  if (!unit) return toast('O administrador ainda não definiu o preço deste item', 'error');
+  // Sem preço cadastrado não há como cobrar, mas o cliente clicou para comprar:
+  // o pop-up abre e diz o que falta, em vez de sumir num toast.
+  if (!unit) {
+    return openModal(`
+      <h2>${ico('plus')} Adicionar ${esc(extraLabel(key))}</h2>
+      <p class="muted" style="margin:0 0 16px;font-size:13px">
+        O valor da unidade adicional ainda não foi definido, então a compra não pode
+        ser concluída agora. Fale com o suporte para liberar ${esc(extraLabel(key))} na sua conta.
+      </p>
+      <div class="row"><button class="btn primary" onclick="closeModal()">Entendi</button></div>`);
+  }
   EXTRA_CTX = { key, qty, unit };
 
   const c = d.card || {};
