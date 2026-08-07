@@ -3259,10 +3259,3 @@ body.has-tabbar .tb-wallet:not(.hidden) { display: flex; }
   background: var(--bg2); color: var(--muted);
   font-size: 12px; font-weight: 700;
 }
-
-/* Valor do adicional ao lado do rótulo do botão de compra */
-.btn-price {
-  margin-left: 8px; padding: 2px 7px; border-radius: 999px;
-  background: rgba(255, 255, 255, .22);
-  font-size: 12px; font-weight: 700; white-space: nowrap;
-}

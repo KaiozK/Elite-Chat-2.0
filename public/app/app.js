@@ -808,19 +808,14 @@ function channelsCard() {
     </div>
     <div class="row" style="margin-top:14px;align-items:flex-end">
       <label style="flex:1;max-width:280px">Nome da nova conexão<input id="ch-new" placeholder="ex.: Vendas · Suporte · Filial SP"></label>
-      ${cheio
-        // Limite cheio: a conexão passa a ser paga. O botão mostra o valor
-        // adicional ao lado e abre o pagamento — nunca fica desabilitado nem
-        // manda o cliente para outra aba no meio da compra.
-        ? `<button class="btn primary no-grow" onclick="openExtraPay('whatsapps')">
-             ${ico('plus', 14)} Adicionar conexão
-             ${lim.extraPrice ? `<span class="btn-price">+${fmtBRL(lim.extraPrice)}/mês</span>` : ''}
-           </button>`
-        : `<button class="btn primary no-grow" onclick="createChannel()">${ico('plus', 14)} Adicionar conexão</button>`}
+      ${/* Um único botão, sem preço à mostra: dentro do plano ele cria a conexão
+            direto; com o plano no limite, abre o pop-up, onde o cliente escolhe
+            quantas quer e como pagar. */''}
+      <button class="btn primary no-grow" onclick="${cheio ? "openExtraPay('whatsapps')" : 'createChannel()'}">
+        ${ico('plus', 14)} Adicionar conexão</button>
     </div>
     ${cheio ? `<p class="hint" style="margin-top:10px">${ico('alert', 12)} Você já utiliza as <b>${fmtN(lim.limit)}</b> conexão(ões) disponíveis no seu plano.</p>`
     : '<p class="hint" style="margin-top:10px">Depois de criar a conexão, selecione-a no seletor do topo e clique em <b>Conectar WhatsApp</b> para vincular o número.</p>'}
-    ${extraChannelsBox(lim)}
   </div>`;
 }
 
@@ -895,41 +890,6 @@ async function undoCancelChannel(id) {
     await loadChannels();
     if (state.view === 'settings') renderSettings();
   } catch (e) { toast(e.message, 'error'); }
-}
-
-// Contratar conexões a mais sem sair da tela de Conexões: escolhe a quantidade,
-// vê o total somando e paga no pop-up. É mensal — entra na renovação.
-function extraChannelsBox(lim) {
-  if (state.agent) return '';   // atendente não contrata nada
-
-  // Sem preço definido no Admin não há o que cobrar: o card de quantidade some,
-  // mas o botão "Adicionar conexão" continua abrindo o pagamento — a compra se
-  // resolve ali mesmo, sem jogar o cliente para a aba de planos.
-  if (!lim.buyable || !lim.extraPrice) return '';
-
-  return `<div class="extra-buy" id="extra-buy-whatsapps">
-    <div class="extra-buy-head">
-      ${ico('plus', 15)}
-      <div style="flex:1;min-width:0">
-        <b>Amplie sua operação</b>
-        <em>Conexões adicionais por ${fmtBRL(lim.extraPrice)}/mês cada${lim.extras ? ` · ${fmtN(lim.extras)} já contratada(s)` : ''}</em>
-      </div>
-    </div>
-    <div class="extra-buy-row">
-      <div class="qty">
-        <button type="button" class="qty-b" onclick="extraQty('whatsapps',-1)" aria-label="Menos uma">−</button>
-        <input id="xq-whatsapps" class="qty-i" type="number" min="1" max="20" value="1"
-               inputmode="numeric" oninput="extraQty('whatsapps',0)" aria-label="Quantas conexões">
-        <button type="button" class="qty-b" onclick="extraQty('whatsapps',1)" aria-label="Mais uma">+</button>
-      </div>
-      <div class="extra-total">
-        <b id="xt-whatsapps">${fmtBRL(lim.extraPrice)}</b>
-        <em>por mês</em>
-      </div>
-      <button class="btn primary no-grow" onclick="openExtraPay('whatsapps')">
-        ${ico('card', 14)} Adicionar conexão</button>
-    </div>
-  </div>`;
 }
 
 // +/- na quantidade (d=0 só recalcula depois de digitar) e total ao vivo.
