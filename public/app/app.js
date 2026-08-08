@@ -474,7 +474,9 @@ const ICONS = {
   hash: '<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',
   copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
   eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
-  pix: '<path d="M12 2.5 21.5 12 12 21.5 2.5 12z"/><path d="M8.6 10.2 12 6.8l3.4 3.4M8.6 13.8 12 17.2l3.4-3.4"/>',
+  // logotipo oficial do Pix: preenchido, desenhado em 16 e escalado para os 24
+  // do restante do conjunto
+  pix: '<g fill="currentColor" stroke="none" transform="scale(1.5)"><path d="M11.917 11.71a2.046 2.046 0 0 1-1.454-.602l-2.1-2.1a.4.4 0 0 0-.551 0l-2.108 2.108a2.044 2.044 0 0 1-1.454.602h-.414l2.66 2.66c.83.83 2.177.83 3.007 0l2.667-2.668h-.253zM4.25 4.282c.55 0 1.066.214 1.454.602l2.108 2.108a.39.39 0 0 0 .552 0l2.1-2.1a2.044 2.044 0 0 1 1.453-.602h.253L9.503 1.623a2.127 2.127 0 0 0-3.007 0l-2.66 2.66h.414z"/><path d="m14.377 6.496-1.612-1.612a.307.307 0 0 1-.114.023h-.733c-.379 0-.75.154-1.017.422l-2.1 2.1a1.005 1.005 0 0 1-1.425 0L5.268 5.32a1.448 1.448 0 0 0-1.018-.422h-.9a.306.306 0 0 1-.109-.021L1.623 6.496c-.83.83-.83 2.177 0 3.008l1.618 1.618a.305.305 0 0 1 .108-.022h.901c.38 0 .75-.153 1.018-.421L7.375 8.57a1.034 1.034 0 0 1 1.426 0l2.1 2.1c.267.268.638.421 1.017.421h.733c.04 0 .079.01.114.024l1.612-1.612c.83-.83.83-2.178 0-3.008z"/></g>',
   play: '<path d="M6 4l14 8-14 8z"/>',
   power: '<path d="M18.4 6.6a9 9 0 1 1-12.8 0M12 2v10"/>',
   webhook: '<path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2"/><path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06"/><path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8"/>',
@@ -1710,12 +1712,15 @@ async function renderDashboard() {
           ['contacts', 'users', 'Novo contato'],
           ['schedule', 'calendar', 'Agendamento'],
           ['campaigns', 'megaphone', 'Campanha'],
-          ['flows', 'flow', 'Automação'],
-          ['links', 'link', 'Link rastreável']
+          ['tracking', 'trend', 'Tracking'],
+          ['elitepay', 'pix', 'Elite Pay']
         ];
         const mobile = isMobileLayout();
         return atalhos
           .filter(([v]) => (mobile ? MOBILE_VIEWS.has(v) : v !== 'schedule'))
+          // um atalho para um módulo fora do plano só levaria o cliente a um
+          // redirecionamento para Assinatura, então nem aparece
+          .filter(([v]) => planHas(v))
           .map(([v, icone, rotulo]) =>
             `<a class="tile" href="#/${v}"><span class="tile-ic">${ico(icone, 19)}</span><b>${rotulo}</b></a>`)
           .join('');
