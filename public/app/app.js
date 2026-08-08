@@ -606,8 +606,9 @@ function avatarHtml(c, cls = '') {
   return `<div class="avatar ${cls}" style="background:hsl(${h},55%,50%)">${esc(initials)}</div>`;
 }
 
-function openModal(html) {
-  $('#modal-root').innerHTML = `<div class="modal-back"><div class="modal"><button class="modal-x" onclick="closeModal()" title="Fechar (Esc)">${ico('x', 16)}</button>${html}</div></div>`;
+// `classe` permite variações de largura/disposição sem duplicar o esqueleto.
+function openModal(html, classe) {
+  $('#modal-root').innerHTML = `<div class="modal-back"><div class="modal ${classe || ''}"><button class="modal-x" onclick="closeModal()" title="Fechar (Esc)">${ico('x', 16)}</button>${html}</div></div>`;
   $('.modal-back').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
 }
 
@@ -1438,38 +1439,45 @@ function depositModal() {
   const atalhos = DEP_ATALHOS.filter(v => v >= min && (!max || v <= max));
   const inicial = Math.min(Math.max(DEP_PADRAO, min), max || DEP_PADRAO);
 
+  // Duas colunas: o valor e os atalhos de um lado, a forma de pagamento e a
+  // recarga automática do outro. Empilhado, o conteúdo passava da altura da
+  // tela e as ações principais ficavam abaixo da dobra.
   openModal(`
-    <h2 style="margin:0 0 6px">${ico('plus')} Depositar na carteira</h2>
-    <p class="muted" style="font-size:13px;margin:0 0 14px">
-      O saldo paga assinatura, conexões extras e disparos.
-      <br><b>${faixa}</b>
+    <h2>${ico('plus')} Depositar na carteira</h2>
+    <p class="muted" style="font-size:12.5px;margin:-4px 0 0">
+      O saldo paga assinatura, conexões extras e disparos. <b>${faixa}</b>
     </p>
 
-    <label>Valor (R$)<input id="dep-val" inputmode="decimal" value="${(inicial / 100).toFixed(2)}" autocomplete="off"></label>
-    <div class="dep-chips">
-      ${atalhos.map(v => `<button type="button" class="dep-chip" onclick="depSet(${v})">${fmtBRL(v)}</button>`).join('')}
+    <div class="dep-cols">
+      <div>
+        <label>Valor (R$)<input id="dep-val" inputmode="decimal" value="${(inicial / 100).toFixed(2)}" autocomplete="off"></label>
+        <div class="dep-chips">
+          ${atalhos.map(v => `<button type="button" class="dep-chip" onclick="depSet(${v})">${fmtBRL(v)}</button>`).join('')}
+        </div>
+      </div>
+
+      <div>
+        ${meios.credit ? `
+        <label style="margin-bottom:6px">Como pagar</label>
+        <div class="pay-methods compact">
+          <label class="pay-method">
+            <input type="radio" name="depm" value="pix" checked onchange="depMeio()">
+            <span><b>Pix</b><em>QR na tela, cai em segundos</em></span>
+          </label>
+          <label class="pay-method">
+            <input type="radio" name="depm" value="card" onchange="depMeio()">
+            <span><b>Cartão de crédito</b><em>${salvo.reusable ? esc((salvo.brand || 'Cartão') + ' •••• ' + salvo.last4) + ', em um clique' : 'Crédito na hora'}</em></span>
+          </label>
+        </div>` : ''}
+        ${autoBoxHtml(auto, meios, salvo, min)}
+      </div>
     </div>
 
-    ${meios.credit ? `
-    <label style="margin-top:14px;margin-bottom:6px">Como pagar</label>
-    <div class="pay-methods">
-      <label class="pay-method">
-        <input type="radio" name="depm" value="pix" checked onchange="depMeio()">
-        <span><b>Pix</b><em>QR na tela, cai em segundos</em></span>
-      </label>
-      <label class="pay-method">
-        <input type="radio" name="depm" value="card" onchange="depMeio()">
-        <span><b>Cartão de crédito</b><em>${salvo.reusable ? esc((salvo.brand || 'Cartão') + ' •••• ' + salvo.last4) + ', em um clique' : 'Crédito na hora'}</em></span>
-      </label>
-    </div>` : ''}
-
-    ${autoBoxHtml(auto, meios, salvo, min)}
-
-    <div class="row" style="margin-top:16px">
+    <div class="row">
       <button class="btn no-grow" onclick="closeModal()">Cancelar</button>
       <button class="btn primary no-grow" id="dep-go" onclick="doDeposit(this)">${ico('zap', 14)} Gerar Pix</button>
     </div>
-    <div id="dep-pix"></div>`);
+    <div id="dep-pix"></div>`, 'modal-dep');
 }
 
 function depSet(cents) {
@@ -1507,7 +1515,7 @@ function autoBoxHtml(auto, meios, salvo, min) {
       <label class="chk auto-head">
         <input type="checkbox" id="auto-on" ${on ? 'checked' : ''} onchange="autoToggle()">
         <span><b>Recarga automática</b>
-          <em>Repõe o saldo sozinho quando ele ficar baixo — sem parar campanha por falta de saldo.</em></span>
+          <em>Repõe o saldo sozinho quando ele ficar baixo.</em></span>
       </label>
       <div id="auto-cfg" ${on ? '' : 'hidden'}>
         <div class="row" style="gap:8px;margin-top:10px">
@@ -1517,7 +1525,7 @@ function autoBoxHtml(auto, meios, salvo, min) {
             <input id="auto-amt" inputmode="decimal" value="${((auto.amount || 5000) / 100).toFixed(2)}"></label>
         </div>
         <label style="margin-top:8px;margin-bottom:6px">Cobrar em</label>
-        <div class="pay-methods">
+        <div class="pay-methods compact">
           <label class="pay-method">
             <input type="radio" name="autom" value="pix" ${auto.method !== 'card' ? 'checked' : ''}>
             <span><b>Pix Automático</b><em>Você autoriza uma vez no seu banco e a Woovi cobra sozinha</em></span>
@@ -1601,7 +1609,7 @@ async function doDeposit(btn) {
     // Mostra o Pix na própria janela: fechar e procurar a tela de Assinatura
     // no meio do pagamento é o caminho mais curto para desistir.
     $('#dep-pix').innerHTML = payBoxHtml(r.charge);
-    toast('Pix gerado — pague para creditar o saldo');
+    toast('Pix gerado, pague para creditar o saldo');
   } catch (e) {
     toast(e.message, 'error');
   } finally {
@@ -1795,7 +1803,7 @@ async function renderDashboard() {
         <div class="card">
           <h2>${ico('flow')} Funis em destaque</h2>
           ${topFlows.length ? `<table><thead><tr><th>Automação</th><th style="text-align:right">Execuções</th><th style="text-align:right">Conclusão</th></tr></thead><tbody>
-            ${topFlows.map(f => `<tr><td><b>${esc(f.name)}</b> ${f.enabled ? '' : '<span class="pill">pausado</span>'}</td><td style="text-align:right"><b>${fmtN(f.runs)}</b></td><td style="text-align:right">${f.okRate === null ? '—' : `<span class="pill ${f.okRate >= 80 ? 'done' : 'pending'}">${f.okRate}%</span>`}</td></tr>`).join('')}
+            ${topFlows.map(f => `<tr><td><b>${esc(f.name)}</b> ${f.enabled ? '' : '<span class="pill">pausado</span>'}</td><td style="text-align:right"><b>${fmtN(f.runs)}</b></td><td style="text-align:right">${f.okRate === null ? '-' : `<span class="pill ${f.okRate >= 80 ? 'done' : 'pending'}">${f.okRate}%</span>`}</td></tr>`).join('')}
           </tbody></table>` : `<p class="muted" style="font-size:13px">Crie automações no <a href="#/flows">Flow Builder</a> para ver o desempenho aqui.</p>`}
         </div>
         <div class="card">
@@ -2058,7 +2066,7 @@ function paintSession() {
     </div>
     ${w.msSinceInbound !== null ? `<div class="sess-timers">
       <div><span>Cliente respondeu há</span><b id="sess-since">${fmtDur(w.msSinceInbound, true)}</b></div>
-      <div><span>Janela expira em</span><b id="sess-exp">${w.open ? fmtDur(w.msLeft) : '—'}</b></div>
+      <div><span>Janela expira em</span><b id="sess-exp">${w.open ? fmtDur(w.msLeft) : '-'}</b></div>
     </div>` : ''}
     ${finished ? `<div class="sess-closed">${ico('check-circle', 13)} ${esc(sess.attendance.closeType === 'auto' ? 'Encerrado automaticamente' : 'Encerrado por ' + (sess.attendance.closedBy || 'atendente'))} · ${sess.attendance.closedAt ? new Date(sess.attendance.closedAt).toLocaleString('pt-BR') : ''}</div>` : ''}
   </div>`;
@@ -2132,7 +2140,7 @@ function startSessionTicker() {
     const since = $('#sess-since'), exp = $('#sess-exp'), left = $('#sess-left');
     if (!since && !left) return;
     if (since && w.msSinceInbound !== null) since.textContent = fmtDur(w.msSinceInbound, true);
-    if (exp) exp.textContent = w.open && !finished ? fmtDur(w.msLeft) : '—';
+    if (exp) exp.textContent = w.open && !finished ? fmtDur(w.msLeft) : '-';
     if (left && !finished) left.textContent = w.open ? fmtDur(w.msLeft) + ' restantes' : 'apenas templates';
     // mudou de faixa (verde→amarelo→vermelho→expirada)? repinta tudo (cores + bloqueio)
     const bar = $('.sess-bar');
@@ -2491,7 +2499,7 @@ async function loadContactsTable() {
           <td><div class="cell-user">${avatarHtml(c, 'sm')}<div><b>${esc(c.name)}</b>${sourceBadge(c)}<div class="muted" style="font-size:11.5px">+${esc(c.waId)}</div></div></div></td>
           ${varios ? `<td><span class="ch-tag">${esc(c.chLabel || '')}</span></td>` : ''}
           <td>${ecSelect('qs-' + c.waId, stages.map(s => ({ value: s, label: s })), c.stage, `quickStage('${c.waId}', val)`, 'sm')}</td>
-          <td>${(c.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('') || '<span class="muted">—</span>'}</td>
+          <td>${(c.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('') || '<span class="muted">-</span>'}</td>
           <td class="muted">${timeAgo(c.lastMessageAt)}</td>
           <td style="white-space:nowrap">
             <button class="btn small" title="Abrir conversa" onclick="location.hash='#/inbox';openChat('${c.waId}')">${ico('message', 14)}</button>
@@ -3390,12 +3398,12 @@ async function renderSettings() {
           </div>
         </div>
         <div class="wa-status">
-          <div class="wa-row"><span>Número</span><b>${esc(w.displayPhoneNumber || '—')}</b></div>
-          <div class="wa-row"><span>Nome verificado</span><b>${esc(w.verifiedName || '—')}</b></div>
-          <div class="wa-row"><span>WABA ID</span><b>${esc(w.wabaId || '—')}</b></div>
-          <div class="wa-row"><span>Business ID</span><b>${esc(w.businessId || '—')}</b></div>
+          <div class="wa-row"><span>Número</span><b>${esc(w.displayPhoneNumber || '-')}</b></div>
+          <div class="wa-row"><span>Nome verificado</span><b>${esc(w.verifiedName || '-')}</b></div>
+          <div class="wa-row"><span>WABA ID</span><b>${esc(w.wabaId || '-')}</b></div>
+          <div class="wa-row"><span>Business ID</span><b>${esc(w.businessId || '-')}</b></div>
           <div class="wa-row"><span>Webhook assinado</span><b>${w.appSubscribed ? 'Sim' : 'Não'}</b></div>
-          <div class="wa-row"><span>Conectado em</span><b>${w.connectedAt ? new Date(w.connectedAt).toLocaleString('pt-BR') : '—'}</b></div>
+          <div class="wa-row"><span>Conectado em</span><b>${w.connectedAt ? new Date(w.connectedAt).toLocaleString('pt-BR') : '-'}</b></div>
           <div class="wa-row"><span>Graph API</span><b>${esc(w.graphVersion || 'v25.0')}</b></div>
         </div>
         <div class="row" style="margin-top:14px">
@@ -3660,7 +3668,7 @@ function paintSurvey() {
           <div class="lk-kpis">
             <div><b>${fmtN(m.answered)}</b><span>Respondidas</span></div>
             <div><b>${fmtN(m.answeredToday)}</b><span>Hoje</span></div>
-            <div><b>${m.avgPercent === null ? '—' : m.avgPercent + '%'}</b><span>Satisfação média</span></div>
+            <div><b>${m.avgPercent === null ? '-' : m.avgPercent + '%'}</b><span>Satisfação média</span></div>
           </div>
           ${(m.distribution || []).length ? `<div style="margin-top:12px">${m.distribution.map(x => hrow(esc(x.label), x.count, m.distribution[0].count)).join('')}</div>` : ''}
         </div>` : ''}
@@ -4122,7 +4130,7 @@ function deleteAccountModal() {
       Isto apaga <b>permanentemente</b> a conta <b>${esc(state.user || '')}</b> e todo o seu conteúdo:
       conversas, contatos, mensagens, automações, agendamentos, atendentes e integrações.
       <br><br>
-      <b>Não é possível desfazer.</b> Se você tem uma assinatura ativa, cancele-a antes —
+      <b>Não é possível desfazer.</b> Se você tem uma assinatura ativa, cancele-a antes 
       a exclusão não gera reembolso automático.
     </p>
     <label>Sua senha<input id="del-pass" type="password" autocomplete="current-password"></label>
@@ -4500,7 +4508,7 @@ function hrow(label, val, max, suffix = '') {
 }
 
 function deltaChip(cur, prev) {
-  if (!prev && !cur) return '<span class="delta flat">—</span>';
+  if (!prev && !cur) return '<span class="delta flat">-</span>';
   if (!prev) return '<span class="delta up">novo</span>';
   const p = Math.round((cur - prev) / prev * 100);
   if (p > 0) return `<span class="delta up">▲ ${p}%</span>`;
@@ -4900,7 +4908,7 @@ async function campaignDetail(id) {
           ${recipients.map(rc => `<tr>
             <td><b>${esc(rc.name)}</b><div class="muted" style="font-size:11px">+${esc(rc.waId)}</div></td>
             <td><span class="pill ${esc(rc.status)}">${CAMP_ST[rc.status] || esc(rc.status)}</span></td>
-            <td class="muted" style="font-size:12px">${esc(rc.error || '—')}</td>
+            <td class="muted" style="font-size:12px">${esc(rc.error || '-')}</td>
           </tr>`).join('')}
         </tbody></table>
       </div>
@@ -5138,7 +5146,7 @@ async function paintLinks() {
         <td style="text-align:right"><b>${fmtN(l.clicksToday)}</b></td>
         <td style="text-align:right"><b>${fmtN(l.clicks7d)}</b></td>
         <td style="text-align:right"><b>${fmtN(l.clicks)}</b></td>
-        <td class="muted">${l.lastClick ? timeAgo(l.lastClick) : '—'}</td>
+        <td class="muted">${l.lastClick ? timeAgo(l.lastClick) : '-'}</td>
         <td style="white-space:nowrap">
           <button class="btn small" onclick="openLinkStats('${l.id}')">${ico('activity', 13)} Métricas</button>
           <button class="icon-btn" title="Editar" onclick="openLinkEdit('${l.id}')">${ico('edit', 14)}</button>
@@ -5267,7 +5275,7 @@ async function renderLinkStats() {
         <div><b>${fmtN(s.link.clicks)}</b><span>Total</span></div>
         <div><b>${fmtN(s.link.clicks7d)}</b><span>7 dias</span></div>
         <div><b>${fmtN(s.link.clicksToday)}</b><span>Hoje</span></div>
-        <div><b>${s.link.lastClick ? timeAgo(s.link.lastClick) : '—'}</b><span>Último clique</span></div>
+        <div><b>${s.link.lastClick ? timeAgo(s.link.lastClick) : '-'}</b><span>Último clique</span></div>
       </div>
       <div class="card">
         <h2>${ico('activity')} Cliques, últimos 30 dias</h2>
@@ -6195,12 +6203,12 @@ async function paintAdmin() {
               const [sl, sc] = BILL_ST[a.billing.status] || [a.billing.status, 'pill'];
               return `<tr>
                 <td><b>${esc(a.name)}</b><div class="muted" style="font-size:11.5px">${esc(a.email)}</div></td>
-                <td>${pl ? esc(pl.name) : '—'}</td>
+                <td>${pl ? esc(pl.name) : '-'}</td>
                 <td><span class="${sc}">${sl}</span></td>
-                <td class="muted">${a.billing.periodEnd ? new Date(a.billing.periodEnd).toLocaleDateString('pt-BR') : '—'}</td>
+                <td class="muted">${a.billing.periodEnd ? new Date(a.billing.periodEnd).toLocaleDateString('pt-BR') : '-'}</td>
                 <td>${a.waConnected ? '<span class="ok-dot">●</span>' : '<span class="bad-dot">●</span>'}</td>
                 <td style="text-align:right">${fmtBRL(a.walletBalance)}</td>
-                <td>${a.referrals ? `<b>${a.referrals}</b> · ${fmtBRL(a.affEarned)}` : '—'}</td>
+                <td>${a.referrals ? `<b>${a.referrals}</b> · ${fmtBRL(a.affEarned)}` : '-'}</td>
                 <td style="white-space:nowrap"><button class="btn small" onclick="admExtend('${a.id}')">+30 dias</button></td>
               </tr>`;
             }).join('')}
@@ -6281,7 +6289,7 @@ async function paintAdmin() {
           <h2>${ico('download-circle')} Limites de saque</h2>
           <p class="muted" style="margin:0 0 12px;font-size:13px">
             Faixa aceita quando o afiliado saca a comissão da carteira para a chave Pix dele.
-            O máximo vale <b>por saque</b>, não por período — ele pode sacar de novo depois.
+            O máximo vale <b>por saque</b>, não por período, ele pode sacar de novo depois.
           </p>
           <div class="row" style="align-items:flex-end">
             <label>Saque mínimo (R$)<input id="wd-min" value="${(d.config.affiliate.withdraw.min / 100).toFixed(2)}" inputmode="decimal"></label>
@@ -6432,8 +6440,7 @@ const LIMIT_META = [
   // `buy` é como o item é chamado na hora de contratar unidades a mais — os
   // rótulos acima descrevem o que o PLANO inclui, e ficam estranhos no "Contratar…".
   { key: 'links',     label: 'Links rastreáveis grátis',  short: 'Links',    ph: '1', extra: true, buy: 'links rastreáveis' },
-  { key: 'whatsapps', label: 'WhatsApps inclusos',        short: 'WhatsApp', ph: '1', extra: true, buy: 'conexões de WhatsApp' },
-  { key: 'sms',       label: 'SMS por ciclo',             short: 'SMS',      ph: '0' }
+  { key: 'whatsapps', label: 'WhatsApps inclusos',        short: 'WhatsApp', ph: '1', extra: true, buy: 'conexões de WhatsApp' }
 ];
 
 function planLimitFields(scope, lims) {
@@ -6553,7 +6560,7 @@ function admSmsPaint() {
       <button class="btn no-grow" onclick="admSmsSave({maxLen:$('#sms-maxlen').value,priceCents:$('#sms-price').value})">${ico('save', 14)} Salvar</button>
     </div>
     <p class="muted" style="font-size:11.5px;margin:8px 0 0">
-      Acima do limite de caracteres a operadora cobra mais de um SMS — é assim que o consumo é contado no plano do cliente.
+      Acima do limite de caracteres a operadora cobra mais de um SMS, é assim que o consumo é contado no plano do cliente.
     </p>
 
     <div class="fee-sep"></div>
@@ -6578,7 +6585,7 @@ function admSmsPaint() {
 
     <div class="fee-sep"></div>
     <p class="muted" style="font-size:11.5px;margin:0">
-      ${ico('zap', 12)} O disparo em massa vai em lotes de <b>${fmtN(c.lote || 100)}</b> números por chamada —
+      ${ico('zap', 12)} O disparo em massa vai em lotes de <b>${fmtN(c.lote || 100)}</b> números por chamada 
       a Integra X aceita vários destinatários de uma vez.
     </p>
 
@@ -6628,14 +6635,14 @@ async function admSmsTest(btn) {
       // O teste diz QUAL parte do contrato falhou, para não caçar no escuro.
       const dica = {
         BASE: 'Não foi possível alcançar o servidor. Confira a URL da API.',
-        AUTH: 'O token foi recusado. Como ele faz parte do endereço, um token errado responde 404 — confira se copiou o valor inteiro do painel da Integra X.',
+        AUTH: 'O token foi recusado. Como ele faz parte do endereço, um token errado responde 404, confira se copiou o valor inteiro do painel da Integra X.',
         ROTAS: 'O endereço existe, mas a conta não tem acesso a esta rota. Confira o plano contratado na Integra X.',
         CAMPOS: 'A conexão funcionou, mas a resposta veio em outro formato. Ajuste a leitura em src/sms.js (bloco CONTRATO).'
       }[r.etapa] || '';
       out.innerHTML = `<div class="danger-box" style="margin-top:10px">
         <b>${ico('alert', 13)} Falhou em: ${esc(r.etapa)}</b>
         <p style="margin:0 0 6px">${esc(dica)}</p>
-        <p style="margin:0"><code>${esc(r.base || '')}${esc(r.rota || '')}</code> — ${esc(r.msg || '')}</p>
+        <p style="margin:0"><code>${esc(r.base || '')}${esc(r.rota || '')}</code>, ${esc(r.msg || '')}</p>
       </div>`;
     }
   } catch (e) { out.innerHTML = `<div class="danger-box" style="margin-top:10px"><b>${esc(e.message)}</b></div>`; }
@@ -7069,7 +7076,7 @@ async function admEpPaint() {
             const st = a.sub ? (EP_SUB_ST[a.sub.status] || [a.sub.status, 'pill']) : null;
             return `<tr>
               <td><b>${esc(a.name)}</b><div class="muted" style="font-size:11.5px">${esc(a.email)}</div></td>
-              <td>${a.sub ? `${esc(a.sub.name)}<div class="muted" style="font-size:11px">${esc(a.sub.pixKey)}</div>` : '<span class="muted">—</span>'}</td>
+              <td>${a.sub ? `${esc(a.sub.name)}<div class="muted" style="font-size:11px">${esc(a.sub.pixKey)}</div>` : '<span class="muted">-</span>'}</td>
               <td>${st ? `<span class="${st[1]}">${st[0]}</span>` : '<span class="muted">sem conta</span>'}</td>
               <td style="text-align:right"><b>${fmtBRL(a.pixIn)}</b></td>
               <td style="text-align:right">${fmtBRL(a.fees)}</td>
@@ -7101,8 +7108,8 @@ async function admEpPaint() {
           ${d.logs.map(l => `<tr>
             <td class="muted" style="white-space:nowrap">${timeAgo(l.ts)}</td>
             <td>${esc(EP_LOG_LBL[l.type] || l.type)}${l.detail ? `<div class="muted" style="font-size:11px">${esc(l.detail)}</div>` : ''}</td>
-            <td>${esc(l.accountName || '—')}</td>
-            <td style="text-align:right">${l.amount ? fmtBRL(l.amount) : '—'}${l.fee ? `<div class="muted" style="font-size:11px">taxa ${fmtBRL(l.fee)}</div>` : ''}</td>
+            <td>${esc(l.accountName || '-')}</td>
+            <td style="text-align:right">${l.amount ? fmtBRL(l.amount) : '-'}${l.fee ? `<div class="muted" style="font-size:11px">taxa ${fmtBRL(l.fee)}</div>` : ''}</td>
           </tr>`).join('')}</tbody></table>` : '<p class="muted">Nenhum evento financeiro registrado.</p>'}
       </div>`;
   } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
@@ -7326,7 +7333,7 @@ function agAvatar(a, size = 40) {
     : `<span class="ag-av" style="${s}">${esc(waInitials((a && a.name) || '?'))}</span>`;
 }
 function fmtDur2(ms) {
-  if (ms == null) return '—';
+  if (ms == null) return '-';
   const s = Math.round(ms / 1000);
   if (s < 60) return s + 's';
   const m = Math.floor(s / 60);
@@ -7580,7 +7587,7 @@ async function renderAgentPerf() {
             <td style="text-align:right">${r.ongoing}</td>
             <td style="text-align:right">${fmtDur2(r.avgFirstResponseMs)}</td>
             <td style="text-align:right">${fmtDur2(r.avgHandleTimeMs)}</td>
-            <td style="text-align:right">${r.avgRatingPercent == null ? '—' : r.avgRatingPercent + '%'}</td>
+            <td style="text-align:right">${r.avgRatingPercent == null ? '-' : r.avgRatingPercent + '%'}</td>
             <td style="text-align:right"><b class="pill done">${r.score}</b></td>
           </tr>`).join('')}
         </tbody></table></div>` : '<p class="muted">Nenhum atendente ativo ainda.</p>'}
@@ -7932,7 +7939,7 @@ async function loadSms() {
 
 function paintSms() {
   const d = SMS_CACHE || {};
-  const u = d.usage || {};
+  const saldo = d.balance || 0;
   const box = $('#sms-box'); if (!box) return;
 
   if (!d.available) {
@@ -7945,13 +7952,13 @@ function paintSms() {
     return;
   }
 
-  const restante = u.unlimited ? '∞' : fmtN(Math.max(0, (u.limit || 0) - (u.used || 0)));
+  const preco = d.priceCents || 0;
   box.innerHTML = `
   <div class="two-col">
     <div class="card">
       <h2>${ico('send')} Enviar SMS</h2>
       <p class="muted" style="margin:2px 0 14px;font-size:13px">
-        ${d.from ? `Remetente <b>${esc(d.from)}</b>. ` : ''}Cada ${fmtN(d.maxLen)} caracteres contam como um SMS.
+        ${d.from ? `Remetente <b>${esc(d.from)}</b>. ` : ''}Cada ${fmtN(d.maxLen)} caracteres contam como um SMS${preco ? `, cobrado a ${fmtBRL(preco)} do seu saldo` : ' e o envio é por nossa conta'}.
       </p>
       <label>Número do destinatário<input id="sms-to" inputmode="tel" placeholder="(11) 98765-4321"></label>
       <label style="margin-top:10px">Mensagem
@@ -7965,14 +7972,18 @@ function paintSms() {
     </div>
 
     <div class="card">
-      <h2>${ico('activity')} Consumo do ciclo</h2>
+      <h2>${ico('activity')} Custo do disparo</h2>
+      <p class="muted" style="margin:2px 0 0;font-size:13px">
+        O SMS não tem cota no seu plano: você paga por envio, com o saldo da carteira.
+      </p>
       <div class="wallet-bal" style="margin-top:12px">
-        <div><span class="muted" style="font-size:12px">SMS enviados</span>
-          <div style="font-size:26px;font-weight:800;color:var(--verde-deep)">${fmtN(u.used || 0)}</div></div>
-        <div style="text-align:right"><span class="muted" style="font-size:12px">Disponível</span>
-          <div style="font-size:20px;font-weight:800">${restante}</div></div>
+        <div><span class="muted" style="font-size:12px">Preço por SMS</span>
+          <div style="font-size:26px;font-weight:800;color:var(--verde-deep)">${preco ? fmtBRL(preco) : 'grátis'}</div></div>
+        <div style="text-align:right"><span class="muted" style="font-size:12px">Seu saldo</span>
+          <div style="font-size:20px;font-weight:800">${fmtBRL(saldo)}</div>
+          <span class="muted" style="font-size:11.5px">${preco ? fmtN(Math.floor(saldo / preco)) + ' SMS' : 'sem custo'}</span></div>
       </div>
-      ${u.unlimited ? '' : `<div class="lim-bar" style="margin-top:12px"><i style="width:${Math.min(100, u.percent || 0)}%"></i></div>`}
+      ${preco && saldo < preco ? `<p class="hint" style="text-align:left;margin-top:10px">${ico('alert', 12)} Saldo insuficiente para enviar. <a href="#/billing"><b>Recarregar carteira</b></a></p>` : ''}
       <div class="fee-sep"></div>
       <h2 style="font-size:14px">${ico('users')} Disparo em massa</h2>
       <p class="muted" style="margin:2px 0 12px;font-size:13px">Envie para um grupo de contatos filtrado por etiqueta ou etapa do funil.</p>
@@ -8309,14 +8320,14 @@ function paintConsentContacts(d) {
           return `<tr>
             <td><b>${esc(r.name)}</b><div><span class="pill ${S.cls}">${S.label}</span></div></td>
             <td><code>+${esc(r.waId)}</code></td>
-            <td>${r.uf ? `<span title="${esc(r.ufName)}">${esc(r.uf)}</span>` : '<span class="muted">—</span>'}</td>
-            <td>${r.city ? esc(r.city) : '<span class="muted">—</span>'}</td>
+            <td>${r.uf ? `<span title="${esc(r.ufName)}">${esc(r.uf)}</span>` : '<span class="muted">-</span>'}</td>
+            <td>${r.city ? esc(r.city) : '<span class="muted">-</span>'}</td>
             <td>${coSourceHtml(r.source)}</td>
-            <td>${r.lastCampaign ? esc(r.lastCampaign) : '<span class="muted">—</span>'}</td>
-            <td>${r.lastAgent ? esc(r.lastAgent) : '<span class="muted">—</span>'}</td>
-            <td>${r.stage ? esc(r.stage) : '<span class="muted">—</span>'}</td>
-            <td class="muted" style="white-space:nowrap">${r.optOutAt ? new Date(r.optOutAt).toLocaleString('pt-BR') : '—'}</td>
-            <td>${r.optOutReason ? esc(r.optOutReason) : '<span class="muted">—</span>'}</td>
+            <td>${r.lastCampaign ? esc(r.lastCampaign) : '<span class="muted">-</span>'}</td>
+            <td>${r.lastAgent ? esc(r.lastAgent) : '<span class="muted">-</span>'}</td>
+            <td>${r.stage ? esc(r.stage) : '<span class="muted">-</span>'}</td>
+            <td class="muted" style="white-space:nowrap">${r.optOutAt ? new Date(r.optOutAt).toLocaleString('pt-BR') : '-'}</td>
+            <td>${r.optOutReason ? esc(r.optOutReason) : '<span class="muted">-</span>'}</td>
             <td style="white-space:nowrap">${r.status === 'opted_out'
               ? `<button class="btn small primary" onclick="coReactivate('${r.waId}')">${ico('refresh', 12)} Reativar</button>`
               : `<button class="btn small danger" onclick="coOptOut('${r.waId}')">${ico('slash', 12)} Opt-out</button>`}</td>
@@ -8957,7 +8968,7 @@ function nodeSummary(n) {
   switch (n.type) {
     case 'trigger': {
       const tr = flowDraft.trigger;
-      return tr.type === 'keyword' ? `"${tr.keyword || '—'}"` : tr.type === 'link' ? `"${tr.phrase || '—'}"`
+      return tr.type === 'keyword' ? `"${tr.keyword || '-'}"` : tr.type === 'link' ? `"${tr.phrase || '-'}"`
         : tr.type === 'webhook' ? 'URL exclusiva' : tr.keyword ? `"${tr.keyword}"` : 'qualquer interação';
     }
     case 'text': {
@@ -8969,17 +8980,17 @@ function nodeSummary(n) {
     }
     case 'buttons': return n.url && n.url.trim() ? `${(n.body || 'Mensagem').slice(0, 30)} · 🔗 ${n.urlText || 'link'}` : `${(n.body || 'Pergunta').slice(0, 34)} · ${(n.buttons || []).length} botões`;
     case 'list': return `${(n.body || 'Lista').slice(0, 30)} · ${(n.items || []).length} itens`;
-    case 'media': return `${n.kind || 'image'} · ${(n.link || '—').slice(0, 30)}`;
-    case 'template': return `Template: ${n.templateName || '—'}`;
+    case 'media': return `${n.kind || 'image'} · ${(n.link || '-').slice(0, 30)}`;
+    case 'template': return `Template: ${n.templateName || '-'}`;
     case 'ai': return (n.prompt || 'Resposta automática por IA').slice(0, 52);
-    case 'http': return `${n.method || 'POST'} ${(n.url || '—').slice(0, 34)}`;
-    case 'payment': return `Pix de R$ ${n.value || '—'}${n.description ? ' · ' + n.description.slice(0, 24) : ''}`;
+    case 'http': return `${n.method || 'POST'} ${(n.url || '-').slice(0, 34)}`;
+    case 'payment': return `Pix de R$ ${n.value || '-'}${n.description ? ' · ' + n.description.slice(0, 24) : ''}`;
     case 'delay': return `Aguardar ${n.seconds || 0}s`;
     case 'condition': return `Se ${n.field || 'texto'} ${OP_LBL[n.op] || 'contém'} "${(n.value || '').slice(0, 18)}"`;
     case 'sms': return n.text ? `SMS: ${String(n.text).slice(0, 40)}${n.text.length > 40 ? '…' : ''}` : 'SMS sem mensagem';
-    case 'addtag': return `+ tag "${n.tag || '—'}"`;
-    case 'removetag': return `− tag "${n.tag || '—'}"`;
-    case 'movestage': return `→ ${n.stage || '—'}`;
+    case 'addtag': return `+ tag "${n.tag || '-'}"`;
+    case 'removetag': return `− tag "${n.tag || '-'}"`;
+    case 'movestage': return `→ ${n.stage || '-'}`;
     case 'end': return 'Encerra a automação';
     default: return '';
   }
@@ -9706,7 +9717,7 @@ async function flowStatsModal() {
       <div class="lk-kpis">
         <div><b>${fmtN(s.runs)}</b><span>Execuções</span></div>
         <div><b>${fmtN(s.runsToday)}</b><span>Hoje</span></div>
-        <div><b>${s.lastRun ? timeAgo(s.lastRun) : '—'}</b><span>Última execução</span></div>
+        <div><b>${s.lastRun ? timeAgo(s.lastRun) : '-'}</b><span>Última execução</span></div>
       </div>
       ${s.history.length ? `<span class="fb-sub">Histórico recente</span>
         <div class="flow-hist">${s.history.map(h => `
@@ -10226,8 +10237,8 @@ function epChargesTable(list) {
   return `<div style="overflow-x:auto"><table><thead><tr><th>Criada</th><th>Contato</th><th>Descrição</th><th style="text-align:right">Valor</th><th>Status</th><th></th></tr></thead><tbody>
     ${list.map(c => `<tr>
       <td class="muted" style="white-space:nowrap">${timeAgo(c.createdAt)}</td>
-      <td>${c.contactName ? `<b>${esc(c.contactName)}</b>` : '<span class="muted">—</span>'}${c.waId ? `<div class="muted" style="font-size:11px">+${esc(c.waId)}</div>` : ''}</td>
-      <td class="muted">${esc(c.comment || '—')}</td>
+      <td>${c.contactName ? `<b>${esc(c.contactName)}</b>` : '<span class="muted">-</span>'}${c.waId ? `<div class="muted" style="font-size:11px">+${esc(c.waId)}</div>` : ''}</td>
+      <td class="muted">${esc(c.comment || '-')}</td>
       <td style="text-align:right"><b>${fmtBRL(c.value)}</b></td>
       <td>${epPill(c.status)}</td>
       <td style="white-space:nowrap;text-align:right">
@@ -10294,11 +10305,11 @@ async function epPaintCfg(box) {
     <div class="card">
       <h2>${ico('shield')} Sua conta de recebimento</h2>
       <div class="wa-status">
-        <div class="wa-row"><span>Titular</span><b>${esc(sub.name || '—')}</b></div>
-        <div class="wa-row"><span>Documento</span><b>${esc(sub.document || '—')}</b></div>
-        <div class="wa-row"><span>Chave Pix</span><b>${esc(sub.pixKey || '—')} (${esc(sub.pixKeyType || '')})</b></div>
+        <div class="wa-row"><span>Titular</span><b>${esc(sub.name || '-')}</b></div>
+        <div class="wa-row"><span>Documento</span><b>${esc(sub.document || '-')}</b></div>
+        <div class="wa-row"><span>Chave Pix</span><b>${esc(sub.pixKey || '-')} (${esc(sub.pixKeyType || '')})</b></div>
         <div class="wa-row"><span>Status</span><b>${sub.status === 'active' ? 'Ativa ✅' : esc(sub.status || '')}</b></div>
-        <div class="wa-row"><span>Criada em</span><b>${sub.createdAt ? new Date(sub.createdAt).toLocaleDateString('pt-BR') : '—'}</b></div>
+        <div class="wa-row"><span>Criada em</span><b>${sub.createdAt ? new Date(sub.createdAt).toLocaleDateString('pt-BR') : '-'}</b></div>
         ${state.epInfo.feeInPercent ? `<div class="wa-row"><span>Taxa por venda (PIX In)</span><b>${state.epInfo.feeInPercent}%</b></div>` : ''}
         ${state.epInfo.feeOutPercent ? `<div class="wa-row"><span>Taxa por saque (PIX Out)</span><b>${state.epInfo.feeOutPercent}%</b></div>` : ''}
       </div>
@@ -11133,7 +11144,7 @@ async function renderCheckoutList() {
       <div style="overflow-x:auto"><table><thead><tr><th>Nome</th><th>Blocos ativos</th><th>Cor</th><th></th></tr></thead><tbody>
         ${cks.map(c => `<tr>
           <td><b>${esc(c.name)}</b> ${c.isDefault ? '<span class="pill on">Padrão</span>' : ''}</td>
-          <td class="muted">—</td>
+          <td class="muted">-</td>
           <td><span style="display:inline-block;width:16px;height:16px;border-radius:5px;background:${esc(c.color || '#10b981')};vertical-align:middle"></span></td>
           <td style="text-align:right;white-space:nowrap">
             <button class="btn small" onclick="ckEdit('${c.id}')">${ico('edit', 13)} Editar</button>
@@ -11291,8 +11302,8 @@ function chatChargeModal(waId) {
 // ==================== TRACKING — atribuição + ROAS (estilo UTMify) ====================
 let trkState = { tab: 'overview', data: null };
 const trkBRL = v => fmtBRL(v || 0);
-const trkPct = v => v === null || v === undefined ? '—' : v + '%';
-const trkX = v => v === null || v === undefined ? '—' : v + 'x';
+const trkPct = v => v === null || v === undefined ? '-' : v + '%';
+const trkX = v => v === null || v === undefined ? '-' : v + 'x';
 
 async function renderTracking() {
   $('#view').innerHTML = `<div class="page">
@@ -11339,7 +11350,7 @@ async function trkPaintOverview(box) {
     ${!spendOk ? `<div class="card" style="border-color:var(--amber-border);background:var(--amber-bg)"><b>💡 Conecte o Meta Ads</b><p class="muted" style="margin:4px 0 0;font-size:13px">ROAS, ROI, CPA e CAC dependem do gasto das campanhas. Vá em <b>Conexões → Meta Ads</b> e sincronize, o resto é automático.</p></div>` : ''}
     <div class="metric-hero">
       <div class="mh-card hi"><span class="mh-ic">${ico('zap', 20)}</span><div class="mh-val">${trkBRL(d.receita.d30)}</div><div class="mh-lbl">Receita. 30 dias</div></div>
-      <div class="mh-card"><span class="mh-ic">${ico('activity', 20)}</span><div class="mh-val">${d.roas === null ? '—' : d.roas + 'x'}</div><div class="mh-lbl">ROAS</div></div>
+      <div class="mh-card"><span class="mh-ic">${ico('activity', 20)}</span><div class="mh-val">${d.roas === null ? '-' : d.roas + 'x'}</div><div class="mh-lbl">ROAS</div></div>
       <div class="mh-card"><span class="mh-ic">${ico('trend', 20) || ico('activity', 20)}</span><div class="mh-val">${trkBRL(d.lucro)}</div><div class="mh-lbl">Lucro (receita − anúncios)</div></div>
       <div class="mh-card"><span class="mh-ic">${ico('check', 20)}</span><div class="mh-val">${fmtN(d.pedidos.aprovados)}</div><div class="mh-lbl">Pedidos aprovados</div></div>
     </div>
@@ -11353,9 +11364,9 @@ async function trkPaintOverview(box) {
       <div class="trk-cards">
         ${card('Gasto em anúncios', trkBRL(d.gastoAnuncios), '30d · Meta Ads')}
         ${card('ROI', trkPct(d.roi))}${card('ROAS', trkX(d.roas))}
-        ${card('CPA', d.cpa === null ? '—' : trkBRL(d.cpa))}${card('CAC', d.cac === null ? '—' : trkBRL(d.cac))}
+        ${card('CPA', d.cpa === null ? '-' : trkBRL(d.cpa))}${card('CAC', d.cac === null ? '-' : trkBRL(d.cac))}
         ${card('LTV', trkBRL(d.ltv))}${card('Margem', trkPct(d.margem))}${card('Conversão', trkPct(d.conversao))}
-        ${card('EPC', d.epc === null ? '—' : trkBRL(d.epc))}${card('RPC', d.rpc === null ? '—' : trkBRL(d.rpc))}
+        ${card('EPC', d.epc === null ? '-' : trkBRL(d.epc))}${card('RPC', d.rpc === null ? '-' : trkBRL(d.rpc))}
         ${card('ROI líquido', trkPct(d.roiLiquido), 'desconta taxas/reembolsos')}
         ${card('ROAS líquido', trkX(d.roasLiquido))}
       </div></div>
@@ -11369,7 +11380,7 @@ async function trkPaintOverview(box) {
       </div></div>
     <div class="card"><h2>${ico('activity')} Comparativo de receita</h2>
       <div class="ep-chart" style="height:130px">${periods.map(([lbl, p]) => `
-        <div class="ep-bar-w" title="${lbl} · ${trkBRL(p.receita)} · ROAS ${p.roas ?? '—'}">
+        <div class="ep-bar-w" title="${lbl} · ${trkBRL(p.receita)} · ROAS ${p.roas ?? '-'}">
           <div class="ep-bar" style="height:${Math.max(3, Math.round(p.receita / maxRev * 100))}%"></div><span>${lbl}</span>
         </div>`).join('')}</div>
       <div style="overflow-x:auto;margin-top:10px"><table><thead><tr><th>Período</th><th>Receita</th><th>Pedidos</th><th>Lucro</th><th>ROAS</th><th>ROI</th><th>Conversão</th></tr></thead><tbody>
@@ -11404,7 +11415,7 @@ async function trkPaintConn(box) {
         <div class="trk-connstats">
           <span class="${c.enabled && c.id ? 'ok' : ''}">${c.enabled && c.id ? '● Conectada' : '○ Inativa'}</span>
           ${c.mode === 'server' ? `
-            <span>Sync: ${c.lastSync ? timeAgo(c.lastSync) : '—'}</span>
+            <span>Sync: ${c.lastSync ? timeAgo(c.lastSync) : '-'}</span>
             <span>↑ ${fmtN(c.sent || 0)} enviados</span>
             <span class="${c.errors ? 'err2' : ''}">${c.errors || 0} erro(s)</span>`
           : '<span>Dispara no link rastreável e no checkout</span>'}
@@ -11434,7 +11445,7 @@ function trkMetaCard(ov) {
 
   if (!m.hasToken) {
     h.push(`<button class="btn primary" onclick="trkMetaConnect()">${ico('sparkles', 15)} Conectar Meta Ads</button>`);
-    h.push(`<p class="hint" style="margin-top:10px;text-align:left">Abre a autorização da Meta. Você escolhe a conta de anúncios e pronto: a permissão pedida é só de <b>leitura</b> (ads_read). A autorização vale <b>60 dias</b> — quando estiver perto de vencer, avisamos aqui para você reconectar em um clique, sem perder nada.</p>`);
+    h.push(`<p class="hint" style="margin-top:10px;text-align:left">Abre a autorização da Meta. Você escolhe a conta de anúncios e pronto: a permissão pedida é só de <b>leitura</b> (ads_read). A autorização vale <b>60 dias</b>, quando estiver perto de vencer, avisamos aqui para você reconectar em um clique, sem perder nada.</p>`);
     return h.join('');
   }
 
@@ -11466,7 +11477,7 @@ function metaTokenBar(m) {
   if (m.expired || (dias !== null && dias < 0)) {
     cls = 'crit';
     titulo = 'Autorização expirada';
-    texto = 'A Meta parou de enviar o gasto das campanhas. Clique em <b>Reconectar</b> para voltar a sincronizar — leva 10 segundos.';
+    texto = 'A Meta parou de enviar o gasto das campanhas. Clique em <b>Reconectar</b> para voltar a sincronizar, leva 10 segundos.';
   } else if (dias === null) {
     cls = 'ok'; titulo = 'Conectado';
     texto = 'Sua conta de anúncios está enviando dados normalmente.';
@@ -11562,8 +11573,8 @@ async function trkPaintCamp(box) {
       <td><b>${esc(c.nome)}</b></td><td>${trkBRL(c.gasto)}</td><td>${trkBRL(c.receita)}</td>
       <td style="color:${c.lucro >= 0 ? 'var(--verde-esc)' : '#f87171'}"><b>${trkBRL(c.lucro)}</b></td>
       <td>${trkX(c.roas)}</td><td>${trkPct(c.roi)}</td><td>${c.pedidos}</td><td>${trkPct(c.conversao)}</td>
-      <td>${c.cpa === null ? '—' : trkBRL(c.cpa)}</td><td>${trkBRL(c.ticket)}</td>
-      <td class="muted" style="font-size:12px">${c.produtos.map(esc).join('<br>') || '—'}</td>
+      <td>${c.cpa === null ? '-' : trkBRL(c.cpa)}</td><td>${trkBRL(c.ticket)}</td>
+      <td class="muted" style="font-size:12px">${c.produtos.map(esc).join('<br>') || '-'}</td>
       <td>${trkBRL(c.refund + c.chargeback)}</td>
     </tr>`).join('')}</tbody></table></div>`
     : '<p class="muted">Sem dados ainda, sincronize o Meta Ads e/ou receba vendas com UTM/click ID para ver o relatório.</p>'}</div>`;
@@ -11590,11 +11601,11 @@ async function trkPaintEvents(box) {
   box.innerHTML = `<div class="card"><h2>${ico('activity')} Eventos recebidos <span class="muted" style="font-weight:600;font-size:12.5px">· ${events.length} mais recentes</span></h2>
     ${events.length ? `<div style="overflow-x:auto"><table><thead><tr><th>Evento</th><th>Origem</th><th>Data · Hora</th><th>Sessão</th><th>Campanha (UTM)</th><th>Valor</th><th>Status</th></tr></thead><tbody>
       ${events.map(e => `<tr>
-        <td><b>${esc(e.name)}</b></td><td>${esc(e.source || '—')}</td>
+        <td><b>${esc(e.name)}</b></td><td>${esc(e.source || '-')}</td>
         <td class="muted" style="white-space:nowrap">${new Date(e.ts).toLocaleDateString('pt-BR')} · ${new Date(e.ts).toLocaleTimeString('pt-BR').slice(0, 5)}</td>
-        <td class="muted" style="font-size:11.5px">${esc((e.sid || '').slice(0, 10) || '—')}</td>
-        <td>${esc((e.payload && e.payload.utm && e.payload.utm.campaign) || (e.payload && e.payload.campaign) || '—')}</td>
-        <td>${e.payload && e.payload.value ? trkBRL(Math.round(e.payload.value * 100)) : '—'}</td>
+        <td class="muted" style="font-size:11.5px">${esc((e.sid || '').slice(0, 10) || '-')}</td>
+        <td>${esc((e.payload && e.payload.utm && e.payload.utm.campaign) || (e.payload && e.payload.campaign) || '-')}</td>
+        <td>${e.payload && e.payload.value ? trkBRL(Math.round(e.payload.value * 100)) : '-'}</td>
         <td><span class="pill-ok">${esc(e.status || 'ok')}</span></td>
       </tr>`).join('')}</tbody></table></div>`
     : '<p class="muted">Nenhum evento ainda. Instale o snippet no seu site ou receba visitas no checkout.</p>'}</div>`;

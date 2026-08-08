@@ -148,7 +148,7 @@ async function fetchStore(acc) {
     c.storeName = pickLang(s.name) || `Loja ${c.storeId}`;
     c.storeUrl = pickLang(s.url) || '';
     db.save();
-  } catch (e) { /* nome é cosmético — não derruba a conexão */ }
+  } catch (e) { /* nome é cosmético, não derruba a conexão */ }
   return c;
 }
 

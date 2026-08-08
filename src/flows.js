@@ -520,9 +520,9 @@ function validateGraph(flow) {
         // Escolheu ramificar: toda opção precisa levar a algum lugar, senão o
         // cliente toca num botão e a conversa morre sem resposta.
         const semCaminho = nodeOptions(n).find(o => !porOpcao.some(e => e.branch === optBranch(o.id)));
-        if (semCaminho) return `O ${palavra} "${semCaminho.title}" não leva a lugar nenhum — conecte a saída dele.`;
+        if (semCaminho) return `O ${palavra} "${semCaminho.title}" não leva a lugar nenhum, conecte a saída dele.`;
       } else if (!from(n.id)) {
-        return `Um passo pergunta ao cliente mas não tem resposta — conecte a saída de cada ${palavra} ao próximo passo.`;
+        return `Um passo pergunta ao cliente mas não tem resposta, conecte a saída de cada ${palavra} ao próximo passo.`;
       }
     }
     if (n.type === 'text') {

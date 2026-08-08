@@ -807,7 +807,7 @@ module.exports = function (broadcast, clients) {
     });
     agents.log(req.acc, req.who, 'sms_send', `SMS para ${r.to}`);
     broadcast('sms', { accountId: req.acc.id, id: r.id, status: r.status });
-    res.json({ sms: r, usage: limits.report(req.acc).sms });
+    res.json({ sms: r, balance: req.acc.wallet.balance });
   }));
 
   // Disparo em massa: aceita a lista de números ou o mesmo filtro da tela de
@@ -825,7 +825,7 @@ module.exports = function (broadcast, clients) {
     const r = await sms.enviarMassa(req.acc, { numeros, text: b.text, por: req.who && req.who.name });
     agents.log(req.acc, req.who, 'sms_bulk', `Disparo de SMS: ${r.enviados} enviado(s)`);
     broadcast('sms', { accountId: req.acc.id });
-    res.json({ ...r, usage: limits.report(req.acc).sms });
+    res.json({ ...r, balance: req.acc.wallet.balance });
   }));
 
   // Prévia do disparo em massa antes de gastar crédito.
@@ -841,6 +841,8 @@ module.exports = function (broadcast, clients) {
     res.json({
       total: alvo.length, invalidos: alvo.length - validos.length,
       enviaveis: validos.length, segmentos: seg, creditos: seg * validos.length,
+      // custo real do disparo: é isso que sai da carteira ao confirmar
+      custo: sms.precoDe(seg * validos.length), saldo: req.acc.wallet.balance,
       amostra: validos.slice(0, 5).map(c => ({ name: c.name, waId: c.waId }))
     });
   });
@@ -1243,7 +1245,7 @@ module.exports = function (broadcast, clients) {
     db.save();
 
     agents.log(req.acc, req.who, 'conversation_transferred',
-      `Transferiu a conversa de ${c.name}: ${from ? from.name : '—'} → ${to.name}${reason ? ' (' + reason + ')' : ''}`, { waId: c.waId });
+      `Transferiu a conversa de ${c.name}: ${from ? from.name : '-'} → ${to.name}${reason ? ' (' + reason + ')' : ''}`, { waId: c.waId });
     broadcast('assign', { accountId: req.acc.id, waId: c.waId, agentId: to.id, transferred: true });
     res.json({ contact: assignPublic(req.acc, c) });
   });

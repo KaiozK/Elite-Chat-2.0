@@ -223,7 +223,7 @@ function processEvent(body, broadcast) {
         }
         if (st.errors && st.errors.length) {
           msg.error = st.errors
-            .map(e => `${e.code}: ${e.title}${e.error_data && e.error_data.details ? ' — ' + e.error_data.details : ''}`)
+            .map(e => `${e.code}: ${e.title}${e.error_data && e.error_data.details ? '-' + e.error_data.details : ''}`)
             .join('; ');
         }
         db.save();

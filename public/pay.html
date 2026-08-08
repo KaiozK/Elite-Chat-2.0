@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  /* ===== Checkout Elite Pay — card em 2 colunas (ref. Figma "Checkout Page") ===== */
+  /* ===== Checkout Elite Pay, card em 2 colunas (ref. Figma "Checkout Page") ===== */
   :root { --ac: #10b981; --ink: #1a2233; --mut: #6b7488; --line: #e7eaf0; --bg: #eef1f6; --card: #fff; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -392,7 +392,7 @@
     }
     clearTimeout(cdTimer); tick();
   }
-  // cronômetro de escassez (bloco opcional) — persiste por cobrança
+  // cronômetro de escassez (bloco opcional), persiste por cobrança
   function startOffer(ck) {
     var t = ck.timer || {}; if (!t.on) return;
     var key = 'ec_offer_' + id, end = +localStorage.getItem(key);
@@ -433,7 +433,7 @@
     if (btn) btn.onclick = submitIdentify;
   }
 
-  // origem do tráfego (tracking) — enviada junto na identificação
+  // origem do tráfego (tracking), enviada junto na identificação
   function trkData() {
     var q = new URLSearchParams(location.search);
     var sid = localStorage.getItem('ec_sid');
@@ -507,7 +507,7 @@
 
   function payMain(ck) {
     var pm = payMethods();
-    // aba selecionada precisa existir de verdade — cai na primeira disponível
+    // aba selecionada precisa existir de verdade, cai na primeira disponível
     var disponiveis = [];
     if (pm.pix) disponiveis.push('pix');
     if (pm.credit) disponiveis.push('card');

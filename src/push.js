@@ -111,7 +111,7 @@ async function sendToAccount(acc, type, payloadObj) {
     try {
       const st = await sendOne(sub, payloadObj);
       if (st === 404 || st === 410) dead.push(sub.endpoint);
-    } catch (e) { /* rede/endpoint indisponível — ignora */ }
+    } catch (e) { /* rede/endpoint indisponível, ignora */ }
   }));
   if (dead.length) { acc.pushSubs = acc.pushSubs.filter(s => !dead.includes(s.endpoint)); db.save(); }
 }

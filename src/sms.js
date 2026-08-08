@@ -221,6 +221,29 @@ function segmentos(texto) {
 // ENVIO. Guarda o resultado no histórico da conta, sempre — inclusive falhas,
 // porque é por ali que o cliente descobre por que a mensagem não chegou.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// PREÇO DO DISPARO
+//
+// O SMS não tem cota no plano: o plano só diz que o módulo existe. Cada envio
+// é pago na hora com o saldo da carteira, ao preço por SEGMENTO que o admin
+// define (uma mensagem longa vale mais de um segmento e a operadora cobra
+// por isso, então cobramos igual).
+//
+// Preço zero = a plataforma está oferecendo o disparo; nada é debitado.
+// Saldo insuficiente para no envio, com a mensagem que a carteira já produz.
+// ---------------------------------------------------------------------------
+function precoDe(qtdSegmentos) {
+  const p = Math.max(0, Math.round(Number(cfg().priceCents) || 0));
+  return p * Math.max(0, Math.round(qtdSegmentos) || 0);
+}
+
+function cobrar(acc, qtdSegmentos, label) {
+  const total = precoDe(qtdSegmentos);
+  if (!total) return 0;
+  require('./elitepay').spendWallet(acc, total, label);
+  return total;
+}
+
 async function enviar(acc, { to, text, contato = null, origem = 'manual', por = null }) {
   if (!configured()) throw erro('O envio de SMS não está disponível na plataforma');
   const bloqueio = limits.checkFeature(acc, 'sms');
@@ -233,7 +256,7 @@ async function enviar(acc, { to, text, contato = null, origem = 'manual', por = 
 
   const c = contato || store.findContact(acc, numero);
 
-  limits.enforce(acc, 'sms', segmentos(corpo));
+  const custo = cobrar(acc, segmentos(corpo), `SMS para ${numero}`);
 
   const cfgSms = cfg();
   const registro = {
@@ -288,7 +311,7 @@ async function enviarMassa(acc, { numeros, text, por = null }) {
   if (!lista.length) throw erro('Nenhum número válido na seleção');
 
   const seg = segmentos(corpo);
-  limits.enforce(acc, 'sms', seg * lista.length);
+  const custo = cobrar(acc, seg * lista.length, `Disparo de SMS, ${lista.length} número(s)`);
 
   const cfgSms = cfg();
   const r = { total: lista.length, enviados: 0, falhas: 0, lotes: 0, erros: [] };
@@ -447,7 +470,9 @@ function publicView(acc) {
     from: c.from || '',
     maxLen: c.maxLen,
     priceCents: c.priceCents || 0,
-    usage: limits.report(acc).sms
+    // sem cota: o que limita é o saldo. A tela mostra quantos SMS ele paga.
+    balance: acc.wallet.balance,
+    creditos: (c.priceCents || 0) ? Math.floor(acc.wallet.balance / c.priceCents) : -1
   };
 }
 
@@ -477,6 +502,7 @@ function adminView() {
 
 module.exports = {
   CONTRATO, cfg, emptyConfig, configured, baseUrl,
+  precoDe, cobrar,
   normalizarNumero, valido, segmentos, normalizarStatus,
   enviar, enviarMassa, historico, saldo, testar, rotaVisivel,
   aplicarStatus, webhookHandler,

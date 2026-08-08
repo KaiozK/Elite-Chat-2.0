@@ -31,9 +31,9 @@
     reg: null,
     prefs: loadPrefs(),
     center: loadCenter(),
-    onOpen: null,      // callback(data) — app registra p/ abrir a conversa
-    onResync: null,    // callback() — app registra p/ recarregar dados
-    onChange: null,    // callback() — center mudou (repinta o sino/painel)
+    onOpen: null,      // callback(data), app registra p/ abrir a conversa
+    onResync: null,    // callback(), app registra p/ recarregar dados
+    onChange: null,    // callback(), center mudou (repinta o sino/painel)
     audioCtx: null
   };
 
@@ -207,7 +207,7 @@
 
     // App em foco → toast in-app (não “estoura” notificação do SO por cima do app)
     if (focusedHere && typeof window.toast === 'function' && type !== 'call') {
-      try { window.toast((type === 'reminder' ? '⏰ ' : '') + item.title + (item.body ? ' — ' + item.body : '')); } catch (e) {}
+      try { window.toast((type === 'reminder' ? '⏰ ' : '') + item.title + (item.body ? '-' + item.body : '')); } catch (e) {}
       return item;
     }
     // App em segundo plano (ou ligação) → notificação nativa do sistema
@@ -238,12 +238,12 @@
   /* ---------------- Online / Offline ---------------- */
   function setupConnectivity() {
     window.addEventListener('online', function () {
-      if (typeof window.toast === 'function') window.toast('Conexão restaurada — sincronizando…');
+      if (typeof window.toast === 'function') window.toast('Conexão restaurada, sincronizando…');
       if (state.reg && state.reg.sync) { try { state.reg.sync.register('ec-resync'); } catch (e) {} }
       if (state.onResync) try { state.onResync(); } catch (e) {}
     });
     window.addEventListener('offline', function () {
-      if (typeof window.toast === 'function') window.toast('Você está offline — as ações voltam ao reconectar', 'error');
+      if (typeof window.toast === 'function') window.toast('Você está offline, as ações voltam ao reconectar', 'error');
     });
     // resume o áudio no primeiro gesto do usuário (política de autoplay)
     var resume = function () { ac(); window.removeEventListener('pointerdown', resume); };

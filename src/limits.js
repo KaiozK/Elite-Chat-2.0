@@ -22,8 +22,7 @@ const LABEL = {
   flows: 'fluxos de automação',
   pixels: 'pixels de rastreamento',
   links: 'links rastreáveis',
-  whatsapps: 'conexões WhatsApp',
-  sms: 'SMS por ciclo'
+  whatsapps: 'conexões WhatsApp'
 };
 
 function planOf(acc) {

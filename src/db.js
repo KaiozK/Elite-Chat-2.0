@@ -76,9 +76,12 @@ const DEFAULT_STAGES = ['Novo', 'Em atendimento', 'Qualificado', 'Negociação',
 //   N   = teto
 // `whatsapps` e `links` são os INCLUSOS no plano; acima disso o cliente compra
 // unidades extras (preço em platform.billing.extras).
-const LIMIT_KEYS = ['sends', 'contacts', 'flows', 'pixels', 'links', 'whatsapps', 'sms'];
+// O SMS NÃO entra aqui: ele não tem cota por ciclo. O plano só liga ou desliga
+// o módulo (FEATURE_KEYS) e cada disparo é pago na hora, com o saldo da
+// carteira, ao preço que o admin define em Admin SaaS.
+const LIMIT_KEYS = ['sends', 'contacts', 'flows', 'pixels', 'links', 'whatsapps'];
 function defaultLimits() {
-  return { sends: -1, contacts: -1, flows: -1, pixels: -1, links: 1, whatsapps: 1, sms: 0 };
+  return { sends: -1, contacts: -1, flows: -1, pixels: -1, links: 1, whatsapps: 1 };
 }
 // ---------------------------------------------------------------------------
 // FUNCIONALIDADES POR PLANO (toggles)
@@ -278,7 +281,7 @@ function emptyBilling() {
     startedAt: 0, canceledAt: 0,
     // ---- Meio de pagamento da assinatura ----
     method: 'pix',         // pix | credit | boleto | wallet, como o cliente paga o EliteChat
-    taxId: '',             // CPF/CNPJ do titular — exigido para emitir boleto
+    taxId: '',             // CPF/CNPJ do titular, exigido para emitir boleto
     card: {                // cartão tokenizado para renovar automaticamente
       token: '', brand: '', last4: '', holderName: '', gatewayCustomerId: ''
     },
@@ -364,6 +367,9 @@ function load() {
   for (const p of db.plans) {
     p.limits = normLimits(p.limits, p.limits);
     p.modules = normFeatures(p.modules, p.modules);
+    // Cota que deixou de existir (o `sms` virou pagamento por disparo) ficaria
+    // guardada para sempre, sem nada que a leia. Sai do banco.
+    for (const k of Object.keys(p.limits)) if (!LIMIT_KEYS.includes(k)) delete p.limits[k];
   }
   migrateLegacy();
   for (const a of db.accounts) ensureAccountShape(a);

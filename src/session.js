@@ -11,7 +11,7 @@
 // será preciso alterar nada aqui.
 const db = require('./db');
 
-const WINDOW_MS = 24 * 60 * 60 * 1000; // 24h — regra da Meta
+const WINDOW_MS = 24 * 60 * 60 * 1000; // 24h, regra da Meta
 const WARN_MS = 60 * 60 * 1000;        // < 1h  → amarelo
 const CRIT_MS = 15 * 60 * 1000;        // < 15min → vermelho
 
@@ -72,7 +72,7 @@ function sessionState(contact, now = Date.now()) {
     // Só é possível mandar mensagem livre (texto/mídia/áudio/botões) se a janela
     // está aberta E o atendimento não foi finalizado.
     canSendSession: win.open && (att.status || 'open') !== 'finished',
-    canSendTemplate: true // template sempre pode — é o que reabre a conversa
+    canSendTemplate: true // template sempre pode, é o que reabre a conversa
   };
 }
 

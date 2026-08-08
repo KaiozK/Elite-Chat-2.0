@@ -91,7 +91,7 @@ function maybePush(event, data) {
     const ev = data.event || {};
     const when = ev.start ? new Date(ev.start).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
     type = 'reminder';
-    payload = { title: 'Lembrete — ' + (data.label || 'Agendamento'), body: `${ev.title || ''}${when ? ' · ' + when : ''}`, tag: 'ev:' + (ev.id || ''), requireInteraction: true, data: { type, waId: ev.contact ? ev.contact.waId : null, url: ev.contact ? url : '/app/#/schedule' } };
+    payload = { title: 'Lembrete ' + (data.label || 'Agendamento'), body: `${ev.title || ''}${when ? ' · ' + when : ''}`, tag: 'ev:' + (ev.id || ''), requireInteraction: true, data: { type, waId: ev.contact ? ev.contact.waId : null, url: ev.contact ? url : '/app/#/schedule' } };
   }
   if (!type) return;
   const acc = db.findAccount(data.accountId);
@@ -409,7 +409,7 @@ function landingHtml() {
 function seoEsc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function buildSeoHead(seo, origin) {
   seo = seo || {};
-  const title = seo.title || 'EliteChat — CRM de WhatsApp com IA';
+  const title = seo.title || 'EliteChat, CRM de WhatsApp com IA';
   const desc = seo.description || 'Automatize o atendimento no WhatsApp, gerencie leads no CRM e dispare campanhas em massa com o EliteChat.';
   const ogTitle = seo.ogTitle || title;
   const ogDesc = seo.ogDescription || desc;

@@ -536,12 +536,12 @@ function alerts(acc) {
   const spend = adSpend(acc);
   if (spend > 0 && lastPaid.length && Math.max(...lastPaid) < now - 3 * 86400000) out.push({ level: 'warn', icon: 'slash', title: 'Campanhas gastando sem vender', text: 'Há gasto de anúncios sincronizado, mas nenhuma venda nos últimos 3 dias.' });
   const lastEv = t.events[0];
-  if (t.connections.meta_pixel.enabled && (!lastEv || lastEv.ts < now - 2 * 86400000)) out.push({ level: 'warn', icon: 'shield', title: 'Pixel sem receber eventos', text: 'Nenhum evento chegou nas últimas 48h — verifique a instalação do pixel.' });
+  if (t.connections.meta_pixel.enabled && (!lastEv || lastEv.ts < now - 2 * 86400000)) out.push({ level: 'warn', icon: 'shield', title: 'Pixel sem receber eventos', text: 'Nenhum evento chegou nas últimas 48h, verifique a instalação do pixel.' });
   const semOrigem = charges(acc).filter(c => c.status === 'paid' && c.paidAt >= now - 7 * 86400000 && !c.attribution).length;
   if (semOrigem) out.push({ level: 'info', icon: 'help', title: `${semOrigem} venda(s) sem origem identificada`, text: 'Pagamentos confirmados sem clique/UTM/sessão associados nos últimos 7 dias.' });
   const prev = compare(acc);
   if (prev.d7.conversao !== null && prev.d30.conversao !== null && prev.d7.conversao < prev.d30.conversao * 0.6) out.push({ level: 'warn', icon: 'activity', title: 'Queda de conversão', text: `Conversão 7d (${prev.d7.conversao}%) bem abaixo da média 30d (${prev.d30.conversao}%).` });
-  if (!out.length) out.push({ level: 'ok', icon: 'check', title: 'Tudo saudável por aqui', text: 'Nenhum alerta ativo — métricas dentro do esperado.' });
+  if (!out.length) out.push({ level: 'ok', icon: 'check', title: 'Tudo saudável por aqui', text: 'Nenhum alerta ativo, métricas dentro do esperado.' });
   return out;
 }
 
