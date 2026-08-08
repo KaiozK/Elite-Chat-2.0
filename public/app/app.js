@@ -1415,30 +1415,165 @@ async function refreshWallet() {
 
 // Pop-up de depósito. A faixa vem do Admin SaaS; validamos aqui só para dar
 // resposta imediata — quem decide de verdade é o servidor.
+// ---------------------------------------------------------------------------
+// DEPOSITAR NA CARTEIRA
+//
+// Atalhos de valor em duas fileiras de cinco: quem recarrega quase nunca digita
+// um número quebrado, e a faixa vai de R$ 10 a R$ 2.000 para atender tanto o
+// teste inicial quanto quem opera em volume.
+//
+// Dois meios, com naturezas diferentes: o Pix espera o pagamento cair (QR na
+// própria janela) e o CARTÃO credita na hora, porque o adquirente responde
+// síncrono. Só aparece o que o admin habilitou.
+// ---------------------------------------------------------------------------
+const DEP_ATALHOS = [1000, 2000, 3000, 5000, 10000, 20000, 30000, 50000, 100000, 200000];
+const DEP_PADRAO = 5000;   // R$ 50 já vem preenchido
+
 function depositModal() {
   const min = WALLET.deposito.min, max = WALLET.deposito.max;
-  const faixa = `Mínimo ${fmtBRL(min)}${max ? ` · máximo ${fmtBRL(max)}` : ''}`;
-  // Atalhos partindo do mínimo, dobrando, sem passar do teto.
-  const sugestoes = [min, min * 2, min * 5, min * 10]
-    .filter(v => !max || v <= max)
-    .filter((v, i, a) => a.indexOf(v) === i)
-    .slice(0, 4);
+  const meios = WALLET.methods || {};
+  const salvo = WALLET.savedCard || {};
+  const auto = WALLET.autoTopup || {};
+  const faixa = `Mínimo ${fmtBRL(min)}${max ? ' · máximo ' + fmtBRL(max) : ''}`;
+  const atalhos = DEP_ATALHOS.filter(v => v >= min && (!max || v <= max));
+  const inicial = Math.min(Math.max(DEP_PADRAO, min), max || DEP_PADRAO);
 
   openModal(`
     <h2 style="margin:0 0 6px">${ico('plus')} Depositar na carteira</h2>
     <p class="muted" style="font-size:13px;margin:0 0 14px">
-      O saldo paga assinatura, conexões extras e disparos. Pagamento por Pix, confirmação automática.
+      O saldo paga assinatura, conexões extras e disparos.
       <br><b>${faixa}</b>
     </p>
-    <label>Valor (R$)<input id="dep-val" inputmode="decimal" placeholder="${(min / 100).toFixed(2)}" autocomplete="off"></label>
-    <div class="row" style="gap:7px;margin-top:9px">
-      ${sugestoes.map(v => `<button class="btn small no-grow" onclick="$('#dep-val').value='${(v / 100).toFixed(2)}'">${fmtBRL(v)}</button>`).join('')}
+
+    <label>Valor (R$)<input id="dep-val" inputmode="decimal" value="${(inicial / 100).toFixed(2)}" autocomplete="off"></label>
+    <div class="dep-chips">
+      ${atalhos.map(v => `<button type="button" class="dep-chip" onclick="depSet(${v})">${fmtBRL(v)}</button>`).join('')}
     </div>
+
+    ${meios.credit ? `
+    <label style="margin-top:14px;margin-bottom:6px">Como pagar</label>
+    <div class="pay-methods">
+      <label class="pay-method">
+        <input type="radio" name="depm" value="pix" checked onchange="depMeio()">
+        <span><b>Pix</b><em>QR na tela, cai em segundos</em></span>
+      </label>
+      <label class="pay-method">
+        <input type="radio" name="depm" value="card" onchange="depMeio()">
+        <span><b>Cartão de crédito</b><em>${salvo.reusable ? esc((salvo.brand || 'Cartão') + ' •••• ' + salvo.last4) + ', em um clique' : 'Crédito na hora'}</em></span>
+      </label>
+    </div>` : ''}
+
+    ${autoBoxHtml(auto, meios, salvo, min)}
+
     <div class="row" style="margin-top:16px">
       <button class="btn no-grow" onclick="closeModal()">Cancelar</button>
-      <button class="btn primary no-grow" onclick="doDeposit(this)">${ico('zap', 14)} Gerar Pix</button>
+      <button class="btn primary no-grow" id="dep-go" onclick="doDeposit(this)">${ico('zap', 14)} Gerar Pix</button>
     </div>
     <div id="dep-pix"></div>`);
+}
+
+function depSet(cents) {
+  const el = $('#dep-val'); if (!el) return;
+  el.value = (cents / 100).toFixed(2);
+  $$('.dep-chip').forEach(b => b.classList.toggle('on', b.textContent.trim() === fmtBRL(cents)));
+}
+
+function depMeioEscolhido() {
+  const r = document.querySelector('input[name="depm"]:checked');
+  return r ? r.value : 'pix';
+}
+
+// O rótulo do botão muda com o meio: "Gerar Pix" e "Pagar no cartão" descrevem
+// ações bem diferentes, e o cliente precisa saber qual vai acontecer.
+function depMeio() {
+  const b = $('#dep-go'); if (!b) return;
+  b.innerHTML = depMeioEscolhido() === 'card'
+    ? ico('card', 14) + ' Pagar no cartão'
+    : ico('zap', 14) + ' Gerar Pix';
+}
+
+// ---------------------------------------------------------------------------
+// RECARGA AUTOMÁTICA
+//
+// Ficar sem saldo no meio de uma campanha é o pior momento possível. Com isto
+// ligado, o saldo se repõe sozinho ao cruzar um piso: no Pix pela assinatura da
+// Woovi (Pix Automático), que o cliente autoriza uma vez no banco; no cartão
+// pelo cartão salvo da fatura, cobrado como assinatura.
+// ---------------------------------------------------------------------------
+function autoBoxHtml(auto, meios, salvo, min) {
+  const on = !!auto.enabled;
+  return `
+    <div class="auto-topup ${on ? 'on' : ''}" id="auto-box">
+      <label class="chk auto-head">
+        <input type="checkbox" id="auto-on" ${on ? 'checked' : ''} onchange="autoToggle()">
+        <span><b>Recarga automática</b>
+          <em>Repõe o saldo sozinho quando ele ficar baixo — sem parar campanha por falta de saldo.</em></span>
+      </label>
+      <div id="auto-cfg" ${on ? '' : 'hidden'}>
+        <div class="row" style="gap:8px;margin-top:10px">
+          <label style="flex:1">Quando o saldo ficar abaixo de
+            <input id="auto-thr" inputmode="decimal" value="${((auto.threshold || 2000) / 100).toFixed(2)}"></label>
+          <label style="flex:1">Recarregar
+            <input id="auto-amt" inputmode="decimal" value="${((auto.amount || 5000) / 100).toFixed(2)}"></label>
+        </div>
+        <label style="margin-top:8px;margin-bottom:6px">Cobrar em</label>
+        <div class="pay-methods">
+          <label class="pay-method">
+            <input type="radio" name="autom" value="pix" ${auto.method !== 'card' ? 'checked' : ''}>
+            <span><b>Pix Automático</b><em>Você autoriza uma vez no seu banco e a Woovi cobra sozinha</em></span>
+          </label>
+          <label class="pay-method ${meios.credit && salvo.reusable ? '' : 'off'}">
+            <input type="radio" name="autom" value="card" ${auto.method === 'card' ? 'checked' : ''}
+                   ${meios.credit && salvo.reusable ? '' : 'disabled'}>
+            <span><b>Cartão de crédito</b><em>${meios.credit && salvo.reusable
+              ? esc((salvo.brand || 'Cartão') + ' •••• ' + salvo.last4) + ', cobrado como assinatura'
+              : 'Pague uma vez no cartão para salvá-lo e liberar esta opção'}</em></span>
+          </label>
+        </div>
+        ${auto.lastError ? `<p class="hint" style="color:var(--red);text-align:left;margin-top:8px">${esc(auto.lastError)}</p>` : ''}
+        <div class="row" style="margin-top:10px">
+          <button class="btn small no-grow" onclick="autoSave(this)">${ico('save', 13)} Salvar recarga automática</button>
+        </div>
+        <div id="auto-out"></div>
+      </div>
+    </div>`;
+}
+
+function autoToggle() {
+  const on = $('#auto-on').checked;
+  const cfg = $('#auto-cfg');
+  const box = $('#auto-box');
+  if (cfg) cfg.hidden = !on;
+  if (box) box.classList.toggle('on', on);
+  if (!on) autoSave(null, true);   // desmarcou: desliga na hora
+}
+
+const centavos = v => Math.round(Number(String(v || '').replace(',', '.')) * 100);
+
+async function autoSave(btn, desligando) {
+  const corpo = desligando
+    ? { enabled: false }
+    : {
+      enabled: true,
+      method: (document.querySelector('input[name="autom"]:checked') || {}).value || 'pix',
+      threshold: centavos($('#auto-thr').value),
+      amount: centavos($('#auto-amt').value)
+    };
+  const txt = btn && btn.innerHTML;
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando…'; }
+  try {
+    const r = await api('/wallet/auto-topup', { method: 'PUT', body: corpo });
+    WALLET.autoTopup = r.autoTopup;
+    // Pix Automático: o cliente ainda precisa autorizar o débito no banco dele.
+    const out = $('#auto-out');
+    if (out && r.subscription && (r.subscription.brCode || r.subscription.paymentLinkUrl)) {
+      out.innerHTML = payBoxHtml(r.subscription);
+    } else if (out) out.innerHTML = '';
+    toast(desligando ? 'Recarga automática desligada' : 'Recarga automática ligada');
+  } catch (e) {
+    toast(e.message, 'error');
+    if (!desligando && $('#auto-on')) $('#auto-on').checked = false;
+  } finally { if (btn) { btn.disabled = false; btn.innerHTML = txt; } }
 }
 
 async function doDeposit(btn) {
@@ -1449,7 +1584,18 @@ async function doDeposit(btn) {
   if (WALLET.deposito.max && cents > WALLET.deposito.max) {
     return toast(`Depósito máximo: ${fmtBRL(WALLET.deposito.max)}`, 'error');
   }
+
+  const meio = depMeioEscolhido();
+  const txt = btn.innerHTML;
   btn.disabled = true;
+
+  // CARTÃO: sem cartão salvo, o formulário do cartão assume daqui.
+  if (meio === 'card') {
+    btn.disabled = false;
+    closeModal();
+    return openCardPay('topup', 'wallet', cents, 1);
+  }
+
   try {
     const r = await api('/billing/topup', { body: { amount: bruto } });
     // Mostra o Pix na própria janela: fechar e procurar a tela de Assinatura
@@ -1459,7 +1605,7 @@ async function doDeposit(btn) {
   } catch (e) {
     toast(e.message, 'error');
   } finally {
-    btn.disabled = false;
+    btn.disabled = false; btn.innerHTML = txt;
   }
 }
 
@@ -5658,7 +5804,8 @@ function openCardPay(mode, id, amount, qty) {
   const c = d.card || {};
   if (!c.credit) return toast('Pagamento com cartão indisponível', 'error');
   CARD_CTX = { mode, id, amount, qty: qty || 1 };
-  const maxP = Math.max(1, c.maxInstallments || 1);
+  // Recarga não parcela: o saldo entra inteiro, parcelar não faria sentido.
+  const maxP = mode === 'topup' ? 1 : Math.max(1, c.maxInstallments || 1);
 
   // CARTÃO JÁ CADASTRADO NA FATURA
   //
@@ -5675,7 +5822,9 @@ function openCardPay(mode, id, amount, qty) {
   openModal(`
     <h2>${ico('card')} Pagar no cartão</h2>
     <p class="muted" style="margin:0 0 14px;font-size:13px">
-      ${mode === 'plan' ? 'Assinatura do EliteChat' : `${qty}x ${esc(extraLabel(id))}`}
+      ${mode === 'plan' ? 'Assinatura do EliteChat'
+        : mode === 'topup' ? 'Recarga da carteira'
+        : `${qty}x ${esc(extraLabel(id))}`}
      , <b style="color:var(--verde-deep)">${fmtBRL(amount)}</b>. A ativação é imediata após a aprovação.
     </p>
     ${temCartao ? `<div class="pay-methods" style="margin-bottom:14px">
@@ -5753,13 +5902,18 @@ async function submitCardPay(btn) {
   const txt = btn.innerHTML; btn.disabled = true; btn.textContent = 'Processando…';
   try {
     if (ctx.mode === 'plan') await api('/billing/subscribe-card', { body: { ...body, planId: ctx.id } });
-    else await api('/billing/extras', { body: { ...body, key: ctx.id, qty: ctx.qty } });
+    // Recarga: o cartão é síncrono, então o saldo já volta creditado.
+    else if (ctx.mode === 'topup') {
+      await api('/billing/topup', { body: { ...body, method: 'card', amount: (ctx.amount / 100).toFixed(2) } });
+    } else await api('/billing/extras', { body: { ...body, key: ctx.id, qty: ctx.qty } });
     closeModal();
     // o cartão acabou de ser salvo: o cache precisa reler para a próxima
     // compra já oferecer "usar o cartão salvo"
     BILL_CACHE = null;
-    toast(ctx.mode === 'plan' ? 'Assinatura ativada! 🎉' : 'Contratado! Já pode usar.');
+    toast(ctx.mode === 'plan' ? 'Assinatura ativada! 🎉'
+      : ctx.mode === 'topup' ? 'Saldo creditado! 💚' : 'Contratado! Já pode usar.');
     if (ctx.mode === 'plan') paintBilling();
+    else if (ctx.mode === 'topup') { await refreshWallet(); if (state.view === 'billing') paintBilling(); }
     else afterExtraBought(ctx.id);
   } catch (e) {
     toast(e.message, 'error');

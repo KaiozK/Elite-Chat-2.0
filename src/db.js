@@ -298,6 +298,18 @@ function emptyWallet() {
     pending: 0,        // vendas no cartão ainda dentro do prazo de liberação
     cardAvailable: 0,  // quanto do `balance` veio de cartão (define a taxa de saque)
     receivables: [],   // { id, amount, availableAt, chargeId, kind, released }
+    // RECARGA AUTOMÁTICA: quando o saldo cai abaixo de `threshold`, o sistema
+    // recarrega sozinho. No Pix é a assinatura da Woovi (Pix Automático); no
+    // cartão é o cartão salvo da fatura, cobrado como uma assinatura.
+    autoTopup: {
+      enabled: false,
+      method: 'pix',      // pix | card
+      threshold: 2000,    // recarrega quando o saldo ficar abaixo disso
+      amount: 5000,       // quanto recarregar de cada vez
+      wooviSubId: '',     // assinatura do Pix Automático, quando method=pix
+      lastRunAt: 0,       // trava contra recarregar duas vezes seguidas
+      lastError: ''
+    },
     transactions: []
   };
 }
@@ -342,7 +354,11 @@ function load() {
       if (typeof obj[campo].max !== 'number') obj[campo].max = padrao.max;
     }
   };
-  faixa(db.platform.billing, 'deposit', { min: 100, max: 0 });
+  faixa(db.platform.billing, 'deposit', { min: 1000, max: 0 });
+  // O mínimo antigo era R$ 1,00, que não paga nem a taxa do Pix. Quem nunca
+  // mexeu no campo sobe para R$ 10; um valor escolhido pelo admin é respeitado.
+  if (db.platform.billing.deposit.min === 100) db.platform.billing.deposit.min = 1000;
+
   faixa(db.platform.affiliate, 'withdraw', { min: 2000, max: 0 });
   // limites (quantidade) + funcionalidades (toggles) de cada plano
   for (const p of db.plans) {
@@ -472,6 +488,14 @@ function ensureAccountShape(acc) {
   if (!Array.isArray(acc.wallet.receivables)) acc.wallet.receivables = [];
   for (const k of ['balance', 'pending', 'cardAvailable']) {
     if (typeof acc.wallet[k] !== 'number' || !Number.isFinite(acc.wallet[k])) acc.wallet[k] = 0;
+  }
+  // recarga automática — contas criadas antes do recurso ganham o campo desligado
+  if (!acc.wallet.autoTopup || typeof acc.wallet.autoTopup !== 'object') {
+    acc.wallet.autoTopup = emptyWallet().autoTopup;
+  } else {
+    for (const [k, v] of Object.entries(emptyWallet().autoTopup)) {
+      if (acc.wallet.autoTopup[k] === undefined) acc.wallet.autoTopup[k] = v;
+    }
   }
   if (!acc.affiliate || typeof acc.affiliate !== 'object') acc.affiliate = { code: genRefCode(), refBy: '', earned: 0 };
   if (!acc.affiliate.code) acc.affiliate.code = genRefCode();

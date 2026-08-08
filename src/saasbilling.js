@@ -528,7 +528,7 @@ function startRenewalJob(broadcast) {
 }
 
 module.exports = {
-  available, methods, charge, subscribe, subscribeWallet, subscribeBoleto,
+  available, methods, charge, guardarCartao, subscribe, subscribeWallet, subscribeBoleto,
   gerarBoleto, checkBoleto, buyExtra,
   renew, renewWallet, renewBoleto, runRenewals, startRenewalJob,
   agendarCancelamento, desfazerCancelamento, runChannelCancellations

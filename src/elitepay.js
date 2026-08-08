@@ -673,6 +673,10 @@ function spendWallet(acc, valueCents, label, broadcast) {
   w.transactions.push({ id: db.genId('tx'), ts: Date.now(), amount: -v, type: 'spend', label });
   db.save();
   if (broadcast) broadcast('wallet', { accountId: acc.id });
+  // Recarga automática no cartão: se o saldo cruzou o piso, repõe sozinho.
+  // Não é aguardado de propósito — a compra que acabou de acontecer não deve
+  // esperar (nem falhar por causa de) uma cobrança futura.
+  try { require('./topup').checarSaldo(acc, broadcast); } catch {}
   return { ok: true, spent: v, balance: w.balance };
 }
 

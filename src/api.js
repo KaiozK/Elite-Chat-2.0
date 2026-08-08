@@ -15,6 +15,7 @@ const schedule = require('./schedule');
 const push = require('./push');
 const pushNative = require('./pushnative');
 const sms = require('./sms');
+const topup = require('./topup');
 
 module.exports = function (broadcast, clients) {
   const router = express.Router();
@@ -2917,6 +2918,12 @@ module.exports = function (broadcast, clients) {
 
   // Recarga de saldo na carteira via Pix
   router.post('/billing/topup', auth, ownerOnly, h(async (req, res) => {
+    // Cartão é síncrono: aprovou, o saldo entra na hora. O Pix segue abaixo,
+    // gerando o QR e esperando o webhook confirmar.
+    if ((req.body || {}).method === 'card') {
+      const cents = Math.round(Number(String((req.body || {}).amount || '0').replace(',', '.')) * 100);
+      return res.json(await topup.recargaCartao(req.acc, cents, req.body, broadcast));
+    }
     const amount = Math.round(Number(String((req.body || {}).amount || '0').replace(',', '.')) * 100);
     // Faixa definida pelo admin em Admin SaaS → Pagamentos.
     const dep = db.get().platform.billing.deposit;
@@ -2939,6 +2946,14 @@ module.exports = function (broadcast, clients) {
     };
     db.save();
     res.json({ charge: req.acc.billing.pendingCharge });
+  }));
+
+  // ---- RECARGA AUTOMÁTICA da carteira ----
+  // No Pix devolve a assinatura da Woovi, que o cliente autoriza uma vez no
+  // banco dele; no cartão basta guardar a regra, porque o cartão salvo já
+  // está autorizado. Desligar cancela a recorrência na Woovi.
+  router.put('/wallet/auto-topup', auth, ownerOnly, h(async (req, res) => {
+    res.json(await topup.configurarAuto(req.acc, req.body || {}, broadcast));
   }));
 
   // Polling do pagamento pendente (o webhook é a via principal; isto cobre localhost).
@@ -3019,7 +3034,15 @@ module.exports = function (broadcast, clients) {
     res.json({
       balance: req.acc.wallet.balance,
       pending: req.acc.wallet.pending,
-      deposito: { ...db.get().platform.billing.deposit }
+      deposito: { ...db.get().platform.billing.deposit },
+      autoTopup: topup.publico(req.acc),
+      // a tela precisa saber se dá para oferecer cartão e se há um salvo
+      methods: require('./saasbilling').methods(),
+      savedCard: {
+        brand: req.acc.billing.card.brand || '',
+        last4: req.acc.billing.card.last4 || '',
+        reusable: !!req.acc.billing.card.token
+      }
     });
   });
 
