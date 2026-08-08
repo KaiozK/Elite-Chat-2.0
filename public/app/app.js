@@ -1439,39 +1439,33 @@ function depositModal() {
   const atalhos = DEP_ATALHOS.filter(v => v >= min && (!max || v <= max));
   const inicial = Math.min(Math.max(DEP_PADRAO, min), max || DEP_PADRAO);
 
-  // Duas colunas: o valor e os atalhos de um lado, a forma de pagamento e a
-  // recarga automática do outro. Empilhado, o conteúdo passava da altura da
-  // tela e as ações principais ficavam abaixo da dobra.
   openModal(`
     <h2>${ico('plus')} Depositar na carteira</h2>
     <p class="muted" style="font-size:12.5px;margin:-4px 0 0">
       O saldo paga assinatura, conexões extras e disparos. <b>${faixa}</b>
     </p>
 
-    <div class="dep-cols">
-      <div>
-        <label>Valor (R$)<input id="dep-val" inputmode="decimal" value="${(inicial / 100).toFixed(2)}" autocomplete="off"></label>
-        <div class="dep-chips">
-          ${atalhos.map(v => `<button type="button" class="dep-chip" onclick="depSet(${v})">${fmtBRL(v)}</button>`).join('')}
-        </div>
-      </div>
-
-      <div>
-        ${meios.credit ? `
-        <label style="margin-bottom:6px">Como pagar</label>
-        <div class="pay-methods compact">
-          <label class="pay-method">
-            <input type="radio" name="depm" value="pix" checked onchange="depMeio()">
-            <span><b>Pix</b><em>QR na tela, cai em segundos</em></span>
-          </label>
-          <label class="pay-method">
-            <input type="radio" name="depm" value="card" onchange="depMeio()">
-            <span><b>Cartão de crédito</b><em>${salvo.reusable ? esc((salvo.brand || 'Cartão') + ' •••• ' + salvo.last4) + ', em um clique' : 'Crédito na hora'}</em></span>
-          </label>
-        </div>` : ''}
-        ${autoBoxHtml(auto, meios, salvo, min)}
-      </div>
+    <label>Valor (R$)<input id="dep-val" inputmode="decimal" value="${(inicial / 100).toFixed(2)}" autocomplete="off"></label>
+    <div class="dep-chips">
+      ${atalhos.map(v => `<button type="button" class="dep-chip" onclick="depSet(${v})">${fmtBRL(v)}</button>`).join('')}
     </div>
+
+    ${meios.credit ? `
+    <label style="margin-bottom:-3px">Como pagar</label>
+    <div class="pay-methods compact">
+      <label class="pay-method">
+        <input type="radio" name="depm" value="pix" checked onchange="depMeio()">
+        <span class="pay-ic">${ico('pix', 17)}</span>
+        <span><b>Pix</b><em>QR na tela, cai em segundos</em></span>
+      </label>
+      <label class="pay-method">
+        <input type="radio" name="depm" value="card" onchange="depMeio()">
+        <span class="pay-ic">${ico('card', 17)}</span>
+        <span><b>Cartão de crédito</b><em>${salvo.reusable ? esc((salvo.brand || 'Cartão') + ' •••• ' + salvo.last4) + ', em um clique' : 'Crédito na hora'}</em></span>
+      </label>
+    </div>` : ''}
+
+    ${autoBoxHtml(auto, meios, salvo, min)}
 
     <div class="row">
       <button class="btn no-grow" onclick="closeModal()">Cancelar</button>
@@ -1528,11 +1522,13 @@ function autoBoxHtml(auto, meios, salvo, min) {
         <div class="pay-methods compact">
           <label class="pay-method">
             <input type="radio" name="autom" value="pix" ${auto.method !== 'card' ? 'checked' : ''}>
+            <span class="pay-ic">${ico('pix', 17)}</span>
             <span><b>Pix Automático</b><em>Você autoriza uma vez no seu banco e a Woovi cobra sozinha</em></span>
           </label>
           <label class="pay-method ${meios.credit && salvo.reusable ? '' : 'off'}">
             <input type="radio" name="autom" value="card" ${auto.method === 'card' ? 'checked' : ''}
                    ${meios.credit && salvo.reusable ? '' : 'disabled'}>
+            <span class="pay-ic">${ico('card', 17)}</span>
             <span><b>Cartão de crédito</b><em>${meios.credit && salvo.reusable
               ? esc((salvo.brand || 'Cartão') + ' •••• ' + salvo.last4) + ', cobrado como assinatura'
               : 'Pague uma vez no cartão para salvá-lo e liberar esta opção'}</em></span>

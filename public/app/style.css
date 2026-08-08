@@ -619,7 +619,7 @@ tbody tr:last-child td { border-bottom: none; }
 
 /* ---------- modal / toast ---------- */
 .modal-back {
-  position: fixed; inset: 0; z-index: 50; padding: 20px;
+  position: fixed; inset: 0; z-index: 300; padding: 20px;
   background: rgba(15, 31, 21, .45); backdrop-filter: blur(5px);
   display: flex; align-items: center; justify-content: center; animation: fadeIn .15s ease both;
 }
@@ -645,7 +645,7 @@ tbody tr:last-child td { border-bottom: none; }
 }
 .modal-x:hover { background: var(--bg2); color: var(--text); }
 
-#toast-root { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 9px; z-index: 99; }
+#toast-root { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 9px; z-index: 400; }
 .toast {
   background: var(--card); color: var(--text); border: 1px solid var(--border2);
   border-radius: 18px; padding: 13px 17px; font-size: 13px; font-weight: 700; max-width: 360px;
@@ -1394,9 +1394,12 @@ h1, h2, .brand-name { letter-spacing: -.03em; }
 .extra-total em { display: block; font-style: normal; font-size: 11px; color: var(--muted); }
 .pay-methods { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
 .pay-method {
-  display: flex; align-items: center; gap: 9px; cursor: pointer; margin: 0;
+  /* `label` global é uma coluna; aqui o ícone fica AO LADO do rótulo, senão
+     ele empilha em cima e a opção vira uma torre alta e estranha. */
+  display: flex; flex-direction: row; align-items: center; gap: 10px; cursor: pointer; margin: 0;
   border: 1.5px solid var(--border2); border-radius: 12px; padding: 11px 12px; background: var(--card);
 }
+.pay-method > span:not(.pay-ic) { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .pay-method:hover { border-color: var(--brand-border); }
 .pay-method:has(input:checked) { border-color: var(--verde); background: var(--brand-bg); }
 .pay-method input { margin: 0; flex: none; accent-color: var(--verde); }
@@ -3276,7 +3279,7 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
 .dep-chip {
   padding: 9px 4px; border-radius: 9px; cursor: pointer;
   border: 1px solid var(--border); background: var(--bg2); color: var(--text);
-  font-size: 12.5px; font-weight: 700; white-space: nowrap;
+  font: inherit; font-size: 12.5px; font-weight: 700; white-space: nowrap;
   transition: border-color .12s, background .12s, transform .1s;
 }
 .dep-chip:hover { border-color: var(--verde); background: var(--bg); }
@@ -3302,33 +3305,30 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
 .pay-method.off { opacity: .55; }
 .pay-method.off input { cursor: not-allowed; }
 
+
 /* ---------------------------------------------------------------------------
    POP-UP DE DEPÓSITO
-   Duas colunas para o conteúdo caber na tela inteira: empilhado, as ações
-   principais ficavam abaixo da dobra e era preciso rolar para depositar.
+   Uma coluna, como no resto do app. A altura maior evita a rolagem quando a
+   recarga automática está aberta.
    --------------------------------------------------------------------------- */
-.modal-dep { max-width: 720px; gap: 12px; }
-/* com a recarga automática aberta o conteúdo cresce; 92vh evita a rolagem
-   sem colar o pop-up nas bordas da janela. */
 .modal-dep { max-height: 94vh; }
-.modal-dep .auto-topup { padding: 10px; }
-.dep-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
-.dep-cols > div { display: flex; flex-direction: column; gap: 9px; }
-.modal-dep .dep-chips { grid-template-columns: repeat(2, 1fr); margin-top: 0; }
-.modal-dep .auto-topup { margin-top: 0; }
+.modal-dep .auto-topup { padding: 11px; }
 .pay-methods.compact .pay-method { padding: 9px 11px; }
 .pay-methods.compact .pay-method b { font-size: 13px; }
 .pay-methods.compact .pay-method em { font-size: 11.5px; }
 
-/* Uma coluna só quando não há largura para duas. */
-@media (max-width: 640px) {
-  .dep-cols { grid-template-columns: 1fr; gap: 12px; }
-  .modal-dep .dep-chips { grid-template-columns: repeat(5, 1fr); }
+/* Ícone do meio de pagamento no lugar do seletor redondo: o Pix e o cartão se
+   reconhecem pelo símbolo antes de a pessoa ler o rótulo. O input continua ali
+   para o teclado e o leitor de tela, só não é mais o que se vê.
+   Só onde EXISTE ícone: as outras listas de pagamento continuam com o seletor
+   redondo, que ali é a única marca do que está escolhido. */
+.pay-method:has(.pay-ic) { position: relative; }
+.pay-method:has(.pay-ic) input { position: absolute; opacity: 0; pointer-events: none; }
+.pay-ic {
+  width: 34px; height: 34px; flex: none; border-radius: 10px;
+  display: grid; place-items: center;
+  background: var(--bg2); color: var(--muted);
+  transition: background .14s, color .14s;
 }
-
-/* Ajuste fino do pop-up de depósito com a recarga automática aberta: o
-   conteúdo passava alguns pixels da altura útil e reintroduzia a rolagem. */
-.modal-dep { gap: 10px; }
-.modal-dep .auto-topup .pay-methods.compact .pay-method { padding: 7px 10px; }
-.modal-dep .auto-topup .row { margin-top: 8px; }
-.modal-dep .auto-head em { font-size: 11.5px; }
+.pay-method:has(input:checked) .pay-ic { background: var(--verde); color: #fff; }
+.pay-method:focus-within { border-color: var(--verde-esc); box-shadow: var(--ring); }
