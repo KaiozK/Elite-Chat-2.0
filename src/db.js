@@ -6,9 +6,62 @@ const consentDefaults = require('./consent-defaults');
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
+// ---------------------------------------------------------------------------
+// SENHAS
+//
+// hash() é SHA-256 puro: rápido de calcular. Isso serve para um código de
+// verificação de 6 dígitos que vive 10 minutos, e atrapalha numa senha. Uma
+// GPU testa bilhões de SHA-256 por segundo, e sem sal duas contas com a mesma
+// senha viram o mesmo hash, o que entrega as duas de uma vez.
+//
+// Senha usa scrypt: caro de propósito (memória e CPU) e com um sal por conta.
+// O formato guardado carrega os parâmetros, então dá para encarecer o custo
+// mais tarde sem invalidar o que já está gravado:
+//
+//   scrypt$N$r$p$<sal em base64>$<derivado em base64>
+//
+// Os hashes antigos continuam valendo: verifyPassword aceita os dois formatos
+// e needsRehash avisa quando o guardado é do formato velho, para o login
+// regravá-lo com a senha que o usuário acabou de digitar. Ninguém precisa
+// trocar de senha por causa da migração.
+// ---------------------------------------------------------------------------
 function hash(pass) {
   return crypto.createHash('sha256').update('wacrm:' + String(pass)).digest('hex');
 }
+
+// N=16384 leva por volta de 50ms por verificação: imperceptível num login e
+// proibitivo para quem quer testar uma lista inteira.
+const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 32 };
+const PREFIXO = "scrypt" + "$";
+
+function hashPassword(pass) {
+  const sal = crypto.randomBytes(16);
+  const dk = crypto.scryptSync(String(pass), sal, SCRYPT.keylen, { N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p });
+  return ["scrypt", SCRYPT.N, SCRYPT.r, SCRYPT.p, sal.toString("base64"), dk.toString("base64")].join("$");
+}
+
+// Comparação em tempo constante: com === o tempo de resposta diria quantos
+// bytes iniciais bateram.
+function verifyPassword(pass, guardado) {
+  const g = String(guardado || "");
+  if (!g) return false;
+  if (!g.startsWith(PREFIXO)) {
+    const a = Buffer.from(hash(pass), "utf8");
+    const b = Buffer.from(g, "utf8");
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  }
+  const partes = g.split("$");
+  if (partes.length !== 6) return false;
+  try {
+    const esperado = Buffer.from(partes[5], "base64");
+    const obtido = crypto.scryptSync(String(pass), Buffer.from(partes[4], "base64"), esperado.length,
+      { N: Number(partes[1]), r: Number(partes[2]), p: Number(partes[3]) });
+    return crypto.timingSafeEqual(obtido, esperado);
+  } catch { return false; }
+}
+
+// Guardado no formato antigo? Quem acabou de conferir a senha regrava.
+function needsRehash(guardado) { return !String(guardado || "").startsWith(PREFIXO); }
 
 // Configuração da PLATAFORMA (Tech Provider) — definida uma vez pelo admin/dono.
 // Os clientes nunca preenchem isso; eles conectam via Embedded Signup.
@@ -195,7 +248,7 @@ function newAccount({ name, email, pass }) {
     id: genId('acc'),
     name: name || email,
     email: String(email || '').toLowerCase().trim(),
-    passHash: hash(pass || ''),
+    passHash: hashPassword(pass || ''),
     createdAt: Date.now(),
     // PERFIL DA EMPRESA, informado no cadastro. Não muda nada no produto:
     // serve para o onboarding e para o time comercial saber com quem fala.
@@ -641,4 +694,5 @@ function findAdminAccount() {
 
 process.on('exit', () => { try { if (db) flush(); } catch {} });
 
-module.exports = { get, save, load, flush, genId, hash, newAccount, emptyWa, emptyBilling, defaultSurvey, findAccount, findAccountByEmail, findAccountByPhoneId, findAccountByRefCode, findAdminAccount, findLinkBySlug, findWebhookByToken, DEFAULT_STAGES, emptyWallet, attachTplAlias, FEATURE_KEYS, defaultFeatures, normFeatures, LIMIT_KEYS, defaultLimits, normLimits, emptyChannel, chanCtx, findChannel, channelByPhoneId, ensureAccountShape };
+module.exports = {
+  hashPassword, verifyPassword, needsRehash, get, save, load, flush, genId, hash, newAccount, emptyWa, emptyBilling, defaultSurvey, findAccount, findAccountByEmail, findAccountByPhoneId, findAccountByRefCode, findAdminAccount, findLinkBySlug, findWebhookByToken, DEFAULT_STAGES, emptyWallet, attachTplAlias, FEATURE_KEYS, defaultFeatures, normFeatures, LIMIT_KEYS, defaultLimits, normLimits, emptyChannel, chanCtx, findChannel, channelByPhoneId, ensureAccountShape };

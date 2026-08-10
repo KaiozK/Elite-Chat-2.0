@@ -3011,7 +3011,10 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   .btn.small { min-height: 38px; padding: 8px 13px; }
   .icon-btn { min-width: 38px; min-height: 38px; }
   .icon-btn.tiny { min-width: 32px; min-height: 32px; }
-  .ecsel-btn { min-height: 42px; }
+  /* O dropdown do app acompanha o corpo dos campos: no celular o input sobe
+     para 16px (evita o zoom do iOS) e, sem isto, um select ao lado de um input
+     no mesmo formulário ficava com letra visivelmente menor. */
+  .ecsel-btn { min-height: 42px; font-size: 16px; }
   input, select, textarea { min-height: 42px; font-size: 16px; }  /* 16px evita zoom no iOS */
   textarea { min-height: 76px; }
   /* interruptor no tamanho de plataforma (iOS 51x31) para toque confortável */

@@ -665,6 +665,43 @@ function showLogin() {
   } catch {}
 }
 
+// ---------------------------------------------------------------------------
+// PERFIL DA EMPRESA NO CADASTRO
+//
+// Os três campos usam ecSelect(), o mesmo dropdown do resto do app: o <select>
+// nativo abre uma lista desenhada pelo sistema, que não aceita a tipografia
+// nem as cores do EliteChat e destoava do cartão de login.
+// ---------------------------------------------------------------------------
+const REG_SEGMENTOS = [
+  'iGaming', 'Infoprodutos e cursos', 'E-commerce', 'Agência de marketing',
+  'Clínica e saúde', 'Beleza e estética', 'Imobiliária', 'Educação',
+  'Serviços financeiros', 'Seguros', 'Turismo e viagens', 'Automotivo',
+  'Alimentação e delivery', 'Varejo físico', 'Tecnologia e SaaS', 'Consultoria',
+  'Academia e esportes', 'Eventos', 'Logística', 'Outro'
+];
+const REG_TAMANHOS = ['Só eu', '2 a 5', '6 a 10', '11 a 25', '26 a 50', '51 a 100', 'Mais de 100'];
+const REG_OBJETIVOS = [
+  'Atender mais rápido', 'Vender pelo WhatsApp', 'Recuperar carrinho e lead frio',
+  'Automatizar o atendimento', 'Organizar a equipe', 'Disparar campanhas',
+  'Cobrar e receber (Elite Pay)'
+];
+
+// Monta uma vez só: remontar a cada abertura apagaria o que a pessoa escolheu
+// antes de trocar de tela e voltar.
+function montarCamposDoPerfil() {
+  const opcoes = (lista, vazio) => [{ value: '', label: vazio }].concat(lista.map(x => ({ value: x, label: x })));
+  const por = [
+    ['reg-segment', REG_SEGMENTOS, 'Selecione o segmento…'],
+    ['reg-size', REG_TAMANHOS, 'Quantas pessoas…'],
+    ['reg-goal', REG_OBJETIVOS, 'Selecione…']
+  ];
+  for (const [id, lista, vazio] of por) {
+    const box = document.getElementById(id);
+    if (!box || box.classList.contains('ecsel')) continue;   // já montado
+    box.outerHTML = ecSelect(id, opcoes(lista, vazio), '');
+  }
+}
+
 let registerMode = false;
 function toggleRegister(e) {
   if (e) e.preventDefault();
@@ -672,6 +709,7 @@ function toggleRegister(e) {
   $('#reg-name-wrap').classList.toggle('hidden', !registerMode);
   const perfil = $('#reg-perfil');
   if (perfil) perfil.classList.toggle('hidden', !registerMode);
+  if (registerMode) montarCamposDoPerfil();
   const rw = $('#reg-ref-wrap');
   if (rw) {
     rw.classList.toggle('hidden', !registerMode);
@@ -764,10 +802,10 @@ async function doLogin(e) {
           refCode: refAtivo() || ($('#reg-ref')?.value || '').trim(),
           // perfil da empresa: orienta o onboarding e o atendimento comercial
           profile: {
-            segment: ($('#reg-segment') || {}).value || '',
-            size: ($('#reg-size') || {}).value || '',
+            segment: ecSelVal('reg-segment'),
+            size: ecSelVal('reg-size'),
             phone: ($('#reg-phone') || {}).value || '',
-            goal: ($('#reg-goal') || {}).value || ''
+            goal: ecSelVal('reg-goal')
           }
         } })
       : await api('/login', { body: { user, pass } });

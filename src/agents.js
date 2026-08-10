@@ -81,7 +81,7 @@ function newAgent({ name, email, pass, role, phone, photo, preset = 'atendente' 
     id: db.genId('ag'),
     name: String(name || '').trim(),
     email: String(email || '').toLowerCase().trim(),
-    passHash: pass ? db.hash(pass) : '',
+    passHash: pass ? db.hashPassword(pass) : '',
     phone: String(phone || '').trim(),
     role: String(role || 'Atendente').trim(),   // cargo (texto livre)
     photo: photo || '',                          // dataURL

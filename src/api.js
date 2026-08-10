@@ -190,14 +190,25 @@ module.exports = function (broadcast, clients) {
     const { user, pass } = req.body || {};
     const p = db.get().platform;
     // admin da plataforma
-    if (user === p.adminUser && db.hash(pass || '') === p.adminPassHash) {
+    // MIGRAÇÃO DE FORMATO: verifyPassword aceita o hash antigo (SHA-256) e o
+    // novo (scrypt). Conferida a senha, o hash velho é regravado no formato
+    // novo aqui mesmo, com a senha que acabou de ser digitada. Ninguém
+    // precisa trocar de senha por causa disso.
+    if (user === p.adminUser && db.verifyPassword(pass || '', p.adminPassHash)) {
+      if (db.needsRehash(p.adminPassHash)) {
+        const antigo = p.adminPassHash;
+        p.adminPassHash = db.hashPassword(pass || '');
+        for (const x of db.get().accounts) if (x.passHash === antigo) x.passHash = p.adminPassHash;
+        db.save();
+      }
       const acc = db.findAdminAccount();
       const token = newSession('admin', acc);
-      return res.json({ token, user, kind: 'admin', accountId: acc.id, mustChangePassword: p.adminPassHash === db.hash('admin'), wa: waPublic(acc) });
+      return res.json({ token, user, kind: 'admin', accountId: acc.id, mustChangePassword: db.verifyPassword('admin', p.adminPassHash), wa: waPublic(acc) });
     }
     // conta de cliente (dono — login por e-mail)
     const acc = db.findAccountByEmail(user);
-    if (acc && db.hash(pass || '') === acc.passHash) {
+    if (acc && db.verifyPassword(pass || '', acc.passHash)) {
+      if (db.needsRehash(acc.passHash)) { acc.passHash = db.hashPassword(pass || ''); db.save(); }
       // VERIFICAÇÃO EM DUAS ETAPAS: a senha conferiu, mas ainda não há sessão.
       // O ticket liga o segundo passo a este, sem deixar um token pela metade
       // circulando enquanto o código não chega.
@@ -212,7 +223,8 @@ module.exports = function (broadcast, clients) {
 
     // ATENDENTE (login por e-mail próprio)
     const found = agents.findAgentByEmail(user);
-    if (found && found.agent.passHash && db.hash(pass || '') === found.agent.passHash) {
+    if (found && found.agent.passHash && db.verifyPassword(pass || '', found.agent.passHash)) {
+      if (db.needsRehash(found.agent.passHash)) { found.agent.passHash = db.hashPassword(pass || ''); db.save(); }
       const { acc: a, agent } = found;
       const token = newSession('agent', a, agent);
       agent.lastLoginAt = Date.now();
@@ -251,7 +263,7 @@ module.exports = function (broadcast, clients) {
       return res.status(403).json({ error: 'Somente o dono da conta pode excluí-la' });
     }
     const { pass, confirm } = req.body || {};
-    if (db.hash(String(pass || '')) !== req.acc.passHash) {
+    if (!db.verifyPassword(String(pass || ''), req.acc.passHash)) {
       return res.status(401).json({ error: 'Senha incorreta' });
     }
     // Confirmação digitada — evita exclusão por toque acidental.
@@ -317,7 +329,7 @@ module.exports = function (broadcast, clients) {
       permissions: ag ? ag.permissions : null,          // null = acesso total (dono/admin)
       allowedViews: agents.allowedViews(ag),
       mustChangePassword: ag ? !!ag.mustChangePassword
-        : (req.session.kind === 'admin' && p.adminPassHash === db.hash('admin')),
+        : (req.session.kind === 'admin' && db.verifyPassword('admin', p.adminPassHash)),
       wa: waPublic(req.wctx),
       // toggles do plano: o menu esconde o que o plano nao inclui (o backend
       // tambem recusa com 402, o front e so conforto)
@@ -421,7 +433,7 @@ module.exports = function (broadcast, clients) {
     const pass = String((req.body || {}).pass || '');
     if (pass.length < 6) return res.status(400).json({ error: 'A senha deve ter pelo menos 6 caracteres' });
     if (!a.email) return res.status(400).json({ error: 'Defina um e-mail para o atendente antes de criar a senha' });
-    a.passHash = db.hash(pass);
+    a.passHash = db.hashPassword(pass);
     a.mustChangePassword = true;
     db.save();
     agents.log(req.acc, req.who, 'agent_updated', `Redefiniu a senha de ${a.name}`);
@@ -432,9 +444,9 @@ module.exports = function (broadcast, clients) {
   router.post('/agents/me/password', auth, (req, res) => {
     if (!req.agent) return res.status(400).json({ error: 'Apenas atendentes usam esta rota' });
     const { current, pass } = req.body || {};
-    if (db.hash(current || '') !== req.agent.passHash) return res.status(401).json({ error: 'Senha atual incorreta' });
+    if (!db.verifyPassword(current || '', req.agent.passHash)) return res.status(401).json({ error: 'Senha atual incorreta' });
     if (String(pass || '').length < 6) return res.status(400).json({ error: 'A nova senha deve ter pelo menos 6 caracteres' });
-    req.agent.passHash = db.hash(pass);
+    req.agent.passHash = db.hashPassword(pass);
     req.agent.mustChangePassword = false;
     db.save();
     res.json({ ok: true });
@@ -1005,12 +1017,12 @@ module.exports = function (broadcast, clients) {
     if (!next || next.length < 6) return res.status(400).json({ error: 'A nova senha deve ter pelo menos 6 caracteres' });
     if (req.session.kind === 'admin') {
       const p = db.get().platform;
-      if (db.hash(current || '') !== p.adminPassHash) return res.status(400).json({ error: 'Senha atual incorreta' });
-      p.adminPassHash = db.hash(next);
+      if (!db.verifyPassword(current || '', p.adminPassHash)) return res.status(400).json({ error: 'Senha atual incorreta' });
+      p.adminPassHash = db.hashPassword(next);
       req.acc.passHash = p.adminPassHash;
     } else {
-      if (db.hash(current || '') !== req.acc.passHash) return res.status(400).json({ error: 'Senha atual incorreta' });
-      req.acc.passHash = db.hash(next);
+      if (!db.verifyPassword(current || '', req.acc.passHash)) return res.status(400).json({ error: 'Senha atual incorreta' });
+      req.acc.passHash = db.hashPassword(next);
     }
     db.save();
     res.json({ ok: true });
