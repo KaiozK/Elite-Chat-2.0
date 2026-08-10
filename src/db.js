@@ -117,6 +117,8 @@ const DEFAULTS = {
     security: { twoFactor: false },
     landing: { ctaText: '' } // copy do botão principal da landing (vazio = automático pelos dias de teste)
   },
+  // plano: { id, name, price, periodDays, limits, modules, checkoutId }
+  // `checkoutId` aponta para um checkout montado pelo dono no Checkout Builder
   plans: [],             // planos de assinatura { id, name, price(centavos), periodDays, features[], limits{} }
   withdrawals: [],       // pedidos de saque { id, accountId, amount, pixKey, status, ts }
   revenue: [],           // pagamentos confirmados { ts, accountId, planId, amount, kind: first|renewal|topup, chargeId }

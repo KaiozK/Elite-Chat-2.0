@@ -2981,6 +2981,25 @@ module.exports = function (broadcast, clients) {
     });
   });
 
+  // ---- ASSINAR PELO CHECKOUT DO DONO ----
+  // Cria a cobrança na conta do ADMIN, com o checkout que o plano aponta, e
+  // devolve o link. É o caminho que o cliente trancado usa para assinar.
+  router.post('/billing/checkout', auth, ownerOnly, h(async (req, res) => {
+    const plan = db.get().plans.find(p => p.id === (req.body || {}).planId && !p.archived);
+    if (!plan) return res.status(400).json({ error: 'Plano não encontrado' });
+    const admin = db.findAdminAccount();
+    const ch = await elitepay.createCharge(admin, {
+      valueCents: plan.price,
+      comment: 'Koonfy: ' + plan.name,
+      contactName: req.acc.name,
+      waId: String((req.acc.profile || {}).phone || '').replace(/\D/g, '') || null,
+      origin: 'saas',
+      checkoutId: plan.checkoutId || '',
+      saas: { accountId: req.acc.id, planId: plan.id }
+    });
+    res.json({ payUrl: ch.payUrl, chargeId: ch.id, amount: ch.value });
+  }));
+
   // ---- Assinar o plano no CARTÃO DE CRÉDITO ----
   // Diferente do Pix, o cartão é síncrono: aprovou, a assinatura já ativa.
   router.post('/billing/subscribe-card', auth, ownerOnly, h(async (req, res) => {
@@ -3331,6 +3350,7 @@ module.exports = function (broadcast, clients) {
       // tetos do plano: disparos, contatos, fluxos, pixels, links e WhatsApps
       limits: db.normLimits((req.body || {}).limits),
       modules: db.normFeatures((req.body || {}).modules),
+      checkoutId: String((req.body || {}).checkoutId || '').trim(),
       createdAt: Date.now(), archived: false
     };
     db.get().plans.push(plan);
@@ -3351,6 +3371,7 @@ module.exports = function (broadcast, clients) {
     if (b.features !== undefined) plan.features = String(b.features).split('\n').map(s => s.trim()).filter(Boolean);
     if (b.limits !== undefined) plan.limits = db.normLimits(b.limits, plan.limits);
     if (b.modules !== undefined) plan.modules = db.normFeatures(b.modules, plan.modules);
+    if (b.checkoutId !== undefined) plan.checkoutId = String(b.checkoutId || '').trim();
     if (b.archived !== undefined) plan.archived = !!b.archived;
     db.save();
     res.json({ plan });

@@ -5591,7 +5591,116 @@ const BILL_ST = {
 };
 let payPoll = null;
 
+// ---------------------------------------------------------------------------
+// ESCOLHA DE PLANO (conta ainda sem assinatura)
+//
+// Uma decisão por tela. A pessoa acabou de se cadastrar; carteira, indicações
+// e histórico de pagamento não têm o que dizer ainda, e só atrapalhariam a
+// única coisa que destrava o produto.
+//
+// Ao escolher, o servidor abre a cobrança no CHECKOUT que o dono montou e
+// manda para lá. A tela fica esperando: quando o pagamento cai, o SSE avisa e
+// ela recarrega já liberada.
+// ---------------------------------------------------------------------------
+async function renderEscolherPlano() {
+  clearInterval(payPoll);
+  $('#view').innerHTML = `<div class="page planos-page">
+    <div class="planos-head">
+      <h1>Escolha seu plano</h1>
+      <p>Sua conta está criada. Escolha um plano para liberar o Koonfy.</p>
+    </div>
+    <div id="planos-box">${skel(3)}</div>
+  </div>`;
+  pintarPlanos();
+}
+
+async function pintarPlanos() {
+  const box = $('#planos-box'); if (!box) return;
+  let d;
+  try { d = await api('/billing'); }
+  catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
+  BILL_CACHE = d;
+
+  const planos = (d.plans || []).filter(p => !p.archived);
+  if (!planos.length) {
+    box.innerHTML = `<div class="card"><h2>${ico('alert')} Nenhum plano disponível</h2>
+      <p class="muted" style="margin:8px 0 0;font-size:13px">A plataforma ainda não publicou planos. Fale com o suporte.</p></div>`;
+    return;
+  }
+
+  box.innerHTML = `<div class="planos-grid">${planos.map(p => {
+    const lim = p.limits || {};
+    const mods = p.modules || {};
+    // o que o plano ENTREGA, na ordem em que a pessoa pergunta
+    const itens = [
+      lim.whatsapps === -1 ? 'Conexões de WhatsApp ilimitadas' : fmtN(lim.whatsapps || 1) + ' conexão(ões) de WhatsApp',
+      lim.sends === -1 ? 'Disparos ilimitados' : fmtN(lim.sends) + ' disparos por ciclo',
+      lim.contacts === -1 ? 'Contatos ilimitados' : fmtN(lim.contacts) + ' contatos',
+      lim.campaigns === -1 ? 'Campanhas ilimitadas' : fmtN(lim.campaigns) + ' campanhas por ciclo'
+    ];
+    const extras = FEATURE_META.filter(f => mods[f.key] !== false).map(f => f.label);
+    return `<div class="plano-card">
+      <h3>${esc(p.name)}</h3>
+      <div class="plano-preco"><b>${fmtBRL(p.price)}</b><em>por ${p.periodDays === 30 ? 'mês' : p.periodDays + ' dias'}</em></div>
+      <ul class="plano-itens">
+        ${itens.map(i => `<li>${ico('check', 13)} ${i}</li>`).join('')}
+      </ul>
+      ${extras.length ? `<div class="plano-mods">${extras.map(x => `<span class="pill">${esc(x)}</span>`).join('')}</div>` : ''}
+      <button class="btn primary block" onclick="assinarPlano('${p.id}', this)">
+        Assinar ${esc(p.name)}</button>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+// Abre a cobrança no checkout que o dono montou. Sai em outra aba: fechar o
+// Koonfy no meio do pagamento é o caminho curto para desistir.
+async function assinarPlano(planId, btn) {
+  const txt = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Abrindo checkout…';
+  try {
+    const r = await api('/billing/checkout', { body: { planId } });
+    window.open(r.payUrl, '_blank', 'noopener');
+    esperandoPagamento(r);
+  } catch (e) {
+    toast(e.message, 'error');
+    btn.disabled = false; btn.innerHTML = txt;
+  }
+}
+
+// Enquanto o pagamento não cai, a tela diz o que está acontecendo e oferece o
+// link de novo — a aba pode ter sido fechada sem querer.
+function esperandoPagamento(r) {
+  $('#planos-box').innerHTML = `<div class="card aguardando">
+    <h2>${ico('clock')} Aguardando o pagamento</h2>
+    <p class="muted" style="margin:8px 0 14px;font-size:13.5px">
+      O checkout abriu em outra aba. Assim que o pagamento for confirmado, esta
+      tela libera sozinha.</p>
+    <div class="row">
+      <a class="btn primary no-grow" href="${esc(r.payUrl)}" target="_blank" rel="noopener">
+        ${ico('arrowright', 14)} Abrir o checkout de novo</a>
+      <button class="btn no-grow" onclick="pintarPlanos()">Escolher outro plano</button>
+    </div>` + `</div>`;
+
+  // O SSE avisa quando o pagamento entra; este intervalo é a rede de
+  // segurança para quando a conexão de eventos cair.
+  clearInterval(payPoll);
+  payPoll = setInterval(async () => {
+    try {
+      const me = await api('/me');
+      if (!me.planRequired) {
+        clearInterval(payPoll);
+        state.planRequired = false;
+        toast('Assinatura ativada! 🎉');
+        applyNavPermissions();
+        location.hash = '#/dashboard';
+      }
+    } catch {}
+  }, 5000);
+}
+
 async function renderBilling() {
+  // Sem assinatura, a tela cheia não ajuda: leva para a escolha do plano.
+  if (precisaAssinar()) return renderEscolherPlano();
   clearInterval(payPoll);
   $('#view').innerHTML = `<div class="page">
     <div class="page-head"><h1>Assinatura &amp; Carteira</h1><p>Plano, pagamentos via Pix, saldo e programa de indicação</p></div>
@@ -6404,6 +6513,7 @@ async function renderAdmin() {
       </details>`;
 }
 async function paintAdmin() {
+  await admCarregarCheckouts();   // para o seletor de checkout dos planos
   const box = $('#adm-box'); if (!box) return;
   try {
     const d = await api('/admin/saas');
@@ -6527,6 +6637,7 @@ async function paintAdmin() {
           </div>
           ${planFeatureFields('new', null)}
           ${planLimitFields('new', null)}
+          ${planCheckoutField('new', '')}
           <div class="row" style="margin-top:10px;justify-content:flex-end"><button class="btn primary no-grow" onclick="admCreatePlan()">${ico('save', 14)} Criar plano</button></div>
         </div>
 
@@ -6566,6 +6677,7 @@ async function paintAdmin() {
               <div class="plan-edit hidden" id="pl-ed-${p.id}">
                 ${planFeatureFields(p.id, p.modules || null)}
                 ${planLimitFields(p.id, p.limits || {})}
+                ${planCheckoutField(p.id, p.checkoutId || '')}
                 <div class="row" style="margin-top:10px;justify-content:flex-end">
                   <button class="btn primary no-grow" onclick="admSavePlanLimits('${p.id}')">${ico('save', 14)} Salvar limites</button>
                 </div>
@@ -6754,6 +6866,24 @@ const LIMIT_META = [
   { key: 'whatsapps', label: 'WhatsApps inclusos',        short: 'WhatsApp', ph: '1', extra: true, buy: 'conexões de WhatsApp' }
 ];
 
+// Qual CHECKOUT cobra este plano. A lista vem dos checkouts que o dono montou
+// no Checkout Builder da própria conta; vazio usa o padrão dele.
+let ADM_CHECKOUTS = [];
+
+function planCheckoutField(scope, atual) {
+  const opcoes = [{ value: '', label: 'Checkout padrão' }]
+    .concat(ADM_CHECKOUTS.map(c => ({ value: c.id, label: c.name + (c.isDefault ? ' (padrão)' : '') })));
+  return `<label style="margin-top:10px">Checkout da cobrança
+    ${ecSelect('pl-ck-' + scope, opcoes, atual || '')}
+    <em class="lim-extra">Montado por você em Elite Pay, Checkout Builder</em></label>`;
+}
+
+// Carregada uma vez, ao abrir o Admin: os checkouts mudam pouco.
+async function admCarregarCheckouts() {
+  try { ADM_CHECKOUTS = (await api('/elitepay/checkouts')).checkouts || []; }
+  catch { ADM_CHECKOUTS = []; }
+}
+
 function planLimitFields(scope, lims) {
   const val = k => {
     if (!lims) return '';
@@ -6785,7 +6915,7 @@ function admTogglePlan(id) {
 
 async function admSavePlanLimits(id) {
   try {
-    await api('/admin/plans/' + id, { method: 'PUT', body: { limits: readLimitFields(id), modules: readFeatureFields(id) } });
+    await api('/admin/plans/' + id, { method: 'PUT', body: { limits: readLimitFields(id), checkoutId: ecSelVal('pl-ck-' + id), modules: readFeatureFields(id) } });
     toast('Funcionalidades e limites atualizados'); paintAdmin();
     setTimeout(() => showSettingsTab('adm-pl'), 60);
   } catch (e) { toast(e.message, 'error'); }
@@ -6793,7 +6923,7 @@ async function admSavePlanLimits(id) {
 
 async function admCreatePlan() {
   try {
-    await api('/admin/plans', { body: { name: $('#pl-name').value, price: $('#pl-price').value, periodDays: $('#pl-days').value, modules: readFeatureFields('new'), limits: readLimitFields('new') } });
+    await api('/admin/plans', { body: { name: $('#pl-name').value, price: $('#pl-price').value, periodDays: $('#pl-days').value, modules: readFeatureFields('new'), limits: readLimitFields('new'), checkoutId: ecSelVal('pl-ck-new') } });
     toast('Plano criado!'); paintAdmin();
     setTimeout(() => showSettingsTab('adm-pl'), 60);
   } catch (e) { toast(e.message, 'error'); }

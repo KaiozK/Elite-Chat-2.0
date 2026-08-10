@@ -682,7 +682,7 @@ function spendWallet(acc, valueCents, label, broadcast) {
 
 function findCharge(acc, id) { return ensure(acc).charges.find(c => c.id === id || c.correlationID === id); }
 
-async function createCharge(acc, { valueCents, comment, waId, contactName, origin, byName, expiresMin, productId, checkoutId }) {
+async function createCharge(acc, { valueCents, comment, waId, contactName, origin, byName, expiresMin, productId, checkoutId, saas }) {
   const sub = activeSubaccount(acc);
   // Produto escolhido preenche valor e descrição quando não vierem explícitos
   const prod = productId ? findProduct(acc, productId) : null;
@@ -720,6 +720,10 @@ async function createCharge(acc, { valueCents, comment, waId, contactName, origi
     createdAt: Date.now(), paidAt: null, expiresAt: g.expiresAt,
     origin: origin || 'manual', byName: byName || null,
     productId: prod ? prod.id : '', checkoutId: checkoutId || '',
+    // Assinatura do próprio Koonfy sendo cobrada pelo checkout do dono:
+    // guarda de quem é e de qual plano, senão o pagamento cai aqui e não há
+    // como saber qual conta ativar.
+    saas: saas || null,
     feePercent, platformCut, gateway: gateway().id, gatewayId: g.gatewayId
   };
   ch.payUrl = payLink(ch);   // link enviado ao cliente → checkout hospedado (/pay/:id)
@@ -998,6 +1002,19 @@ function finalizePaid(acc, ch, broadcast) {
   // Tracking: atribui a venda à campanha de origem + reenvia a conversão
   // (Meta CAPI / GA4 / TikTok) automaticamente — não bloqueia a confirmação.
   try { require('./tracking').onPaid(acc, ch, broadcast); } catch {}
+  // ASSINATURA DO KOONFY paga pelo checkout do dono. Reaproveita a ativação
+  // do Pix (que também cuida de período, receita e comissão de afiliado)
+  // montando o mesmo correlationID que ela espera.
+  if (ch.saas && ch.saas.accountId && ch.saas.planId) {
+    try {
+      require('./woovi').applyPayment({
+        correlationID: 'sub-' + ch.saas.accountId + '-' + ch.saas.planId + '-' + ch.id,
+        value: ch.value
+      }, broadcast);
+    } catch (err) {
+      log(acc, { type: 'saas_activate_error', chargeId: ch.id, detail: err.message });
+    }
+  }
   db.save();
   if (broadcast) broadcast('elitepay', { accountId: acc.id, chargeId: ch.id, status: 'paid', amount: ch.value, contactName: ch.contactName, waId: ch.waId });
 
