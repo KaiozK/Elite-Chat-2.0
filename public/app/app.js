@@ -668,6 +668,7 @@ async function init() {
       state.accountId = me.accountId;
       state.wa = me.wa;
       state.mustChangePassword = me.mustChangePassword;
+      state.planRequired = !!me.planRequired;   // um F5 não pode destrancar a tela
       state.agent = me.agent || null;
       state.permissions = me.permissions || null;   // null = acesso total (dono/admin)
       state.planFeatures = me.planFeatures || null; // null = admin da plataforma (tudo liberado)
@@ -711,6 +712,32 @@ const REG_OBJETIVOS = [
 
 // Monta uma vez só: remontar a cada abertura apagaria o que a pessoa escolheu
 // antes de trocar de tela e voltar.
+// Países do seletor de WhatsApp. Vêm do servidor porque a mesma lista decide
+// a validação lá: duas listas separadas viram divergência na primeira edição.
+let REG_PAISES = null;
+
+async function montarPaises() {
+  const box = document.getElementById('reg-country');
+  if (!box || box.classList.contains('ecsel')) return;
+  if (!REG_PAISES) {
+    try { REG_PAISES = (await api('/public/countries')).countries; }
+    catch { REG_PAISES = [{ value: 'BR', label: '🇧🇷 Brasil +55' }]; }
+  }
+  // no botão fica só a bandeira e o código; o nome do país ocuparia a linha
+  // inteira e sobraria pouco para o número
+  const curtos = REG_PAISES.map(p => ({
+    value: p.value,
+    label: p.flag + ' +' + p.dial,
+    full: p.label
+  }));
+  box.outerHTML = ecSelect('reg-country', curtos, 'BR', null, 'fone-pais');
+  // a lista aberta mostra o nome completo
+  document.querySelectorAll('#reg-country .ecsel-opt').forEach(o => {
+    const p = curtos.find(x => String(x.value) === o.dataset.val);
+    if (p) o.textContent = p.full;
+  });
+}
+
 function montarCamposDoPerfil() {
   const opcoes = (lista, vazio) => [{ value: '', label: vazio }].concat(lista.map(x => ({ value: x, label: x })));
   const por = [
@@ -718,6 +745,7 @@ function montarCamposDoPerfil() {
     ['reg-size', REG_TAMANHOS, 'Quantas pessoas…'],
     ['reg-goal', REG_OBJETIVOS, 'Selecione…']
   ];
+  montarPaises();
   for (const [id, lista, vazio] of por) {
     const box = document.getElementById(id);
     if (!box || box.classList.contains('ecsel')) continue;   // já montado
@@ -828,6 +856,7 @@ async function doLogin(e) {
             segment: ecSelVal('reg-segment'),
             size: ecSelVal('reg-size'),
             phone: ($('#reg-phone') || {}).value || '',
+            country: ecSelVal('reg-country') || 'BR',
             goal: ecSelVal('reg-goal')
           }
         } })
@@ -841,6 +870,7 @@ async function doLogin(e) {
     state.accountId = r.accountId;
     state.wa = r.wa;
     state.mustChangePassword = !!r.mustChangePassword;
+    state.planRequired = !!r.planRequired;
     state.agent = r.agent || null;
     state.permissions = r.permissions || null;
     state.allowedViews = r.allowedViews || null;
@@ -1376,6 +1406,17 @@ const VIEW_MODULE = {
 // O plano do cliente inclui este módulo? (null = sem restrição de plano)
 // checkouts pertence ao Elite Pay; integrations cobre webhooks/Nuvemshop.
 const VIEW_FEATURE = { checkouts: 'elitepay', webhooks: 'integrations' };
+// ---------------------------------------------------------------------------
+// ASSINATURA OBRIGATÓRIA
+//
+// Enquanto não houver plano ativo, a conta só alcança Assinatura e as
+// Configurações da própria conta. O servidor recusa o resto com 402; aqui a
+// navegação some, para a pessoa não bater na parede e achar que quebrou.
+// ---------------------------------------------------------------------------
+const VIEWS_SEM_PLANO = ['billing', 'settings'];
+
+function precisaAssinar() { return !!state.planRequired; }
+
 function planHas(view) {
   const f = state.planFeatures;
   if (!f) return true;
@@ -1413,6 +1454,7 @@ function applyNavPermissions() {
     const v = n.dataset.view;
     if (mobile && !MOBILE_VIEWS.has(v)) { n.style.display = 'none'; return; }
     if (state.agent && ownerOnly.has(v)) { n.style.display = 'none'; return; }
+    if (precisaAssinar() && !VIEWS_SEM_PLANO.includes(v)) { n.style.display = 'none'; return; }
     if (!planHas(v)) { n.style.display = 'none'; return; }   // fora do plano contratado
     const mod = moduleOfView(v);
     n.style.display = (mod === null || can(mod, 'view')) ? '' : 'none';
@@ -1774,6 +1816,12 @@ function route() {
   let target = views[v] ? v : 'dashboard';
   // guard de PLANO: digitar a URL de um módulo fora do plano não entra
   // (o backend também recusa com 402; aqui é só para não abrir uma tela vazia)
+    // Sem plano, qualquer destino cai em Assinatura: é o único lugar que
+    // resolve a situação.
+    if (precisaAssinar() && !VIEWS_SEM_PLANO.includes(target.split('/')[0])) {
+      location.hash = '#/billing';
+      return;
+    }
   if (!planHas(target.split('/')[0])) {
     toast('Esse recurso não faz parte do seu plano. Faça upgrade em Assinatura.', 'error');
     location.hash = '#/billing';
@@ -6583,6 +6631,7 @@ async function paintAdmin() {
             <label>Dias de teste grátis<input id="bl-trial" value="${d.config.billing.trialDays}" inputmode="numeric"></label>
             <button class="btn primary no-grow" onclick="admSaveConfig({trialDays:$('#bl-trial').value})">${ico('save', 14)} Salvar</button>
           </div>
+          <label class="chk" style="margin-top:12px"><input type="checkbox" ${d.config.billing.requirePlan !== false ? 'checked' : ''} onchange="admSaveConfig({requirePlan:this.checked})"> <span><b>Exigir plano para usar</b><em>Sem assinatura ativa, a conta só enxerga a tela de Assinatura. Desligado, o cadastro libera o app inteiro.</em></span></label>
           <label class="chk" style="margin-top:12px"><input type="checkbox" id="bl-enforce" ${d.config.billing.enforce ? 'checked' : ''} onchange="admSaveConfig({enforce:this.checked})"> Bloquear envios quando a assinatura expirar (senão, apenas avisa)</label>
           <div class="row" style="margin-top:16px;align-items:flex-end">
             <label style="flex:2">Texto do botão da landing (opcional)<input id="bl-cta" value="${esc(d.config.landing && d.config.landing.ctaText || '')}" placeholder="${(d.config.billing.trialDays > 0 ? 'Testar por ' + d.config.billing.trialDays + ' dias' : 'Começar agora')} (automático se vazio)"></label>

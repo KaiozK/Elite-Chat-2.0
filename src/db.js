@@ -96,6 +96,10 @@ const DEFAULTS = {
     //         O admin define aqui; o cliente compra na tela de Assinatura.
     billing: {
       trialDays: 7, enforce: false,
+      // Assinatura OBRIGATÓRIA: sem plano ativo, a conta só enxerga a tela de
+      // Assinatura. Ligado por padrão — um SaaS que entrega o produto antes
+      // de cobrar depende da boa vontade de quem entrou.
+      requirePlan: true,
       extras: { whatsappPrice: 0, linkPrice: 0 },
       // Faixa aceita ao recarregar a carteira (centavos). max 0 = sem teto.
       deposit: { min: 100, max: 0 }
@@ -252,7 +256,7 @@ function newAccount({ name, email, pass }) {
     createdAt: Date.now(),
     // PERFIL DA EMPRESA, informado no cadastro. Não muda nada no produto:
     // serve para o onboarding e para o time comercial saber com quem fala.
-    profile: { segment: '', size: '', phone: '', goal: '' },
+    profile: { segment: '', size: '', phone: '', country: 'BR', goal: '' },   // phone em E.164
     // CONTA INTERNA: ligada pelo admin, roda sem plano, sem cota e sem
     // cobrança, e fica fora das métricas do SaaS. É para os negócios do
     // próprio dono, não para um cliente.
@@ -555,7 +559,8 @@ function ensureAccountShape(acc) {
   if (acc.billing.status === 'trial' && !acc.billing.periodEnd) {
     acc.billing.periodEnd = (acc.createdAt || Date.now()) + (get().platform.billing.trialDays || 7) * 86400000;
   }
-  if (!acc.profile || typeof acc.profile !== 'object') acc.profile = { segment: '', size: '', phone: '', goal: '' };
+  if (!acc.profile || typeof acc.profile !== 'object') acc.profile = { segment: '', size: '', phone: '', country: 'BR', goal: '' };
+  if (typeof acc.profile.country !== 'string' || !acc.profile.country) acc.profile.country = 'BR';
   if (typeof acc.unlimited !== 'boolean') acc.unlimited = false;
   if (!acc.wallet || typeof acc.wallet !== 'object') acc.wallet = emptyWallet();
   if (!Array.isArray(acc.wallet.transactions)) acc.wallet.transactions = [];

@@ -3368,3 +3368,12 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
 }
 .mkt-prev-head { font-size: 12px; font-weight: 800; color: var(--verde-deep); margin-bottom: 8px; }
 .mkt-preview p { margin: 4px 0 8px; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; }
+
+/* ---------------------------------------------------------------------------
+   TELEFONE COM PAÍS
+   Bandeira e código à esquerda, número à direita, como um campo só.
+   --------------------------------------------------------------------------- */
+.fone-linha { display: flex; gap: 8px; align-items: stretch; }
+.fone-linha .ecsel.fone-pais { flex: 0 0 108px; }
+.fone-linha .ecsel.fone-pais .ecsel-btn { padding-left: 11px; padding-right: 9px; }
+.fone-linha input { flex: 1; min-width: 0; }

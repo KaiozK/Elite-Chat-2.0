@@ -212,9 +212,10 @@ async function porWhatsapp(acc, texto, body) {
   const admin = db.findAdminAccount();
   const ch = (admin.channels || [])[0];
   if (!ch || !ch.wa || !ch.wa.connected) throw erro('a conexão de WhatsApp da plataforma não está ativa');
-  const destino = String(acc.profile && acc.profile.phone || '').replace(/\D/g, '');
-  if (!destino) throw erro('a conta não informou WhatsApp no cadastro');
-  const numero = destino.length <= 11 ? '55' + destino : destino;
+  // O cadastro já guarda em E.164, então aqui é só tirar o "+": a Meta quer
+  // o número sem ele. Nada de adivinhar país a partir do tamanho.
+  const numero = String(acc.profile && acc.profile.phone || '').replace(/\D/g, '');
+  if (!numero) throw erro('a conta não informou WhatsApp no cadastro');
   const ctx = db.chanCtx(admin, ch);
   if (body.templateName) {
     await wa.sendTemplate(ctx, numero, body.templateName, body.language || 'pt_BR', []);

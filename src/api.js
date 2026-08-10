@@ -17,6 +17,7 @@ const pushNative = require('./pushnative');
 const sms = require('./sms');
 const topup = require('./topup');
 const marketing = require('./marketing');
+const paises = require('./paises');
 const mailer = require('./mailer');
 const account = require('./account');
 
@@ -57,6 +58,19 @@ module.exports = function (broadcast, clients) {
     req.session = sess;
     req.acc = acc;
     req.agent = agent;
+
+    // Bloqueio por falta de assinatura. Vem aqui, e não em cada rota, para
+    // que uma rota nova nasça fechada em vez de aberta.
+    if (precisaAssinar(req)) {
+      const caminho = req.path || '';
+      const liberado = LIVRE_SEM_PLANO.some(p => caminho === p || caminho.startsWith(p + '/'));
+      if (!liberado) {
+        return res.status(402).json({
+          error: 'Escolha um plano para começar a usar o Koonfy.',
+          code: 'plan_required'
+        });
+      }
+    }
     req.who = { agentId: agent ? agent.id : null, name: agent ? agent.name : (sess.user || acc.name) };
     // ---- CANAL ativo desta requisição ----
     // Cada conexão WhatsApp é um canal com conversas e contatos próprios. O
@@ -75,6 +89,37 @@ module.exports = function (broadcast, clients) {
   // O menu já esconde essas telas do atendente, mas esconder não é proteger: sem
   // esta guarda um atendente autenticado chamava as rotas na mão e conseguia
   // cancelar a assinatura, ver o saldo e pedir saque para a própria chave Pix.
+  // ---------------------------------------------------------------------------
+  // ASSINATURA OBRIGATÓRIA
+  //
+  // Sem plano ativo, a conta só alcança o que precisa para ASSINAR (planos,
+  // pagamento, carteira), para SAIR ou para cuidar da própria conta (senha,
+  // e-mail). Todo o resto responde 402 e a tela leva para Assinatura.
+  //
+  // A lista é de PREFIXOS liberados: o que não estiver aqui fica fechado. É o
+  // oposto de marcar rota a rota, onde a rota esquecida vira o furo.
+  // ---------------------------------------------------------------------------
+  const LIVRE_SEM_PLANO = [
+    '/me', '/logout', '/settings', '/account',
+    '/billing', '/wallet', '/plans',
+    '/push',            // notificação de cobrança precisa chegar
+    '/events'           // o SSE avisa a tela quando o pagamento cai
+  ];
+
+  function planoAtivo(acc) {
+    const b = acc.billing || {};
+    return b.status === 'active' && (!b.periodEnd || b.periodEnd > Date.now());
+  }
+
+  // Precisa assinar para usar? Admin e conta interna nunca; atendente segue a
+  // conta em que trabalha.
+  function precisaAssinar(req) {
+    if (!db.get().platform.billing.requirePlan) return false;
+    if (req.session.kind === 'admin') return false;
+    if (limits.isUnlimited(req.acc)) return false;
+    return !planoAtivo(req.acc);
+  }
+
   const ownerOnly = (req, res, next) =>
     req.agent
       ? res.status(403).json({ error: 'Assinatura e carteira são do titular da conta.', code: 'owner_only' })
@@ -155,6 +200,10 @@ module.exports = function (broadcast, clients) {
 
   // ============ AUTENTICAÇÃO (admin da plataforma + contas de cliente) ============
 
+  // Países do seletor de WhatsApp. Pública porque o cadastro acontece antes
+  // de existir sessão.
+  router.get('/public/countries', (req, res) => res.json({ countries: paises.opcoes() }));
+
   router.post('/register', h(async (req, res) => {
     const { name, email, pass, refCode } = req.body || {};
     const mail = String(email || '').toLowerCase().trim();
@@ -165,8 +214,18 @@ module.exports = function (broadcast, clients) {
     // Perfil da empresa: campos livres de escolha, saneados aqui porque vêm de
     // um formulário PÚBLICO. Nada disso muda permissão ou cobrança.
     const perfil = req.body.profile || {};
-    for (const k of ['segment', 'size', 'phone', 'goal']) {
+    for (const k of ['segment', 'size', 'goal']) {
       acc.profile[k] = String(perfil[k] || '').trim().slice(0, 60);
+    }
+    // WhatsApp em E.164: é o formato que a Meta e a Integra X exigem, e sem
+    // ele a cobrança e a recuperação de venda não têm para onde ir.
+    acc.profile.country = String(perfil.country || 'BR').toUpperCase().slice(0, 2);
+    if (String(perfil.phone || '').trim()) {
+      const tel = paises.paraE164(acc.profile.country, perfil.phone);
+      if (!tel.ok) return res.status(400).json({ error: tel.erro });
+      acc.profile.phone = tel.e164;
+    } else {
+      acc.profile.phone = '';
     }
     acc.billing.periodEnd = Date.now() + (db.get().platform.billing.trialDays || 7) * 86400000;
     // afiliação: registra quem indicou (comissão na assinatura e nas renovações)
@@ -175,7 +234,9 @@ module.exports = function (broadcast, clients) {
     db.get().accounts.push(acc);
     db.save();
     const token = newSession('account', acc);
-    res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc) });
+    // já nasce trancado quando a assinatura é obrigatória: a tela leva direto
+    // para a escolha do plano em vez de mostrar um app que não abre
+    res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc), planRequired: precisaAssinar({ session: { kind: 'account' }, acc }) });
   }));
 
   // Segundo passo do login: troca o ticket + código pelo token de acesso.
@@ -184,7 +245,7 @@ module.exports = function (broadcast, clients) {
     const acc = account.resolverDesafio(b.ticket, b.code);
     const token = newSession('account', acc);
     agents.log(acc, { agentId: null, name: acc.name }, 'login', 'Entrou como dono da conta (2 etapas)');
-    res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc), permissions: null });
+    res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc), permissions: null, planRequired: precisaAssinar({ session: { kind: 'account' }, acc }) });
   }));
 
   router.post('/login', h(async (req, res) => {
@@ -219,7 +280,7 @@ module.exports = function (broadcast, clients) {
       }
       const token = newSession('account', acc);
       agents.log(acc, { agentId: null, name: acc.name }, 'login', 'Entrou como dono da conta');
-      return res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc), permissions: null });
+      return res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc), permissions: null, planRequired: precisaAssinar({ session: { kind: 'account' }, acc }) });
     }
 
     // ATENDENTE (login por e-mail próprio)
@@ -240,6 +301,7 @@ module.exports = function (broadcast, clients) {
         permissions: agent.permissions,
         allowedViews: agents.allowedViews(agent),
         mustChangePassword: !!agent.mustChangePassword,
+        planRequired: precisaAssinar({ session: { kind: 'agent' }, acc: a }),
         wa: waPublic(a)
       });
     }
@@ -331,6 +393,7 @@ module.exports = function (broadcast, clients) {
       allowedViews: agents.allowedViews(ag),
       mustChangePassword: ag ? !!ag.mustChangePassword
         : (req.session.kind === 'admin' && db.verifyPassword('admin', p.adminPassHash)),
+      planRequired: precisaAssinar(req),   // trava a navegação até assinar
       wa: waPublic(req.wctx),
       // toggles do plano: o menu esconde o que o plano nao inclui (o backend
       // tambem recusa com 402, o front e so conforto)
@@ -3306,6 +3369,7 @@ module.exports = function (broadcast, clients) {
     if (b.pixAutomatic !== undefined) p.woovi.pixAutomatic = !!b.pixAutomatic;
     if (b.trialDays !== undefined) p.billing.trialDays = Math.max(0, Number(b.trialDays) || 0);
     if (b.enforce !== undefined) p.billing.enforce = !!b.enforce;
+    if (b.requirePlan !== undefined) p.billing.requirePlan = !!b.requirePlan;
     // preço mensal de cada unidade EXCEDENTE ao que o plano já inclui
     const cents = v => Math.max(0, Math.round(Number(String(v).replace(',', '.')) * 100) || 0);
     if (b.whatsappPrice !== undefined) p.billing.extras.whatsappPrice = cents(b.whatsappPrice);
