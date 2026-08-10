@@ -476,6 +476,28 @@ function publicView(acc) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// ENVIO DA PRÓPRIA PLATAFORMA
+//
+// Usado pelo Marketing do Admin SaaS, quando é o EliteChat que fala com os
+// clientes dele. Não passa por plano, cota nem carteira: o crédito na Integra
+// X é da plataforma, e quem dispara é a plataforma.
+// ---------------------------------------------------------------------------
+async function enviarPlataforma(to, text) {
+  if (!configured()) throw erro('O envio de SMS não está configurado');
+  const numero = normalizarNumero(to);
+  if (!valido(numero)) throw erro('número inválido');
+  const corpo = String(text || '').trim();
+  if (!corpo) throw erro('mensagem vazia');
+  const d = await call('POST', CONTRATO.rotas.enviar, CONTRATO.corpoEnvio({
+    to: [numero], text: corpo, from: cfg().from
+  }));
+  const lido = CONTRATO.lerEnvio(d);
+  if (lido.erro) throw erro(lido.erro);
+  plog({ type: 'sms_plataforma', to: numero, status: lido.status });
+  return { ok: true, id: lido.id, status: lido.status };
+}
+
 // Para o admin: diz se o token existe, nunca o valor.
 function adminView() {
   const c = cfg();
@@ -503,6 +525,7 @@ function adminView() {
 module.exports = {
   CONTRATO, cfg, emptyConfig, configured, baseUrl,
   precoDe, cobrar,
+  enviarPlataforma,
   normalizarNumero, valido, segmentos, normalizarStatus,
   enviar, enviarMassa, historico, saldo, testar, rotaVisivel,
   aplicarStatus, webhookHandler,

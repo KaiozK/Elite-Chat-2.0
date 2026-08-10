@@ -325,6 +325,7 @@ function renderNotifSettings() {
       ${ck('sounds', p.sounds, 'Sons', 'Toca um som ao chegar novidade')}
       ${ck('vibrate', p.vibrate, 'Vibração', 'Dispositivos compatíveis')}
       ${ck('badge', p.badge, 'Badge no ícone', 'Número de não lidas no ícone do app')}
+      ${ck('systemWhenOpen', p.systemWhenOpen !== false, 'Avisar mesmo com o app aberto', 'Notificação do sistema além do aviso interno')}
     </div>
     <h3 class="notif-sub">Avisar sobre</h3>
     <div class="notif-grid">
@@ -336,16 +337,38 @@ function renderNotifSettings() {
       ${ck('types.commission', p.types.commission !== false, 'Comissões de indicação', 'Sua parte na venda de um indicado')}
     </div>
     <div class="row" style="margin-top:16px">
-      <button class="btn no-grow" onclick="notifTestFire()">${ico('bell', 14)} Testar notificação</button>
+      <button class="btn no-grow" onclick="notifTestFire(this)">${ico('bell', 14)} Enviar notificação de teste</button>
     </div>`;
 }
 function notifSet(path, val) { ECNotify.setPref(path, val); }
 function notifEnable() {
   ECNotify.requestPermission().then(() => { const c = $('#notif-card'); if (c) c.innerHTML = renderNotifSettings(); });
 }
-function notifTestFire() {
-  ECNotify.notify({ type: 'message', title: 'EliteChat', body: 'Notificação de teste, está funcionando! 🎉', url: '/app/#/settings', tag: 'test' });
-  toast('Notificação de teste enviada');
+// ---------------------------------------------------------------------------
+// TESTE DE NOTIFICAÇÃO
+//
+// O teste antigo só chamava notify() no próprio navegador, então provava
+// apenas o aviso interno. Este pede ao SERVIDOR que mande um push de verdade:
+// se ele chegar, a cadeia inteira está de pé (inscrição, VAPID, service worker
+// e a bandeja do sistema) e vai chegar também com o app fechado.
+// ---------------------------------------------------------------------------
+async function notifTestFire(btn) {
+  const perm = ECNotify.permission();
+  if (perm !== 'granted') {
+    toast('Ative as notificações antes de testar.', 'error');
+    return;
+  }
+  const txt = btn && btn.innerHTML;
+  if (btn) { btn.disabled = true; btn.textContent = 'Enviando…'; }
+  try {
+    // garante que ESTE aparelho está inscrito antes de pedir o envio
+    await ECNotify.subscribePush();
+    const r = await api('/push/test', { body: {} });
+    toast(r.sent
+      ? `Enviado para ${r.sent} aparelho(s). Feche o app e veja se chega.`
+      : 'Nenhum aparelho inscrito ainda. Recarregue a página e tente de novo.', r.sent ? 'ok' : 'error');
+  } catch (e) { toast(e.message, 'error'); }
+  finally { if (btn) { btn.disabled = false; btn.innerHTML = txt; } }
 }
 
 // Heartbeat de presença: mantém o atendente "online" e recupera de "offline".
@@ -6251,6 +6274,7 @@ async function renderAdmin() {
       <button data-tab="adm-ep" onclick="showSettingsTab('adm-ep');admEpPaint()">Elite Pay</button>
       <button data-tab="adm-int" onclick="showSettingsTab('adm-int');admIntLoad()">Integrações</button>
       <button data-tab="adm-plat" onclick="showSettingsTab('adm-plat')">Plataforma</button>
+      <button data-tab="adm-mkt" onclick="showSettingsTab('adm-mkt');admMktLoad()">Marketing</button>
       <button data-tab="adm-sec" onclick="showSettingsTab('adm-sec');admSecLoad()">Segurança</button>
       <button data-tab="adm-seo" onclick="showSettingsTab('adm-seo')">SEO</button>
     </div>
@@ -6596,6 +6620,10 @@ async function paintAdmin() {
         <div id="adm-sms-box" style="margin-top:16px">${skel(3)}</div>
       </div>
 
+      <div class="tabpane ${activeTab === 'adm-mkt' ? 'show' : ''}" data-pane="adm-mkt">
+        <div id="adm-mkt-box">${skel(4)}</div>
+      </div>
+
       <div class="tabpane ${activeTab === 'adm-sec' ? 'show' : ''}" data-pane="adm-sec">
         <div id="adm-sec-box">${skel(4)}</div>
       </div>
@@ -6656,6 +6684,7 @@ function planFeatureBadge(p) {
 }
 const LIMIT_META = [
   { key: 'sends',     label: 'Disparos por ciclo',        short: 'Disparos', ph: 'ilimitado' },
+  { key: 'campaigns', label: 'Campanhas por ciclo',        short: 'Campanhas', ph: 'ilimitado' },
   { key: 'contacts',  label: 'Contatos (leads)',          short: 'Leads',    ph: 'ilimitado' },
   { key: 'flows',     label: 'Fluxos de automação',       short: 'Fluxos',   ph: 'ilimitado' },
   { key: 'pixels',    label: 'Pixels de rastreamento',    short: 'Pixels',   ph: 'ilimitado' },
@@ -6713,6 +6742,209 @@ async function admDelPlan(id) {
   if (!await confirmModal({ title: 'Arquivar plano', text: 'Novos clientes não poderão assiná-lo. Assinantes atuais continuam até cancelarem.', ok: 'Arquivar', danger: true })) return;
   try { await api('/admin/plans/' + id, { method: 'DELETE' }); paintAdmin(); setTimeout(() => showSettingsTab('adm-pl'), 60); } catch (e) { toast(e.message, 'error'); }
 }
+// ---------------------------------------------------------------------------
+// Admin → MARKETING
+//
+// A plataforma falando com os PRÓPRIOS clientes. Duas coisas na mesma tela
+// porque uma serve à outra: os templates são o que se dispara, e o disparo é
+// o que dá sentido a guardar template.
+//
+// O público é sempre um filtro explícito, com a contagem ao lado, e a prévia
+// mostra o texto já preenchido com um destinatário real. Mandar para dezenas
+// de contas sem ver como a mensagem fica é o caminho curto para o vexame.
+// ---------------------------------------------------------------------------
+let MKT = null;
+let mktEdit = null;   // template em edição (null = novo)
+
+async function admMktLoad() {
+  const box = $('#adm-mkt-box'); if (!box) return;
+  try { MKT = await api('/admin/marketing'); }
+  catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
+  admMktPaint();
+}
+
+const MKT_CANAL = { push: "Notificação push", whatsapp: "WhatsApp", sms: "SMS" };
+
+function admMktPaint() {
+  const box = $('#adm-mkt-box'); if (!box || !MKT) return;
+  const t = mktEdit || {};
+  const canais = MKT.canais || {};
+  box.innerHTML = `
+    <div class="card">
+      <h2>${ico('megaphone')} ${mktEdit && mktEdit.id ? 'Editar template' : 'Novo template'}</h2>
+      <p class="muted" style="margin:0 0 14px;font-size:13px">
+        Mensagens que a plataforma envia para as contas do EliteChat. Use as
+        variáveis para cada cliente receber os próprios dados:
+        ${mktChips()}
+      </p>
+      <div class="row">
+        <label style="flex:1.4">Nome do template<input id="mk-name" value="${esc(t.name || '')}" placeholder="Ex.: Aviso de vencimento"></label>
+        <label style="flex:1">Tipo${ecSelect('mk-kind', [{ value: 'cobranca', label: 'Cobrança' }, { value: 'aviso', label: 'Aviso' }], t.kind || 'cobranca')}</label>
+        <label style="flex:1">Canal${ecSelect('mk-channel', [
+          { value: 'push', label: 'Notificação push' },
+          { value: 'whatsapp', label: 'WhatsApp' },
+          { value: 'sms', label: 'SMS' }], t.channel || 'push')}</label>
+      </div>
+      <label style="margin-top:10px">Título (push)<input id="mk-title" value="${esc(t.title || '')}" placeholder="Sua assinatura vence em {{dias}} dias"></label>
+      <label style="margin-top:10px">Mensagem<textarea id="mk-text" rows="4" placeholder="Olá {{nome}}, seu plano {{plano}} de {{valor}} vence em {{vencimento}}.">${esc(t.text || '')}</textarea></label>
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary no-grow" onclick="mktSave(this)">${ico('save', 14)} ${mktEdit && mktEdit.id ? 'Salvar alterações' : 'Criar template'}</button>
+        ${mktEdit ? `<button class="btn no-grow" onclick="mktNovo()">Cancelar</button>` : ''}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>${ico('send')} Disparar</h2>
+      <div class="row">
+        <label style="flex:1.3">Público${ecSelect('mk-aud', (MKT.publicos || []).map(p => ({ value: p.key, label: p.label + ' (' + p.total + ')' })), 'vencendo')}</label>
+        <label style="flex:1">Canal do disparo${ecSelect('mk-sendch', [
+          { value: 'push', label: 'Notificação push' + (canais.push ? '' : ' (indisponível)') },
+          { value: 'whatsapp', label: 'WhatsApp' + (canais.whatsapp ? '' : ' (conexão da plataforma desligada)') },
+          { value: 'sms', label: 'SMS' + (canais.sms ? '' : ' (Integra X não configurada)') }], 'push')}</label>
+      </div>
+      <p class="hint" style="text-align:left;margin-top:8px">
+        O texto vem do formulário acima. Carregue um template salvo na lista abaixo para preencher.</p>
+      <div class="row" style="margin-top:12px">
+        <button class="btn no-grow" onclick="mktPreview(this)">${ico('eye', 14)} Ver prévia</button>
+        <button class="btn primary no-grow" onclick="mktSend(this)">${ico('send', 14)} Disparar agora</button>
+      </div>
+      <div id="mk-prev"></div>
+    </div>
+
+    <div class="card">
+      <h2>${ico('file')} Templates (${(MKT.templates || []).length})</h2>
+      ${(MKT.templates || []).length ? `<div class="mkt-list">${MKT.templates.map(x => `
+        <div class="mkt-item">
+          <div style="flex:1;min-width:0">
+            <b>${esc(x.name)}</b>
+            <div class="mkt-tags">
+              <span class="pill">${x.kind === 'cobranca' ? 'Cobrança' : 'Aviso'}</span>
+              <span class="pill">${MKT_CANAL[x.channel] || x.channel}</span>
+            </div>
+            <div class="muted mkt-prev">${esc((x.text || '').slice(0, 110))}</div>
+          </div>
+          <button class="btn small no-grow" onclick="mktUsar('${x.id}')">Carregar</button>
+          <button class="icon-btn danger" title="Excluir" onclick="mktDel('${x.id}')">${ico('trash', 14)}</button>
+        </div>`).join('')}</div>`
+        : `<p class="muted">Nenhum template ainda. Crie o primeiro acima.</p>`}
+    </div>
+
+    ${(MKT.campaigns || []).length ? `<div class="card">
+      <h2>${ico('activity')} Últimos disparos</h2>
+      <table><thead><tr><th>Quando</th><th>Canal</th><th>Público</th><th style="text-align:right">Enviados</th><th style="text-align:right">Falhas</th></tr></thead><tbody>
+        ${MKT.campaigns.map(c => `<tr>
+          <td>${timeAgo(c.ts)}</td>
+          <td>${MKT_CANAL[c.channel] || c.channel}</td>
+          <td class="muted">${esc(c.audienceLabel || c.audience)}</td>
+          <td style="text-align:right"><b>${c.ok}</b> / ${c.total}</td>
+          <td style="text-align:right">${mktFalhas(c)}</td>
+        </tr>`).join('')}
+      </tbody></table>
+    </div>` : ''}`;
+}
+
+// Insere a variável onde o cursor está, em vez de obrigar a digitar as chaves.
+function mktVar(nome) {
+  const el = document.activeElement;
+  const alvo = (el && (el.id === 'mk-text' || el.id === 'mk-title')) ? el : $('#mk-text');
+  if (!alvo) return;
+  const marca = '{{' + nome + '}}';
+  const i = alvo.selectionStart == null ? alvo.value.length : alvo.selectionStart;
+  alvo.value = alvo.value.slice(0, i) + marca + alvo.value.slice(alvo.selectionEnd == null ? i : alvo.selectionEnd);
+  alvo.focus();
+  alvo.selectionStart = alvo.selectionEnd = i + marca.length;
+}
+
+// Etiquetas clicáveis das variáveis. Escrever {{vencimento}} à mão convida ao
+// erro de digitação, e um {{vencimeto}} sai como texto cru na mensagem do
+// cliente, sem nada que avise.
+function mktChips() {
+  return (MKT.variaveis || [])
+    .map(v => `<code class="var-chip" onclick="mktVar('${v}')">{{${v}}}</code>`)
+    .join(' ');
+}
+
+// Falhas com o motivo no title: "3 falhas" sem dizer por quê não ajuda ninguém
+// a consertar o disparo seguinte.
+function mktFalhas(c) {
+  if (!c.falhas) return '0';
+  const motivos = (c.erros || []).map(e => `${e.conta}: ${e.erro}`).join(' | ');
+  return `<span class="pill pending" title="${esc(motivos)}">${c.falhas}</span>`;
+}
+
+function mktCorpo() {
+  return {
+    id: (mktEdit && mktEdit.id) || undefined,
+    name: $('#mk-name').value,
+    kind: ecSelVal('mk-kind'), channel: ecSelVal('mk-channel'),
+    title: $('#mk-title').value, text: $('#mk-text').value
+  };
+}
+
+async function mktSave(btn) {
+  btn.disabled = true;
+  try {
+    const r = await api('/admin/marketing/templates', { body: mktCorpo() });
+    MKT = r.view; mktEdit = null;
+    toast('Template salvo');
+    admMktPaint();
+  } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
+}
+
+function mktUsar(id) {
+  mktEdit = (MKT.templates || []).find(x => x.id === id) || null;
+  admMktPaint();
+  $('#adm-mkt-box').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function mktNovo() { mktEdit = null; admMktPaint(); }
+
+async function mktDel(id) {
+  const t = (MKT.templates || []).find(x => x.id === id);
+  if (!await confirmModal({ title: 'Excluir template', text: 'Apagar "' + (t ? t.name : '') + '"? Isto não desfaz disparos já feitos.', ok: 'Excluir', danger: true })) return;
+  try {
+    MKT = (await api('/admin/marketing/templates/' + id, { method: 'DELETE' })).view;
+    if (mktEdit && mktEdit.id === id) mktEdit = null;
+    toast('Template excluído');
+    admMktPaint();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function mktPreview(btn) {
+  const out = $('#mk-prev');
+  btn.disabled = true;
+  try {
+    const { preview } = await api('/admin/marketing/preview', { body: { ...mktCorpo(), audience: ecSelVal('mk-aud') } });
+    out.innerHTML = `<div class="mkt-preview">
+      <div class="mkt-prev-head">${ico('eye', 13)} Como <b>${esc(preview.exemplo)}</b> vai receber</div>
+      ${preview.title ? `<b>${esc(preview.title)}</b>` : ''}
+      <p>${esc(preview.text) || '<span class="muted">Mensagem vazia</span>'}</p>
+      <div class="muted" style="font-size:12px">Vai para <b>${preview.total}</b> conta(s)</div>
+    </div>`;
+  } catch (e) { out.innerHTML = `<div class="danger-box" style="margin-top:10px">${esc(e.message)}</div>`; }
+  finally { btn.disabled = false; }
+}
+
+async function mktSend(btn) {
+  const corpo = { ...mktCorpo(), audience: ecSelVal('mk-aud'), channel: ecSelVal('mk-sendch') };
+  const pub = (MKT.publicos || []).find(p => p.key === corpo.audience) || { label: '', total: 0 };
+  // Disparo não tem desfazer: a confirmação diz para quantos e por onde.
+  const ok = await confirmModal({
+    title: 'Confirmar disparo',
+    text: 'Enviar por ' + (MKT_CANAL[corpo.channel] || corpo.channel) + ' para ' + pub.total + ' conta(s) do público "' + pub.label + '". Não há como desfazer.',
+    ok: 'Disparar'
+  });
+  if (!ok) return;
+  const t = btn.innerHTML; btn.disabled = true; btn.textContent = 'Disparando…';
+  try {
+    const r = await api('/admin/marketing/send', { body: corpo });
+    MKT = r.view;
+    const c = r.campaign;
+    toast(c.falhas ? c.ok + ' enviado(s), ' + c.falhas + ' falha(s)' : c.ok + ' enviado(s)!', c.falhas ? 'error' : 'ok');
+    admMktPaint();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; btn.innerHTML = t; }
+}
+
 // ---------------------------------------------------------------------------
 // Admin → SEGURANÇA
 //

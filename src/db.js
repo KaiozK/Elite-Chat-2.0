@@ -138,9 +138,9 @@ const DEFAULT_STAGES = ['Novo', 'Em atendimento', 'Qualificado', 'Negociação',
 // O SMS NÃO entra aqui: ele não tem cota por ciclo. O plano só liga ou desliga
 // o módulo (FEATURE_KEYS) e cada disparo é pago na hora, com o saldo da
 // carteira, ao preço que o admin define em Admin SaaS.
-const LIMIT_KEYS = ['sends', 'contacts', 'flows', 'pixels', 'links', 'whatsapps'];
+const LIMIT_KEYS = ['sends', 'campaigns', 'contacts', 'flows', 'pixels', 'links', 'whatsapps'];
 function defaultLimits() {
-  return { sends: -1, contacts: -1, flows: -1, pixels: -1, links: 1, whatsapps: 1 };
+  return { sends: -1, campaigns: -1, contacts: -1, flows: -1, pixels: -1, links: 1, whatsapps: 1 };
 }
 // ---------------------------------------------------------------------------
 // FUNCIONALIDADES POR PLANO (toggles)

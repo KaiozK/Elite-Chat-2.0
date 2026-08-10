@@ -3348,3 +3348,23 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
 /* Segmento, tamanho e objetivo na linha da conta, no Admin SaaS */
 .acc-perfil { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
 .acc-perfil .pill { font-size: 10.5px; padding: 2px 7px; }
+
+/* ---------------------------------------------------------------------------
+   ADMIN → MARKETING
+   Lista de templates e prévia do disparo.
+   --------------------------------------------------------------------------- */
+.mkt-list { display: flex; flex-direction: column; gap: 8px; }
+.mkt-item {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid var(--border); border-radius: 12px; padding: 11px 13px; background: var(--card);
+}
+.mkt-item:hover { border-color: var(--border2); }
+.mkt-tags { display: flex; gap: 5px; margin: 4px 0 2px; }
+.mkt-tags .pill { font-size: 10.5px; padding: 2px 7px; }
+.mkt-prev { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mkt-preview {
+  margin-top: 12px; padding: 13px 15px; border-radius: 12px;
+  border: 1px dashed var(--verde); background: var(--brand-bg);
+}
+.mkt-prev-head { font-size: 12px; font-weight: 800; color: var(--verde-deep); margin-bottom: 8px; }
+.mkt-preview p { margin: 4px 0 8px; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; }

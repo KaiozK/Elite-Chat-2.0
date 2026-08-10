@@ -16,6 +16,7 @@ const push = require('./push');
 const pushNative = require('./pushnative');
 const sms = require('./sms');
 const topup = require('./topup');
+const marketing = require('./marketing');
 const mailer = require('./mailer');
 const account = require('./account');
 
@@ -2784,6 +2785,9 @@ module.exports = function (broadcast, clients) {
   router.post('/campaigns', auth, feat('campaigns'), requireActive, h(async (req, res) => {
     const { name, templateName, language, vars, audience } = req.body || {};
     if (!name || !templateName) return res.status(400).json({ error: 'Informe "name" e "templateName"' });
+    // Teto de CAMPANHAS do plano. Diferente de `sends`, que conta mensagens:
+    // aqui o que se limita é quantas campanhas cabem no ciclo.
+    limits.enforce(req.acc, 'campaigns', 1);
     if (!req.ch || !req.ch.wa.connected) {
       return res.status(400).json({ error: 'Conecte o número deste canal antes de disparar' });
     }
@@ -3317,6 +3321,30 @@ module.exports = function (broadcast, clients) {
   });
 
   // ---- SMS (Integra X): liga/desliga e credenciais da plataforma ----
+  // ---- MARKETING da plataforma: templates e disparos para os CLIENTES ----
+  router.get('/admin/marketing', auth, adminOnly, (req, res) => res.json(marketing.adminView()));
+
+  router.post('/admin/marketing/templates', auth, adminOnly, (req, res) => {
+    res.json({ template: marketing.salvarTemplate(req.body || {}), view: marketing.adminView() });
+  });
+
+  router.delete('/admin/marketing/templates/:id', auth, adminOnly, (req, res) => {
+    marketing.removerTemplate(req.params.id);
+    res.json({ view: marketing.adminView() });
+  });
+
+  // Prévia com um destinatário real: o admin vê o texto já preenchido antes de
+  // mandar para dezenas de contas.
+  router.post('/admin/marketing/preview', auth, adminOnly, (req, res) => {
+    res.json({ preview: marketing.previa(req.body || {}) });
+  });
+
+  router.post('/admin/marketing/send', auth, adminOnly, h(async (req, res) => {
+    const origin = req.protocol + '://' + req.get('host');
+    const r = await marketing.disparar(req.body || {}, { origin, broadcast });
+    res.json({ campaign: r, view: marketing.adminView() });
+  }));
+
   // ---- E-mail (SMTP) e segurança da plataforma ----
   router.get('/admin/mail', auth, adminOnly, (req, res) => {
     res.json({ mail: mailer.adminView(), security: account.seguranca() });
@@ -4080,6 +4108,18 @@ module.exports = function (broadcast, clients) {
     try { res.json({ publicKey: push.publicKey() }); }
     catch (e) { res.status(500).json({ error: 'Push indisponível' }); }
   });
+  // Teste de ponta a ponta: manda um push REAL para os aparelhos inscritos.
+  // É a única forma de provar que a cadeia funciona com o app fechado.
+  router.post('/push/test', auth, h(async (req, res) => {
+    const inscritos = (req.acc.pushSubs || []).length;
+    await push.sendToAccount(req.acc, 'message', {
+      title: 'EliteChat',
+      body: 'Notificação de teste. Se você está vendo isto, está tudo funcionando.',
+      tag: 'teste', data: { type: 'message', url: '/app/#/settings' }
+    });
+    res.json({ sent: inscritos });
+  }));
+
   router.post('/push/subscribe', auth, (req, res) => {
     const ok = push.subscribe(req.acc, req.body.subscription, req.body.prefs);
     res.json({ ok });

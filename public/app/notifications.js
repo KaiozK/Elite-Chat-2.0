@@ -24,6 +24,10 @@
     sounds: true,      // sons
     vibrate: true,     // vibração
     badge: true,       // badge no ícone do app
+    // Mostrar a notificação do SISTEMA mesmo com o app aberto e visível.
+    // Sem isto, quem fica o dia com o painel na tela só via o aviso interno,
+    // e nada aparecia na barra do celular ou do computador.
+    systemWhenOpen: true,
     types: { message: true, call: true, attendance: true, reminder: true, commission: true, sale: true }
   };
 
@@ -162,9 +166,11 @@
     var t = localStorage.getItem('wacrm_token') || '';
     return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t };
   }
+  // Devolve a promessa: quem chama (o teste de notificação, por exemplo)
+  // precisa esperar a inscrição terminar antes de pedir o envio.
   function subscribePush() {
-    if (!state.reg || !state.reg.pushManager) return;
-    fetch(EC.api('/push/vapid'), { headers: authHeaders() })
+    if (!state.reg || !state.reg.pushManager) return Promise.resolve(null);
+    return fetch(EC.api('/push/vapid'), { headers: authHeaders() })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (cfg) {
         if (!cfg || !cfg.publicKey) return;
@@ -178,7 +184,7 @@
         state._sub = sub;
         return fetch(EC.api('/push/subscribe'), { method: 'POST', headers: authHeaders(), body: JSON.stringify({ subscription: sub, prefs: state.prefs }) });
       })
-      .catch(function (e) { console.warn('[ECNotify] push subscribe:', e && e.message); });
+      .catch(function (e) { console.warn('[ECNotify] push subscribe:', e && e.message); return null; });
   }
   function syncSubPrefs() {
     if (!state._sub) return;
@@ -205,10 +211,12 @@
     var focusedHere = !document.hidden;
     var data = { type: type, waId: opts.waId || null, url: opts.url || ('/app/#/inbox') };
 
-    // App em foco → toast in-app (não “estoura” notificação do SO por cima do app)
+    // App em foco: o aviso interno aparece sempre; a notificação do sistema
+    // depende da preferência. Antes o toast encerrava aqui, então quem ficava
+    // com o painel aberto nunca via nada na barra do sistema.
     if (focusedHere && typeof window.toast === 'function' && type !== 'call') {
-      try { window.toast((type === 'reminder' ? '⏰ ' : '') + item.title + (item.body ? '-' + item.body : '')); } catch (e) {}
-      return item;
+      try { window.toast((type === 'reminder' ? '⏰ ' : '') + item.title + (item.body ? ' - ' + item.body : '')); } catch (e) {}
+      if (!state.prefs.systemWhenOpen) return item;
     }
     // App em segundo plano (ou ligação) → notificação nativa do sistema
     if (state.prefs.enabled && permission() === 'granted') {

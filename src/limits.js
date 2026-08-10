@@ -18,6 +18,7 @@ const PAID_EXTRAS = ['whatsapps', 'links'];
 
 const LABEL = {
   sends: 'disparos por ciclo',
+  campaigns: 'campanhas por ciclo',
   contacts: 'contatos (leads)',
   flows: 'fluxos de automação',
   pixels: 'pixels de rastreamento',
@@ -76,6 +77,9 @@ function usage(acc) {
   const t0 = cycleStart(acc);
   return {
     sends: acc.messages.filter(m => m.direction === 'out' && m.timestamp >= t0).length,
+    // CAMPANHAS criadas no ciclo. Conta a criação, não o envio: uma campanha
+    // agendada ou pausada já ocupou a vaga do mês.
+    campaigns: (acc.campaigns || []).filter(c => (c.createdAt || 0) >= t0).length,
     contacts: acc.contacts.length,
     flows: (acc.flows || []).length,
     pixels: (acc.pixels || []).length,
