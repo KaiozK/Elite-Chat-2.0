@@ -3412,3 +3412,8 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
 /* Esperando o pagamento cair, depois de abrir o checkout. */
 .aguardando { max-width: 520px; margin: 0 auto; text-align: center; }
 .aguardando .row { justify-content: center; }
+
+/* Diagnóstico do app da Meta: uma linha por achado, ícone alinhado ao texto. */
+.meta-diag { display: flex; flex-direction: column; gap: 7px; margin-top: 8px; }
+.meta-diag > div { display: flex; gap: 7px; align-items: flex-start; font-size: 12.5px; line-height: 1.5; }
+.meta-diag .ic { flex: none; margin-top: 2px; }

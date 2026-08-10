@@ -3641,6 +3641,27 @@ async function renderSettings() {
 
       <div class="tabpane" data-pane="conexao">
       ${connCard}
+
+      ${state.kind === 'admin' ? `<div class="card">
+        <h2>${ico('shield')} Conexão manual (só o administrador)</h2>
+        <p class="muted" style="margin:0 0 12px;font-size:13px">
+          Ligue o número da plataforma direto pelas credenciais, sem passar pelo
+          Embedded Signup. Os clientes não veem isto: para eles existe só o botão
+          <b>Conectar WhatsApp</b>.
+        </p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <label style="grid-column:1/-1">Access Token permanente
+            <textarea id="st-token" rows="2" placeholder="EAA…">${esc((state.manual || {}).accessToken || '')}</textarea></label>
+          <label>WABA ID<input id="st-waba" value="${esc((state.manual || {}).wabaId || '')}" placeholder="1362414642618793"></label>
+          <label>Phone Number ID<input id="st-phoneid" value="${esc((state.manual || {}).phoneNumberId || '')}" placeholder="1132426636626799"></label>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn primary no-grow" onclick="saveManual()">${ico('save', 14)} Salvar e conectar</button>
+          <button class="btn no-grow" onclick="subscribeWaba()">${ico('radio', 14)} Assinar app na WABA</button>
+          <button class="btn no-grow" onclick="metaDiag(this)">${ico('activity', 14)} Diagnosticar app da Meta</button>
+        </div>
+        <div id="meta-diag-out"></div>
+      </div>` : ''}
       <div class="card"><h2>${ico('activity')} Diagnóstico</h2>
         <div class="row" style="margin-bottom:10px">
           <button class="btn no-grow" onclick="testConn()">${ico('activity', 14)} Testar conexão</button>
@@ -3738,6 +3759,11 @@ async function renderSettings() {
       </a>` }
       </div>
     </div>`;
+  // As credenciais manuais moram em /admin/saas (adminOnly). Buscar aqui deixa
+  // o card preenchido sem duplicar a informação em outra rota.
+  if (state.kind === 'admin' && !state.manual) {
+    api('/admin/saas').then(d => { state.manual = d.manual || {}; renderSettings(); }).catch(() => {});
+  }
   paintProfilePhoto();
   loadService();
   loadSurvey();
@@ -3943,6 +3969,27 @@ async function savePlatform() {
     });
     toast('Configurações da plataforma salvas!');
   } catch (e) { toast(e.message, 'error'); }
+}
+
+// Traduz o que a Graph API responde sobre o app. A Meta mostra "Falha ao
+// iniciar sessão" para causas bem diferentes; aqui cada uma vira uma linha.
+async function metaDiag(btn) {
+  const out = $('#meta-diag-out');
+  const t = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Consultando a Meta…';
+  try {
+    const r = await api('/admin/meta/diag');
+    const cor = { erro: 'var(--red)', aviso: 'var(--amber)', ok: 'var(--verde-deep)', info: 'var(--muted)' };
+    const marca = { erro: 'alert', aviso: 'alert', ok: 'check', info: 'info' };
+    out.innerHTML = `<div class="capi-box" style="margin-top:12px">
+      <div class="capi-head">${ico('shield', 14)} Diagnóstico do app da Meta
+        <span class="capi-tag">${r.ok ? 'sem erro' : 'com erro'}</span></div>
+      <div class="meta-diag">${r.achados.map(x => `<div style="color:${cor[x.nivel]}">
+        ${ico(marca[x.nivel], 13)} <span>${esc(x.texto)}</span></div>`).join('')}</div>
+    </div>`;
+  } catch (e) {
+    out.innerHTML = `<div class="danger-box" style="margin-top:12px">${esc(e.message)}</div>`;
+  } finally { btn.disabled = false; btn.innerHTML = t; }
 }
 
 async function saveManual() {
@@ -6500,19 +6547,15 @@ async function renderAdmin() {
         </div>
       </div>
 
-      <div class="card">
-        <h2>${ico('shield')} Conexão manual do administrador</h2>
-        <p class="muted" style="margin:8px 0 12px">Alternativa ao Embedded Signup para a conta do administrador (testes e desenvolvimento).</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <label>Access Token<textarea id="st-token" rows="2">${esc(m.accessToken || '')}</textarea></label>
-          <label>WABA ID<input id="st-waba" value="${esc(m.wabaId || '')}"></label>
-          <label>Phone Number ID<input id="st-phoneid" value="${esc(m.phoneNumberId || '')}"></label>
-        </div>
-        <div class="row" style="margin-top:12px">
-          <button class="btn primary no-grow" onclick="saveManual()">${ico('save', 14)} Salvar manuais</button>
-          <button class="btn no-grow" onclick="subscribeWaba()">${ico('radio', 14)} Assinar app na WABA</button>
-        </div>
-      </div>`;
+      ${''/* A conexão manual mora em Configurações → Conexão & API, junto do
+          botão de conectar. Duplicar o formulário aqui criaria dois campos com
+          o mesmo id, e o salvar passaria a ler o errado. */}
+      <a class="card link-card" href="#" onclick="location.hash='#/settings';setTimeout(()=>showSettingsTab('conexao'),120);return false">
+        <span class="lc-ic">${ico('shield', 22)}</span>
+        <div style="flex:1"><h2 style="margin:0 0 3px">Conexão manual do WhatsApp</h2>
+          <p class="muted" style="margin:0;font-size:13px">Ligar o número da plataforma pelas credenciais, sem o Embedded Signup, fica em <b>Configurações → Conexão &amp; API</b>.</p></div>
+        <span class="lc-arrow">${ico('arrowright', 18)}</span>
+      </a>`;
 }
 async function paintAdmin() {
   await admCarregarCheckouts();   // para o seletor de checkout dos planos

@@ -582,6 +582,75 @@ module.exports = function (broadcast, clients) {
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // DIAGNÓSTICO DO APP DA META
+  //
+  // "Falha ao acessar sua conta através deste aplicativo" é a mesma mensagem
+  // para causas bem diferentes: app em modo de desenvolvimento, App Secret que
+  // não casa com o App ID, Config ID de outro app, domínio não liberado. A
+  // Meta não diz qual é, e o admin fica adivinhando.
+  //
+  // Este teste pergunta à Graph API o que ela sabe do app, usando o token de
+  // aplicativo (app_id|app_secret), e devolve cada achado em português.
+  // ---------------------------------------------------------------------------
+  router.get('/admin/meta/diag', auth, adminOnly, h(async (req, res) => {
+    const p = db.get().platform;
+    const v = p.graphVersion || 'v25.0';
+    const achados = [];
+    const add = (nivel, texto) => achados.push({ nivel, texto });
+
+    if (!p.appId) add('erro', 'App ID em branco. Copie do painel do app da Meta, em Configurações → Básico.');
+    if (!p.appSecret) add('erro', 'App Secret em branco. Fica ao lado do App ID, em Configurações → Básico.');
+    if (!p.appId || !p.appSecret) return res.json({ ok: false, achados });
+
+    // O token de aplicativo só funciona se os DOIS baterem: é o jeito mais
+    // direto de saber se o segredo é mesmo daquele App ID.
+    const appToken = p.appId + '|' + p.appSecret;
+    let app = null;
+    try {
+      const r = await fetch('https://graph.facebook.com/' + v + '/' + p.appId +
+        '?fields=id,name,link,app_type&access_token=' + encodeURIComponent(appToken));
+      app = await r.json();
+      if (app.error) {
+        add('erro', 'A Meta recusou App ID + App Secret: ' + (app.error.message || '') +
+          '. Confira se os dois são do MESMO app e se o segredo foi copiado inteiro.');
+        return res.json({ ok: false, achados });
+      }
+    } catch (e) {
+      add('erro', 'Não foi possível falar com a Graph API: ' + e.message);
+      return res.json({ ok: false, achados });
+    }
+    add('ok', 'App reconhecido pela Meta: ' + (app.name || p.appId) + '.');
+
+    if (!p.configId) {
+      add('erro', 'Config ID em branco. Sem ele o Embedded Signup não abre: crie a configuração em Login do Facebook para Empresas → Configurações e cole o ID aqui.');
+    } else {
+      // A configuração do Embedded Signup pertence ao app; se o ID for de
+      // outro app, a Meta responde exatamente com "falha ao iniciar sessão".
+      try {
+        const r = await fetch('https://graph.facebook.com/' + v + '/' + p.configId +
+          '?access_token=' + encodeURIComponent(appToken));
+        const cfg = await r.json();
+        if (cfg.error) {
+          add('erro', 'O Config ID não foi aceito por este app: ' + (cfg.error.message || '') +
+            '. Quase sempre é uma configuração criada em OUTRO app da Meta.');
+        } else {
+          add('ok', 'Config ID pertence a este app.');
+        }
+      } catch (e) {
+        add('aviso', 'Não deu para conferir o Config ID: ' + e.message);
+      }
+    }
+
+    // O que a Meta NÃO conta pela API, e que responde pela maioria dos casos.
+    const origem = req.protocol + '://' + req.get('host');
+    add('info', 'Se o app estiver em MODO DE DESENVOLVIMENTO, só quem está em Funções do app (administrador, desenvolvedor ou testador) consegue conectar. É a causa mais comum desta falha.');
+    add('info', 'Em Login do Facebook → Configurações, o campo URIs de redirecionamento OAuth válidos precisa conter: ' + origem + '/auth/meta/callback');
+    add('info', 'Em Configurações → Básico, o Domínio do app precisa conter: ' + req.get('host'));
+
+    res.json({ ok: !achados.some(x => x.nivel === 'erro'), app: { name: app.name, id: app.id }, achados });
+  }));
+
   // Fluxo completo pós-popup: code -> token -> business -> WABA -> número -> subscribe -> teste
   router.post('/wa/connect', auth, h(async (req, res) => {
     const acc = req.acc;
