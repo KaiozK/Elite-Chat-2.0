@@ -1,4 +1,4 @@
-// API interna do EliteChat (consumida pelo painel em /public/app)
+// API interna do Koonfy (consumida pelo painel em /public/app)
 // Multi-conta: cada cliente (account) tem seu próprio WhatsApp conectado via Embedded Signup.
 const express = require('express');
 const crypto = require('crypto');
@@ -1509,7 +1509,7 @@ module.exports = function (broadcast, clients) {
       ].join(';'));
     }
     res.set('Content-Type', 'text/csv; charset=utf-8');
-    res.set('Content-Disposition', 'attachment; filename="contatos-elitechat-e164.csv"');
+    res.set('Content-Disposition', 'attachment; filename="contatos-koonfy-e164.csv"');
     res.send('﻿' + lines.join('\r\n')); // BOM p/ Excel abrir acentos corretamente
   });
 
@@ -1574,6 +1574,8 @@ module.exports = function (broadcast, clients) {
   function requireActive(req, res, next) {
     const p = db.get().platform.billing;
     if (req.session.kind === 'admin') return next();
+    // Conta interna do dono: não tem plano para expirar nem cota para estourar.
+    if (limits.isUnlimited(req.acc)) return next();
     // Cota de DISPAROS do plano — vale sempre (conta as saídas do ciclo vigente).
     const lim = limits.check(req.acc, 'sends');
     if (lim) return res.status(402).json({ error: lim, code: 'limit', resource: 'sends' });
@@ -2222,7 +2224,7 @@ module.exports = function (broadcast, clients) {
         event_time: Math.floor(Date.now() / 1000),
         action_source: 'website',
         event_source_url: `${req.protocol}://${req.get('host')}/l/teste`,
-        user_data: { client_user_agent: 'EliteChat-Test/1.0' }
+        user_data: { client_user_agent: 'Koonfy-Test/1.0' }
       }],
       ...(px.testCode ? { test_event_code: px.testCode } : {})
     };
@@ -2572,7 +2574,7 @@ module.exports = function (broadcast, clients) {
       ].join(';'));
     }
     res.set('Content-Type', 'text/csv; charset=utf-8');
-    res.set('Content-Disposition', `attachment; filename="contatos-${status}-elitechat.csv"`);
+    res.set('Content-Disposition', `attachment; filename="contatos-${status}-koonfy.csv"`);
     res.send('﻿' + lines.join('\r\n'));
   });
 
@@ -2844,7 +2846,7 @@ module.exports = function (broadcast, clients) {
 
   // ============ ASSINATURA & CARTEIRA (SaaS via Woovi — Pix / Pix Automático) ============
   const woovi = require('./woovi');
-  const saas = require('./saasbilling');   // planos do EliteChat no cartão
+  const saas = require('./saasbilling');   // planos do Koonfy no cartão
 
   function billingPublic(acc) {
     const b = acc.billing;
@@ -2895,7 +2897,7 @@ module.exports = function (broadcast, clients) {
         };
       })(),
       cardAccount: elitepay.cardCapability(req.acc),   // modo (carteira/split) + prazos
-      // meios de pagamento do PRÓPRIO EliteChat (Pix + cartão), uso x limites e
+      // meios de pagamento do PRÓPRIO Koonfy (Pix + cartão), uso x limites e
       // preço das unidades extras — tudo que a tela de Assinatura precisa.
       card: saas.methods(),
       usage: limits.report(req.acc),
@@ -2965,7 +2967,7 @@ module.exports = function (broadcast, clients) {
       try {
         const sub = await woovi.createSubscription({
           correlationID: cid, value: total, customer,
-          comment: `EliteChat: ${plan.name} (mensal)`
+          comment: `Koonfy: ${plan.name} (mensal)`
         });
         acc.billing.wooviSubId = sub.globalID || sub.id || '';
         acc.billing.subCorrelationID = cid;
@@ -2978,7 +2980,7 @@ module.exports = function (broadcast, clients) {
 
     const charge = await woovi.createCharge({
       correlationID: cid, value: total, customer,
-      comment: `EliteChat: assinatura ${plan.name}`
+      comment: `Koonfy: assinatura ${plan.name}`
     });
     acc.billing.pendingCharge = {
       correlationID: cid, kind: 'sub', planId: plan.id, amount: total,
@@ -3010,7 +3012,7 @@ module.exports = function (broadcast, clients) {
     const charge = await woovi.createCharge({
       correlationID: cid, value: amount,
       customer: { name: req.acc.name, email: req.acc.email },
-      comment: 'EliteChat: recarga de saldo'
+      comment: 'Koonfy: recarga de saldo'
     });
     req.acc.billing.pendingCharge = {
       correlationID: cid, kind: 'topup', planId: '', amount,
@@ -3131,7 +3133,10 @@ module.exports = function (broadcast, clients) {
   router.get('/admin/saas', auth, adminOnly, (req, res) => {
     const data = db.get();
     const now = Date.now();
-    const accs = data.accounts.filter(a => !a.isAdmin);
+    // As contas INTERNAS ficam fora das métricas: elas não pagam, e contá-las
+    // como assinantes inflaria MRR, total de contas e conversão.
+    const accs = data.accounts.filter(a => !a.isAdmin && !a.unlimited);
+    const internas = data.accounts.filter(a => !a.isAdmin && a.unlimited);
     const active = accs.filter(a => a.billing.status === 'active' && a.billing.periodEnd > now);
     const mrr = active.reduce((s, a) => { const p = data.plans.find(x => x.id === a.billing.planId); return s + (p ? p.price : 0); }, 0);
     // Receita inclui TUDO que entrou: assinaturas, renovações E recargas (depósitos na carteira).
@@ -3192,8 +3197,15 @@ module.exports = function (broadcast, clients) {
         refCode: a.affiliate.code, refBy: a.affiliate.refBy || '',
         referrals: data.accounts.filter(x => x.affiliate && x.affiliate.refBy === a.affiliate.code).length,
         affEarned: a.affiliate.earned,
-        profile: a.profile || {}   // segmento, tamanho, telefone e objetivo do cadastro
-      })).sort((a, b) => b.createdAt - a.createdAt),
+        profile: a.profile || {}, unlimited: !!a.unlimited
+      })).concat(internas.map(a => ({
+        id: a.id, name: a.name, email: a.email, createdAt: a.createdAt,
+        waConnected: !!(a.wa && a.wa.connected),
+        billing: billingPublic(a), walletBalance: a.wallet.balance,
+        refCode: a.affiliate.code, refBy: a.affiliate.refBy || '',
+        referrals: 0, affEarned: a.affiliate.earned,
+        profile: a.profile || {}, unlimited: true
+      }))).sort((a, b) => b.createdAt - a.createdAt),
       plans: data.plans,
       withdrawals: data.withdrawals.slice(-50).reverse(),
       revenue: data.revenue.slice(-100).reverse(),
@@ -3371,7 +3383,7 @@ module.exports = function (broadcast, clients) {
     try {
       await mailer.enviar({
         to: para,
-        subject: 'Teste de envio do EliteChat',
+        subject: 'Teste de envio do Koonfy',
         text: 'Se você recebeu este e-mail, o envio está funcionando.',
         html: '<p>Se você recebeu este e-mail, o envio está funcionando.</p>'
       });
@@ -3452,6 +3464,40 @@ module.exports = function (broadcast, clients) {
     res.json({ withdrawal: wd });
   });
 
+  // ---- CONTAS CRIADAS PELO ADMIN ----
+  // Para o dono abrir contas dos próprios negócios sem passar pelo cadastro
+  // público, já marcando-as como internas.
+  router.post('/admin/accounts', auth, adminOnly, (req, res) => {
+    const b = req.body || {};
+    const mail = String(b.email || '').toLowerCase().trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return res.status(400).json({ error: 'Informe um e-mail válido' });
+    if (!b.pass || String(b.pass).length < 6) return res.status(400).json({ error: 'A senha deve ter pelo menos 6 caracteres' });
+    if (db.findAccountByEmail(mail)) return res.status(409).json({ error: 'Já existe uma conta com este e-mail' });
+
+    const acc = db.newAccount({ name: String(b.name || '').trim() || mail, email: mail, pass: String(b.pass) });
+    acc.unlimited = !!b.unlimited;
+    const perfil = b.profile || {};
+    for (const k of ['segment', 'size', 'phone', 'goal']) acc.profile[k] = String(perfil[k] || '').trim().slice(0, 60);
+    // Conta interna não tem período de teste para vencer; a comum ganha o
+    // mesmo trial do cadastro público.
+    if (!acc.unlimited) {
+      acc.billing.periodEnd = Date.now() + (db.get().platform.billing.trialDays || 7) * 86400000;
+    }
+    db.get().accounts.push(acc);
+    db.save();
+    res.json({ ok: true, id: acc.id, unlimited: acc.unlimited });
+  });
+
+  // Liga/desliga o ilimitado de uma conta que já existe.
+  router.put('/admin/accounts/:id/unlimited', auth, adminOnly, (req, res) => {
+    const acc = db.findAccount(req.params.id);
+    if (!acc) return res.status(404).json({ error: 'Conta não encontrada' });
+    if (acc.isAdmin) return res.status(400).json({ error: 'A conta do administrador não entra nessa regra' });
+    acc.unlimited = !!(req.body || {}).unlimited;
+    db.save();
+    res.json({ ok: true, unlimited: acc.unlimited });
+  });
+
   // Admin ajusta manualmente a assinatura de uma conta (suporte)
   router.put('/admin/accounts/:id/billing', auth, adminOnly, (req, res) => {
     const acc = db.findAccount(req.params.id);
@@ -3524,7 +3570,7 @@ module.exports = function (broadcast, clients) {
   });
 
   // Etapa 1 do checkout: pagador preenche os dados → cria o cliente na Woovi,
-  // cadastra o contato no EliteChat e registra os eventos na pipeline.
+  // cadastra o contato no Koonfy e registra os eventos na pipeline.
   router.post('/public/pay/:id/identify', h(async (req, res) => {
     const b = req.body || {};
     await elitepay.identifyPayer(req.params.id, {
@@ -3757,7 +3803,7 @@ module.exports = function (broadcast, clients) {
     });
   });
 
-  // Onboarding — cria a subconta do cliente (via API do gateway, sem sair do EliteChat)
+  // Onboarding — cria a subconta do cliente (via API do gateway, sem sair do Koonfy)
   router.post('/elitepay/subaccount', auth, can('elitepay', 'create'), h(async (req, res) => {
     // redirectUrl: para onde a Woovi devolve o cliente após concluir o KYC hospedado
     const redirectUrl = `${req.protocol}://${req.get('host')}/app/#/elitepay`;
@@ -4113,7 +4159,7 @@ module.exports = function (broadcast, clients) {
   router.post('/push/test', auth, h(async (req, res) => {
     const inscritos = (req.acc.pushSubs || []).length;
     await push.sendToAccount(req.acc, 'message', {
-      title: 'EliteChat',
+      title: 'Koonfy',
       body: 'Notificação de teste. Se você está vendo isto, está tudo funcionando.',
       tag: 'teste', data: { type: 'message', url: '/app/#/settings' }
     });

@@ -1,4 +1,4 @@
-// Opt-in / Opt-out — consentimento do contato (EliteChat)
+// Opt-in / Opt-out — consentimento do contato (Koonfy)
 //
 // Fonte única de verdade. Consumido pelo webhook (palavra-chave), pelo guard de
 // envio da API, pelas campanhas, pelo Flow Builder e pelo Dashboard.

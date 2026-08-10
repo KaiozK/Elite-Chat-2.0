@@ -9,7 +9,7 @@
 // restante do arquivo (fila, limites, histórico, variáveis) não sabe qual
 // provedor está atrás e não muda se ele mudar.
 //
-// O opt-in/opt-out do EliteChat é do WhatsApp: as palavras-chave chegam por
+// O opt-in/opt-out do Koonfy é do WhatsApp: as palavras-chave chegam por
 // mensagem recebida e valem para aquele canal. O SMS não participa desse
 // controle — quem for enviar responde pela lista que usa.
 // ============================================================================
@@ -97,7 +97,7 @@ function mascarar(txt) {
   return String(txt || '').split(t).join('***');
 }
 
-// Status normalizado do EliteChat, independente do vocabulário do provedor:
+// Status normalizado do Koonfy, independente do vocabulário do provedor:
 //   queued | sent | delivered | undelivered | failed
 function normalizarStatus(s) {
   const v = String(s || '').toLowerCase();
@@ -176,7 +176,7 @@ async function call(method, rota, body) {
       (data.raw ? String(data.raw).slice(0, 200) : `Integra X respondeu HTTP ${r.status}`);
     // O token faz PARTE DO CAMINHO, então um token errado não devolve 401: a
     // Integra X responde 404 com `INTEGRATION_NOT_FOUND`, que lido cru vira um
-    // "Erro 404" e faz parecer que a integração do EliteChat está quebrada.
+    // "Erro 404" e faz parecer que a integração do Koonfy está quebrada.
     // Traduzimos para o que realmente aconteceu. (As rotas foram conferidas
     // contra o host: uma rota inexistente devolve `Cannot GET ...`, texto
     // diferente deste — dá para distinguir os dois casos com segurança.)
@@ -479,7 +479,7 @@ function publicView(acc) {
 // ---------------------------------------------------------------------------
 // ENVIO DA PRÓPRIA PLATAFORMA
 //
-// Usado pelo Marketing do Admin SaaS, quando é o EliteChat que fala com os
+// Usado pelo Marketing do Admin SaaS, quando é o Koonfy que fala com os
 // clientes dele. Não passa por plano, cota nem carteira: o crédito na Integra
 // X é da plataforma, e quem dispara é a plataforma.
 // ---------------------------------------------------------------------------

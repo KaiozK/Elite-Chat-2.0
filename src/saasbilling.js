@@ -1,5 +1,5 @@
 // ============================================================================
-// COBRANÇA DOS PLANOS DO ELITECHAT NO CARTÃO DE CRÉDITO E NO BOLETO
+// COBRANÇA DOS PLANOS DO KOONFY NO CARTÃO DE CRÉDITO E NO BOLETO
 //
 // O Pix (Woovi) continua sendo um meio; este módulo adiciona o CARTÃO DE
 // CRÉDITO e o BOLETO para o próprio SaaS. No cartão a renovação é automática
@@ -87,7 +87,7 @@ async function charge({ acc, valueCents, body, description, correlationID }) {
       email: (body.customer || {}).email || acc.email || '',
       phone: (body.customer || {}).phone || ''
     },
-    description: description || 'EliteChat',
+    description: description || 'Koonfy',
     correlationID,
     softDescriptor: cfg.softDescriptor
     // sem `split`: o valor inteiro é da plataforma
@@ -133,7 +133,7 @@ async function subscribe(acc, plan, body, broadcast) {
 
   const r = await charge({
     acc, valueCents: total, body,
-    description: `EliteChat: ${plan.name}`,
+    description: `Koonfy: ${plan.name}`,
     correlationID: cid
   });
 
@@ -189,7 +189,7 @@ async function subscribeBoleto(acc, plan, body, broadcast) {
 
   const b = await gerarBoleto({
     acc, valueCents: total, correlationID: cid,
-    description: `EliteChat: assinatura ${plan.name}`
+    description: `Koonfy: assinatura ${plan.name}`
   });
   acc.billing.method = 'boleto';
   acc.billing.pendingCharge = { ...b, kind: 'sub', via: 'boleto', planId: plan.id };
@@ -265,7 +265,7 @@ async function buyExtra(acc, key, qty, body, broadcast) {
     const charge = await woovi.createCharge({
       correlationID: cid, value: total,
       customer: { name: acc.name, email: acc.email },
-      comment: `EliteChat: ${n}x ${limits.LABEL[key]}`
+      comment: `Koonfy: ${n}x ${limits.LABEL[key]}`
     });
     acc.billing.pendingCharge = {
       correlationID: cid, kind: 'extra', via: 'pix', planId: acc.billing.planId, amount: total,
@@ -283,7 +283,7 @@ async function buyExtra(acc, key, qty, body, broadcast) {
     if (body.taxId) acc.billing.taxId = String(body.taxId).replace(/\D/g, '');
     const b = await gerarBoleto({
       acc, valueCents: total, correlationID: cid,
-      description: `EliteChat: ${n}x ${limits.LABEL[key]}`
+      description: `Koonfy: ${n}x ${limits.LABEL[key]}`
     });
     acc.billing.pendingCharge = {
       ...b, kind: 'extra', via: 'boleto', planId: acc.billing.planId,
@@ -303,7 +303,7 @@ async function buyExtra(acc, key, qty, body, broadcast) {
   } else {
     r = await charge({
       acc, valueCents: total, body,
-      description: `EliteChat: ${n}x ${limits.LABEL[key]}`,
+      description: `Koonfy: ${n}x ${limits.LABEL[key]}`,
       correlationID: cid
     });
     // comprou um extra no cartão: guarda para a próxima compra já vir pronta
@@ -349,7 +349,7 @@ async function renew(acc, broadcast) {
       card: { token: b.card.token },        // sem PAN: o adquirente resolve pelo token
       holder: {},
       customer: { name: acc.name, email: acc.email },
-      description: `EliteChat: renovação ${plan.name}`,
+      description: `Koonfy: renovação ${plan.name}`,
       correlationID: cid,
       softDescriptor: cfg.softDescriptor
     });
@@ -406,7 +406,7 @@ async function renewBoleto(acc, broadcast) {
   try {
     const b = await gerarBoleto({
       acc, valueCents: total, correlationID: cid,
-      description: `EliteChat: renovação ${plan.name}`
+      description: `Koonfy: renovação ${plan.name}`
     });
     acc.billing.pendingCharge = { ...b, kind: 'sub', planId: plan.id, via: 'boleto' };
     db.save();

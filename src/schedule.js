@@ -1,4 +1,4 @@
-// Agendamentos e Lembretes — EliteChat
+// Agendamentos e Lembretes — Koonfy
 //
 // Um agendamento pode se relacionar com contato, conversa, etapa do funil e
 // atendente. Os lembretes disparam via SSE (dentro do app) e Push Notification

@@ -1,8 +1,8 @@
-/* EliteChat — Service Worker (PWA)
+/* Koonfy — Service Worker (PWA)
  * Cache do app shell + offline + Push Notifications + clique abre a conversa.
  * Escopo: /app/  (registrado por notifications.js)
  */
-const VERSION = 'elitechat-v3';
+const VERSION = 'koonfy-v3';
 const SHELL = 'ec-shell-' + VERSION;
 const RUNTIME = 'ec-runtime-' + VERSION;
 
@@ -37,7 +37,7 @@ self.addEventListener('message', (e) => {
   if (d.type === 'SKIP_WAITING') self.skipWaiting();
   if (d.type === 'SHOW_NOTIFICATION' && d.payload) {
     const p = d.payload;
-    self.registration.showNotification(p.title || 'EliteChat', notifOptions(p));
+    self.registration.showNotification(p.title || 'Koonfy', notifOptions(p));
   }
 });
 
@@ -58,8 +58,8 @@ function notifOptions(p) {
 /* ---------------- Push (background, app fechado) ---------------- */
 self.addEventListener('push', (e) => {
   let p = {};
-  try { p = e.data ? e.data.json() : {}; } catch { p = { title: 'EliteChat', body: e.data ? e.data.text() : '' }; }
-  e.waitUntil(self.registration.showNotification(p.title || 'EliteChat', notifOptions(p)));
+  try { p = e.data ? e.data.json() : {}; } catch { p = { title: 'Koonfy', body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(p.title || 'Koonfy', notifOptions(p)));
 });
 
 // Clique na notificação → foca o app já aberto (e abre a conversa) ou abre o app.

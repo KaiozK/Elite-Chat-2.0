@@ -253,6 +253,10 @@ function newAccount({ name, email, pass }) {
     // PERFIL DA EMPRESA, informado no cadastro. Não muda nada no produto:
     // serve para o onboarding e para o time comercial saber com quem fala.
     profile: { segment: '', size: '', phone: '', goal: '' },
+    // CONTA INTERNA: ligada pelo admin, roda sem plano, sem cota e sem
+    // cobrança, e fica fora das métricas do SaaS. É para os negócios do
+    // próprio dono, não para um cliente.
+    unlimited: false,
     channels: [emptyChannel('WhatsApp principal')],
     stages: [...DEFAULT_STAGES],
     contacts: [],
@@ -342,7 +346,7 @@ function emptyBilling() {
     pendingCharge: null,   // { correlationID, kind, planId, amount, brCode, qrCodeImage, paymentLinkUrl, ts }
     startedAt: 0, canceledAt: 0,
     // ---- Meio de pagamento da assinatura ----
-    method: 'pix',         // pix | credit | boleto | wallet, como o cliente paga o EliteChat
+    method: 'pix',         // pix | credit | boleto | wallet, como o cliente paga o Koonfy
     taxId: '',             // CPF/CNPJ do titular, exigido para emitir boleto
     card: {                // cartão tokenizado para renovar automaticamente
       token: '', brand: '', last4: '', holderName: '', gatewayCustomerId: ''
@@ -352,7 +356,7 @@ function emptyBilling() {
   };
 }
 
-// CARTEIRA do cliente dentro do EliteChat.
+// CARTEIRA do cliente dentro do Koonfy.
 // As vendas no cartão caem aqui: primeiro como `pending` (a liberar, porque o
 // adquirente só repassa em D+30/D+32) e, vencido o prazo, viram `balance`.
 // O saldo disponível paga coisas na plataforma (plano, conexão WhatsApp extra,
@@ -552,6 +556,7 @@ function ensureAccountShape(acc) {
     acc.billing.periodEnd = (acc.createdAt || Date.now()) + (get().platform.billing.trialDays || 7) * 86400000;
   }
   if (!acc.profile || typeof acc.profile !== 'object') acc.profile = { segment: '', size: '', phone: '', goal: '' };
+  if (typeof acc.unlimited !== 'boolean') acc.unlimited = false;
   if (!acc.wallet || typeof acc.wallet !== 'object') acc.wallet = emptyWallet();
   if (!Array.isArray(acc.wallet.transactions)) acc.wallet.transactions = [];
   if (!Array.isArray(acc.wallet.receivables)) acc.wallet.receivables = [];

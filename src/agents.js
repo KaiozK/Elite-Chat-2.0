@@ -1,4 +1,4 @@
-// Atendentes, Permissões, Presença e Logs — EliteChat
+// Atendentes, Permissões, Presença e Logs — Koonfy
 //
 // Antes deste módulo, `acc.team[]` guardava só rótulos para o chat interno.
 // Agora cada membro é um ATENDENTE de verdade: tem login próprio (e-mail+senha),

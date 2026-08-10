@@ -43,7 +43,12 @@ function extraPrices() {
 // Teto efetivo de um recurso: o que o plano inclui + o que foi comprado à parte.
 // Sem plano (trial) o cliente roda no plano mais barato publicado; se não houver
 // nenhum plano, cai nos limites padrão.
+// Conta interna do dono: sem teto e com todos os módulos. É o mesmo produto,
+// só que sem a camada comercial.
+function isUnlimited(acc) { return !!(acc && acc.unlimited); }
+
 function limitOf(acc, key) {
+  if (isUnlimited(acc)) return -1;
   const plan = planOf(acc);
   const base = (plan && plan.limits) || fallbackLimits();
   let v = base[key];
@@ -177,6 +182,7 @@ function featuresOf(acc) {
 }
 
 function featureOn(acc, key) {
+  if (isUnlimited(acc)) return true;
   if (!db.FEATURE_KEYS.includes(key)) return true;   // módulo essencial: sempre on
   return !!featuresOf(acc)[key];
 }
@@ -188,6 +194,7 @@ function checkFeature(acc, key) {
 }
 
 module.exports = {
+  isUnlimited,
   PAID_EXTRAS, LABEL, FEATURE_LABEL, planOf, extraPrices, limitOf, usage, report,
   check, enforce, extrasCost, chargeTotal,
   featuresOf, featureOn, checkFeature

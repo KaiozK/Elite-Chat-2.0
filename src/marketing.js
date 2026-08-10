@@ -1,7 +1,7 @@
 // ============================================================================
 // MARKETING DA PLATAFORMA
 //
-// Aqui a PLATAFORMA fala com os PRÓPRIOS clientes (as contas do EliteChat), e
+// Aqui a PLATAFORMA fala com os PRÓPRIOS clientes (as contas do Koonfy), e
 // não com os contatos deles. São dois usos:
 //
 //   • COBRANÇA  — avisar quem está para vencer, vencido ou em teste acabando.
@@ -171,7 +171,7 @@ async function disparar(body, { origin, broadcast } = {}) {
   for (const acc of alvo) {
     const vars = variaveis(acc);
     vars.link = (origin || '') + '/app/#/billing';
-    const titulo = interpolar(body.title || 'EliteChat', vars);
+    const titulo = interpolar(body.title || 'Koonfy', vars);
     const texto = interpolar(body.text || '', vars);
     try {
       if (canal === 'push') await porPush(acc, titulo, texto);
@@ -206,7 +206,7 @@ async function porPush(acc, titulo, texto) {
 }
 
 // O WhatsApp sai pela conexão da PLATAFORMA (conta do admin), não pela do
-// cliente: quem está falando é o EliteChat.
+// cliente: quem está falando é o Koonfy.
 async function porWhatsapp(acc, texto, body) {
   const wa = require('./whatsapp');
   const admin = db.findAdminAccount();

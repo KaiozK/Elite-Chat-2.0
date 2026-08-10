@@ -49,7 +49,7 @@ async function recargaCartao(acc, cents, body, broadcast) {
 
   const r = await saas.charge({
     acc, valueCents: valor, body,
-    description: 'EliteChat: recarga de saldo',
+    description: 'Koonfy: recarga de saldo',
     correlationID: cid
   });
 
@@ -112,7 +112,7 @@ async function configurarAuto(acc, cfg, broadcast) {
     sub = await woovi.createSubscription({
       correlationID: cid, value: valor,
       customer: { name: acc.name, email: acc.email },
-      comment: 'EliteChat: recarga automática de saldo'
+      comment: 'Koonfy: recarga automática de saldo'
     });
   } else if (a.wooviSubId) {
     // saiu do Pix para o cartão: a recorrência antiga não deve continuar

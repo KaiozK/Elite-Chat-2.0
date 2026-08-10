@@ -1,7 +1,7 @@
 {
   "id": "/app/",
-  "name": "EliteChat — CRM de WhatsApp",
-  "short_name": "EliteChat",
+  "name": "Koonfy — CRM de WhatsApp",
+  "short_name": "Koonfy",
   "description": "CRM de WhatsApp com atendimento, automações e campanhas.",
   "start_url": "/app/?src=pwa",
   "scope": "/app/",

@@ -1,7 +1,7 @@
 // ============================================================================
 // ADQUIRENTES — cartão de CRÉDITO e BOLETO.
 //
-// Os três meios aceitos no EliteChat são Pix, crédito e boleto. O Pix (Woovi)
+// Os três meios aceitos no Koonfy são Pix, crédito e boleto. O Pix (Woovi)
 // não passa por aqui; crédito e boleto sim, com dois adquirentes
 // intercambiáveis: o admin escolhe um no Admin SaaS e o resto do sistema não
 // muda nada.
@@ -149,7 +149,7 @@ const pagarme = {
         payment_method: 'boleto',
         split: split && split.length ? split : undefined,
         boleto: {
-          instructions: (description || 'Pagamento EliteChat').slice(0, 255),
+          instructions: (description || 'Pagamento Koonfy').slice(0, 255),
           due_at: venc.toISOString(),
           document_number: String(correlationID).slice(-16)
         }
@@ -314,7 +314,7 @@ const asaas = {
       headers: {
         'access_token': cfg.apiKey,
         'Content-Type': 'application/json',
-        'User-Agent': 'EliteChat'
+        'User-Agent': 'Koonfy'
       },
       body: body ? JSON.stringify(body) : undefined
     });
@@ -512,7 +512,7 @@ const DRIVERS = { pagarme, asaas };
 // Config padrão do bloco de cartão (fica em platform.elitepay.card).
 // ---------------------------------------------------------------------------
 // PRAZO DE LIQUIDAÇÃO — exatamente a regra que cada adquirente pratica.
-// Não é configurável: quem define é a adquirente, então o EliteChat só reproduz.
+// Não é configurável: quem define é a adquirente, então o Koonfy só reproduz.
 //
 //   Pagar.me · crédito  D+30 corridos, UMA parcela por mês (D+30, D+60, D+90…)
 //              débito   D+1 útil
@@ -595,10 +595,10 @@ function emptyCard() {
     maxInstallments: 12,        // parcelas máximas no crédito
     feeCardPercent: 0,          // taxa da PLATAFORMA sobre o valor (além da do adquirente)
     feeCardFixed: 0,            // taxa fixa da plataforma, em centavos
-    softDescriptor: 'ELITECHAT',
+    softDescriptor: 'KOONFY',
 
     // ---- Como o lojista recebe o dinheiro da venda no cartão ----
-    // 'wallet' → cai na CARTEIRA dele dentro do EliteChat (liberada após o
+    // 'wallet' → cai na CARTEIRA dele dentro do Koonfy (liberada após o
     //            prazo do adquirente) e pode ser usada para pagar o plano,
     //            comprar conexões, links etc. ou ser sacada (com taxa de saque).
     // 'split'  → vai direto para o recebedor dele no adquirente (modelo antigo).

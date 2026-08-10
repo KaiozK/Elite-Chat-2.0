@@ -95,7 +95,7 @@ async function syncSubscription(acc, motivo) {
     const sub = await createSubscription({
       correlationID: cid, value: total,
       customer: { name: acc.name, email: acc.email },
-      comment: `EliteChat: ${plan.name} (mensal)`
+      comment: `Koonfy: ${plan.name} (mensal)`
     });
     b.wooviSubId = sub.globalID || sub.id || '';
     b.subCorrelationID = cid;

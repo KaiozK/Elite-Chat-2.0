@@ -409,8 +409,8 @@ function landingHtml() {
 function seoEsc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function buildSeoHead(seo, origin) {
   seo = seo || {};
-  const title = seo.title || 'EliteChat, CRM de WhatsApp com IA';
-  const desc = seo.description || 'Automatize o atendimento no WhatsApp, gerencie leads no CRM e dispare campanhas em massa com o EliteChat.';
+  const title = seo.title || 'Koonfy, CRM de WhatsApp com IA';
+  const desc = seo.description || 'Automatize o atendimento no WhatsApp, gerencie leads no CRM e dispare campanhas em massa com o Koonfy.';
   const ogTitle = seo.ogTitle || title;
   const ogDesc = seo.ogDescription || desc;
   const ogImg = seo.ogImage || (origin + '/assets/elitechat-logo.png');
@@ -425,7 +425,7 @@ function buildSeoHead(seo, origin) {
   t.push(`<meta name="theme-color" content="${seoEsc(theme)}">`);
   t.push(`<link rel="canonical" href="${seoEsc(url)}">`);
   t.push(`<meta property="og:type" content="website">`);
-  t.push(`<meta property="og:site_name" content="EliteChat">`);
+  t.push(`<meta property="og:site_name" content="Koonfy">`);
   t.push(`<meta property="og:title" content="${seoEsc(ogTitle)}">`);
   t.push(`<meta property="og:description" content="${seoEsc(ogDesc)}">`);
   t.push(`<meta property="og:image" content="${seoEsc(ogImg)}">`);
@@ -436,7 +436,7 @@ function buildSeoHead(seo, origin) {
   t.push(`<meta name="twitter:image" content="${seoEsc(ogImg)}">`);
   if (seo.gaId) t.push(`<script async src="https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(seo.gaId)}"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config',${JSON.stringify(seo.gaId)});</script>`);
   if (seo.extraHead) t.push(seo.extraHead);
-  return '\n<!-- SEO EliteChat -->\n' + t.join('\n') + '\n';
+  return '\n<!-- SEO Koonfy -->\n' + t.join('\n') + '\n';
 }
 function serveLanding(req, res) {
   let html = landingHtml();
@@ -505,7 +505,7 @@ const PORT = process.env.PORT || 3900;
 app.listen(PORT, () => {
   const p = db.get().platform;
   console.log('==============================================');
-  console.log(`  EliteChat rodando em http://localhost:${PORT}`);
+  console.log(`  Koonfy rodando em http://localhost:${PORT}`);
   console.log(`  Site (marketing):    http://localhost:${PORT}/`);
   console.log(`  Painel:              http://localhost:${PORT}/app`);
   console.log(`  Webhook Meta:        POST/GET /webhook`);

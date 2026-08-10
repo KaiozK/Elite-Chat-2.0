@@ -1,4 +1,4 @@
-// Janela de atendimento de 24h (Meta) + ciclo de vida do atendimento — EliteChat
+// Janela de atendimento de 24h (Meta) + ciclo de vida do atendimento — Koonfy
 //
 // Fonte única de verdade para:
 //   • Janela de 24h: aberta enquanto passarem <24h da ÚLTIMA mensagem recebida

@@ -118,7 +118,7 @@ function noteBaseUrl(url) {
   if (p.baseUrl !== url) { p.baseUrl = url; db.save(); }
 }
 function baseUrl() { return _baseUrl || db.get().platform.baseUrl || ''; }
-// Link de pagamento da cobrança: o checkout hospedado no EliteChat.
+// Link de pagamento da cobrança: o checkout hospedado no Koonfy.
 // Fallback: o link do gateway (cobranças antigas / base URL desconhecida).
 function payLink(ch) {
   const b = baseUrl();
@@ -192,7 +192,7 @@ const TPL_VARS = {
   cobranca: [
     { n: 1, key: 'nome', label: 'Nome do cliente', example: 'Maria Silva' },
     { n: 2, key: 'valor', label: 'Valor da cobrança', example: 'R$ 149,90' },
-    { n: 3, key: 'link', label: 'Link de pagamento', example: 'https://pay.elitechat.com.br/abc123' },
+    { n: 3, key: 'link', label: 'Link de pagamento', example: 'https://pay.koonfy.com.br/abc123' },
     { n: 4, key: 'codigo', label: 'Pix copia e cola', example: '00020126580014BR.GOV.BCB.PIX...' },
     { n: 5, key: 'descricao', label: 'Descrição / produto', example: 'Plano Premium' },
     { n: 6, key: 'vencimento', label: 'Vencimento', example: '31/12/2026' }
@@ -764,7 +764,7 @@ function fmtBRL(cents) { return (cents / 100).toLocaleString('pt-BR', { style: '
 
 // ---------------------------------------------------------------------------
 // IDENTIFICAÇÃO DO PAGADOR (etapa 1 do checkout público)
-// Cria o cliente na Woovi, cadastra/atualiza o CONTATO no EliteChat e
+// Cria o cliente na Woovi, cadastra/atualiza o CONTATO no Koonfy e
 // registra os eventos na pipeline (funil) — tudo automático.
 // ---------------------------------------------------------------------------
 function normalizePayerPhone(phone) {
@@ -826,7 +826,7 @@ async function identifyPayer(chargeId, fields, broadcast) {
     try { require('./tracking').upsertSession(acc, { ...ch.trk, waId: phone, email, doc }); } catch {}
   }
 
-  // 1) CONTATO no EliteChat — telefone é o identificador; nunca duplica.
+  // 1) CONTATO no Koonfy — telefone é o identificador; nunca duplica.
   //    Novo → entra na etapa padrão do funil; existente → só preenche vazios.
   const contact = store.upsertContact(acc, phone, name, {
     email,
@@ -934,7 +934,7 @@ function publicChargeView(id) {
     return {
       demo: true, id, status: 'active',
       value: (prod && prod.price) || 9700, comment: (prod && prod.name) || 'Exemplo: Plano mensal',
-      brCode: '00020126580014BR.GOV.BCB.PIX0136demo-elitechat-checkout-preview520400005303986540597.005802BR5909ELITECHAT6009SAO PAULO62070503***6304DEMO',
+      brCode: '00020126580014BR.GOV.BCB.PIX0136demo-koonfy-checkout-preview520400005303986540597.005802BR5909KOONFY6009SAO PAULO62070503***6304DEMO',
       qrCodeImage: '', createdAt: Date.now(), paidAt: null,
       expiresAt: Date.now() + 86400000,
       needsId: true, prefill: { name: '', phone: '' },
@@ -991,7 +991,7 @@ function finalizePaid(acc, ch, broadcast) {
   log(acc, { type: 'charge_paid', chargeId: ch.id, amount: ch.value, detail: `Pagamento confirmado${via}${ch.contactName ? ', ' + ch.contactName : ''}` });
   plog({ type: 'charge_paid', accountId: acc.id, accountName: acc.name, amount: ch.value, fee: ch.platformCut });
   advancePipelineOnPaid(acc, ch);   // funil: contato → "Ganho" + tag Cliente
-  // Venda no CARTÃO: o líquido entra na carteira do cliente aqui no EliteChat
+  // Venda no CARTÃO: o líquido entra na carteira do cliente aqui no Koonfy
   // (a liberar, conforme o prazo do adquirente) para ele usar na plataforma
   // ou sacar depois.
   if (ch.method === 'card') { try { creditCardSale(acc, ch, broadcast); } catch (e) { log(acc, { type: 'wallet_error', chargeId: ch.id, detail: e.message }); } }

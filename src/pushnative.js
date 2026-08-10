@@ -22,7 +22,7 @@
 //   iOS:      APNS_KEY / APNS_KEY_FILE  chave .p8 do APNs
 //             APNS_KEY_ID               ID da chave (10 caracteres)
 //             APNS_TEAM_ID              Team ID da conta Apple Developer
-//             APNS_BUNDLE_ID            id do app (padrão: com.elitechat.app)
+//             APNS_BUNDLE_ID            id do app (padrão: com.koonfy.app)
 //             APNS_ENV                  production (padrão) ou sandbox
 const crypto = require('crypto');
 const fs = require('fs');
@@ -69,7 +69,7 @@ function apnsConfig() {
       key: crypto.createPrivateKey(pem),
       keyId,
       teamId,
-      bundleId: process.env.APNS_BUNDLE_ID || 'com.elitechat.app',
+      bundleId: process.env.APNS_BUNDLE_ID || 'com.koonfy.app',
       host: process.env.APNS_ENV === 'sandbox' ? 'api.sandbox.push.apple.com' : 'api.push.apple.com'
     };
   } catch (e) {
@@ -184,7 +184,7 @@ function apnsSend(token, payload) {
   const urgent = !!payload.requireInteraction;
   const body = JSON.stringify({
     aps: {
-      alert: { title: payload.title || 'EliteChat', body: payload.body || '' },
+      alert: { title: payload.title || 'Koonfy', body: payload.body || '' },
       sound: 'default',
       'thread-id': payload.tag || undefined,
       'interruption-level': urgent ? 'time-sensitive' : 'active'
@@ -229,13 +229,13 @@ async function fcmSend(token, payload) {
 
   const message = {
     token,
-    notification: { title: payload.title || 'EliteChat', body: payload.body || '' },
+    notification: { title: payload.title || 'Koonfy', body: payload.body || '' },
     data: toStringMap(payload.data),
     android: {
       priority: 'HIGH',
       notification: {
         sound: 'default',
-        channel_id: 'elitechat',
+        channel_id: 'koonfy',
         tag: payload.tag || undefined,
         notification_priority: urgent ? 'PRIORITY_MAX' : 'PRIORITY_DEFAULT'
       }

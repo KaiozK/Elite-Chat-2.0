@@ -13,7 +13,7 @@ const db = require('./db');
 // Conexões suportadas (o usuário liga/desliga e informa o ID/token de cada uma)
 // ---------------------------------------------------------------------------
 // `mode` diz COMO a conexão entrega o evento, e isso muda o que ela exige:
-//   'server' → o EliteChat chama a API do destino pelo servidor. Precisa de
+//   'server' → o Koonfy chama a API do destino pelo servidor. Precisa de
 //              token. Não morre em bloqueador de anúncio.
 //   'client' → é uma tag de navegador, injetada nas páginas públicas (link
 //              rastreável e checkout). Só precisa do ID, nunca de token.

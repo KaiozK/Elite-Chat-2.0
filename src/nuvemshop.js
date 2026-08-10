@@ -6,7 +6,7 @@
 // permanente (a Nuvemshop não expira o token).
 //
 // Depois de conectada, registramos webhooks na loja (pedido criado/pago/cancelado
-// e cliente novo). Cada evento vira contato + variáveis no EliteChat e pode
+// e cliente novo). Cada evento vira contato + variáveis no Koonfy e pode
 // disparar automações do Flow Builder — mesma mecânica dos webhooks de entrada.
 //
 // Docs: https://tiendanube.github.io/api-documentation/
@@ -17,7 +17,7 @@ const store = require('./store');
 const AUTH_BASE = 'https://www.tiendanube.com/apps';
 const API_BASE = 'https://api.nuvemshop.com.br';
 const API_VERSION = '2025-03';
-const UA = 'EliteChat CRM (suporte@elitechat.com.br)'; // a Nuvemshop exige User-Agent
+const UA = 'Koonfy CRM (suporte@koonfy.com.br)'; // a Nuvemshop exige User-Agent
 
 // Eventos que assinamos na loja do cliente.
 const EVENTS = [

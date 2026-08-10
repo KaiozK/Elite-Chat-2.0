@@ -1,5 +1,5 @@
 /* ============================================================
-   Elite Chat — Design system do app (identidade da landing)
+   Koonfy — Design system do app (identidade da landing)
    Manrope · verde claro #34D399 · tinta #0F1F15 · mint #ECFDF5
    Botões pill, cards 20px, sombras verdes suaves
    ============================================================ */
@@ -2835,7 +2835,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 /* prévia: capa do banner no resumo (mesma posição da página real) */
 .epk2-cover { width: 100%; height: 56px; object-fit: cover; display: block; border-bottom: 1px solid #e7eaf0; border-radius: 11px 11px 0 0; }
 .epk2-summary { overflow: hidden; }
-/* tipografia unificada (Inter Tight = mesma do Elite Chat) */
+/* tipografia unificada (Inter Tight = mesma do Koonfy) */
 .epk-page { font-family: 'Inter Tight', -apple-system, 'Segoe UI', Roboto, sans-serif; }
 
 /* EliteBuilder = página FOCADA: some a sidebar e o topo do app */

@@ -1,7 +1,7 @@
 // ============================================================================
 // ENVIO DE E-MAIL (SMTP)
 //
-// O EliteChat não usa biblioteca de e-mail: o resto do projeto também fala os
+// O Koonfy não usa biblioteca de e-mail: o resto do projeto também fala os
 // protocolos direto (o Web Push em src/push.js assina VAPID na mão), e uma
 // dependência a mais para mandar três tipos de mensagem não se paga.
 //
@@ -32,7 +32,7 @@ function emptyConfig() {
     enabled: false,
     host: '', port: 587, secure: false,   // secure = TLS implícito (porta 465)
     user: '', pass: '',
-    from: '', fromName: 'EliteChat',
+    from: '', fromName: 'Koonfy',
     lastError: '', lastOkAt: 0
   };
 }
@@ -126,7 +126,7 @@ async function enviar({ to, subject, html, text }) {
 
   try {
     await smtp.esperar();                                   // saudação 220
-    let r = await smtp.mandar('EHLO elitechat', [2]);
+    let r = await smtp.mandar('EHLO koonfy', [2]);
 
     // Porta 587: sobe para TLS antes de qualquer credencial.
     if (!c.secure && /STARTTLS/i.test(r.texto)) {
@@ -134,7 +134,7 @@ async function enviar({ to, subject, html, text }) {
       socket = tls.connect({ socket, servername: c.host });
       await new Promise((res, rej) => { socket.once('secureConnect', res); socket.once('error', rej); });
       smtp = conversa(socket, timeoutMs);
-      r = await smtp.mandar('EHLO elitechat', [2]);
+      r = await smtp.mandar('EHLO koonfy', [2]);
     }
 
     if (c.user) {
@@ -157,7 +157,7 @@ async function enviar({ to, subject, html, text }) {
 
     const limite = 'ec_' + Date.now().toString(36);
     const corpo = [
-      `From: ${mime(c.fromName || 'EliteChat')} <${c.from}>`,
+      `From: ${mime(c.fromName || 'Koonfy')} <${c.from}>`,
       `To: <${destino}>`,
       `Subject: ${mime(subject)}`,
       `Date: ${new Date().toUTCString()}`,
@@ -207,7 +207,7 @@ const CAIXA = (titulo, linhas, codigo) => `
 function enviarCodigoVerificacao(email, codigo) {
   return enviar({
     to: email,
-    subject: 'Confirme seu e-mail no EliteChat',
+    subject: 'Confirme seu e-mail no Koonfy',
     text: `Seu código de confirmação é ${codigo}. Ele vale por 15 minutos.`,
     html: CAIXA('Confirme seu e-mail', ['Use o código abaixo para confirmar este endereço. Ele vale por 15 minutos.'], codigo)
   });
@@ -216,7 +216,7 @@ function enviarCodigoVerificacao(email, codigo) {
 function enviarCodigoLogin(email, codigo) {
   return enviar({
     to: email,
-    subject: 'Seu código de acesso ao EliteChat',
+    subject: 'Seu código de acesso ao Koonfy',
     text: `Seu código de acesso é ${codigo}. Ele vale por 10 minutos.`,
     html: CAIXA('Código de acesso', ['Alguém está entrando na sua conta. Use o código abaixo para concluir o acesso.'], codigo)
   });

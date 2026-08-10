@@ -1,4 +1,4 @@
-/* EliteChat — configuração de runtime (web + apps nativos)
+/* Koonfy — configuração de runtime (web + apps nativos)
  *
  * O mesmo código do painel roda em três lugares:
  *   1. Navegador  → servido pelo próprio Express, API no mesmo host (caminho relativo).

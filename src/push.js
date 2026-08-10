@@ -31,7 +31,7 @@ function vapidAuth(endpoint) {
   const body = b64url(JSON.stringify({
     aud,
     exp: Math.floor(Date.now() / 1000) + 12 * 3600,
-    sub: 'mailto:no-reply@elitechat.app'
+    sub: 'mailto:no-reply@koonfy.app'
   }));
   const signingInput = header + '.' + body;
   const key = crypto.createPrivateKey({ key: v.jwk, format: 'jwk' });

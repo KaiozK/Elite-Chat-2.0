@@ -1,4 +1,4 @@
-// Motor de automações (Flow Builder) — EliteChat
+// Motor de automações (Flow Builder) — Koonfy
 // Gatilhos: keyword (palavra-chave em mensagem recebida), link (frase do wa.me),
 // webhook (POST externo em /flow-hook/:token).
 // Ações (nós): text, buttons, http, delay.

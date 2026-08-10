@@ -132,7 +132,7 @@ function notifOptInModal() {
     <h2>${ico('bell')} Ativar notificações?</h2>
     <p class="muted" style="margin:0 0 12px;font-size:13.5px">
       Receba o aviso na hora em que um cliente mandar mensagem, mesmo com o
-      EliteChat fechado. Sem isso, você só vê a mensagem ao abrir o painel.
+      Koonfy fechado. Sem isso, você só vê a mensagem ao abrir o painel.
     </p>
     <div class="notif-perks">
       <div>${ico('message', 14)} Nova mensagem de cliente</div>
@@ -319,7 +319,7 @@ function renderNotifSettings() {
     `<label class="chk notif-chk"><input type="checkbox" ${val ? 'checked' : ''} onchange="notifSet('${path}', this.checked)"> <span><b>${label}</b>${hint ? `<em>${hint}</em>` : ''}</span></label>`;
   return `
     <h2>${ico('bell')} Notificações & sons ${permBadge}</h2>
-    <p class="muted" style="margin:0 0 14px;font-size:13px">Controle os avisos do EliteChat instalado como aplicativo (Desktop, Android e iOS). ${perm !== 'granted' ? `<button class="btn small primary" style="margin-left:6px" onclick="notifEnable()">${ico('bell', 13)} Ativar notificações</button>` : ''}</p>
+    <p class="muted" style="margin:0 0 14px;font-size:13px">Controle os avisos do Koonfy instalado como aplicativo (Desktop, Android e iOS). ${perm !== 'granted' ? `<button class="btn small primary" style="margin-left:6px" onclick="notifEnable()">${ico('bell', 13)} Ativar notificações</button>` : ''}</p>
     <div class="notif-grid">
       ${ck('enabled', p.enabled, 'Notificações do sistema', 'Avisos nativos com o app em segundo plano')}
       ${ck('sounds', p.sounds, 'Sons', 'Toca um som ao chegar novidade')}
@@ -693,7 +693,7 @@ function showLogin() {
 //
 // Os três campos usam ecSelect(), o mesmo dropdown do resto do app: o <select>
 // nativo abre uma lista desenhada pelo sistema, que não aceita a tipografia
-// nem as cores do EliteChat e destoava do cartão de login.
+// nem as cores do Koonfy e destoava do cartão de login.
 // ---------------------------------------------------------------------------
 const REG_SEGMENTOS = [
   'iGaming', 'Infoprodutos e cursos', 'E-commerce', 'Agência de marketing',
@@ -3310,7 +3310,7 @@ const TPL_ROLE_INFO = {
     vars: [
       ['nome do cliente', 'Maria Silva'],
       ['valor da cobrança', 'R$ 149,90'],
-      ['link de pagamento', 'https://pay.elitechat.com.br/abc123'],
+      ['link de pagamento', 'https://pay.koonfy.com.br/abc123'],
       ['Pix copia e cola', '00020126580014BR.GOV.BCB.PIX...'],
       ['descrição / produto', 'Plano Premium'],
       ['vencimento', '31/12/2026']
@@ -3565,7 +3565,7 @@ async function renderSettings() {
       <div class="tabpane" data-pane="atendimento">
         <div class="card">
           <h2>${ico('clock')} Janela de atendimento de 24h</h2>
-          <p class="muted" style="margin:0;font-size:13px">Pela regra da Meta, você só pode enviar mensagens livres (texto, imagens, áudios, vídeos, documentos e respostas rápidas) <b>dentro de 24h</b> após a última mensagem do cliente. Fora dela, o EliteChat bloqueia o envio automaticamente e libera <b>apenas Templates aprovados</b>, que reabrem a conversa.</p>
+          <p class="muted" style="margin:0;font-size:13px">Pela regra da Meta, você só pode enviar mensagens livres (texto, imagens, áudios, vídeos, documentos e respostas rápidas) <b>dentro de 24h</b> após a última mensagem do cliente. Fora dela, o Koonfy bloqueia o envio automaticamente e libera <b>apenas Templates aprovados</b>, que reabrem a conversa.</p>
         </div>
         <div class="card">
           <h2>${ico('check-circle')} Finalização automática</h2>
@@ -3611,7 +3611,7 @@ async function renderSettings() {
           <div class="pf-avatar" id="pf-photo">${waInitials((state.wa && state.wa.verifiedName) || state.user)}</div>
           <div style="flex:1;min-width:0">
             <b style="font-size:13.5px">Foto do perfil</b>
-            <p class="muted" style="margin:2px 0 8px;font-size:12.5px">É a foto que seus clientes veem no WhatsApp. O EliteChat também a usa no topo do painel e nos previews.</p>
+            <p class="muted" style="margin:2px 0 8px;font-size:12.5px">É a foto que seus clientes veem no WhatsApp. O Koonfy também a usa no topo do painel e nos previews.</p>
             <input type="file" id="pf-photo-file" accept="image/jpeg,image/png" hidden onchange="changeProfilePhoto(this)">
             <div class="row" style="gap:8px">
               <button class="btn small no-grow" onclick="$('#pf-photo-file').click()">${ico('image', 13)} Trocar foto</button>
@@ -4059,7 +4059,7 @@ async function saveLinkDomain() {
 async function disconnectWa() {
   if (!await confirmModal({
     title: 'Desconectar WhatsApp',
-    text: 'O número deixará de enviar e receber mensagens pelo EliteChat até uma nova conexão.',
+    text: 'O número deixará de enviar e receber mensagens pelo Koonfy até uma nova conexão.',
     ok: 'Desconectar', danger: true
   })) return;
   try {
@@ -4411,7 +4411,7 @@ const TITLES = {
 };
 function updateTopbar() {
   const t = $('#tb-title');
-  if (t) t.textContent = TITLES[state.view] || 'Elite Chat';
+  if (t) t.textContent = TITLES[state.view] || 'Koonfy';
   markTabbarActive();   // o destino aceso na barra de baixo segue a rota
 }
 
@@ -4631,7 +4631,7 @@ function brazilMap3D(g) {
     // raiz quadrada em vez de razão direta: com um estado dominante (ex.: SP com
     // 10x o segundo), a escala linear jogaria todo o resto no tom mais claro.
     const frac = count ? Math.sqrt(count / max) : 0;
-    // MAPA DE CALOR: uma única escala de verde EliteChat, do frio ao quente.
+    // MAPA DE CALOR: uma única escala de verde Koonfy, do frio ao quente.
     // Tudo é opacidade sobre --geo-ink (a cor da marca), então o tema claro
     // escurece o estado conforme cresce e o escuro o acende — sem JS por tema.
     //  · 0 leads  = 7%  (verde bem apagado, "frio")
@@ -6051,7 +6051,7 @@ function openCardPay(mode, id, amount, qty) {
 
   // CARTÃO JÁ CADASTRADO NA FATURA
   //
-  // Quem já pagou o EliteChat no cartão não deveria digitar tudo de novo.
+  // Quem já pagou o Koonfy no cartão não deveria digitar tudo de novo.
   // `reusable` só é verdadeiro quando o adquirente devolveu um identificador
   // reaproveitável — aí a compra sai em um clique. Quando não devolveu (a
   // tokenização da Asaas, por exemplo, precisa ser liberada na conta), ainda
@@ -6064,7 +6064,7 @@ function openCardPay(mode, id, amount, qty) {
   openModal(`
     <h2>${ico('card')} Pagar no cartão</h2>
     <p class="muted" style="margin:0 0 14px;font-size:13px">
-      ${mode === 'plan' ? 'Assinatura do EliteChat'
+      ${mode === 'plan' ? 'Assinatura do Koonfy'
         : mode === 'topup' ? 'Recarga da carteira'
         : `${qty}x ${esc(extraLabel(id))}`}
      , <b style="color:var(--verde-deep)">${fmtBRL(amount)}</b>. A ativação é imediata após a aprovação.
@@ -6095,7 +6095,7 @@ function openCardPay(mode, id, amount, qty) {
       <select id="cp-inst">${Array.from({ length: maxP }, (_, i) =>
         `<option value="${i + 1}">${i + 1}x de ${fmtBRL(Math.round(amount / (i + 1)))}${i ? '' : ' à vista'}</option>`).join('')}</select>
     </label>
-    <p class="hint" style="margin-top:10px">${ico('lock', 12)} Os dados vão direto para o adquirente, o EliteChat guarda só a bandeira e os 4 últimos dígitos para renovar.</p>
+    <p class="hint" style="margin-top:10px">${ico('lock', 12)} Os dados vão direto para o adquirente, o Koonfy guarda só a bandeira e os 4 últimos dígitos para renovar.</p>
     <div class="row" style="margin-top:14px">
       <button class="btn" onclick="closeModal()">Cancelar</button>
       <button class="btn primary" onclick="submitCardPay(this)">${ico('lock', 14)} Pagar ${fmtBRL(amount)}</button>
@@ -6432,7 +6432,13 @@ async function paintAdmin() {
 
       <div class="tabpane ${activeTab === 'adm-acc' ? 'show' : ''}" data-pane="adm-acc">
         <div class="card">
-          <h2>${ico('users')} Contas (${d.accounts.length})</h2>
+          <div class="row" style="align-items:center;margin-bottom:6px">
+            <h2 style="margin:0;flex:1">${ico('users')} Contas (${d.accounts.length})</h2>
+            <button class="btn primary no-grow" onclick="admNovaConta()">${ico('plus', 14)} Criar conta</button>
+          </div>
+          <p class="muted" style="margin:0 0 14px;font-size:13px">
+            Contas marcadas como <b>internas</b> rodam sem plano, sem cota e sem cobrança,
+            e ficam fora das métricas. Use para os seus próprios negócios.</p>
           ${d.accounts.length ? `<div style="overflow-x:auto"><table><thead><tr><th>Conta</th><th>Plano</th><th>Status</th><th>Expira</th><th>WA</th><th style="text-align:right">Carteira</th><th>Indicações</th><th></th></tr></thead><tbody>
             ${d.accounts.map(a => {
               const pl = d.plans.find(p => p.id === a.billing.planId);
@@ -6450,8 +6456,13 @@ async function paintAdmin() {
                 <td class="muted">${a.billing.periodEnd ? new Date(a.billing.periodEnd).toLocaleDateString('pt-BR') : '-'}</td>
                 <td>${a.waConnected ? '<span class="ok-dot">●</span>' : '<span class="bad-dot">●</span>'}</td>
                 <td style="text-align:right">${fmtBRL(a.walletBalance)}</td>
-                <td>${a.referrals ? `<b>${a.referrals}</b> · ${fmtBRL(a.affEarned)}` : '-'}</td>
-                <td style="white-space:nowrap"><button class="btn small" onclick="admExtend('${a.id}')">+30 dias</button></td>
+                <td>${a.unlimited ? `<span class="pill done">interna</span>`
+                  : (a.referrals ? `<b>${a.referrals}</b> · ${fmtBRL(a.affEarned)}` : '-')}</td>
+                <td style="white-space:nowrap">
+                  ${a.unlimited ? '' : `<button class="btn small" onclick="admExtend(\'${a.id}\')">+30 dias</button>`}
+                  <button class="btn small" onclick="admToggleIlimitada('${a.id}', ${a.unlimited ? 'false' : 'true'})">
+                    ${a.unlimited ? 'Tornar cliente' : 'Tornar interna'}</button>
+                </td>
               </tr>`;
             }).join('')}
           </tbody></table></div>` : '<p class="muted">Nenhuma conta de cliente ainda. Divulgue o link de cadastro!</p>'}
@@ -6773,7 +6784,7 @@ function admMktPaint() {
     <div class="card">
       <h2>${ico('megaphone')} ${mktEdit && mktEdit.id ? 'Editar template' : 'Novo template'}</h2>
       <p class="muted" style="margin:0 0 14px;font-size:13px">
-        Mensagens que a plataforma envia para as contas do EliteChat. Use as
+        Mensagens que a plataforma envia para as contas do Koonfy. Use as
         variáveis para cada cliente receber os próprios dados:
         ${mktChips()}
       </p>
@@ -7297,6 +7308,63 @@ async function admTestWoovi(btn) {
 async function admWithdraw(id, action) {
   try { await api('/admin/withdrawals/' + id, { method: 'PUT', body: { action } }); paintAdmin(); setTimeout(() => showSettingsTab('adm-wd'), 60); } catch (e) { toast(e.message, 'error'); }
 }
+// ---------------------------------------------------------------------------
+// CONTAS INTERNAS
+//
+// A conta do admin é para gerir os clientes. Os negócios do próprio dono
+// pedem contas comuns do Koonfy, com inbox e funil próprios, mas sem plano
+// nem cobrança. É o que o interruptor "interna" faz, e é por isso que elas
+// saem das métricas: contar a própria casa como assinante inflaria o MRR.
+// ---------------------------------------------------------------------------
+function admNovaConta() {
+  openModal(`
+    <h2>${ico('plus')} Criar conta</h2>
+    <p class="muted" style="margin:0 0 14px;font-size:13px">
+      A pessoa entra com este e-mail e senha, como qualquer cliente.
+    </p>
+    <div class="row">
+      <label style="flex:1.2">Nome da empresa<input id="nc-name" placeholder="Meu outro negócio"></label>
+      <label style="flex:1.4">E-mail<input id="nc-email" inputmode="email" placeholder="voce@empresa.com"></label>
+    </div>
+    <label style="margin-top:10px">Senha (mín. 6)<input id="nc-pass" type="password" autocomplete="new-password"></label>
+    <label class="chk" style="margin-top:14px"><input type="checkbox" id="nc-unl" checked>
+      <span><b>Conta interna, ilimitada</b>
+      <em>Sem plano, sem cota, sem cobrança e fora das métricas do SaaS.</em></span></label>
+    <div class="row" style="margin-top:16px">
+      <button class="btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn primary" onclick="admCriarConta(this)">Criar conta</button>
+    </div>`);
+}
+
+async function admCriarConta(btn) {
+  btn.disabled = true;
+  try {
+    await api('/admin/accounts', { body: {
+      name: $('#nc-name').value, email: $('#nc-email').value,
+      pass: $('#nc-pass').value, unlimited: $('#nc-unl').checked
+    } });
+    closeModal();
+    toast('Conta criada');
+    paintAdmin();
+  } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
+}
+
+async function admToggleIlimitada(id, ligar) {
+  const ok = await confirmModal({
+    title: ligar ? 'Tornar interna' : 'Tornar cliente',
+    text: ligar
+      ? 'A conta passa a rodar sem plano, sem cota e sem cobrança, e sai das métricas do SaaS.'
+      : 'A conta volta a valer as regras de plano e cobrança, e entra de novo nas métricas.',
+    ok: 'Confirmar'
+  });
+  if (!ok) return;
+  try {
+    await api('/admin/accounts/' + id + '/unlimited', { method: 'PUT', body: { unlimited: ligar } });
+    toast(ligar ? 'Conta marcada como interna' : 'Conta voltou a ser cliente');
+    paintAdmin();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
 async function admExtend(id) {
   try { await api('/admin/accounts/' + id + '/billing', { method: 'PUT', body: { extendDays: 30, status: 'active' } }); toast('Assinatura estendida por 30 dias'); paintAdmin(); setTimeout(() => showSettingsTab('adm-acc'), 60); } catch (e) { toast(e.message, 'error'); }
 }
@@ -7309,13 +7377,13 @@ function admSeoForm(seo) {
       <h2>${ico('target')} SEO da página de marketing</h2>
       <p class="muted" style="margin:0 0 14px;font-size:13px">Personalize como sua página inicial (a landing pública em <code>${API.webOrigin}/</code>) aparece no Google e ao ser compartilhada. As tags são injetadas no HTML lido pelos buscadores.</p>
       <div class="row">
-        <label style="flex:2">Título (title / aba do navegador)<input id="seo-title" maxlength="180" value="${v('title')}" placeholder="EliteChat. CRM de WhatsApp com IA"></label>
+        <label style="flex:2">Título (title / aba do navegador)<input id="seo-title" maxlength="180" value="${v('title')}" placeholder="Koonfy. CRM de WhatsApp com IA"></label>
         <label style="flex:1">Theme color<input id="seo-theme" value="${v('themeColor')}" placeholder="#34D399"></label>
       </div>
-      <label style="margin-top:9px">Descrição (meta description, ideal até 160 caracteres)<textarea id="seo-desc" rows="2" maxlength="400" placeholder="Automatize o atendimento no WhatsApp, gerencie leads e dispare campanhas com o EliteChat.">${v('description')}</textarea></label>
+      <label style="margin-top:9px">Descrição (meta description, ideal até 160 caracteres)<textarea id="seo-desc" rows="2" maxlength="400" placeholder="Automatize o atendimento no WhatsApp, gerencie leads e dispare campanhas com o Koonfy.">${v('description')}</textarea></label>
       <div class="row" style="margin-top:9px">
         <label style="flex:2">Palavras-chave (separadas por vírgula)<input id="seo-keywords" maxlength="400" value="${v('keywords')}" placeholder="crm whatsapp, disparo em massa, chatbot"></label>
-        <label style="flex:1">Autor<input id="seo-author" maxlength="120" value="${v('author')}" placeholder="EliteChat"></label>
+        <label style="flex:1">Autor<input id="seo-author" maxlength="120" value="${v('author')}" placeholder="Koonfy"></label>
       </div>
       <h3 class="notif-sub">Compartilhamento (Open Graph / redes sociais)</h3>
       <div class="row">
@@ -7411,12 +7479,12 @@ function admFeesSection(cfg, c, t) {
     <h2 style="font-size:14px">${ico('clock')} Repasse das vendas no cartão</h2>
     <p class="muted" style="margin:0 0 12px;font-size:13px">
       O adquirente não libera o dinheiro do cartão no mesmo dia. No modo <b>Carteira</b>, a venda entra
-      na carteira do lojista dentro do EliteChat como <b>“a liberar”</b> e vira saldo sacável quando o prazo vence.
+      na carteira do lojista dentro do Koonfy como <b>“a liberar”</b> e vira saldo sacável quando o prazo vence.
       Ele pode gastar esse saldo aqui (plano, conexões, links) sem nem sacar.
     </p>
     <div class="row" style="align-items:flex-end">
       <label style="max-width:340px">Modo de repasse${ecSelect('adm-card-mode', [
-        { value: 'wallet', label: 'Carteira no EliteChat (recomendado)' },
+        { value: 'wallet', label: 'Carteira no Koonfy (recomendado)' },
         { value: 'split', label: 'Split direto para o recebedor do lojista' }
       ], c.settleMode || 'wallet')}</label>
     </div>
@@ -7431,7 +7499,7 @@ function admFeesSection(cfg, c, t) {
           <em>${esc((c.settleRules || {}).boleto ? c.settleRules.boleto.text : '')}</em></div>
       </div>
       <p class="hint" style="margin:10px 0 0;text-align:left">
-        Não são editáveis de propósito: o EliteChat libera o saldo <b>no mesmo dia em que a adquirente repassa</b>.
+        Não são editáveis de propósito: o Koonfy libera o saldo <b>no mesmo dia em que a adquirente repassa</b>.
         Se fosse possível digitar um prazo menor, o cliente sacaria dinheiro que ainda não entrou.
         Trocar de adquirente troca o prazo automaticamente.
       </p>
@@ -7439,7 +7507,7 @@ function admFeesSection(cfg, c, t) {
 
     <div class="row" style="margin-top:16px;align-items:flex-end">
       <label style="flex:1.6">Chave Pix da plataforma (recebe o split do Pix)<input id="adm-ep-splitkey" value="${esc(cfg.splitPixKey || '')}" placeholder="chave Pix que recebe a comissão"></label>
-      <label style="max-width:190px">Nome na fatura do cartão<input id="adm-card-sd" value="${esc(c.softDescriptor || '')}" maxlength="13" placeholder="ELITECHAT"></label>
+      <label style="max-width:190px">Nome na fatura do cartão<input id="adm-card-sd" value="${esc(c.softDescriptor || '')}" maxlength="13" placeholder="KOONFY"></label>
       <label style="max-width:140px">Parcelas máx.<input id="adm-card-inst" value="${esc(String(c.maxInstallments || 1))}" inputmode="numeric"></label>
     </div>
 
@@ -8954,7 +9022,7 @@ async function renderIntegrations() {
   if (nsAvailable) tabs.push(['nuvemshop', 'Nuvemshop', 'cart']);
   $('#view').innerHTML = `<div class="page">
     <div class="page-head row" style="align-items:center">
-      <div style="flex:1"><h1>Integrações</h1><p>Conecte o EliteChat às ferramentas e à loja que você já usa</p></div>
+      <div style="flex:1"><h1>Integrações</h1><p>Conecte o Koonfy às ferramentas e à loja que você já usa</p></div>
       ${intTab === 'webhooks' ? `<button class="btn primary no-grow" onclick="createWebhook()">${ico('plus', 14)} Novo webhook</button>` : ''}
     </div>
     <div class="seg int-tabs">${tabs.map(([k, l, i]) => `<button class="${k === intTab ? 'on' : ''}" onclick="setIntTab('${k}')">${ico(i, 13)} ${l}</button>`).join('')}</div>
@@ -8977,7 +9045,7 @@ function paintWebhooks() {
   if (whMap) return paintWhMapping();
   if (!whList.length) {
     box.innerHTML = `<div class="empty-state card"><div class="big">${ico('webhook', 38)}</div><b>Nenhum webhook ainda</b>
-      <p class="muted" style="margin:6px auto 16px;max-width:460px">Crie um webhook para receber eventos de checkout, formulários ou outro CRM. Cada evento vira um contato no EliteChat e pode disparar uma automação.</p>
+      <p class="muted" style="margin:6px auto 16px;max-width:460px">Crie um webhook para receber eventos de checkout, formulários ou outro CRM. Cada evento vira um contato no Koonfy e pode disparar uma automação.</p>
       <button class="btn primary" onclick="createWebhook()">${ico('plus', 14)} Criar webhook</button></div>`;
     return;
   }
@@ -9126,7 +9194,7 @@ async function simulateWebhook(id) {
   } catch (e) { toast(e.message, 'error'); }
 }
 
-// ---- Editor de Mapeamento de Campos (igual EliteChat 1.0, em página) ----
+// ---- Editor de Mapeamento de Campos (igual Koonfy 1.0, em página) ----
 function editWhMapping(id) {
   whMap = whList.find(w => w.id === id);
   whMapDraft = JSON.parse(JSON.stringify(whMap.mapping || { name: '', phone: '', email: '', custom: [] }));
@@ -9242,7 +9310,7 @@ function paintNuvemshop() {
   if (!c.available) {
     box.innerHTML = `<div class="empty-state card"><div class="big">${ico('cart', 38)}</div>
       <b>Integração com a Nuvemshop em breve</b>
-      <p class="muted" style="margin:6px auto 0;max-width:520px">Estamos finalizando a publicação do app oficial do EliteChat na Nuvemshop.
+      <p class="muted" style="margin:6px auto 0;max-width:520px">Estamos finalizando a publicação do app oficial do Koonfy na Nuvemshop.
       Assim que estiver disponível, você conecta sua loja aqui em um clique, sem precisar de código, App ID ou chaves.</p></div>`;
     return;
   }
@@ -9259,7 +9327,7 @@ function paintNuvemshop() {
     ${hd(c.connected ? 'check-circle' : 'cart', 1, 'Conectar sua loja',
       c.connected
         ? `Loja <b>${esc(c.storeName || c.storeId)}</b> conectada ${c.connectedAt ? timeAgo(c.connectedAt) : ''}`
-        : 'Autorize o EliteChat a ler os pedidos e clientes da sua loja',
+        : 'Autorize o Koonfy a ler os pedidos e clientes da sua loja',
       c.connected ? '<span class="pill done">Conectada</span>' : '<span class="pill pending">Desconectada</span>')}
     ${c.connected ? `
       <div class="wh-meta">
@@ -9277,7 +9345,7 @@ function paintNuvemshop() {
         ${[
           ['Clique em <b>Conectar loja Nuvemshop</b> aqui embaixo', 'Uma janela da Nuvemshop vai abrir'],
           ['Entre com o login da sua loja', 'É o mesmo e-mail e senha que você usa no painel da Nuvemshop'],
-          ['Confirme as permissões', 'O EliteChat pede acesso de leitura a pedidos e clientes, nada é alterado na sua loja'],
+          ['Confirme as permissões', 'O Koonfy pede acesso de leitura a pedidos e clientes, nada é alterado na sua loja'],
           ['Pronto', 'A janela fecha sozinha e sua loja aparece conectada aqui']
         ].map(([t, d], i) => `<div class="ns-step"><span class="ns-step-n">${i + 1}</span>
           <div><b>${t}</b><span>${d}</span></div></div>`).join('')}
@@ -9358,7 +9426,7 @@ async function rehookNs() {
   catch (e) { toast(e.message, 'error'); }
 }
 async function disconnectNs() {
-  if (!await confirmModal({ title: 'Desconectar loja', text: 'O EliteChat deixa de receber pedidos e clientes desta loja. As credenciais do app são mantidas.', ok: 'Desconectar', danger: true })) return;
+  if (!await confirmModal({ title: 'Desconectar loja', text: 'O Koonfy deixa de receber pedidos e clientes desta loja. As credenciais do app são mantidas.', ok: 'Desconectar', danger: true })) return;
   try { nsCfg = (await api('/integrations/nuvemshop', { method: 'DELETE' })).nuvemshop; toast('Loja desconectada'); paintNuvemshop(); }
   catch (e) { toast(e.message, 'error'); }
 }
@@ -10553,7 +10621,7 @@ function epRenderGate(d, icon, title, text, actionHtml) {
 function epRenderOnboarding(d) {
   const kyc = d.onboardingMode === 'kyc';
   $('#view').innerHTML = `<div class="page">
-    <div class="page-head"><h1>Elite Pay</h1><p>Crie sua conta de pagamentos e receba por Pix sem sair do EliteChat</p></div>
+    <div class="page-head"><h1>Elite Pay</h1><p>Crie sua conta de pagamentos e receba por Pix sem sair do Koonfy</p></div>
     <div class="card" style="max-width:720px">
       <h2>${ico('sparkles')} Ative o Elite Pay</h2>
       <p class="muted" style="margin:0 0 16px;font-size:13px">${kyc
@@ -10953,7 +11021,7 @@ function epMsgPreview() {
   if (!el || !prev) return;
   const sample = {
     '{nome}': 'Maria', '{valor}': 'R$ 97,00', '{descricao}': 'Plano mensal, julho',
-    '{link}': 'pay.elitechat.app/x7Qk2', '{codigo}': '00020126…5204000053039865802BR6304AB12'
+    '{link}': 'pay.koonfy.app/x7Qk2', '{codigo}': '00020126…5204000053039865802BR6304AB12'
   };
   let txt = el.value || '';
   for (const k in sample) txt = txt.split(k).join(sample[k]);
@@ -11038,7 +11106,7 @@ async function renderCheckoutBuilder() {
         </div>
         <div class="ckb-stage" id="epk-stage">
           <div class="epk-browser" id="epk-browser">
-            <div class="epk-bbar"><i></i><i></i><i></i><span>elitechat.app/pay/x7Qk2</span></div>
+            <div class="epk-bbar"><i></i><i></i><i></i><span>koonfy.app/pay/x7Qk2</span></div>
             <div class="epk-page" id="epk-page"></div>
           </div>
         </div>
@@ -11219,7 +11287,7 @@ function epkPaintForm() {
       ${cap.ready ? `
       ${linha('credit', 'Cartão de crédito', 'Parcelável, aprovação imediata', cap.credit, 'Crédito não liberado pela plataforma')}
       ${linha('boleto', 'Boleto bancário', 'Compensa em até 2 dias úteis', cap.boleto, 'Boleto não liberado pela plataforma')}` : ''}
-      <p class="hint" style="margin-top:14px">${ico('shield', 12)} O dinheiro do cartão cai direto na <b>sua</b> conta do adquirente, o EliteChat só intermedeia.</p>`;
+      <p class="hint" style="margin-top:14px">${ico('shield', 12)} O dinheiro do cartão cai direto na <b>sua</b> conta do adquirente, o Koonfy só intermedeia.</p>`;
   } else if (epkSection === 'ordem') {
     body = `
       <p class="muted" style="font-size:13px;margin:0 0 12px">Arraste para reordenar os blocos da página. O bloco <b>Checkout</b> é fixo, mas pode mudar de posição.</p>
@@ -11252,7 +11320,7 @@ function epkPaintForm() {
     body = `
       <div class="epk-flowsteps">
         <div><i>1</i><span><b>Identificação</b>, o cliente preenche nome, CPF/CNPJ, e-mail e WhatsApp</span></div>
-        <div><i>2</i><span><b>Automático</b>, vira <b>cliente na Woovi</b>, <b>contato</b> no EliteChat e entra no <b>funil</b></span></div>
+        <div><i>2</i><span><b>Automático</b>, vira <b>cliente na Woovi</b>, <b>contato</b> no Koonfy e entra no <b>funil</b></span></div>
         <div><i>3</i><span><b>Pagamento</b>. QR Code + copia e cola; ao pagar, o contato vai para <b>Ganho</b> com a tag <b>Cliente</b></span></div>
       </div>
       <p class="hint" style="margin-top:14px">${ico('shield', 12)} Tudo isso acontece sem você fazer nada, é só enviar o link da cobrança.</p>`;
@@ -11979,7 +12047,7 @@ async function trkPaintConn(box) {
         <div class="row" style="align-items:center">
           <b style="flex:1">${esc(c.label)}
             <span class="trk-mode ${c.mode === 'server' ? 'srv' : ''}" title="${c.mode === 'server'
-              ? 'O EliteChat envia pelo servidor. Não morre em bloqueador de anúncio.'
+              ? 'O Koonfy envia pelo servidor. Não morre em bloqueador de anúncio.'
               : 'Tag de navegador, injetada no link rastreável e no checkout.'}">${c.mode === 'server' ? 'servidor' : 'navegador'}</span></b>
           <label class="chk" style="margin:0"><input type="checkbox" ${c.enabled ? 'checked' : ''} onchange="trkConnSave('${c.key}', this.checked)"> ativa</label>
         </div>

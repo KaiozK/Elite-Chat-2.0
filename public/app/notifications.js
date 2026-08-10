@@ -1,4 +1,4 @@
-/* EliteChat — Engine de Notificações do WebApp (PWA)
+/* Koonfy — Engine de Notificações do WebApp (PWA)
  * Reutiliza o token (localStorage.wacrm_token) e o toast() do app.
  * Expõe window.ECNotify. Sem dependências externas.
  *
@@ -201,7 +201,7 @@
     // histórico (Centro) sempre registra
     var item = {
       id: 'ntf_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      type: type, title: opts.title || 'EliteChat', body: opts.body || '',
+      type: type, title: opts.title || 'Koonfy', body: opts.body || '',
       waId: opts.waId || null, url: opts.url || null, ts: Date.now(), read: false
     };
     pushCenter(item);

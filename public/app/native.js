@@ -1,4 +1,4 @@
-/* EliteChat — ponte com o app nativo (iOS / Android via Capacitor)
+/* Koonfy — ponte com o app nativo (iOS / Android via Capacitor)
  *
  * Carregado nos dois ambientes, mas tudo aqui só liga quando roda dentro do
  * app das lojas. No navegador o módulo se auto-desativa e o painel segue
@@ -105,7 +105,7 @@
         try {
           ECNotify.notify({
             type: (n.data && n.data.type) || 'message',
-            title: n.title || 'EliteChat',
+            title: n.title || 'Koonfy',
             body: n.body || '',
             waId: n.data && n.data.waId,
             url: n.data && n.data.url
@@ -151,7 +151,7 @@
     ln.schedule({
       notifications: [{
         id: Math.floor(Math.random() * 2147483000) + 1,
-        title: p.title || 'EliteChat',
+        title: p.title || 'Koonfy',
         body: p.body || '',
         extra: p.data || {}
       }]
