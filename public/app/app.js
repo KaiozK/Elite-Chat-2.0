@@ -705,6 +705,50 @@ function toggleRegister(e) {
   $('#login-err').textContent = '';
 }
 
+// ---------------------------------------------------------------------------
+// SEGUNDO PASSO DO LOGIN
+//
+// A senha já conferiu no servidor, mas nenhum token foi emitido: só o código
+// certo troca o ticket por uma sessão. Por isso a tela de login continua no
+// lugar, apenas com outro formulário.
+// ---------------------------------------------------------------------------
+let TFA_TICKET = null;
+
+function pedirCodigo2FA(ticket, email) {
+  TFA_TICKET = ticket;
+  const box = $('#login-form');
+  if (!box) return;
+  box.innerHTML = `
+    <p class="muted" style="margin:0 0 14px;font-size:13px">
+      Enviamos um código de 6 dígitos para <b>${esc(email || "seu e-mail")}</b>.
+      Ele vale por 10 minutos.
+    </p>
+    <label>Código<input id="tfa-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"
+      placeholder="000000" style="letter-spacing:8px;text-align:center;font-size:20px;font-weight:800"></label>
+    <button type="button" class="btn primary" style="margin-top:14px;width:100%" onclick="enviarCodigo2FA(this)">Entrar</button>
+    <button type="button" class="btn" style="margin-top:8px;width:100%" onclick="location.reload()">Voltar</button>`;
+  setTimeout(() => { const i = $('#tfa-code'); if (i) i.focus(); }, 60);
+  const inp = $('#tfa-code');
+  if (inp) inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') enviarCodigo2FA(); });
+}
+
+async function enviarCodigo2FA(btn) {
+  const el = $('#tfa-code'); if (!el) return;
+  $('#login-err').textContent = '';
+  if (btn) btn.disabled = true;
+  try {
+    const r = await api('/login/2fa', { body: { ticket: TFA_TICKET, code: el.value.trim() } });
+    TOKEN = r.token;
+    localStorage.setItem('wacrm_token', TOKEN);
+    state.user = r.user; state.kind = r.kind; state.accountId = r.accountId;
+    state.wa = r.wa; state.agent = null; state.permissions = null;
+    enterApp();
+  } catch (err) {
+    $('#login-err').textContent = err.message;
+    if (btn) btn.disabled = false;
+  }
+}
+
 async function doLogin(e) {
   e.preventDefault();
   $('#login-err').textContent = '';
@@ -715,6 +759,8 @@ async function doLogin(e) {
       // o código da janela de 7 dias tem prioridade sobre o que estiver no campo
       ? await api('/register', { body: { name: $('#reg-name').value.trim(), email: user, pass, refCode: refAtivo() || ($('#reg-ref')?.value || '').trim() } })
       : await api('/login', { body: { user, pass } });
+    // Senha certa, mas a conta pede o segundo fator: ainda NÃO existe token.
+    if (r.twoFactor) return pedirCodigo2FA(r.ticket, r.email);
     TOKEN = r.token;
     localStorage.setItem('wacrm_token', TOKEN);
     state.user = r.user;
@@ -1471,7 +1517,7 @@ function depositModal() {
 
     <div class="row">
       <button class="btn no-grow" onclick="closeModal()">Cancelar</button>
-      <button class="btn primary no-grow" id="dep-go" onclick="doDeposit(this)">${ico('zap', 14)} Gerar Pix</button>
+      <button class="btn primary no-grow" id="dep-go" onclick="doDeposit(this)">${ico('pix', 14)} Gerar Pix</button>
     </div>
     <div id="dep-pix"></div>`, 'modal-dep');
 }
@@ -1493,7 +1539,7 @@ function depMeio() {
   const b = $('#dep-go'); if (!b) return;
   b.innerHTML = depMeioEscolhido() === 'card'
     ? ico('card', 14) + ' Pagar no cartão'
-    : ico('zap', 14) + ' Gerar Pix';
+    : ico('pix', 14) + ' Gerar Pix';
 }
 
 // ---------------------------------------------------------------------------
@@ -3436,6 +3482,7 @@ async function renderSettings() {
         <button data-tab="atendimento" onclick="showSettingsTab('atendimento')">Atendimento</button>
         <button data-tab="finalizacao" onclick="showSettingsTab('finalizacao')">Finalização</button>
         <button data-tab="prefs" onclick="showSettingsTab('prefs')">Preferências</button>
+        ${state.agent ? '' : `<button data-tab="conta" onclick="showSettingsTab('conta');loadAccount()">${ico('user', 14)} Minha conta</button>`}
       </div>
 
       <div class="tabpane" data-pane="finalizacao">
@@ -3540,6 +3587,10 @@ async function renderSettings() {
 
       </div>
 
+      <div class="tabpane" data-pane="conta">
+        <div id="conta-box">${skel(4)}</div>
+      </div>
+
       <div class="tabpane" data-pane="prefs">
       <div class="card" id="appearance-card">${renderThemeSettings()}</div>
       <div class="card" id="notif-card">${renderNotifSettings()}</div>
@@ -3558,28 +3609,12 @@ async function renderSettings() {
         <span class="lc-arrow">${ico('arrowright', 18)}</span>
       </a>
 
-      <div class="card">
-        <h2>${ico('lock')} Segurança, senha de acesso ${state.mustChangePassword ? '<span class="bad-dot">(troque a senha padrão!)</span>' : ''}</h2>
-        <div class="row">
-          <label>Senha atual<input id="pw-cur" type="password"></label>
-          <label>Nova senha (mín. 6)<input id="pw-new" type="password"></label>
-          <button class="btn primary no-grow" onclick="changePass()">Alterar senha</button>
-        </div>
-      </div>
-
-      ${state.kind === 'account' && !state.agent ? `<div class="card danger-card">
-        <h2>${ico('trash')} Excluir minha conta</h2>
-        <p class="muted" style="margin:0 0 14px;font-size:13px">
-          Apaga definitivamente sua conta e <b>tudo que está nela</b>: conversas, contatos,
-          mensagens, automações, agendamentos e atendentes. Não há como desfazer nem recuperar depois.
-        </p>
-        <button class="btn danger no-grow" onclick="deleteAccountModal()">Excluir minha conta</button>
-        <p class="muted" style="margin:14px 0 0;font-size:12.5px">
-          <a href="#" onclick="openExternal(API.url('/privacidade'));return false">Política de Privacidade</a>
-          ·
-          <a href="#" onclick="openExternal(API.url('/termos'));return false">Termos de Uso</a>
-        </p>
-      </div>` : ''}
+      ${state.agent ? '' : `<a class="card link-card" href="#" onclick="showSettingsTab('conta');loadAccount();return false">
+        <span class="lc-ic">${ico('user', 22)}</span>
+        <div style="flex:1"><h2 style="margin:0 0 3px">Minha conta</h2>
+          <p class="muted" style="margin:0;font-size:13px">Nome, e-mail, senha e verificação em duas etapas ficam na aba <b>Minha conta</b>.</p></div>
+        <span class="lc-arrow">${ico('arrowright', 18)}</span>
+      </a>` }
       </div>
     </div>`;
   paintProfilePhoto();
@@ -4110,6 +4145,131 @@ async function phoneAction(action, body) {
   diagOut(`Executando ${action}...`);
   try { diagOut(await api('/phone/' + action, { body })); toast('OK: ' + action); }
   catch (e) { diagOut('ERRO: ' + e.message + (e.meta ? '\n\n' + JSON.stringify(e.meta, null, 2) : '')); toast(e.message, 'error'); }
+}
+
+// ---------------------------------------------------------------------------
+// MINHA CONTA
+//
+// Reúne o que é da PESSOA e não do WhatsApp: nome, e-mail, senha e o segundo
+// fator. Antes a troca de senha morava no fim da aba Preferências, embaixo de
+// meia dúzia de cards de outra natureza, e ninguém achava.
+// ---------------------------------------------------------------------------
+let ACC_INFO = null;
+
+async function loadAccount() {
+  const box = $('#conta-box'); if (!box) return;
+  try { ACC_INFO = (await api('/account')).account; }
+  catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
+  paintAccount();
+}
+
+function paintAccount() {
+  const box = $('#conta-box'); if (!box || !ACC_INFO) return;
+  const a = ACC_INFO;
+  box.innerHTML = `
+    <div class="card">
+      <h2>${ico('user')} Dados da conta</h2>
+      <div class="row">
+        <label style="flex:1">Nome<input id="ac-name" value="${esc(a.name)}" maxlength="80"></label>
+        <label style="flex:1.4">E-mail de acesso
+          <input id="ac-email" value="${esc(a.email)}" inputmode="email" autocomplete="email"></label>
+      </div>
+      <div class="row" style="align-items:center;margin-top:10px">
+        ${a.emailVerified
+          ? `<span class="pill done">${ico('check', 12)} E-mail confirmado</span>`
+          : `<span class="pill pending">E-mail não confirmado</span>`}
+        <div style="flex:1"></div>
+        <button class="btn primary no-grow" onclick="saveAccount(this)">${ico('save', 14)} Salvar</button>
+      </div>
+      ${a.canVerifyEmail && !a.emailVerified ? `
+      <div class="capi-box" style="margin-top:14px">
+        <div class="capi-head">${ico('mail', 14)} Confirmar e-mail</div>
+        <p class="muted" style="font-size:12px;margin:6px 0 10px">
+          Confirmar o endereço é o que permite recuperar o acesso e ligar a verificação em duas etapas.</p>
+        <div class="row">
+          <button class="btn small no-grow" onclick="sendEmailCode(this)">Enviar código</button>
+          <label style="flex:1"><input id="ac-code" inputmode="numeric" maxlength="6" placeholder="000000"></label>
+          <button class="btn small primary no-grow" onclick="verifyEmailCode(this)">Confirmar</button>
+        </div>
+      </div>` : ''}
+    </div>
+
+    <div class="card">
+      <h2>${ico('lock')} Senha de acesso ${state.mustChangePassword ? '<span class="bad-dot">(troque a senha padrão!)</span>' : ''}</h2>
+      <div class="row">
+        <label>Senha atual<input id="pw-cur" type="password" autocomplete="current-password"></label>
+        <label>Nova senha (mín. 6)<input id="pw-new" type="password" autocomplete="new-password"></label>
+        <button class="btn primary no-grow" onclick="changePass()">Alterar senha</button>
+      </div>
+    </div>
+
+    ${a.twoFactorAvailable || a.twoFactor ? `
+    <div class="card">
+      <h2>${ico('shield')} Verificação em duas etapas</h2>
+      <p class="muted" style="margin:0 0 12px;font-size:13px">
+        Com isto ligado, entrar na conta pede um código enviado para o seu e-mail,
+        além da senha. Uma senha vazada deixa de ser suficiente para entrar.</p>
+      <label class="chk"><input type="checkbox" ${a.twoFactor ? 'checked' : ''}
+        onchange="setTwoFactor(this)"> Exigir código por e-mail ao entrar</label>
+    </div>` : `
+    <div class="card">
+      <h2>${ico('shield')} Verificação em duas etapas</h2>
+      <p class="muted" style="margin:0;font-size:13px">${
+        a.twoFactorBlockedBy === 'plataforma' ? 'Este recurso ainda não foi habilitado pela plataforma.'
+        : a.twoFactorBlockedBy === 'email' ? 'O envio de e-mail ainda não foi configurado pela plataforma.'
+        : 'Confirme seu e-mail acima para liberar a verificação em duas etapas.'}</p>
+    </div>`}
+
+    ${state.kind === 'account' ? `<div class="card danger-card">
+      <h2>${ico('trash')} Excluir minha conta</h2>
+      <p class="muted" style="margin:0 0 14px;font-size:13px">
+        Apaga definitivamente sua conta e <b>tudo que está nela</b>: conversas, contatos,
+        mensagens, automações, agendamentos e atendentes. Não há como desfazer nem recuperar depois.</p>
+      <button class="btn danger no-grow" onclick="deleteAccountModal()">Excluir minha conta</button>
+    </div>` : ''}`;
+}
+
+async function saveAccount(btn) {
+  btn.disabled = true;
+  try {
+    const r = await api('/account', { method: 'PUT', body: { name: $('#ac-name').value, email: $('#ac-email').value } });
+    ACC_INFO = r.account;
+    state.user = ACC_INFO.name;
+    toast('Dados salvos');
+    paintAccount();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; }
+}
+
+async function sendEmailCode(btn) {
+  const t = btn.innerHTML; btn.disabled = true; btn.textContent = 'Enviando…';
+  try {
+    const r = await api('/account/email/send-code', { body: {} });
+    ACC_INFO = r.account;
+    toast('Código enviado para ' + ACC_INFO.email);
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; btn.innerHTML = t; }
+}
+
+async function verifyEmailCode(btn) {
+  btn.disabled = true;
+  try {
+    const r = await api('/account/email/verify', { body: { code: $('#ac-code').value.trim() } });
+    ACC_INFO = r.account;
+    toast('E-mail confirmado!');
+    paintAccount();
+  } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
+}
+
+async function setTwoFactor(el) {
+  const querLigar = el.checked;
+  el.disabled = true;
+  try {
+    const r = await api('/account/2fa', { method: 'PUT', body: { enabled: querLigar } });
+    ACC_INFO = r.account;
+    toast(querLigar ? 'Verificação em duas etapas ligada' : 'Verificação em duas etapas desligada');
+    paintAccount();
+  } catch (e) { toast(e.message, 'error'); el.checked = !querLigar; el.disabled = false; }
 }
 
 async function changePass() {
@@ -5739,7 +5899,7 @@ async function checkBoletoPago(silencioso) {
 function extraPixModal(pc) {
   const img = pc.qrCodeImage ? esc(pc.qrCodeImage) : localQrDataUrl(pc.brCode);
   openModal(`
-    <h2>${ico('zap')} Pague o Pix para liberar</h2>
+    <h2>${ico('pix')} Pague o Pix para liberar</h2>
     <p class="muted" style="margin:0 0 12px;font-size:13px">
       ${fmtN(pc.extraQty)}x ${esc(extraLabel(pc.extraKey))}, <b style="color:var(--verde-deep)">${fmtBRL(pc.amount)}</b>.
       Libera automaticamente assim que o pagamento cair.
@@ -5953,7 +6113,7 @@ function payBoxHtml(pc) {
           ? `<img src="${localQrDataUrl(pc.brCode)}" alt="QR Code Pix">`
           : `<div class="pay-qr-ph">${ico('clock', 26)}</div>`}</div>
       <div style="flex:1;min-width:0">
-        <h2 style="margin:0 0 4px">${ico('zap')} Pague com Pix para ativar</h2>
+        <h2 style="margin:0 0 4px">${ico('pix')} Pague com Pix para ativar</h2>
         <p class="muted" style="margin:0 0 10px;font-size:13px">${pc.kind === 'topup' ? 'Recarga de saldo' : 'Assinatura'}, <b>${fmtBRL(pc.amount)}</b>. Escaneie o QR ou use o copia-e-cola. A confirmação é automática.</p>
         ${pc.brCode ? `<label>Pix copia-e-cola<textarea readonly rows="3" style="font-size:11px" onclick="this.select()">${esc(pc.brCode)}</textarea></label>` : ''}
         <div class="row" style="margin-top:10px">
@@ -6041,6 +6201,7 @@ async function renderAdmin() {
       <button data-tab="adm-ep" onclick="showSettingsTab('adm-ep');admEpPaint()">Elite Pay</button>
       <button data-tab="adm-int" onclick="showSettingsTab('adm-int');admIntLoad()">Integrações</button>
       <button data-tab="adm-plat" onclick="showSettingsTab('adm-plat')">Plataforma</button>
+      <button data-tab="adm-sec" onclick="showSettingsTab('adm-sec');admSecLoad()">Segurança</button>
       <button data-tab="adm-seo" onclick="showSettingsTab('adm-seo')">SEO</button>
     </div>
     <div id="adm-box"><div class="card">${skel(6)}</div></div>
@@ -6061,9 +6222,9 @@ async function renderAdmin() {
         <p class="muted" style="margin:0 0 12px">Credenciais do <b>app da Meta da plataforma</b>. Seus clientes nunca preenchem nada, eles só clicam em "Conectar WhatsApp".</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <label>App ID<input id="pl-appid" value="${esc(p.appId || '')}" placeholder="Painel do app da Meta"></label>
-          <label>App Secret<input id="pl-appsecret" type="password" value="${esc(p.appSecret || '')}" placeholder="Configurações do app → Básico"></label>
+          <label>App Secret ${p.hasAppSecret ? '<em class="lim-extra">já salvo, deixe vazio para manter</em>' : ''}<input id="pl-appsecret" type="password" autocomplete="new-password" placeholder="${p.hasAppSecret ? '••••••••' : 'Configurações do app → Básico'}"></label>
           <label>Config ID (Embedded Signup)<input id="pl-configid" value="${esc(p.configId || '')}" placeholder="Login do Facebook p/ Empresas → Configurações"></label>
-          <label>System User Token (fallback)<input id="pl-systoken" type="password" value="${esc(p.systemToken || '')}" placeholder="Opcional"></label>
+          <label>System User Token (fallback) ${p.hasSystemToken ? '<em class="lim-extra">já salvo, deixe vazio para manter</em>' : ''}<input id="pl-systoken" type="password" autocomplete="new-password" placeholder="${p.hasSystemToken ? '••••••••' : 'Opcional'}"></label>
           <label>Versão da Graph API${ecSelect('pl-version', ['v25.0', 'v24.0', 'v23.0', 'v22.0', 'v21.0'].map(v => ({ value: v, label: v })), p.graphVersion || 'v25.0')}</label>
         </div>
         <div class="row" style="margin-top:14px">
@@ -6088,7 +6249,7 @@ async function renderAdmin() {
           <p class="muted" style="margin:8px 0 10px;font-size:12.5px">Só preencha se o seu <code>ads_read</code> está em um app diferente do WhatsApp. Vazio = reaproveita o app acima.</p>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
             <label>App ID (Meta Ads)<input id="pl-ads-appid" value="${esc((p.metaAds || {}).appId || '')}" placeholder="deixe vazio p/ usar o do WhatsApp"></label>
-            <label>App Secret (Meta Ads)<input id="pl-ads-secret" type="password" value="${esc((p.metaAds || {}).appSecret || '')}" placeholder="deixe vazio p/ usar o do WhatsApp"></label>
+            <label>App Secret (Meta Ads) ${(p.metaAds || {}).hasAppSecret ? '<em class="lim-extra">já salvo</em>' : ''}<input id="pl-ads-secret" type="password" autocomplete="new-password" placeholder="${(p.metaAds || {}).hasAppSecret ? '••••••••' : 'deixe vazio p/ usar o do WhatsApp'}"></label>
           </div>
           <p class="hint" style="margin-top:8px">Depois de preencher, clique em <b>Salvar plataforma</b> acima.</p>
         </details>
@@ -6379,6 +6540,10 @@ async function paintAdmin() {
         <div id="adm-sms-box" style="margin-top:16px">${skel(3)}</div>
       </div>
 
+      <div class="tabpane ${activeTab === 'adm-sec' ? 'show' : ''}" data-pane="adm-sec">
+        <div id="adm-sec-box">${skel(4)}</div>
+      </div>
+
       <div class="tabpane ${activeTab === 'adm-plat' ? 'show' : ''}" data-pane="adm-plat">
         ${admPlatformCard(d.platform || {}, d.manual || {}, API.webOrigin)}
       </div>
@@ -6492,6 +6657,126 @@ async function admDelPlan(id) {
   if (!await confirmModal({ title: 'Arquivar plano', text: 'Novos clientes não poderão assiná-lo. Assinantes atuais continuam até cancelarem.', ok: 'Arquivar', danger: true })) return;
   try { await api('/admin/plans/' + id, { method: 'DELETE' }); paintAdmin(); setTimeout(() => showSettingsTab('adm-pl'), 60); } catch (e) { toast(e.message, 'error'); }
 }
+// ---------------------------------------------------------------------------
+// Admin → SEGURANÇA
+//
+// Duas coisas que andam juntas: o envio de e-mail e a verificação em duas
+// etapas. O segundo fator manda o código POR E-MAIL, então sem SMTP ele não
+// tem como funcionar, e a tela deixa isso explícito em vez de oferecer um
+// interruptor que não faria nada.
+// ---------------------------------------------------------------------------
+let ADM_SEC = null;
+
+async function admSecLoad() {
+  const box = $('#adm-sec-box'); if (!box) return;
+  try { ADM_SEC = await api('/admin/mail'); }
+  catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
+  admSecPaint();
+}
+
+function admSecPaint() {
+  const box = $('#adm-sec-box'); if (!box || !ADM_SEC) return;
+  const m = ADM_SEC.mail, sec = ADM_SEC.security || {};
+  box.innerHTML = `
+    <div class="card">
+      <div class="row" style="align-items:center;margin-bottom:6px">
+        <h2 style="margin:0;flex:1">${ico('mail')} Envio de e-mail (SMTP)</h2>
+        <span class="pill ${m.configured ? 'done' : 'pending'}">${m.configured ? 'configurado' : 'pendente'}</span>
+      </div>
+      <p class="muted" style="margin:0 0 12px;font-size:13px">
+        Usado para confirmar o e-mail dos clientes e mandar o código da verificação
+        em duas etapas. Sem isto, os dois recursos ficam indisponíveis para todo mundo.
+      </p>
+      <label class="chk" style="margin-bottom:12px"><input type="checkbox" ${m.enabled ? 'checked' : ''}
+        onchange="admMailSave({enabled:this.checked})"> Habilitar envio de e-mail</label>
+      <div class="row">
+        <label style="flex:2">Servidor (host)<input id="ml-host" value="${esc(m.host)}" placeholder="smtp.seuprovedor.com"></label>
+        <label style="flex:.7">Porta<input id="ml-port" inputmode="numeric" value="${m.port}"></label>
+      </div>
+      <label class="chk" style="margin-top:10px"><input type="checkbox" id="ml-secure" ${m.secure ? 'checked' : ''}>
+        TLS direto (porta 465). Desmarcado, usa STARTTLS na 587.</label>
+      <div class="row" style="margin-top:10px">
+        <label style="flex:1">Usuário<input id="ml-user" value="${esc(m.user)}" autocomplete="off"></label>
+        <label style="flex:1">Senha ${m.hasPass ? '<em class="lim-extra">já salva, deixe vazio para manter</em>' : ''}
+          <input id="ml-pass" type="password" autocomplete="new-password" placeholder="${m.hasPass ? '••••••••' : ''}"></label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label style="flex:1.2">Remetente (from)<input id="ml-from" value="${esc(m.from)}" placeholder="nao-responda@seudominio.com"></label>
+        <label style="flex:1">Nome exibido<input id="ml-fromname" value="${esc(m.fromName)}"></label>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary no-grow" onclick="admMailSaveForm(this)">${ico('save', 14)} Salvar</button>
+        <button class="btn no-grow" onclick="admMailTest(this)">${ico('activity', 14)} Enviar teste</button>
+      </div>
+      <div id="ml-out">${m.lastError ? `<div class="danger-box" style="margin-top:10px">${esc(m.lastError)}</div>` : ''}</div>
+    </div>
+
+    <div class="card">
+      <h2>${ico('shield')} Verificação em duas etapas</h2>
+      <p class="muted" style="margin:0 0 12px;font-size:13px">
+        Libera o recurso para os clientes. Cada um decide se liga na própria conta,
+        em <b>Configurações, Minha conta</b>. Quem ligar passa a receber um código
+        por e-mail a cada login.
+      </p>
+      <label class="chk"><input type="checkbox" ${sec.twoFactor ? 'checked' : ''}
+        onchange="admSecSave(this.checked)"> Permitir verificação em duas etapas</label>
+      ${!m.configured ? `<p class="hint" style="text-align:left;margin-top:10px">
+        ${ico('alert', 12)} Sem o envio de e-mail configurado acima, o código não tem como chegar
+        e o recurso continua indisponível para os clientes.</p>` : ''}
+    </div>`;
+}
+
+async function admMailSave(patch) {
+  try {
+    ADM_SEC.mail = (await api('/admin/mail', { method: 'PUT', body: patch })).mail;
+    toast('Configuração salva');
+    admSecPaint();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function admMailSaveForm(btn) {
+  btn.disabled = true;
+  admMailSave({
+    host: $('#ml-host').value, port: $('#ml-port').value,
+    secure: $('#ml-secure').checked,
+    user: $('#ml-user').value, pass: $('#ml-pass').value,
+    from: $('#ml-from').value, fromName: $('#ml-fromname').value
+  }).finally(() => { btn.disabled = false; });
+}
+
+// O prompt() nativo é bloqueado no PWA: o endereço do teste é pedido no modal
+// do próprio app.
+function admMailTest() {
+  openModal(`
+    <h2>${ico('mail')} Enviar e-mail de teste</h2>
+    <p class="muted" style="margin:0 0 12px;font-size:13px">Para qual endereço mandamos a mensagem de teste?</p>
+    <label>E-mail<input id="ml-test-to" inputmode="email" placeholder="voce@empresa.com"></label>
+    <div class="row" style="margin-top:14px">
+      <button class="btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn primary" onclick="admMailTestGo(this)">Enviar</button>
+    </div>
+    <div id="ml-test-out"></div>`);
+}
+
+async function admMailTestGo(btn) {
+  const out = $('#ml-test-out');
+  const t = btn.innerHTML; btn.disabled = true; btn.textContent = 'Enviando…';
+  try {
+    const r = await api('/admin/mail/test', { body: { to: $('#ml-test-to').value.trim() } });
+    if (r.ok) { closeModal(); toast('E-mail de teste enviado!'); }
+    else out.innerHTML = `<div class="danger-box" style="margin-top:10px">${esc(r.error)}</div>`;
+  } catch (e) { out.innerHTML = `<div class="danger-box" style="margin-top:10px">${esc(e.message)}</div>`; }
+  finally { btn.disabled = false; btn.innerHTML = t; admSecLoad(); }
+}
+
+async function admSecSave(on) {
+  try {
+    ADM_SEC.security = (await api('/admin/security', { method: 'PUT', body: { twoFactor: on } })).security;
+    toast(on ? 'Verificação em duas etapas liberada' : 'Verificação em duas etapas desligada');
+    admSecPaint();
+  } catch (e) { toast(e.message, 'error'); admSecLoad(); }
+}
+
 // ---- Admin → Integrações da PLATAFORMA ----
 // Reúne o que a plataforma conecta uma vez e oferece a todos os clientes: a
 // loja Nuvemshop e os disparos de SMS da Integra X.
@@ -10637,14 +10922,15 @@ function epkPaintForm() {
           onchange="epkState.methods.${key}=this.checked;epkPrev()">
         <span><b>${titulo}</b><em>${liberado ? sub : motivo}</em></span>
       </label>`;
-    const setupLink = `<a href="#/elitepay" onclick="location.hash='#/elitepay';setTimeout(()=>epTab&&epTab('card'),120)">Configure a conta de cartão</a>`;
     body = `
       <p class="muted" style="font-size:13px;margin:0 0 14px">Escolha o que este checkout aceita. O cliente vê só os métodos ligados.</p>
       ${linha('pix', 'Pix', 'Aprovação na hora, menor taxa', true, '')}
-      ${linha('credit', 'Cartão de crédito', 'Parcelável, aprovação imediata', cap.credit,
-        cap.ready ? 'Crédito não liberado pela plataforma' : `Indisponível, ${setupLink}`)}
-      ${linha('boleto', 'Boleto bancário', 'Compensa em até 2 dias úteis', cap.boleto,
-        cap.ready ? 'Boleto não liberado pela plataforma' : `Indisponível, ${setupLink}`)}
+      ${/* Sem adquirente configurado pela plataforma, cartão e boleto não
+            existem para este cliente: mostrar a linha travada só anunciava um
+            recurso que ele não pode contratar. Some por inteiro. */''}
+      ${cap.ready ? `
+      ${linha('credit', 'Cartão de crédito', 'Parcelável, aprovação imediata', cap.credit, 'Crédito não liberado pela plataforma')}
+      ${linha('boleto', 'Boleto bancário', 'Compensa em até 2 dias úteis', cap.boleto, 'Boleto não liberado pela plataforma')}` : ''}
       <p class="hint" style="margin-top:14px">${ico('shield', 12)} O dinheiro do cartão cai direto na <b>sua</b> conta do adquirente, o EliteChat só intermedeia.</p>`;
   } else if (epkSection === 'ordem') {
     body = `

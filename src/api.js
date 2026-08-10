@@ -16,6 +16,8 @@ const push = require('./push');
 const pushNative = require('./pushnative');
 const sms = require('./sms');
 const topup = require('./topup');
+const mailer = require('./mailer');
+const account = require('./account');
 
 module.exports = function (broadcast, clients) {
   const router = express.Router();
@@ -169,6 +171,15 @@ module.exports = function (broadcast, clients) {
     res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc) });
   }));
 
+  // Segundo passo do login: troca o ticket + código pelo token de acesso.
+  router.post('/login/2fa', h(async (req, res) => {
+    const b = req.body || {};
+    const acc = account.resolverDesafio(b.ticket, b.code);
+    const token = newSession('account', acc);
+    agents.log(acc, { agentId: null, name: acc.name }, 'login', 'Entrou como dono da conta (2 etapas)');
+    res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc), permissions: null });
+  }));
+
   router.post('/login', h(async (req, res) => {
     const { user, pass } = req.body || {};
     const p = db.get().platform;
@@ -181,6 +192,13 @@ module.exports = function (broadcast, clients) {
     // conta de cliente (dono — login por e-mail)
     const acc = db.findAccountByEmail(user);
     if (acc && db.hash(pass || '') === acc.passHash) {
+      // VERIFICAÇÃO EM DUAS ETAPAS: a senha conferiu, mas ainda não há sessão.
+      // O ticket liga o segundo passo a este, sem deixar um token pela metade
+      // circulando enquanto o código não chega.
+      if (account.exigeDoisFatores(acc)) {
+        const d = await account.abrirDesafio(acc);
+        return res.json({ twoFactor: true, ticket: d.ticket, email: d.email });
+      }
       const token = newSession('account', acc);
       agents.log(acc, { agentId: null, name: acc.name }, 'login', 'Entrou como dono da conta');
       return res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc), permissions: null });
@@ -915,13 +933,18 @@ module.exports = function (broadcast, clients) {
     // plataforma (só admin)
     if (req.session.kind === 'admin') {
       const p = db.get().platform;
-      for (const k of ['graphVersion', 'appId', 'appSecret', 'configId', 'systemToken', 'verifyToken']) {
+      for (const k of ['graphVersion', 'appId', 'configId', 'verifyToken']) {
         if (typeof req.body[k] === 'string') p[k] = req.body[k].trim();
+      }
+      // Segredos: a tela nunca recebe o valor de volta, então mandar vazio
+      // significa "não mexi nesse campo" e não "apague o que está lá".
+      for (const k of ['appSecret', 'systemToken']) {
+        if (typeof req.body[k] === 'string' && req.body[k].trim()) p[k] = req.body[k].trim();
       }
       // App SEPARADO de Meta Ads (opcional). Vazio = reaproveita o do WhatsApp.
       if (req.body.metaAds && typeof req.body.metaAds === 'object') {
         if (typeof req.body.metaAds.appId === 'string') p.metaAds.appId = req.body.metaAds.appId.trim();
-        if (typeof req.body.metaAds.appSecret === 'string') p.metaAds.appSecret = req.body.metaAds.appSecret.trim();
+        if (typeof req.body.metaAds.appSecret === 'string' && req.body.metaAds.appSecret.trim()) p.metaAds.appSecret = req.body.metaAds.appSecret.trim();
       }
       // credenciais manuais (avançado) — conecta a conta do admin sem Embedded Signup
       const w = req.wctx.wa;
@@ -943,6 +966,32 @@ module.exports = function (broadcast, clients) {
     p.verifyToken = crypto.randomBytes(12).toString('hex');
     db.save();
     res.json({ verifyToken: p.verifyToken });
+  });
+
+  // ============ MINHA CONTA ============
+  // Nome, e-mail, confirmação do e-mail e verificação em duas etapas. Tudo
+  // aqui é do DONO: um atendente tem a própria senha em /agents/me/password.
+  router.get('/account', auth, ownerOnly, (req, res) => res.json({ account: account.view(req.acc) }));
+
+  router.put('/account', auth, ownerOnly, h(async (req, res) => {
+    const b = req.body || {};
+    if (typeof b.name === 'string' && b.name.trim()) { req.acc.name = b.name.trim().slice(0, 80); db.save(); }
+    if (typeof b.email === 'string' && b.email.trim()) return res.json({ account: account.trocarEmail(req.acc, b.email) });
+    res.json({ account: account.view(req.acc) });
+  }));
+
+  router.post('/account/email/send-code', auth, ownerOnly, h(async (req, res) => {
+    await account.enviarCodigoEmail(req.acc);
+    res.json({ ok: true, account: account.view(req.acc) });
+  }));
+
+  router.post('/account/email/verify', auth, ownerOnly, (req, res) => {
+    account.confirmarEmail(req.acc, (req.body || {}).code);
+    res.json({ ok: true, account: account.view(req.acc) });
+  });
+
+  router.put('/account/2fa', auth, ownerOnly, (req, res) => {
+    res.json({ account: account.definirDoisFatores(req.acc, !!(req.body || {}).enabled) });
   });
 
   router.post('/settings/password', auth, (req, res) => {
@@ -3129,10 +3178,14 @@ module.exports = function (broadcast, clients) {
       // Credenciais do app da Meta (Tech Provider). Rota já é adminOnly, então
       // o cliente nunca recebe isto: a configuração vive só no Admin SaaS.
       platform: {
-        appId: data.platform.appId || '', appSecret: data.platform.appSecret || '',
-        configId: data.platform.configId || '', systemToken: data.platform.systemToken || '',
-        verifyToken: data.platform.verifyToken || '', graphVersion: data.platform.graphVersion || 'v25.0',
-        metaAds: { appId: (data.platform.metaAds || {}).appId || '', appSecret: (data.platform.metaAds || {}).appSecret || '' }
+        appId: data.platform.appId || '',
+        configId: data.platform.configId || '',
+        verifyToken: data.platform.verifyToken || '',
+        graphVersion: data.platform.graphVersion || 'v25.0',
+        // segredos NUNCA voltam: a tela só precisa saber que existem
+        hasAppSecret: !!data.platform.appSecret,
+        hasSystemToken: !!data.platform.systemToken,
+        metaAds: { appId: (data.platform.metaAds || {}).appId || '', hasAppSecret: !!(data.platform.metaAds || {}).appSecret }
       },
       // conexão manual do PRÓPRIO admin (testes/desenvolvimento)
       manual: { accessToken: req.wctx.wa.accessToken || '', wabaId: req.wctx.wa.wabaId || '', phoneNumberId: req.wctx.wa.phoneNumberId || '' },
@@ -3245,6 +3298,47 @@ module.exports = function (broadcast, clients) {
   });
 
   // ---- SMS (Integra X): liga/desliga e credenciais da plataforma ----
+  // ---- E-mail (SMTP) e segurança da plataforma ----
+  router.get('/admin/mail', auth, adminOnly, (req, res) => {
+    res.json({ mail: mailer.adminView(), security: account.seguranca() });
+  });
+
+  router.put('/admin/mail', auth, adminOnly, (req, res) => {
+    const b = req.body || {};
+    const c = mailer.cfg();
+    if (typeof b.enabled === 'boolean') c.enabled = b.enabled;
+    for (const k of ['host', 'user', 'from', 'fromName']) {
+      if (typeof b[k] === 'string') c[k] = b[k].trim();
+    }
+    if (b.port !== undefined) c.port = Math.max(1, Math.min(65535, Number(b.port) || 587));
+    if (typeof b.secure === 'boolean') c.secure = b.secure;
+    // senha em branco NÃO apaga a que está guardada: a tela nunca a recebe de
+    // volta, então mandar vazio significa "não mexi nesse campo".
+    if (typeof b.pass === 'string' && b.pass) c.pass = b.pass;
+    db.save();
+    res.json({ mail: mailer.adminView() });
+  });
+
+  router.post('/admin/mail/test', auth, adminOnly, h(async (req, res) => {
+    const para = String((req.body || {}).to || db.get().platform.adminUser || '').trim();
+    try {
+      await mailer.enviar({
+        to: para,
+        subject: 'Teste de envio do EliteChat',
+        text: 'Se você recebeu este e-mail, o envio está funcionando.',
+        html: '<p>Se você recebeu este e-mail, o envio está funcionando.</p>'
+      });
+      res.json({ ok: true });
+    } catch (e) { res.json({ ok: false, error: e.message }); }
+  }));
+
+  router.put('/admin/security', auth, adminOnly, (req, res) => {
+    const sec = account.seguranca();
+    if (typeof (req.body || {}).twoFactor === 'boolean') sec.twoFactor = req.body.twoFactor;
+    db.save();
+    res.json({ security: sec });
+  });
+
   router.get('/admin/sms', auth, adminOnly, (req, res) => {
     res.json({ sms: sms.adminView() });
   });

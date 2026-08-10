@@ -56,6 +56,8 @@ const DEFAULTS = {
     },
     // % de comissão do afiliado + faixa aceita ao sacar a comissão (centavos).
     affiliate: { percentFirst: 30, percentRenewal: 15, withdraw: { min: 2000, max: 0 } },
+    // Verificação em duas etapas do login, ligada pelo admin.
+    security: { twoFactor: false },
     landing: { ctaText: '' } // copy do botão principal da landing (vazio = automático pelos dias de teste)
   },
   plans: [],             // planos de assinatura { id, name, price(centavos), periodDays, features[], limits{} }
@@ -63,6 +65,10 @@ const DEFAULTS = {
   revenue: [],           // pagamentos confirmados { ts, accountId, planId, amount, kind: first|renewal|topup, chargeId }
   accounts: [],          // tenants (clientes), ver newAccount()
   sessions: {},          // token -> { kind:'account'|'admin', accountId }
+  // Login em duas etapas: senha conferida, código pendente. Vive aqui e não
+  // em sessions porque ainda NÃO é uma sessão: nada dá acesso a nada até o
+  // código certo chegar.
+  loginChallenges: {},   // ticket -> { accountId, hash, exp, tentativas }
   webhookLog: []
 };
 
@@ -338,7 +344,7 @@ function load() {
   // O Pix Indireto foi descontinuado: limpa a config de bancos antigos para não
   // ficar lixo no db.json (as assinaturas usam o Pix/Woovi e o cartão).
   delete db.platform.pixIndirect;
-  for (const k of ['woovi', 'billing', 'affiliate', 'landing', 'metaAds', 'nuvemshop']) {
+  for (const k of ['woovi', 'billing', 'affiliate', 'landing', 'metaAds', 'nuvemshop', 'security']) {
     for (const kk of Object.keys(DEFAULTS.platform[k])) {
       if (db.platform[k][kk] === undefined) {
         db.platform[k][kk] = JSON.parse(JSON.stringify(DEFAULTS.platform[k][kk]));
