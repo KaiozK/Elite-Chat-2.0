@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const consentDefaults = require('./consent-defaults');
+const storage = require('./storage');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
@@ -394,12 +395,21 @@ function genRefCode() { return crypto.randomBytes(4).toString('hex').toUpperCase
 let db = null;
 let saveTimer = null;
 
+// A carga é SÍNCRONA no arquivo e ASSÍNCRONA no MySQL. Para o resto do
+// código nada muda: quem usa MySQL chama loadAsync() uma vez na partida
+// (server.js faz isso) e daí em diante get() encontra o banco já em memória.
 function load() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (fs.existsSync(DB_FILE)) {
-    try { db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); }
-    catch (e) { console.error('db.json corrompido, recriando:', e.message); db = null; }
+  if (storage.nome === 'mysql') {
+    if (!db) throw new Error('Com DB_DRIVER=mysql, chame db.loadAsync() na partida antes de usar o banco');
+    return db;
   }
+  db = storage.carregar();
+  return migrar();
+}
+
+// Tudo que o load fazia depois de ler o arquivo: defaults novos, limpeza de
+// campos mortos e o formato das contas. Vale para os dois motores.
+function migrar() {
   if (!db) db = JSON.parse(JSON.stringify(DEFAULTS));
   for (const k of Object.keys(DEFAULTS)) if (db[k] === undefined) db[k] = JSON.parse(JSON.stringify(DEFAULTS[k]));
   for (const k of Object.keys(DEFAULTS.platform)) if (db.platform[k] === undefined) db.platform[k] = JSON.parse(JSON.stringify(DEFAULTS.platform[k]));
@@ -651,7 +661,21 @@ function ensureAccountShape(acc) {
   }
 }
 
-function flush() { clearTimeout(saveTimer); fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2)); }
+function flush() { clearTimeout(saveTimer); storage.gravar(db); }
+
+// Partida com MySQL: carrega, aplica as mesmas migrações do arquivo e deixa o
+// banco em memória, exatamente como o load() síncrono faz.
+async function loadAsync() {
+  const dados = await storage.carregar();
+  db = dados || null;
+  migrar();
+  return db;
+}
+
+async function close() {
+  try { flush(); } catch {}
+  await storage.fechar();
+}
 function save() { clearTimeout(saveTimer); saveTimer = setTimeout(flush, 250); }
 function get() { if (!db) load(); return db; }
 
@@ -707,4 +731,5 @@ function findAdminAccount() {
 process.on('exit', () => { try { if (db) flush(); } catch {} });
 
 module.exports = {
+  loadAsync, close, storage,
   hashPassword, verifyPassword, needsRehash, get, save, load, flush, genId, hash, newAccount, emptyWa, emptyBilling, defaultSurvey, findAccount, findAccountByEmail, findAccountByPhoneId, findAccountByRefCode, findAdminAccount, findLinkBySlug, findWebhookByToken, DEFAULT_STAGES, emptyWallet, attachTplAlias, FEATURE_KEYS, defaultFeatures, normFeatures, LIMIT_KEYS, defaultLimits, normLimits, emptyChannel, chanCtx, findChannel, channelByPhoneId, ensureAccountShape };

@@ -4,8 +4,17 @@ const db = require('./src/db');
 const push = require('./src/push');
 const pushNative = require('./src/pushnative');
 
-db.load();
-try { push.ensureKeys(); } catch (e) { console.warn('[push] VAPID indisponível:', e.message); }
+// CARGA DO BANCO
+//
+// No arquivo é síncrona e acontece aqui mesmo. No MySQL não dá: a conexão é
+// assíncrona, então a partida espera em `pronto` e o servidor só escuta a
+// porta depois que o banco está em memória. Sem isso, a primeira requisição
+// chegaria antes dos dados.
+const pronto = db.storage.nome === 'mysql'
+  ? db.loadAsync()
+  : Promise.resolve(db.load());
+
+pronto.then(() => { try { push.ensureKeys(); } catch (e) { console.warn('[push] VAPID indisponível:', e.message); } });
 
 const app = express();
 
@@ -502,7 +511,20 @@ setTimeout(() => { try { elitepayMod.releaseReceivables(broadcast); } catch {} }
 require('./src/saasbilling').startRenewalJob(broadcast);
 
 const PORT = process.env.PORT || 3900;
-app.listen(PORT, () => {
+
+// Desligar direito: grava o que está pendente e fecha a conexão. Sem isto, um
+// deploy no meio de uma escrita deixaria a última mudança só na memória.
+function desligar(sinal) {
+  return async () => {
+    console.log('\n[' + sinal + '] encerrando, gravando o banco…');
+    try { await db.close(); } catch (e) { console.error(e.message); }
+    process.exit(0);
+  };
+}
+process.on('SIGINT', desligar('SIGINT'));
+process.on('SIGTERM', desligar('SIGTERM'));
+
+pronto.then(() => app.listen(PORT, () => {
   const p = db.get().platform;
   console.log('==============================================');
   console.log(`  Koonfy rodando em http://localhost:${PORT}`);
@@ -511,5 +533,9 @@ app.listen(PORT, () => {
   console.log(`  Webhook Meta:        POST/GET /webhook`);
   console.log(`  Verify Token:        ${p.verifyToken}`);
   console.log(`  Graph API:           ${p.graphVersion}`);
+  console.log(`  Banco:               ${db.storage.nome}`);
   console.log('==============================================');
+})).catch(e => {
+  console.error('Falha ao carregar o banco:', e.message);
+  process.exit(1);
 });
