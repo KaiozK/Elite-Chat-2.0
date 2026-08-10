@@ -5982,11 +5982,12 @@ async function openExtraPay(key) {
 
   const c = d.card || {};
   const saldo = (d.wallet || {}).balance || 0;
+  // [valor, rótulo, explicação, ícone]
   const meios = [
-    d.wooviReady && ['pix', 'Pix', 'Liberação imediata'],
-    c.credit && ['card', 'Cartão de crédito', 'Liberação imediata'],
-    c.boleto && ['boleto', 'Boleto', `Compensa em até ${c.boletoDueDays || 3} dias úteis`],
-    saldo > 0 && ['wallet', 'Saldo em carteira', `Disponível: ${fmtBRL(saldo)}`]
+    d.wooviReady && ['pix', 'Pix', 'Liberação imediata', 'pix'],
+    c.credit && ['card', 'Cartão de crédito', 'Liberação imediata', 'card'],
+    c.boleto && ['boleto', 'Boleto', `Compensa em até ${c.boletoDueDays || 3} dias úteis`, 'file'],
+    saldo > 0 && ['wallet', 'Saldo em carteira', `Disponível: ${fmtBRL(saldo)}`, 'briefcase']
   ].filter(Boolean);
 
   const nome = esc(extraLabel(key));
@@ -6008,8 +6009,9 @@ async function openExtraPay(key) {
     </div>
     ${meios.length ? `<label style="margin-bottom:6px">Forma de pagamento</label>
     <div class="pay-methods">
-      ${meios.map(([v, l, sub], i) => `<label class="pay-method">
+      ${meios.map(([v, l, sub, ic], i) => `<label class="pay-method">
         <input type="radio" name="xpm" value="${v}" ${i === 0 ? 'checked' : ''}>
+        <span class="pay-ic">${ico(ic, 17)}</span>
         <span><b>${l}</b><em>${esc(sub)}</em></span>
       </label>`).join('')}
     </div>`
@@ -6498,8 +6500,8 @@ async function renderAdmin() {
         </div>
       </div>
 
-      <details class="card adv">
-        <summary><h2>${ico('shield')} Credenciais manuais (avançado)</h2></summary>
+      <div class="card">
+        <h2>${ico('shield')} Conexão manual do administrador</h2>
         <p class="muted" style="margin:8px 0 12px">Alternativa ao Embedded Signup para a conta do administrador (testes e desenvolvimento).</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <label>Access Token<textarea id="st-token" rows="2">${esc(m.accessToken || '')}</textarea></label>
@@ -6510,7 +6512,7 @@ async function renderAdmin() {
           <button class="btn primary no-grow" onclick="saveManual()">${ico('save', 14)} Salvar manuais</button>
           <button class="btn no-grow" onclick="subscribeWaba()">${ico('radio', 14)} Assinar app na WABA</button>
         </div>
-      </details>`;
+      </div>`;
 }
 async function paintAdmin() {
   await admCarregarCheckouts();   // para o seletor de checkout dos planos
@@ -6730,6 +6732,7 @@ async function paintAdmin() {
             <button class="btn primary no-grow" onclick="admSaveConfig({wooviAppId:$('#wv-appid').value})">${ico('save', 14)} Salvar</button>
             <button class="btn no-grow" onclick="admTestWoovi(this)">${ico('activity', 14)} Testar conexão</button>
           </div>
+          <div id="wv-out"></div>
           <label class="chk" style="margin-top:12px"><input type="checkbox" id="wv-auto" ${d.config.woovi.pixAutomatic ? 'checked' : ''} onchange="admSaveConfig({pixAutomatic:this.checked})"> Tentar Pix Automático (assinatura recorrente), se indisponível, cai para Pix avulso por renovação</label>
           <div class="capi-box" style="margin-top:14px">
             <div class="capi-head">${ico('webhook', 14)} Webhook de confirmação <span class="capi-tag">obrigatório em produção</span></div>
@@ -7480,8 +7483,25 @@ async function admSaveConfig(body) {
 }
 async function admTestWoovi(btn) {
   if (btn) { btn.disabled = true; }
-  try { const r = await api('/admin/woovi/test'); toast(`Woovi conectada! API respondeu (${r.charges} cobrança(s) na 1ª página).`); }
-  catch (e) { toast('Falha na Woovi: ' + e.message, 'error'); }
+  const out = $('#wv-out');
+  try {
+    const r = await api('/admin/woovi/test');
+    if (out) out.innerHTML = `<p class="hint" style="text-align:left;margin-top:10px;color:var(--verde-deep)">${ico('check', 12)} Conectada. A API respondeu com ${r.charges} cobrança(s) na primeira página.</p>`;
+    toast('Woovi conectada!');
+  }
+  catch (e) {
+    // "Woovi HTTP 401" não diz o que fazer. Cada erro que a Woovi devolve tem
+    // uma causa concreta, e é ela que o admin precisa ler.
+    const m = String(e.message || '');
+    const dica = /401|Unauthorized/i.test(m)
+      ? 'A Woovi recusou o AppID. Gere um novo em app.woovi.com → API/Plugins → Nova integração e cole aqui inteiro.'
+      : /não configurada|informe o AppID/i.test(m) ? 'Salve o AppID antes de testar.'
+      : /403/.test(m) ? 'O AppID existe, mas não tem permissão para esta operação. Confira o escopo da integração na Woovi.'
+      : /ENOTFOUND|ECONN|fetch failed|timeout/i.test(m) ? 'Não foi possível alcançar a Woovi. Confira a saída de internet do servidor.'
+      : m;
+    if (out) out.innerHTML = `<div class="danger-box" style="margin-top:10px"><b>Falha na conexão</b><p style="margin:0">${esc(dica)}</p></div>`;
+    toast(dica, 'error');
+  }
   finally { if (btn) btn.disabled = false; }
 }
 async function admWithdraw(id, action) {

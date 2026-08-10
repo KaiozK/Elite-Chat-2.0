@@ -1392,7 +1392,10 @@ h1, h2, .brand-name { letter-spacing: -.03em; }
 .extra-total { line-height: 1.15; }
 .extra-total b { font-size: 19px; color: var(--verde-deep); }
 .extra-total em { display: block; font-style: normal; font-size: 11px; color: var(--muted); }
-.pay-methods { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+/* Duas colunas, não quatro. Com minmax(140px) as quatro opções cabiam lado a
+   lado num modal estreito, e aí "Cartão de crédito" quebrava em três linhas:
+   cada opção ficava com 150px de altura. */
+.pay-methods { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; }
 .pay-method {
   /* `label` global é uma coluna; aqui o ícone fica AO LADO do rótulo, senão
      ele empilha em cima e a opção vira uma torre alta e estranha. */
