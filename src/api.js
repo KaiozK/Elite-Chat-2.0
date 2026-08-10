@@ -161,6 +161,12 @@ module.exports = function (broadcast, clients) {
     if (!pass || pass.length < 6) return res.status(400).json({ error: 'A senha deve ter pelo menos 6 caracteres' });
     if (db.findAccountByEmail(mail)) return res.status(409).json({ error: 'Já existe uma conta com este e-mail' });
     const acc = db.newAccount({ name: String(name || '').trim() || mail, email: mail, pass });
+    // Perfil da empresa: campos livres de escolha, saneados aqui porque vêm de
+    // um formulário PÚBLICO. Nada disso muda permissão ou cobrança.
+    const perfil = req.body.profile || {};
+    for (const k of ['segment', 'size', 'phone', 'goal']) {
+      acc.profile[k] = String(perfil[k] || '').trim().slice(0, 60);
+    }
     acc.billing.periodEnd = Date.now() + (db.get().platform.billing.trialDays || 7) * 86400000;
     // afiliação: registra quem indicou (comissão na assinatura e nas renovações)
     const aff = db.findAccountByRefCode(refCode);
@@ -3169,7 +3175,8 @@ module.exports = function (broadcast, clients) {
         billing: billingPublic(a), walletBalance: a.wallet.balance,
         refCode: a.affiliate.code, refBy: a.affiliate.refBy || '',
         referrals: data.accounts.filter(x => x.affiliate && x.affiliate.refBy === a.affiliate.code).length,
-        affEarned: a.affiliate.earned
+        affEarned: a.affiliate.earned,
+        profile: a.profile || {}   // segmento, tamanho, telefone e objetivo do cadastro
       })).sort((a, b) => b.createdAt - a.createdAt),
       plans: data.plans,
       withdrawals: data.withdrawals.slice(-50).reverse(),

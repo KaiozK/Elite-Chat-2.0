@@ -197,6 +197,9 @@ function newAccount({ name, email, pass }) {
     email: String(email || '').toLowerCase().trim(),
     passHash: hash(pass || ''),
     createdAt: Date.now(),
+    // PERFIL DA EMPRESA, informado no cadastro. Não muda nada no produto:
+    // serve para o onboarding e para o time comercial saber com quem fala.
+    profile: { segment: '', size: '', phone: '', goal: '' },
     channels: [emptyChannel('WhatsApp principal')],
     stages: [...DEFAULT_STAGES],
     contacts: [],
@@ -495,6 +498,7 @@ function ensureAccountShape(acc) {
   if (acc.billing.status === 'trial' && !acc.billing.periodEnd) {
     acc.billing.periodEnd = (acc.createdAt || Date.now()) + (get().platform.billing.trialDays || 7) * 86400000;
   }
+  if (!acc.profile || typeof acc.profile !== 'object') acc.profile = { segment: '', size: '', phone: '', goal: '' };
   if (!acc.wallet || typeof acc.wallet !== 'object') acc.wallet = emptyWallet();
   if (!Array.isArray(acc.wallet.transactions)) acc.wallet.transactions = [];
   if (!Array.isArray(acc.wallet.receivables)) acc.wallet.receivables = [];

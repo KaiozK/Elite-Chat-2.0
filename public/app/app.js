@@ -670,6 +670,8 @@ function toggleRegister(e) {
   if (e) e.preventDefault();
   registerMode = !registerMode;
   $('#reg-name-wrap').classList.toggle('hidden', !registerMode);
+  const perfil = $('#reg-perfil');
+  if (perfil) perfil.classList.toggle('hidden', !registerMode);
   const rw = $('#reg-ref-wrap');
   if (rw) {
     rw.classList.toggle('hidden', !registerMode);
@@ -757,7 +759,17 @@ async function doLogin(e) {
     const pass = $('#login-pass').value;
     const r = registerMode
       // o código da janela de 7 dias tem prioridade sobre o que estiver no campo
-      ? await api('/register', { body: { name: $('#reg-name').value.trim(), email: user, pass, refCode: refAtivo() || ($('#reg-ref')?.value || '').trim() } })
+      ? await api('/register', { body: {
+          name: $('#reg-name').value.trim(), email: user, pass,
+          refCode: refAtivo() || ($('#reg-ref')?.value || '').trim(),
+          // perfil da empresa: orienta o onboarding e o atendimento comercial
+          profile: {
+            segment: ($('#reg-segment') || {}).value || '',
+            size: ($('#reg-size') || {}).value || '',
+            phone: ($('#reg-phone') || {}).value || '',
+            goal: ($('#reg-goal') || {}).value || ''
+          }
+        } })
       : await api('/login', { body: { user, pass } });
     // Senha certa, mas a conta pede o segundo fator: ainda NÃO existe token.
     if (r.twoFactor) return pedirCodigo2FA(r.ticket, r.email);
@@ -6364,7 +6376,13 @@ async function paintAdmin() {
               const pl = d.plans.find(p => p.id === a.billing.planId);
               const [sl, sc] = BILL_ST[a.billing.status] || [a.billing.status, 'pill'];
               return `<tr>
-                <td><b>${esc(a.name)}</b><div class="muted" style="font-size:11.5px">${esc(a.email)}</div></td>
+                <td><b>${esc(a.name)}</b>
+                  <div class="muted" style="font-size:11.5px">${esc(a.email)}${(a.profile || {}).phone ? ' · ' + esc(a.profile.phone) : ''}</div>
+                  ${(a.profile || {}).segment || (a.profile || {}).size ? `<div class="acc-perfil">
+                    ${a.profile.segment ? `<span class="pill">${esc(a.profile.segment)}</span>` : ''}
+                    ${a.profile.size ? `<span class="pill">${esc(a.profile.size)}</span>` : ''}
+                    ${a.profile.goal ? `<span class="pill">${esc(a.profile.goal)}</span>` : ''}
+                  </div>` : ''}</td>
                 <td>${pl ? esc(pl.name) : '-'}</td>
                 <td><span class="${sc}">${sl}</span></td>
                 <td class="muted">${a.billing.periodEnd ? new Date(a.billing.periodEnd).toLocaleDateString('pt-BR') : '-'}</td>

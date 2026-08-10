@@ -3332,3 +3332,16 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
 }
 .pay-method:has(input:checked) .pay-ic { background: var(--verde); color: #fff; }
 .pay-method:focus-within { border-color: var(--verde-esc); box-shadow: var(--ring); }
+
+/* ---------------------------------------------------------------------------
+   CADASTRO: perfil da empresa
+   Dois campos curtos lado a lado; abaixo de 420px o formulário já é estreito
+   demais e eles empilham.
+   --------------------------------------------------------------------------- */
+#reg-perfil { display: flex; flex-direction: column; gap: 12px; }
+.reg-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 420px) { .reg-cols { grid-template-columns: 1fr; } }
+
+/* Segmento, tamanho e objetivo na linha da conta, no Admin SaaS */
+.acc-perfil { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.acc-perfil .pill { font-size: 10.5px; padding: 2px 7px; }
