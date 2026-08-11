@@ -1,11 +1,11 @@
-// Fluxo oficial do Embedded Signup — Meta Graph API v25.0 (Tech Provider)
+// Fluxo oficial do Embedded Signup — Meta Graph API v26.0 (Tech Provider)
 // Docs: https://developers.facebook.com/docs/whatsapp/embedded-signup
 // Todas as chamadas usam as credenciais da PLATAFORMA (App ID/Secret do dono do SaaS);
 // o token de cada cliente é obtido trocando o authorization_code devolvido pelo popup.
 const db = require('./db');
 
 function p() { return db.get().platform; }
-function base() { return `https://graph.facebook.com/${p().graphVersion || 'v25.0'}`; }
+function base() { return `https://graph.facebook.com/${p().graphVersion || 'v26.0'}`; }
 
 const CFG_LABELS = {
   appId: 'App ID',
@@ -118,7 +118,7 @@ function adsConfigured() {
 // URL do diálogo de autorização. `state` protege contra CSRF.
 function adsAuthUrl(redirectUri, state) {
   const app = adsApp();
-  const ver = p().graphVersion || 'v25.0';
+  const ver = p().graphVersion || 'v26.0';
   const q = new URLSearchParams({
     client_id: app.id,
     redirect_uri: redirectUri,

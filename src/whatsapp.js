@@ -1,9 +1,9 @@
-// Cliente da Meta WhatsApp Cloud API (Graph API v25.0) — escopado por conta (tenant)
+// Cliente da Meta WhatsApp Cloud API (Graph API v26.0) — escopado por conta (tenant)
 // Docs: https://developers.facebook.com/docs/whatsapp/cloud-api
 // Cada função recebe a conta (acc) e usa o token/os IDs salvos pelo Embedded Signup.
 const db = require('./db');
 
-function ver() { return db.get().platform.graphVersion || 'v25.0'; }
+function ver() { return db.get().platform.graphVersion || 'v26.0'; }
 function base() { return `https://graph.facebook.com/${ver()}`; }
 
 // Token da conta (Embedded Signup); fallback: System User Token da plataforma

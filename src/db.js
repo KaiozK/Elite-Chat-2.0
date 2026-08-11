@@ -68,7 +68,7 @@ function needsRehash(guardado) { return !String(guardado || "").startsWith(PREFI
 // Os clientes nunca preenchem isso; eles conectam via Embedded Signup.
 const DEFAULTS = {
   platform: {
-    graphVersion: 'v25.0',
+    graphVersion: 'v26.0',
     appId: '',
     appSecret: '',
     configId: '',        // ID da configuração de login do Embedded Signup
@@ -228,7 +228,7 @@ function channelByPhoneId(acc, phoneNumberId) {
 }
 
 // Estado da conexão WhatsApp de cada conta — preenchido pelo Embedded Signup.
-// Campos persistidos conforme o fluxo oficial da Meta (Cloud API v25.0).
+// Campos persistidos conforme o fluxo oficial da Meta (Cloud API v26.0).
 function emptyWa() {
   return {
     connected: false,
@@ -420,6 +420,10 @@ function migrar() {
   // O Pix Indireto foi descontinuado: limpa a config de bancos antigos para não
   // ficar lixo no db.json (as assinaturas usam o Pix/Woovi e o cartão).
   delete db.platform.pixIndirect;
+  // A versão da Graph API fica GRAVADA, então mudar o padrão não move quem já
+  // instalou. Sobe só quem está na v25.0, que era o padrão anterior: se o
+  // administrador escolheu outra versão à mão, a escolha dele fica de pé.
+  if (db.platform.graphVersion === 'v25.0') db.platform.graphVersion = 'v26.0';
   for (const k of ['woovi', 'billing', 'affiliate', 'landing', 'metaAds', 'nuvemshop', 'security']) {
     for (const kk of Object.keys(DEFAULTS.platform[k])) {
       if (db.platform[k][kk] === undefined) {

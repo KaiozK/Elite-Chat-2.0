@@ -576,7 +576,7 @@ module.exports = function (broadcast, clients) {
     res.json({
       appId: p.appId,
       configId: p.configId,
-      graphVersion: p.graphVersion || 'v25.0',
+      graphVersion: p.graphVersion || 'v26.0',
       redirectPath: '/auth/meta/callback',
       ready: !!(p.appId && p.appSecret)
     });
@@ -595,7 +595,7 @@ module.exports = function (broadcast, clients) {
   // ---------------------------------------------------------------------------
   router.get('/admin/meta/diag', auth, adminOnly, h(async (req, res) => {
     const p = db.get().platform;
-    const v = p.graphVersion || 'v25.0';
+    const v = p.graphVersion || 'v26.0';
     const achados = [];
     const add = (nivel, texto) => achados.push({ nivel, texto });
 
@@ -749,7 +749,7 @@ module.exports = function (broadcast, clients) {
       }
 
       // 10/12. persiste tudo e marca como conectado
-      w.graphVersion = db.get().platform.graphVersion || 'v25.0';
+      w.graphVersion = db.get().platform.graphVersion || 'v26.0';
       w.connected = true;
       w.connectedAt = w.connectedAt || Date.now();
       w.updatedAt = Date.now();
@@ -2349,7 +2349,7 @@ module.exports = function (broadcast, clients) {
     const px = req.acc.pixels.find(p => p.id === req.params.id);
     if (!px) return res.status(404).json({ error: 'Pixel não encontrado' });
     if (px.type !== 'meta' || !px.capiToken) return res.status(400).json({ error: 'Teste disponível apenas para Meta Pixel com token da Conversions API' });
-    const ver = db.get().platform.graphVersion || 'v25.0';
+    const ver = db.get().platform.graphVersion || 'v26.0';
     const payload = {
       data: [{
         event_name: px.defaultEvent || 'Lead',
@@ -3371,7 +3371,7 @@ module.exports = function (broadcast, clients) {
         appId: data.platform.appId || '',
         configId: data.platform.configId || '',
         verifyToken: data.platform.verifyToken || '',
-        graphVersion: data.platform.graphVersion || 'v25.0',
+        graphVersion: data.platform.graphVersion || 'v26.0',
         // segredos NUNCA voltam: a tela só precisa saber que existem
         hasAppSecret: !!data.platform.appSecret,
         hasSystemToken: !!data.platform.systemToken,

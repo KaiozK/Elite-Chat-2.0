@@ -3661,7 +3661,7 @@ async function renderSettings() {
           <div class="wa-row"><span>Business ID</span><b>${esc(w.businessId || '-')}</b></div>
           <div class="wa-row"><span>Webhook assinado</span><b>${w.appSubscribed ? 'Sim' : 'Não'}</b></div>
           <div class="wa-row"><span>Conectado em</span><b>${w.connectedAt ? new Date(w.connectedAt).toLocaleString('pt-BR') : '-'}</b></div>
-          <div class="wa-row"><span>Graph API</span><b>${esc(w.graphVersion || 'v25.0')}</b></div>
+          <div class="wa-row"><span>Graph API</span><b>${esc(w.graphVersion || 'v26.0')}</b></div>
         </div>
         <div class="row" style="margin-top:14px">
           <button class="btn no-grow" onclick="testConn()">${ico('activity', 14)} Testar conexão</button>
@@ -3677,7 +3677,7 @@ async function renderSettings() {
           Número, conta e webhooks são configurados <b>automaticamente</b>, você não precisa copiar nenhum ID ou token.
         </p>
         <button class="btn primary lg" onclick="connectWhatsApp()">${waLogo(18)} Conectar WhatsApp</button>
-        <p class="hint" style="margin-top:12px">Embedded Signup oficial · WhatsApp Business Platform (Cloud API ${esc(s.graphVersion || 'v25.0')})</p>
+        <p class="hint" style="margin-top:12px">Embedded Signup oficial · WhatsApp Business Platform (Cloud API ${esc(s.graphVersion || 'v26.0')})</p>
       </div>`;
 
 
@@ -6594,7 +6594,7 @@ async function renderAdmin() {
           <label>App Secret ${p.hasAppSecret ? '<em class="lim-extra">já salvo, deixe vazio para manter</em>' : ''}<input id="pl-appsecret" type="password" autocomplete="new-password" placeholder="${p.hasAppSecret ? '••••••••' : 'Configurações do app → Básico'}"></label>
           <label>Config ID (Embedded Signup)<input id="pl-configid" value="${esc(p.configId || '')}" placeholder="Login do Facebook p/ Empresas → Configurações"></label>
           <label>System User Token (fallback) ${p.hasSystemToken ? '<em class="lim-extra">já salvo, deixe vazio para manter</em>' : ''}<input id="pl-systoken" type="password" autocomplete="new-password" placeholder="${p.hasSystemToken ? '••••••••' : 'Opcional'}"></label>
-          <label>Versão da Graph API${ecSelect('pl-version', ['v25.0', 'v24.0', 'v23.0', 'v22.0', 'v21.0'].map(v => ({ value: v, label: v })), p.graphVersion || 'v25.0')}</label>
+          <label>Versão da Graph API${ecSelect('pl-version', ['v26.0', 'v26.0', 'v24.0', 'v23.0', 'v22.0'].map(v => ({ value: v, label: v })), p.graphVersion || 'v26.0')}</label>
         </div>
         <div class="row" style="margin-top:14px">
           <button class="btn primary no-grow" onclick="savePlatform()">${ico('save', 14)} Salvar plataforma</button>
@@ -10747,7 +10747,7 @@ function promptModal({ title, label, placeholder = '', value = '' }) {
 }
 
 // ==================== EMBEDDED SIGNUP (Conectar WhatsApp) ====================
-// Fluxo oficial Meta v25.0: popup -> authorization_code -> backend faz
+// Fluxo oficial Meta v26.0: popup -> authorization_code -> backend faz
 // token -> business -> WABA -> número -> subscribed_apps -> teste, tudo automático.
 let esOAuthState = null;
 let esSessionInfo = null;

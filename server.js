@@ -286,7 +286,7 @@ function destWithUtm(link) {
 function fireCapi(acc, link, req) {
   const metas = (acc.pixels || []).filter(p => p.type === 'meta' && p.pixelId && p.capiToken);
   if (!metas.length) return;
-  const ver = db.get().platform.graphVersion || 'v25.0';
+  const ver = db.get().platform.graphVersion || 'v26.0';
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '';
   const ua = String(req.get('user-agent') || '');
   const evName = link.event || 'PageView';

@@ -215,7 +215,7 @@ async function sendConversions(acc, ch) {
     : (acc.pixels || []).filter(p => p.type === 'meta' && p.capiToken).map(p => ({ id: p.pixelId, token: p.capiToken }))[0];
   if (capiPixel) {
     try {
-      await post('graph.facebook.com', `/${db.get().platform.graphVersion || 'v25.0'}/${encodeURIComponent(capiPixel.id)}/events?access_token=${encodeURIComponent(capiPixel.token)}`, {
+      await post('graph.facebook.com', `/${db.get().platform.graphVersion || 'v26.0'}/${encodeURIComponent(capiPixel.id)}/events?access_token=${encodeURIComponent(capiPixel.token)}`, {
         data: [{
           event_name: 'Purchase', event_time: Math.floor(Date.now() / 1000),
           action_source: 'website', event_id: ch.id,
@@ -300,7 +300,7 @@ async function syncMetaAds(acc) {
   }
   const actId = m.adAccountId.startsWith('act_') ? m.adAccountId : 'act_' + m.adAccountId;
   const fields = 'campaign_id,campaign_name,spend,impressions,clicks,ctr,cpm,cpc,frequency,actions';
-  const ver = (db.get().platform.graphVersion || 'v25.0');   // acompanha a versão do painel
+  const ver = (db.get().platform.graphVersion || 'v26.0');   // acompanha a versão do painel
   const preset = m.preset || 'last_30d';
 
   try {
