@@ -3097,6 +3097,9 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
      baixo. Com um piso de 55% o selo grande desce e o pequeno continua ao
      lado. */
   .row > h2 { min-width: 55%; }
+  /* Quando o selo é filho do próprio h2 (e não irmão), o título quebrava em
+     duas linhas para caber ao lado dele. Deixando o h2 quebrar, o selo desce. */
+  .card > h2 { flex-wrap: wrap; }
 }
 
 /* telas bem estreitas: respiro e empilhamento extra */
