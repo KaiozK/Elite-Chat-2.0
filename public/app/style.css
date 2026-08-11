@@ -3021,7 +3021,19 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
      para 16px (evita o zoom do iOS) e, sem isto, um select ao lado de um input
      no mesmo formulário ficava com letra visivelmente menor. */
   .ecsel-btn { min-height: 42px; font-size: 16px; }
-  input, select, textarea { min-height: 42px; font-size: 16px; }  /* 16px evita zoom no iOS */
+  /* Checkbox e radio ficam DE FORA: os .chk são interruptores desenhados em
+     40x23, e um min-height de campo de formulário os esmagava num oval de
+     40x42. O alvo de toque deles é a label inteira, que já tem 42px. */
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+    min-height: 42px; font-size: 16px;   /* 16px evita zoom no iOS */
+  }
+  /* Sem o min-height do input a linha encolhia para 26px. É a LABEL que
+     precisa do alvo confortável, não o desenho do interruptor. */
+  label.chk { min-height: 40px; }
+  /* mesmo desenho do .toggle, para os dois interruptores do app combinarem */
+  label.chk input[type="checkbox"] { width: 46px; height: 26px; }
+  label.chk input[type="checkbox"]::after { width: 20px; height: 20px; top: 3px; left: 3px; }
+  label.chk input[type="checkbox"]:checked::after { transform: translateX(20px); }
   textarea { min-height: 76px; }
   /* O interruptor não precisa CRESCER para ser fácil de acertar. A 51x31 ele
      virava um borrão ao lado de um texto de 13px; aqui o desenho fica discreto
@@ -3079,15 +3091,44 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   .composer textarea { height: 42px; min-height: 42px; max-height: 104px; padding: 10px 14px; border-radius: 12px; }
   .composer .send-btn { min-height: 42px; width: 42px; padding: 0; border-radius: 12px; }
   .composer .line { gap: 8px; }
+
+  /* Título de card com selo ao lado: o `flex:1` inline do h2 dá basis 0, então
+     ele encolhia até quebrar em três linhas em vez de mandar o selo para
+     baixo. Com um piso de 55% o selo grande desce e o pequeno continua ao
+     lado. */
+  .row > h2 { min-width: 55%; }
 }
 
 /* telas bem estreitas: respiro e empilhamento extra */
 @media (max-width: 480px) {
-  .page-head .btn, .page-head .btn.primary { width: 100%; }
-  .page-head.row { flex-direction: column; align-items: stretch; }
+  /* Os botões do cabeçalho dividem UMA faixa em vez de virarem dois blocos de
+     75px empilhados. Com três ou mais eles quebram para a linha de baixo
+     sozinhos, então continua legível quando a tela tem muitas ações. */
+  /* Continua em linha e quebrando: o título leva a primeira (min-width:100%,
+     porque o `style="flex:1"` inline dele venceria um flex-basis daqui) e os
+     botões dividem a seguinte. Em coluna, um flex-basis viraria ALTURA. */
+  .page-head.row { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .page-head.row > div:first-child { min-width: 100%; }
+  .page-head.row > .btn, .page-head.row > .btn.primary { flex: 1 1 140px; width: auto; min-width: 0; }
   .modal { padding: 18px 16px; }
   .metric-hero { grid-template-columns: 1fr 1fr; }
   .dash-kpis { grid-template-columns: 1fr 1fr; }
+
+  /* ---- os atalhos são atalhos, não a tela ----
+     A 150px de coluna cabiam dois por linha: três atalhos viravam duas
+     fileiras de 104px (219px no total) antes de qualquer número aparecer.
+     Numa fileira de três, com ícone e respiro menores, são 76px. */
+  .dash-tiles { grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+  .tile { padding: 10px 4px 9px; gap: 5px; border-radius: 13px; }
+  .tile-ic { width: 32px; height: 32px; border-radius: 10px; }
+  .tile-ic svg { width: 16px; height: 16px; }
+  .tile b { font-size: 10.5px; line-height: 1.15; text-align: center; }
+
+  /* O número a 28px empurrava "QUANTIDADE DE VENDAS" para fora do cartão. */
+  .stat { padding: 13px 14px; }
+  .stat .num { font-size: 21px; }
+  .stat-ico { top: 11px; right: 11px; width: 28px; height: 28px; border-radius: 10px; }
+  .stat .lbl { font-size: 10px; letter-spacing: .04em; padding-right: 32px; }
   .row > label { flex: 1 1 100% !important; }
   .ckb-comps { grid-template-columns: 1fr 1fr; }
 }

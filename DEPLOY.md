@@ -1,4 +1,37 @@
-# Deploy do Elite Chat 2.0
+# Deploy do Koonfy
+
+## Se o app "esquece" tudo a cada restart
+
+Sintoma: você cadastra, reinicia (ou faz um deploy) e volta tudo do zero —
+inclusive a senha do admin, que retorna ao padrão.
+
+Causa: o banco está gravando em `data/db.json`, dentro do contêiner, e o host
+recria esse disco a cada deploy e a cada reinício. Vale para **DigitalOcean App
+Platform** (onde koonfy.com está hoje), Railway, Render, Heroku e Cloud Run: em
+nenhum deles existe disco que sobreviva ao restart, a não ser volume dedicado.
+Enquanto o contêiner está de pé tudo funciona, o que faz o problema parecer
+intermitente.
+
+Solução: guardar o estado fora do disco. O app já fala MySQL — basta ligar:
+
+```
+DB_DRIVER=mysql
+DATABASE_URL=mysql://usuario:senha@host:3306/koonfy
+```
+
+Na DigitalOcean, crie um **Managed Database → MySQL** e cole a connection
+string em Settings → App-Level Environment Variables. Para levar o que existe
+hoje, rode uma vez, com as duas variáveis definidas:
+
+```
+node scripts/migrar-mysql.js
+```
+
+Ele migra, relê do MySQL e compara campo a campo, saindo com erro se algo
+divergir. Detalhes em `docs/mysql.md` e `docs/migracao-mysql.md`.
+
+Com o motor `file` num host desses, o app avisa no log ao subir e mostra um
+alerta no topo do painel Admin SaaS.
 
 ## Aviso importante sobre a Vercel
 

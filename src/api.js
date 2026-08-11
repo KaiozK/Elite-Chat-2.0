@@ -3341,6 +3341,10 @@ module.exports = function (broadcast, clients) {
         pendingWithdrawals: data.withdrawals.filter(w => w.status === 'pending').length
       },
       series, byPlan, advanced,
+      // O admin precisa saber ONDE o banco está gravando. Em host de container
+      // o disco volta ao estado da imagem a cada restart, e o painel é o único
+      // lugar onde ele vai ver isso antes de perder os dados.
+      armazenamento: { motor: db.storage.nome, efemero: db.storage.efemero() },
       accounts: accs.map(a => ({
         id: a.id, name: a.name, email: a.email, createdAt: a.createdAt,
         waConnected: !!(a.wa && a.wa.connected),

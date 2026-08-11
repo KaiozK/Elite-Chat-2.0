@@ -535,6 +535,20 @@ pronto.then(() => app.listen(PORT, () => {
   console.log(`  Graph API:           ${p.graphVersion}`);
   console.log(`  Banco:               ${db.storage.nome}`);
   console.log('==============================================');
+  // Em host de container (DigitalOcean App Platform, Railway, Render, Heroku)
+  // o disco é recriado a cada deploy e a cada restart: o db.json volta ao
+  // estado da imagem e TODO o cadastro some. O sintoma é o app "esquecer"
+  // tudo sempre que reinicia, inclusive a senha do admin, que volta ao padrão.
+  if (db.storage.efemero()) {
+    console.warn('');
+    console.warn('  !!  ATENÇÃO: disco efêmero + banco em arquivo  !!');
+    console.warn('  Este host recria o disco a cada deploy/restart, então tudo');
+    console.warn('  que for gravado em data/db.json se perde no próximo restart.');
+    console.warn('  Use um banco de verdade:');
+    console.warn('    DB_DRIVER=mysql  DATABASE_URL=mysql://user:senha@host:3306/koonfy');
+    console.warn('  Detalhes em docs/mysql.md e DEPLOY.md.');
+    console.warn('');
+  }
 })).catch(e => {
   console.error('Falha ao carregar o banco:', e.message);
   process.exit(1);

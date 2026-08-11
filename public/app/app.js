@@ -6557,6 +6557,22 @@ async function renderAdmin() {
         <span class="lc-arrow">${ico('arrowright', 18)}</span>
       </a>`;
 }
+// O banco em arquivo num host de container some a cada deploy/restart: é o
+// motivo de o app "esquecer" tudo, senha do admin inclusive. Fica no topo do
+// painel porque ninguém lê o log do servidor.
+function armazenamentoAviso(a) {
+  if (!a || !a.efemero) return '';
+  return `<div class="danger-box" style="margin-bottom:16px">
+    <b>${ico('alert', 14)} Os dados se perdem a cada restart.</b>
+    Este servidor recria o disco a cada deploy e a cada reinício, e o banco está
+    gravando em arquivo (<code>data/db.json</code>) — tudo que foi cadastrado
+    volta ao zero, inclusive a senha do administrador.
+    Ligue o MySQL definindo as variáveis de ambiente
+    <code>DB_DRIVER=mysql</code> e <code>DATABASE_URL=mysql://usuario:senha@host:3306/koonfy</code>,
+    depois rode <code>node scripts/migrar-mysql.js</code> para levar o que existe hoje.
+  </div>`;
+}
+
 async function paintAdmin() {
   await admCarregarCheckouts();   // para o seletor de checkout dos planos
   const box = $('#adm-box'); if (!box) return;
@@ -6568,6 +6584,7 @@ async function paintAdmin() {
     const activeTab = $('.tabs button.active')?.dataset.tab || 'adm-vis';
     box.innerHTML = `
       <div class="tabpane ${activeTab === 'adm-vis' ? 'show' : ''}" data-pane="adm-vis">
+        ${armazenamentoAviso(d.armazenamento)}
         <div class="metric-hero">
           <div class="mh-card hi"><span class="mh-ic">${ico('zap', 20)}</span><div class="mh-val">${fmtBRL(m.mrr)}</div><div class="mh-lbl">MRR (receita recorrente)</div></div>
           <div class="mh-card"><span class="mh-ic">${ico('activity', 20)}</span><div class="mh-val">${fmtBRL(m.revenue30d)}</div><div class="mh-lbl">Receita. 30 dias</div></div>

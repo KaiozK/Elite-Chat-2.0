@@ -29,4 +29,17 @@ if (driver === 'mysql') motor = require('./mysql');
 else motor = require('./file');
 
 motor.nome = driver === 'mysql' ? 'mysql' : 'file';
+
+// Nenhum host anuncia "meu disco é descartável", mas todos se identificam por
+// variáveis de ambiente próprias. Com o motor `file` nesses hosts, o banco
+// volta ao estado da imagem a cada deploy/restart — inclusive a senha do
+// admin. Erra para o lado do alarme falso: um aviso a mais é barato, perder o
+// banco não é.
+motor.ehContainerEfemero = function () {
+  return !!(process.env.DIGITALOCEAN_APP_ID || process.env.APP_DOMAIN        // DO App Platform
+    || process.env.RAILWAY_ENVIRONMENT || process.env.RENDER                 // Railway / Render
+    || process.env.DYNO || process.env.VERCEL || process.env.K_SERVICE);     // Heroku / Vercel / Cloud Run
+};
+motor.efemero = function () { return motor.nome === 'file' && motor.ehContainerEfemero(); };
+
 module.exports = motor;
