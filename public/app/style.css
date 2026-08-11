@@ -3060,9 +3060,25 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   /* No celular o aviso fica com o título e o botão de saída; a explicação
      inteira (4 linhas) come mais tela do que a conversa e se repete a cada
      abertura. No desktop continua completa. */
-  .sess-notice { padding: 9px 11px; gap: 9px; margin-bottom: 8px; font-size: 12.5px; }
+  .sess-notice {
+    padding: 8px 10px; gap: 8px; margin-bottom: 7px; font-size: 12px; line-height: 1.3;
+  }
   .sess-notice .sn-body { display: none; }
+  .sess-notice > .ic { display: none; }   /* o título já diz o que é */
+  /* O botão vinha ocupando a faixa inteira (330px) só porque sobrava linha.
+     `max-content` o deixa do tamanho do próprio rótulo. */
+  .sess-notice .btn.small {
+    flex: none; width: max-content; min-height: 32px; padding: 6px 11px; font-size: 11.5px;
+  }
   .composer select, .composer .ecsel-btn { max-width: 150px; }
+  /* A caixa de escrever nasce com UMA linha e cresce só se a mensagem crescer.
+     A regra geral de textarea no celular é 76px (bom para um formulário, caro
+     aqui: o placeholder ocupava duas linhas antes mesmo de digitar). */
+  /* `height` e não só `min-height`: sem o atributo rows o textarea nasce com
+     duas linhas (71px) e a altura intrínseca ganha do mínimo. */
+  .composer textarea { height: 42px; min-height: 42px; max-height: 104px; padding: 10px 14px; border-radius: 12px; }
+  .composer .send-btn { min-height: 42px; width: 42px; padding: 0; border-radius: 12px; }
+  .composer .line { gap: 8px; }
 }
 
 /* telas bem estreitas: respiro e empilhamento extra */
