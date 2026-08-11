@@ -2,13 +2,40 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Bundled Page</title>
+  <title>Koonfy | CRM de WhatsApp Profissional</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #faf9f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
-    #__bundler_loading { position: fixed; bottom: 20px; right: 20px; font: 13px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; color: #666; background: #fff; padding: 8px 14px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.12); z-index: 10000; }
-    #__bundler_thumbnail { position: fixed; inset: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #faf9f5; z-index: 9999; }
-    #__bundler_thumbnail svg { width: 100%; height: 100%; object-fit: contain; }
+    /* O script de carga escreve o progresso aqui ("Unpacking N assets..."),
+       então o elemento precisa existir — mas é recado de ferramenta, não de
+       produto, e ficava piscando no canto da tela do visitante. Fica no DOM,
+       fora da vista, e continua servindo de acessibilidade. */
+    #__bundler_loading {
+      position: fixed; width: 1px; height: 1px; overflow: hidden;
+      clip-path: inset(50%); white-space: nowrap; border: 0;
+    }
+    /* Splash com a marca, na mesma cor de fundo da página, para a troca no fim
+       da carga não dar solavanco. */
+    #__bundler_thumbnail {
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 18px;
+      background: #faf9f5; z-index: 9999;
+    }
+    #__bundler_thumbnail .kf-marca {
+      display: flex; align-items: center; gap: 12px;
+      font: 800 27px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: -.03em; color: #0d1b14;
+    }
+    #__bundler_thumbnail .kf-marca svg { display: block; flex: none; }
+    #__bundler_thumbnail .kf-marca i { font-style: normal; color: #10B981; }
+    #__bundler_thumbnail .kf-giro {
+      width: 26px; height: 26px; border-radius: 50%;
+      border: 2.5px solid rgba(16,185,129,.22); border-top-color: #10B981;
+      animation: kf-girar .7s linear infinite;
+    }
+    @keyframes kf-girar { to { transform: rotate(360deg); } }
+    /* Quem não quer animação vê o disco parado, sem piscar nada. */
+    @media (prefers-reduced-motion: reduce) { #__bundler_thumbnail .kf-giro { animation: none; } }
     #__bundler_placeholder { color: #999; font-size: 14px; }
   </style>
   <noscript>
@@ -115,6 +142,25 @@
     var s = document.createElement('style');
     s.id = 'ec-css'; s.textContent = CSS;
     (document.head || document.documentElement).appendChild(s);
+  }
+
+  // O runtime troca o <html> inteiro pelo template do bundle, e esse template
+  // não traz <title> nem description: a aba ficava sem nome e o Google sem
+  // resumo. Reposto junto com o CSS, pelo mesmo observer.
+  var TITULO = 'Koonfy | CRM de WhatsApp Profissional';
+  var DESCR = 'Centralize o atendimento no WhatsApp com a API Oficial da Meta: '
+    + 'CRM, campanhas em massa, automações e cobranças por Pix, sem risco de banimento.';
+  function ensureSeo() {
+    var cab = document.head || document.documentElement;
+    var t = document.querySelector('title');
+    if (!t) { t = document.createElement('title'); cab.appendChild(t); }
+    if (t.textContent !== TITULO) t.textContent = TITULO;
+    var d = document.querySelector('meta[name="description"]');
+    if (!d) {
+      d = document.createElement('meta');
+      d.setAttribute('name', 'description'); d.setAttribute('content', DESCR);
+      cab.appendChild(d);
+    }
   }
 
   // ---- CTA dinâmico (dias de teste do Admin) ----
@@ -334,6 +380,7 @@
 
   function inject() {
     ensureCss();
+    ensureSeo();
     var ok = true;
 
     if (!document.getElementById('coexistencia')) {
@@ -359,14 +406,24 @@
     return ok;
   }
   var tries = 0, iv = setInterval(function () { wireCta(); if (inject() || ++tries > 60) clearInterval(iv); }, 250);
-  new MutationObserver(function () { ensureCss(); inject(); applyCta(); wireCta(); }).observe(document.documentElement, { childList: true, subtree: true });
+  new MutationObserver(function () { ensureCss(); ensureSeo(); inject(); applyCta(); wireCta(); }).observe(document.documentElement, { childList: true, subtree: true });
 })();
 </script>
 
 </head>
 <body>
-  <div id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" sc-camel-view-box="0 0 100 100"><rect width="100" height="100" fill="#34D399"></rect><g transform="translate(30,30)"><path d="M20 2c-10 0-18 7.4-18 16.5 0 5 2.4 9.5 6.2 12.5L6 38l8.6-3.6c1.7.4 3.5.6 5.4.6 10 0 18-7.4 18-16.5S30 2 20 2z" fill="#fff"></path></g></svg></div>
-  <div id="__bundler_loading">Unpacking...</div>
+  <div id="__bundler_thumbnail">
+    <!-- A marca vai DESENHADA aqui, e não como <img>: o PNG do logo tem 2,6 MB
+         e chegaria bem depois do momento em que o splash importa. -->
+    <div class="kf-marca">
+      <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
+        <rect width="44" height="44" rx="13" fill="#10B981"></rect>
+        <path d="M11 29h22l2.2-13.4-6.6 4.6L22 12l-6.6 8.2-6.6-4.6z" fill="#fff"></path>
+        <rect x="11" y="30.6" width="22" height="2.6" rx="1.3" fill="#fff"></rect>
+      </svg><span>Koon<i>fy</i></span></div>
+    <div class="kf-giro"></div>
+  </div>
+  <div id="__bundler_loading" role="status" aria-live="polite">Carregando…</div>
 
   <script>
     
