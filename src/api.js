@@ -3364,7 +3364,7 @@ module.exports = function (broadcast, clients) {
       plans: data.plans,
       withdrawals: data.withdrawals.slice(-50).reverse(),
       revenue: data.revenue.slice(-100).reverse(),
-      config: { woovi: { appId: data.platform.woovi.appId ? '••••' + data.platform.woovi.appId.slice(-6) : '', configured: woovi.configured(), pixAutomatic: data.platform.woovi.pixAutomatic }, billing: data.platform.billing, affiliate: data.platform.affiliate, landing: data.platform.landing },
+      config: { woovi: { appId: data.platform.woovi.appId ? '••••' + data.platform.woovi.appId.slice(-6) : '', configured: woovi.configured(), pixAutomatic: data.platform.woovi.pixAutomatic, sandbox: !!data.platform.woovi.sandbox, base: woovi.base() }, billing: data.platform.billing, affiliate: data.platform.affiliate, landing: data.platform.landing },
       // Credenciais do app da Meta (Tech Provider). Rota já é adminOnly, então
       // o cliente nunca recebe isto: a configuração vive só no Admin SaaS.
       platform: {
@@ -3461,6 +3461,7 @@ module.exports = function (broadcast, clients) {
     const p = db.get().platform;
     if (b.wooviAppId !== undefined) p.woovi.appId = String(b.wooviAppId).trim();
     if (b.pixAutomatic !== undefined) p.woovi.pixAutomatic = !!b.pixAutomatic;
+    if (b.wooviSandbox !== undefined) p.woovi.sandbox = !!b.wooviSandbox;
     if (b.trialDays !== undefined) p.billing.trialDays = Math.max(0, Number(b.trialDays) || 0);
     if (b.enforce !== undefined) p.billing.enforce = !!b.enforce;
     if (b.requirePlan !== undefined) p.billing.requirePlan = !!b.requirePlan;
@@ -3602,7 +3603,10 @@ module.exports = function (broadcast, clients) {
   // Testa a conexão com a Woovi (lista 1 cobrança qualquer)
   router.get('/admin/woovi/test', auth, adminOnly, h(async (req, res) => {
     const r = await woovi.call('GET', '/api/v1/charge?limit=1');
-    res.json({ ok: true, charges: (r.charges || []).length, pageInfo: r.pageInfo || null });
+    // Saber que conectou não basta: o AppID de testes conecta igual ao de
+    // produção, e o admin precisa ver em QUAL dos dois a cobrança vai cair.
+    res.json({ ok: true, charges: (r.charges || []).length, pageInfo: r.pageInfo || null,
+      ambiente: woovi.ambiente(), base: woovi.base() });
   }));
 
   router.put('/admin/withdrawals/:id', auth, adminOnly, (req, res) => {

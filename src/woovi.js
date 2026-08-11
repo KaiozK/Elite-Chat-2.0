@@ -5,11 +5,17 @@
 const db = require('./db');
 const store = require('./store');
 
-const API = 'https://api.woovi.com';
+// Produção e testes são contas SEPARADAS na Woovi, cada uma com o seu AppID:
+// app.woovi.com e app.woovi-sandbox.com. Um AppID de testes enviado para a API
+// de produção só devolve 401, sem dizer o motivo — daí o ambiente ser uma
+// escolha explícita aqui, e não algo deduzido do formato do AppID.
+const BASES = { producao: 'https://api.woovi.com', testes: 'https://api.woovi-sandbox.com' };
 
-function appId() {
-  return (db.get().platform.woovi && db.get().platform.woovi.appId || '').trim();
-}
+function cfg() { return db.get().platform.woovi || {}; }
+function ambiente() { return cfg().sandbox ? 'testes' : 'produção'; }
+function base() { return cfg().sandbox ? BASES.testes : BASES.producao; }
+
+function appId() { return (cfg().appId || '').trim(); }
 function configured() { return !!appId(); }
 
 // Chamada genérica à API da Woovi
@@ -18,7 +24,7 @@ async function call(method, path, body) {
     const e = new Error('Woovi não configurada, informe o AppID no painel Admin → Pagamentos');
     e.status = 400; throw e;
   }
-  const r = await fetch(API + path, {
+  const r = await fetch(base() + path, {
     method,
     headers: { 'Content-Type': 'application/json', Authorization: appId() },
     body: body ? JSON.stringify(body) : undefined
@@ -27,7 +33,18 @@ async function call(method, path, body) {
   let data = {};
   try { data = JSON.parse(text); } catch { data = { raw: text }; }
   if (!r.ok) {
-    const e = new Error(data.error || data.message || `Woovi HTTP ${r.status}`);
+    // 401 aqui quase sempre é AppID do ambiente errado, não AppID inválido: a
+    // mensagem antiga ("Woovi HTTP 401") mandava o admin procurar no lugar
+    // errado. Diz em qual ambiente a chamada saiu e onde gerar o par certo.
+    let msg = data.error || data.message || `Woovi HTTP ${r.status}`;
+    if (r.status === 401) {
+      msg = 'A Woovi recusou o AppID no ambiente de ' + ambiente() + '. ' +
+        (cfg().sandbox
+          ? 'Gere o AppID em app.woovi-sandbox.com (a conta de testes é separada da de produção).'
+          : 'Se o AppID veio de app.woovi-sandbox.com, marque "ambiente de testes" aqui; ' +
+            'o AppID de produção é gerado em app.woovi.com.');
+    }
+    const e = new Error(msg);
     e.status = r.status === 401 ? 400 : 502; e.meta = data; throw e;
   }
   return data;
@@ -267,6 +284,6 @@ function webhookHandler(broadcast) {
 }
 
 module.exports = {
-  configured, call, createCharge, getCharge, deleteCharge,
+  configured, ambiente, base, call, createCharge, getCharge, deleteCharge,
   createSubscription, cancelSubscription, syncSubscription, applyPayment, webhookHandler
 };

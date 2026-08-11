@@ -6875,7 +6875,14 @@ async function paintAdmin() {
       <div class="tabpane ${activeTab === 'adm-pay' ? 'show' : ''}" data-pane="adm-pay">
         <div class="card">
           <h2>${ico('shield')} Woovi. Pix &amp; Pix Automático</h2>
-          <p class="muted" style="margin:0 0 12px;font-size:13px">Crie uma conta em <b>app.woovi.com</b>, gere um <b>AppID</b> em API/Plugins → Nova integração e cole abaixo. Método de pagamento: <b>apenas Pix</b> (cobrança na hora) e <b>Pix Automático</b> (recorrência), sem cartão.</p>
+          <p class="muted" style="margin:0 0 12px;font-size:13px">Gere um <b>AppID</b> em API/Plugins → Nova integração e cole abaixo. Método de pagamento: <b>apenas Pix</b> (cobrança na hora) e <b>Pix Automático</b> (recorrência), sem cartão.</p>
+          <label class="chk" style="margin:0 0 12px"><input type="checkbox" ${d.config.woovi.sandbox ? 'checked' : ''} onchange="admSaveConfig({wooviSandbox:this.checked})"> Usar o <b>ambiente de testes</b> da Woovi</label>
+          <p class="muted" style="margin:0 0 12px;font-size:12.5px">
+            As contas são separadas e cada uma tem o seu AppID: produção em <b>app.woovi.com</b>,
+            testes em <b>app.woovi-sandbox.com</b>. Um AppID de testes enviado para a API de
+            produção é recusado com 401. Ambiente atual: <b>${d.config.woovi.sandbox ? 'testes' : 'produção'}</b>
+            (<code>${esc(d.config.woovi.base || '')}</code>).
+          </p>
           <div class="row">
             <label style="flex:2">AppID da Woovi ${d.config.woovi.configured ? `<span class="pill done" style="margin-left:6px">Configurado ${esc(d.config.woovi.appId)}</span>` : ''}<input id="wv-appid" type="password" placeholder="Q2xpZW50X0lkX…"></label>
             <button class="btn primary no-grow" onclick="admSaveConfig({wooviAppId:$('#wv-appid').value})">${ico('save', 14)} Salvar</button>
@@ -6885,7 +6892,8 @@ async function paintAdmin() {
           <label class="chk" style="margin-top:12px"><input type="checkbox" id="wv-auto" ${d.config.woovi.pixAutomatic ? 'checked' : ''} onchange="admSaveConfig({pixAutomatic:this.checked})"> Tentar Pix Automático (assinatura recorrente), se indisponível, cai para Pix avulso por renovação</label>
           <div class="capi-box" style="margin-top:14px">
             <div class="capi-head">${ico('webhook', 14)} Webhook de confirmação <span class="capi-tag">obrigatório em produção</span></div>
-            <p class="muted" style="font-size:12px;margin:6px 0 0">Em app.woovi.com → Webhooks, cadastre a URL <code>${API.webOrigin}/woovi-webhook</code> para os eventos de <b>cobrança paga</b>. Cada pagamento é verificado de novo na API antes de ativar (anti-fraude).</p>
+            <p class="muted" style="font-size:12px;margin:6px 0 0">Em ${d.config.woovi.sandbox ? 'app.woovi-sandbox.com' : 'app.woovi.com'} → Webhooks, cadastre a URL <code>${API.webOrigin}/woovi-webhook</code> para os eventos de <b>cobrança paga</b>. Cada pagamento é verificado de novo na API antes de ativar (anti-fraude).</p>
+            ${d.config.woovi.sandbox ? `<p class="muted" style="font-size:12px;margin:8px 0 0">Em testes o webhook é dispensável: o painel confere a cobrança na API ao voltar da tela de pagamento. Para valer em produção ele é obrigatório, porque lá o pagamento pode chegar com o navegador fechado.</p>` : ''}
           </div>
         </div>
         ${admCardSection(d.card || {}, null)}
@@ -7628,15 +7636,22 @@ async function admNsSave(body) {
 }
 
 async function admSaveConfig(body) {
-  try { await api('/admin/config', { method: 'PUT', body }); toast('Configuração salva'); } catch (e) { toast(e.message, 'error'); }
+  try {
+    await api('/admin/config', { method: 'PUT', body });
+    toast('Configuração salva');
+    // Trocar o ambiente da Woovi muda o endereço da API e o painel onde o
+    // webhook é cadastrado. Sem repintar, o cartão seguia dizendo "produção"
+    // depois de marcar testes — parecia que não tinha salvado.
+    if (body && body.wooviSandbox !== undefined) paintAdmin();
+  } catch (e) { toast(e.message, 'error'); }
 }
 async function admTestWoovi(btn) {
   if (btn) { btn.disabled = true; }
   const out = $('#wv-out');
   try {
     const r = await api('/admin/woovi/test');
-    if (out) out.innerHTML = `<p class="hint" style="text-align:left;margin-top:10px;color:var(--verde-deep)">${ico('check', 12)} Conectada. A API respondeu com ${r.charges} cobrança(s) na primeira página.</p>`;
-    toast('Woovi conectada!');
+    if (out) out.innerHTML = `<p class="hint" style="text-align:left;margin-top:10px;color:var(--verde-deep)">${ico('check', 12)} Conectada ao ambiente de <b>${esc(r.ambiente || '')}</b> (<code>${esc(r.base || '')}</code>). A API respondeu com ${r.charges} cobrança(s) na primeira página.</p>`;
+    toast('Woovi conectada em ' + (r.ambiente || '') + '!');
   }
   catch (e) {
     // "Woovi HTTP 401" não diz o que fazer. Cada erro que a Woovi devolve tem
