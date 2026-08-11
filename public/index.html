@@ -26,7 +26,7 @@
       font: 800 27px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       letter-spacing: -.03em; color: #0d1b14;
     }
-    #__bundler_thumbnail .kf-marca svg { display: block; flex: none; }
+    #__bundler_thumbnail .kf-marca img { display: block; flex: none; width: 44px; height: 44px; }
     #__bundler_thumbnail .kf-marca i { font-style: normal; color: #10B981; }
     #__bundler_thumbnail .kf-giro {
       width: 26px; height: 26px; border-radius: 50%;
@@ -413,14 +413,12 @@
 </head>
 <body>
   <div id="__bundler_thumbnail">
-    <!-- A marca vai DESENHADA aqui, e não como <img>: o PNG do logo tem 2,6 MB
-         e chegaria bem depois do momento em que o splash importa. -->
+    <!-- A logo de verdade, reduzida a 88px (12 KB) porque o arquivo original
+         tem 2,6 MB e chegaria bem depois do momento em que o splash importa.
+         88 e não 44 para ficar nítida em tela retina. -->
     <div class="kf-marca">
-      <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
-        <rect width="44" height="44" rx="13" fill="#10B981"></rect>
-        <path d="M11 29h22l2.2-13.4-6.6 4.6L22 12l-6.6 8.2-6.6-4.6z" fill="#fff"></path>
-        <rect x="11" y="30.6" width="22" height="2.6" rx="1.3" fill="#fff"></rect>
-      </svg><span>Koon<i>fy</i></span></div>
+      <img src="/assets/koonfy-mark-88.png" alt="" width="44" height="44">
+      <span>Koon<i>fy</i></span></div>
     <div class="kf-giro"></div>
   </div>
   <div id="__bundler_loading" role="status" aria-live="polite">Carregando…</div>

@@ -20,7 +20,11 @@
 <link rel="stylesheet" href="/app/style.css?v=mob3">
 <script>/* aplica o tema salvo antes de pintar (sem flash) */
   (function () { try {
-    var t = localStorage.getItem('ec_theme') || (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    /* O padrão é o CLARO. Antes seguia o prefers-color-scheme do sistema, e
+       quem usa o celular no escuro entrava no painel escuro sem nunca ter
+       pedido. Quem preferir o escuro liga em Configurações → Aparência, e a
+       escolha fica salva neste dispositivo. */
+    var t = localStorage.getItem('ec_theme') === 'dark' ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', t);
   } catch (e) {} })();
 </script>
