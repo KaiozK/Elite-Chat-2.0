@@ -166,6 +166,18 @@
     var t = localStorage.getItem('wacrm_token') || '';
     return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t };
   }
+  // A chave da assinatura vem como ArrayBuffer; a do servidor, em base64url.
+  // Sem poder conferir (navegador antigo que não expõe `options`), devolve
+  // false: refazer a inscrição é barato, ficar com uma morta não é.
+  function mesmaChave(sub, publicKey) {
+    var atual = sub.options && sub.options.applicationServerKey;
+    if (!atual) return false;
+    var a = new Uint8Array(atual), b = urlB64ToUint8(publicKey);
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+
   // Devolve a promessa: quem chama (o teste de notificação, por exemplo)
   // precisa esperar a inscrição terminar antes de pedir o envio.
   function subscribePush() {
@@ -175,8 +187,16 @@
       .then(function (cfg) {
         if (!cfg || !cfg.publicKey) return;
         return state.reg.pushManager.getSubscription().then(function (sub) {
-          if (sub) return sub;
-          return state.reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(cfg.publicKey) });
+          // Uma assinatura existente NÃO serve por existir: ela é amarrada à
+          // chave VAPID com que foi criada. Se a do servidor mudou, o serviço
+          // de push recusa todo envio com 403 e nada se recupera sozinho —
+          // era o caso aqui, porque a chave é regerada quando o banco volta
+          // ao estado inicial. Conferindo, o app se conserta na próxima carga.
+          if (sub && mesmaChave(sub, cfg.publicKey)) return sub;
+          var descarta = sub ? sub.unsubscribe().catch(function () {}) : Promise.resolve();
+          return descarta.then(function () {
+            return state.reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(cfg.publicKey) });
+          });
         });
       })
       .then(function (sub) {

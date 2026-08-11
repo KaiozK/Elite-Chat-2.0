@@ -110,8 +110,20 @@ async function sendToAccount(acc, type, payloadObj) {
     if (pf.types && pf.types[type] === false) return;
     try {
       const st = await sendOne(sub, payloadObj);
-      if (st === 404 || st === 410) dead.push(sub.endpoint);
-    } catch (e) { /* rede/endpoint indisponível, ignora */ }
+      // 404/410: o navegador cancelou a inscrição. 403: a assinatura foi feita
+      // com OUTRA chave VAPID — acontece quando o banco volta ao estado
+      // inicial e as chaves são regeradas. Nos dois casos a inscrição está
+      // morta e insistir nela não leva a nada; sai da lista e o cliente
+      // refaz na próxima carga.
+      if (st === 404 || st === 410 || st === 403) dead.push(sub.endpoint);
+      if (st >= 400) {
+        console.warn('[push] ' + new URL(sub.endpoint).host + ' respondeu ' + st +
+          (st === 403 ? ' (chave VAPID não confere com a da inscrição)' : '') +
+          (dead.includes(sub.endpoint) ? ' — inscrição removida' : ''));
+      }
+    } catch (e) {
+      console.warn('[push] falha ao falar com o serviço de push:', e.message);
+    }
   }));
   if (dead.length) { acc.pushSubs = acc.pushSubs.filter(s => !dead.includes(s.endpoint)); db.save(); }
 }
