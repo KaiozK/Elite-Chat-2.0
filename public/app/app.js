@@ -1299,7 +1299,9 @@ function connectSSE() {
     const d = JSON.parse(e.data || '{}');
     if (d.status === 'paid' && window.ECNotify) {
       ECNotify.notify({
-        type: 'message', title: '💸 Pagamento recebido!',
+        // 'sale' e não 'message': é o aviso que toca a caixa registradora, para
+        // dar para reconhecer uma venda sem olhar a tela.
+        type: 'sale', title: '💸 Pagamento recebido!',
         body: `${fmtBRL(d.amount || 0)}${d.contactName ? ', ' + d.contactName : ''}`,
         waId: d.waId || null, url: '/app/#/elitepay', tag: 'ep:' + (d.chargeId || '')
       });

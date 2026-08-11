@@ -2,7 +2,7 @@
  * Cache do app shell + offline + Push Notifications + clique abre a conversa.
  * Escopo: /app/  (registrado por notifications.js)
  */
-const VERSION = 'koonfy-v3';
+const VERSION = 'koonfy-v4';
 const SHELL = 'ec-shell-' + VERSION;
 const RUNTIME = 'ec-runtime-' + VERSION;
 
@@ -14,7 +14,11 @@ const SHELL_ASSETS = [
   '/app/style.css',
   '/app/notifications.js',
   '/app/manifest.webmanifest',
-  '/assets/elitechat-logo.png'
+  '/assets/elitechat-logo.png',
+  // Os avisos sonoros precisam estar prontos ANTES do evento que os dispara:
+  // buscar o arquivo na hora faria o som chegar depois da notificação.
+  '/assets/sons/mensagem.mp3',
+  '/assets/sons/venda.mp3'
 ];
 
 self.addEventListener('install', (e) => {

@@ -112,7 +112,47 @@
     sale:       function () { tone(700, 0, 0.14, 'sine', 0.13); tone(940, 0.12, 0.16, 'sine', 0.13); tone(1250, 0.26, 0.28, 'sine', 0.12); },
     commission: function () { tone(660, 0, 0.14, 'sine', 0.13); tone(880, 0.12, 0.16, 'sine', 0.13); tone(1180, 0.26, 0.26, 'sine', 0.12); }
   };
-  function playSound(type) { if (!state.prefs.sounds) return; try { (SOUNDS[type] || SOUNDS.message)(); } catch (e) {} }
+  /* ---------------- Sons em arquivo ----------------
+     Dois avisos são gravados, e não sintetizados: a mensagem e a venda. O som
+     de caixa registradora dá para reconhecer uma venda sem olhar a tela, que é
+     o ponto. Os demais tipos seguem com os tons sintetizados acima.
+
+     O <audio> fica pronto desde o começo, mas o navegador só deixa tocar
+     depois que a pessoa interage com a página; enquanto isso o play() é
+     recusado e cai no tom sintetizado, que nunca falha. */
+  var ARQUIVOS = { message: '/assets/sons/mensagem.mp3', sale: '/assets/sons/venda.mp3',
+                   commission: '/assets/sons/venda.mp3' };
+  var tocadores = {};
+  function tocador(tipo) {
+    if (!ARQUIVOS[tipo]) return null;
+    if (!tocadores[tipo]) {
+      try {
+        var a = new Audio(ARQUIVOS[tipo]);
+        a.preload = 'auto'; a.volume = 0.7;
+        tocadores[tipo] = a;
+      } catch (e) { return null; }
+    }
+    return tocadores[tipo];
+  }
+  // Deixa os arquivos em cache antes do primeiro aviso, para o som não chegar
+  // atrasado na mensagem que importa.
+  function prepararSons() { for (var k in ARQUIVOS) tocador(k); }
+
+  function playSound(type) {
+    if (!state.prefs.sounds) return;
+    var a = tocador(type);
+    if (a) {
+      try {
+        a.currentTime = 0;
+        var p = a.play();
+        // play() devolve promessa: se o navegador recusar (sem interação
+        // ainda, arquivo faltando), o tom sintetizado entra no lugar.
+        if (p && p.catch) { p.catch(function () { try { (SOUNDS[type] || SOUNDS.message)(); } catch (e) {} }); }
+        return;
+      } catch (e) { /* cai no sintetizado */ }
+    }
+    try { (SOUNDS[type] || SOUNDS.message)(); } catch (e) {}
+  }
 
   function vibrate(type) {
     if (!state.prefs.vibrate || !navigator.vibrate) return;
@@ -136,6 +176,7 @@
   }
 
   function register() {
+    prepararSons();   // busca os MP3 agora, para o aviso não chegar mudo
     // Service Worker não se aplica ao WebView nativo: os arquivos já vêm no
     // bundle (não há o que cachear) e o push chega pelo canal do sistema.
     if (EC.native) { if (window.ECNative) ECNative.initPush(); return Promise.resolve(null); }
