@@ -1688,11 +1688,28 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
    (com botão de voltar). No desktop/tablet nada muda. */
 .chat-back { display: none; }
 @media (max-width: 720px) {
-  .inbox { position: relative; }
-  .conv-list { width: 100%; flex-shrink: 1; border-right: none; }
-  .inbox .chat { display: none; }
-  .inbox.chat-open .conv-list { display: none; }
-  .inbox.chat-open .chat { display: flex; width: 100%; }
+  /* A conversa é uma CAMADA por cima da lista, e não uma troca de display: só
+     assim o gesto de voltar pode acompanhar o dedo. Fora da tela ela continua
+     montada (o arrasto precisa de algo para mover), mas sem receber toque. */
+  .inbox { position: relative; overflow: hidden; }
+  .conv-list {
+    width: 100%; flex-shrink: 1; border-right: none;
+    transition: transform .26s var(--ease);
+  }
+  .inbox .chat {
+    position: absolute; inset: 0; width: 100%; z-index: 5;
+    background: var(--card);          /* opaco: a lista não pode vazar por baixo */
+    transform: translateX(100%); pointer-events: none;
+    transition: transform .26s var(--ease);
+  }
+  .inbox.chat-open .chat {
+    transform: none; pointer-events: auto;
+    box-shadow: -10px 0 26px rgba(0, 0, 0, .10);
+  }
+  /* a lista anda um pouco junto, como no WhatsApp: dá noção de profundidade */
+  .inbox.chat-open .conv-list { transform: translateX(-22%); }
+  /* enquanto o dedo manda, quem posiciona é o JS — transição só atrapalharia */
+  .inbox.arrastando .chat, .inbox.arrastando .conv-list { transition: none; }
   .chat-back { display: inline-flex; }
   .chat-head { padding: 10px 12px; gap: 9px; flex-wrap: wrap; }
   .chat-head-actions { width: 100%; }
@@ -1997,10 +2014,16 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   .sidebar .brand { justify-content: center; padding-bottom: 14px; }
   .nav-item { justify-content: center; padding: 10px 6px; border-radius: 10px; }
   .badge { position: absolute; top: 2px; right: 2px; margin: 0; padding: 0 5px; }
-  .conv-list { width: 262px; }
   .page { padding: 18px 16px 34px; }
   .msg { max-width: 82%; }
   .tb-user #who { display: none; }
+}
+
+/* A lista estreita é coisa de TABLET. Estava solta no bloco de 1000px, que vem
+   depois do bloco do celular no arquivo e por isso ganhava dele: no telefone a
+   lista ficava com 262px em vez de ocupar a tela. */
+@media (min-width: 721px) and (max-width: 1000px) {
+  .conv-list { width: 262px; }
 }
 
 /* ===================== Notificações (PWA) ===================== */

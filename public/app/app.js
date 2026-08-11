@@ -2122,7 +2122,9 @@ function convStateTag(c) {
 async function openChat(waId) {
   state.currentWaId = waId;
   paintConversations();
-  document.querySelector('.inbox')?.classList.add('chat-open'); // mobile: mostra o chat
+  const caixa = document.querySelector('.inbox');
+  caixa?.classList.add('chat-open');   // mobile: mostra o chat
+  ligarGestoVoltar(caixa);             // e passa a aceitar o arrasto de voltar
   await loadChat(waId);
   api(`/messages/${waId}/read`, { body: {} }).then(loadConversations).catch(() => {});
 }
@@ -2131,6 +2133,91 @@ async function openChat(waId) {
 function closeChatMobile() {
   document.querySelector('.inbox')?.classList.remove('chat-open');
   clearInterval(sessTicker);
+}
+
+// ---------------------------------------------------------------------------
+// VOLTAR ARRASTANDO (mobile)
+//
+// A conversa é uma camada por cima da lista. Arrastar para a direita move a
+// camada junto com o dedo e vai descobrindo a lista atrás; ao soltar, ela
+// completa o movimento ou volta para o lugar. É o gesto do WhatsApp.
+//
+// Enquanto o dedo manda, quem posiciona é este código (transform inline, sem
+// transição). No fim as posições voltam a ser as do CSS, para o fechamento ou
+// o recuo saírem animados.
+// ---------------------------------------------------------------------------
+function ligarGestoVoltar(inbox) {
+  if (!inbox || inbox._gestoLigado) return;
+  inbox._gestoLigado = true;
+
+  var x0 = 0, y0 = 0, t0 = 0, dx = 0, largura = 1;
+  var tocando = false, arrastando = false;
+
+  // A faixa de ícones do topo e a do composer rolam de lado. Um arrasto que
+  // comece nelas é rolagem, não navegação.
+  function rolaDeLado(alvo) {
+    for (var e = alvo; e && e !== inbox; e = e.parentElement) {
+      var ox = getComputedStyle(e).overflowX;
+      if ((ox === 'auto' || ox === 'scroll') && e.scrollWidth > e.clientWidth + 2) return true;
+    }
+    return false;
+  }
+
+  // p = 0 conversa inteira na tela; p = 1 conversa toda fora, lista no lugar.
+  function posicionar(p) {
+    var chat = inbox.querySelector('.chat');
+    var lista = inbox.querySelector('.conv-list');
+    if (chat) chat.style.transform = 'translateX(' + (p * 100) + '%)';
+    if (lista) lista.style.transform = 'translateX(' + (-22 + 22 * p) + '%)';
+  }
+  function devolverAoCss() {
+    var chat = inbox.querySelector('.chat');
+    var lista = inbox.querySelector('.conv-list');
+    if (chat) chat.style.transform = '';
+    if (lista) lista.style.transform = '';
+  }
+
+  inbox.addEventListener('touchstart', function (ev) {
+    if (!inbox.classList.contains('chat-open') || ev.touches.length !== 1) return;
+    if (rolaDeLado(ev.target)) return;
+    var t = ev.touches[0];
+    x0 = t.clientX; y0 = t.clientY; t0 = Date.now(); dx = 0;
+    largura = inbox.clientWidth || 1;
+    tocando = true; arrastando = false;
+  }, { passive: true });
+
+  inbox.addEventListener('touchmove', function (ev) {
+    if (!tocando) return;
+    var t = ev.touches[0];
+    var ax = t.clientX - x0, ay = t.clientY - y0;
+    if (!arrastando) {
+      if (Math.abs(ax) < 8 && Math.abs(ay) < 8) return;   // ainda pode virar toque
+      // Só assume o gesto se for claramente horizontal e para a direita; caso
+      // contrário devolve o movimento para a rolagem das mensagens.
+      if (Math.abs(ax) <= Math.abs(ay) || ax <= 0) { tocando = false; return; }
+      arrastando = true;
+      inbox.classList.add('arrastando');
+    }
+    dx = Math.max(0, ax);
+    ev.preventDefault();          // daqui em diante o movimento é nosso
+    posicionar(dx / largura);
+  }, { passive: false });
+
+  function soltar() {
+    if (!tocando) return;
+    tocando = false;
+    if (!arrastando) return;
+    arrastando = false;
+    var p = dx / largura;
+    var velocidade = dx / Math.max(1, Date.now() - t0);   // px por ms
+    inbox.classList.remove('arrastando');
+    devolverAoCss();
+    // Passou de um terço, ou foi um lance rápido: completa. Senão, recua.
+    if (p > 0.33 || velocidade > 0.5) closeChatMobile();
+    dx = 0;
+  }
+  inbox.addEventListener('touchend', soltar, { passive: true });
+  inbox.addEventListener('touchcancel', soltar, { passive: true });
 }
 
 async function loadChat(waId, keepScroll) {
