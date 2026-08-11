@@ -2159,10 +2159,10 @@ async function loadChat(waId, keepScroll) {
       <div class="composer" id="composer">
         <div id="sess-notice"></div>
         <div class="tools">
-          <button class="btn small" id="tool-file" onclick="attachFile()">${ico('paperclip', 13)} Anexo</button>
-          <button class="btn small" id="tool-tpl" onclick="templateModal('${c.waId}')">${ico('file', 13)} Template</button>
-          <button class="btn small" id="tool-btns" onclick="buttonsModal('${c.waId}')">${ico('buttons', 13)} Botões</button>
-          <button class="btn small" id="tool-pay" onclick="chatChargeModal('${c.waId}')">${ico('pix', 13)} Cobrança</button>
+          <button class="btn small" id="tool-file" onclick="attachFile()" title="Anexo">${ico('paperclip', 13)}<i class="blbl">Anexo</i></button>
+          <button class="btn small" id="tool-tpl" onclick="templateModal('${c.waId}')" title="Template">${ico('file', 13)}<i class="blbl">Template</i></button>
+          <button class="btn small" id="tool-btns" onclick="buttonsModal('${c.waId}')" title="Botões">${ico('buttons', 13)}<i class="blbl">Botões</i></button>
+          <button class="btn small" id="tool-pay" onclick="chatChargeModal('${c.waId}')" title="Cobrança">${ico('pix', 13)}<i class="blbl">Cobrança</i></button>
           <span id="qr-wrap" class="qr-wrap"></span>
         </div>
         <div class="line">
@@ -2243,12 +2243,12 @@ function paintSession() {
   const assigned = state.currentConsent && state.currentConsent.assignedAgent;
   actions.innerHTML = `
     ${assigned ? `<span class="assign-chip" title="Responsável">${agAvatar ? agAvatar(assigned, 22) : ''}<span>${esc(assigned.name)}</span></span>` : ''}
-    <button class="btn small" onclick="startCallFromChat()" title="Ligar pelo WhatsApp">${ico('phone', 13)} Ligar</button>
-    <button class="btn small" onclick="transferModal('${state.currentWaId}')">${ico('arrowright', 13)} Transferir</button>
-    <button class="btn small" onclick="editContactModal('${state.currentWaId}')">${ico('edit', 13)} Editar</button>
+    <button class="btn small" onclick="startCallFromChat()" title="Ligar pelo WhatsApp">${ico('phone', 13)}<i class="blbl">Ligar</i></button>
+    <button class="btn small" onclick="transferModal('${state.currentWaId}')" title="Transferir">${ico('arrowright', 13)}<i class="blbl">Transferir</i></button>
+    <button class="btn small" onclick="editContactModal('${state.currentWaId}')" title="Editar contato">${ico('edit', 13)}<i class="blbl">Editar</i></button>
     ${finished
-      ? `<button class="btn small primary" onclick="reopenAttendance()">${ico('refresh', 13)} Reabrir Atendimento</button>`
-      : `<button class="btn small" onclick="finishAttendance()">${ico('check-circle', 13)} Finalizar Atendimento</button>`}`;
+      ? `<button class="btn small primary" onclick="reopenAttendance()" title="Reabrir Atendimento">${ico('refresh', 13)}<i class="blbl">Reabrir Atendimento</i></button>`
+      : `<button class="btn small" onclick="finishAttendance()" title="Finalizar Atendimento">${ico('check-circle', 13)}<i class="blbl">Finalizar Atendimento</i></button>`}`;
 
   // --- Composer: bloqueio total fora da janela / atendimento finalizado / OPT-OUT ---
   const optedOut = !!(state.currentConsent && state.currentConsent.blocked);
@@ -2276,7 +2276,7 @@ function paintSession() {
   if (optedOut) {
     notice.innerHTML = `<div class="sess-notice expired">
       ${ico('slash', 15)}
-      <div><b>Contato em opt-out.</b> Ele pediu para não receber mais mensagens, então <b>nenhum envio é permitido</b>, nem template, nem campanha. Reative para voltar a conversar.</div>
+      <div><b>Contato em opt-out.</b> <span class="sn-body">Ele pediu para não receber mais mensagens, então <b>nenhum envio é permitido</b>, nem template, nem campanha. Reative para voltar a conversar.</span></div>
       <button class="btn small primary no-grow" onclick="coReactivateFromChat('${state.currentWaId}')">${ico('refresh', 12)} Reativar contato</button>
     </div>`;
     return;
@@ -2290,7 +2290,7 @@ function paintSession() {
       : 'Não é possível enviar mensagens comuns, imagens, áudios, vídeos, documentos ou respostas rápidas. <b>Apenas Templates aprovados da Meta</b> podem ser enviados para reabrir a conversa.');
   notice.innerHTML = locked ? `<div class="sess-notice ${finished || never ? '' : 'expired'}">
     ${ico(finished ? 'check-circle' : (never ? 'info' : 'alert'), 15)}
-    <div><b>${title}</b> ${body}</div>
+    <div><b>${title}</b> <span class="sn-body">${body}</span></div>
     ${finished
       ? `<button class="btn small primary no-grow" onclick="reopenAttendance()">Reabrir</button>`
       : `<button class="btn small primary no-grow" onclick="templateModal('${state.currentWaId}')">${ico('file', 12)} Enviar Template</button>`}

@@ -825,6 +825,9 @@ details.adv[open] summary::after { content: '–'; }
 .toggle span { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--card); box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .2s; }
 .toggle.on { background: var(--verde-esc); }
 .toggle.on span { transform: translateX(18px); }
+/* Rótulo de botão que vira só-ícone no celular. É um <i> por ser inline e
+   curto no HTML; o itálico não é intencional. */
+.blbl { font-style: normal; }
 
 /* ---------- flow builder: canvas arrasta-e-solta (v2) ---------- */
 .fb2 { display: flex; flex-direction: column; height: calc(100vh - 62px); }
@@ -3020,14 +3023,46 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   .ecsel-btn { min-height: 42px; font-size: 16px; }
   input, select, textarea { min-height: 42px; font-size: 16px; }  /* 16px evita zoom no iOS */
   textarea { min-height: 76px; }
-  /* interruptor no tamanho de plataforma (iOS 51x31) para toque confortável */
-  .toggle { width: 51px; height: 31px; }
-  .toggle span { width: 25px; height: 25px; top: 3px; left: 3px; }
+  /* O interruptor não precisa CRESCER para ser fácil de acertar. A 51x31 ele
+     virava um borrão ao lado de um texto de 13px; aqui o desenho fica discreto
+     (46x26) e quem ganha os 44px de alvo é um ::after invisível por cima. */
+  .toggle { width: 46px; height: 26px; }
+  .toggle span { width: 20px; height: 20px; top: 3px; left: 3px; }
   .toggle.on span { transform: translateX(20px); }
+  .toggle::after { content: ''; position: absolute; inset: -9px -4px; }
   .tabs button, .seg button { min-height: 38px; }
   .nav-item { min-height: 44px; }
   /* linhas de tabela com alvo maior */
   td .btn.small, td .icon-btn { min-height: 34px; min-width: 34px; }
+
+  /* ---- a CONVERSA é o conteúdo; os atalhos são acessório ----
+     Medido em 375x812: das 750px do .chat, as mensagens ficavam com 125px (17%)
+     porque o cabeçalho de ações (83px) e a barra do composer (87px) quebravam
+     em duas/três linhas, e o aviso de janela ocupava 145px. Sem rótulo os dois
+     grupos viram uma fileira só de ícones, e tudo que sobra vai para o
+     .chat-scroll, que é flex:1. */
+  .chat-head-actions .blbl, .composer .tools .blbl { display: none; }
+  /* .btn é flex:1 por padrão; sem rótulo os quatro viravam caixas largas e
+     vazias ocupando a linha inteira. Só-ícone = tamanho do ícone. */
+  .chat-head-actions .btn.small, .composer .tools .btn.small { padding: 8px 11px; flex: none; }
+  .sess-notice .btn.small { flex: none; }
+  /* uma fileira só: se não couber, rola de lado em vez de empilhar */
+  .chat-head-actions, .composer .tools {
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 6px;
+  }
+  .chat-head-actions::-webkit-scrollbar, .composer .tools::-webkit-scrollbar { display: none; }
+  .chat-head { padding: 8px 12px; gap: 9px; }
+  .chat-head-actions .assign-chip { flex-shrink: 0; }
+  .composer { padding: 9px 12px 11px; gap: 7px; }
+  /* o balão pode usar a largura: a 62% um código Pix virava uma coluna de 5 linhas */
+  .chat-scroll { padding: 12px 12px; }
+  .msg { max-width: 86%; }
+  /* No celular o aviso fica com o título e o botão de saída; a explicação
+     inteira (4 linhas) come mais tela do que a conversa e se repete a cada
+     abertura. No desktop continua completa. */
+  .sess-notice { padding: 9px 11px; gap: 9px; margin-bottom: 8px; font-size: 12.5px; }
+  .sess-notice .sn-body { display: none; }
+  .composer select, .composer .ecsel-btn { max-width: 150px; }
 }
 
 /* telas bem estreitas: respiro e empilhamento extra */
