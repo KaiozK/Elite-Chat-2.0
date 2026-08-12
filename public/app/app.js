@@ -4144,14 +4144,6 @@ async function renderPixels() {
       <p class="muted" style="margin:0 0 14px">Disparados automaticamente nos seus <a href="#/links">links rastreáveis</a>, cada clique vira evento <code>LinkClick</code> (Meta), <code>link_click</code> (Google) e <code>page</code> (TikTok).</p>
       <div id="px-list">${skel(3)}</div>
     </div>
-    <div class="card">
-      <h2>${ico('link')} Domínio personalizado dos links</h2>
-      <div class="row">
-        <label style="flex:1">Domínio dos links curtos<input id="tk-domain" value="${esc(cfg.linkDomain || '')}" placeholder="ex.: link.suaempresa.com.br"></label>
-        <button class="btn primary no-grow" onclick="saveLinkDomain()">${ico('save', 14)} Salvar domínio</button>
-      </div>
-      <p class="muted" style="font-size:12px;margin:8px 0 0">Aponte o DNS do seu domínio para este servidor, os links curtos passam a sair como <code>https://seu-dominio/l/apelido</code>.</p>
-    </div>
     <div class="card px-guide">
       <h2>${ico('help')} Onde encontrar o ID de cada pixel</h2>
       <div class="pxg-grid">
@@ -5537,12 +5529,24 @@ async function delSector(id) {
 
 // ==================== LINKS RASTREÁVEIS ====================
 async function renderLinks() {
+  // O domínio dos links curtos morava na tela de Pixels, que é sobre outra
+  // coisa. Ele pertence aqui, junto dos links que ele encurta.
+  let cfg = {};
+  try { cfg = await api('/settings'); } catch {}
   $('#view').innerHTML = `<div class="page">
     <div class="page-head row">
       <div style="flex:1"><h1>Links rastreáveis</h1><p>Links curtos com contagem de cliques e disparo de pixels (Meta e Google)</p></div>
       <button class="btn primary no-grow" onclick="openLinkNew()">${ico('plus', 14)} Novo link</button>
     </div>
     <div class="card" id="links-table">${skel(4)}</div>
+    <div class="card">
+      <h2>${ico('link')} Domínio personalizado</h2>
+      <div class="row">
+        <label style="flex:1">Domínio dos links curtos<input id="tk-domain" value="${esc(cfg.linkDomain || '')}" placeholder="ex.: link.suaempresa.com.br"></label>
+        <button class="btn primary no-grow" onclick="saveLinkDomain()">${ico('save', 14)} Salvar domínio</button>
+      </div>
+      <p class="muted" style="font-size:12px;margin:8px 0 0">Aponte o DNS do seu domínio para este servidor, os links curtos passam a sair como <code>https://seu-dominio/l/apelido</code>.</p>
+    </div>
   </div>`;
   paintLinks();
 }
@@ -7799,6 +7803,44 @@ const EP_LOG_LBL = {
 // só, de quanto a plataforma retém em cada meio, então não faz sentido estarem
 // em abas diferentes.
 // ============================================================================
+// Vendas que não fecharam. Pendente = o Pix ainda é pagável; abandonada =
+// passou do vencimento sem pagamento. É a lista de quem quase comprou, que o
+// painel contava mas nunca mostrava.
+function admEmAbertoSection(p) {
+  if (!p) return '';
+  const linha = (c) => {
+    const quem = c.contactName || (c.waId ? '+' + c.waId : 'sem contato');
+    const quando = new Date(c.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return `<tr>
+      <td><b>${esc(quem)}</b>${c.comment ? `<div class="muted" style="font-size:11.5px">${esc(c.comment)}</div>` : ''}</td>
+      <td>${esc(c.accountName || '')}</td>
+      <td><b>${fmtBRL(c.value)}</b></td>
+      <td><span class="pill ${c.situacao === 'pendente' ? 'warn' : ''}">${c.situacao === 'pendente' ? 'Pendente' : 'Abandonada'}</span></td>
+      <td class="muted" style="font-size:12px">${quando}</td>
+      <td class="muted" style="font-size:12px">${esc(c.origin || '')}</td>
+    </tr>`;
+  };
+  return `<div class="card">
+    <h2>${ico('clock')} Vendas em aberto</h2>
+    <p class="muted" style="margin:0 0 12px;font-size:13px">
+      Cobranças geradas que ainda não foram pagas. <b>Pendente</b> é a que ainda dá para pagar;
+      <b>abandonada</b> é a que passou do vencimento. Não depende do webhook: ela nasce aqui no
+      momento em que a cobrança é criada, e o webhook só serve para tirá-la desta lista quando o
+      pagamento entra.
+    </p>
+    <div class="kpi-strip">
+      <div class="kpi-mini"><span>Pendentes</span><b>${fmtN(p.pendentes.qtd)}</b><em>${fmtBRL(p.pendentes.valor)} a receber</em></div>
+      <div class="kpi-mini ${p.abandonadas.qtd ? 'down' : ''}"><span>Abandonadas</span><b>${fmtN(p.abandonadas.qtd)}</b><em>${fmtBRL(p.abandonadas.valor)} perdidos</em></div>
+    </div>
+    ${p.itens.length
+      ? `<table style="margin-top:14px">
+          <thead><tr><th>Contato</th><th>Conta</th><th>Valor</th><th>Situação</th><th>Criada</th><th>Origem</th></tr></thead>
+          <tbody>${p.itens.map(linha).join('')}</tbody>
+        </table>`
+      : `<p class="muted" style="margin-top:12px;font-size:13px">Nenhuma cobrança em aberto no momento.</p>`}
+  </div>`;
+}
+
 function admFeesSection(cfg, c, t) {
   const isPag = c.provider === 'pagarme';
   const exemplo = 10000;
@@ -8061,6 +8103,8 @@ async function admEpPaint() {
         <div class="mh-card"><span class="mh-ic">${ico('clock', 20)}</span><div class="mh-val">${fmtN(t.subPending)}</div><div class="mh-lbl">Aguardando aprovação</div></div>
         <div class="mh-card"><span class="mh-ic">${ico('activity', 20)}</span><div class="mh-val">${fmtN(t.charges)}</div><div class="mh-lbl">Cobranças geradas</div></div>
       </div>
+
+      ${admEmAbertoSection(d.pendentes)}
 
       <div class="card">
         <h2>${ico('shield')} Onboarding & KYC das subcontas</h2>
@@ -12310,6 +12354,84 @@ function chatChargeModal(waId) {
 // ==================== TRACKING — atribuição + ROAS (estilo UTMify) ====================
 let trkState = { tab: 'overview', data: null };
 const trkBRL = v => fmtBRL(v || 0);
+
+// ---------------------------------------------------------------------------
+// GRÁFICOS DO TRACKING
+//
+// Mesmo desenho dos gráficos do Dashboard: SVG inline, sem biblioteca. Três
+// séries que existem por dia de verdade — receita, pedidos e cliques. O gasto
+// com anúncio não entra: a Meta devolve o total do período, e não o dia a dia.
+// ---------------------------------------------------------------------------
+function trkGraficos(serie) {
+  if (!serie || !serie.length) return '';
+  const temAlgo = serie.some(d => d.receita || d.criados || d.aprovados || d.cliques);
+  if (!temAlgo) {
+    return `<div class="card"><h2>${ico('activity')} Evolução</h2>
+      <p class="muted" style="margin:0;font-size:13px">Sem movimento nos últimos 30 dias. Assim que entrarem cliques e cobranças, os gráficos aparecem aqui.</p></div>`;
+  }
+  const W = 560, H = 200, padB = 22, padT = 10;
+  const dia = iso => { const [, m, d] = iso.split('-'); return `${d}/${m}`; };
+  const eixo = `<text x="2" y="${H - 6}" style="font:600 10px 'Inter Tight'" fill="var(--faint)">${dia(serie[0].date)}</text>
+    <text x="${W - 2}" y="${H - 6}" text-anchor="end" style="font:600 10px 'Inter Tight'" fill="var(--faint)">${dia(serie[serie.length - 1].date)}</text>`;
+  const grade = [0.25, 0.5, 0.75].map(f => `<line x1="0" y1="${((H - padB) * f).toFixed(1)}" x2="${W}" y2="${((H - padB) * f).toFixed(1)}" stroke="#e8f3ec" stroke-dasharray="3 4"/>`).join('');
+
+  // área: uma série contínua (receita)
+  const area = (vals, cor, id, rotulo, fmt) => {
+    const max = Math.max(1, ...vals);
+    const px = (v, i) => `${(i / Math.max(1, vals.length - 1) * W).toFixed(1)},${(H - padB - v / max * (H - padB - padT)).toFixed(1)}`;
+    const linha = vals.map(px).join(' ');
+    const pontos = vals.map((v, i) => {
+      const [x, y] = px(v, i).split(',');
+      return `<circle cx="${x}" cy="${y}" r="7" fill="transparent"><title>${dia(serie[i].date)}, ${fmt(v)}</title></circle>`;
+    }).join('');
+    return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto" role="img" aria-label="${rotulo}">
+      <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="${cor}" stop-opacity=".32"/><stop offset="1" stop-color="${cor}" stop-opacity="0"/>
+      </linearGradient></defs>
+      ${grade}
+      <polygon points="0,${H - padB} ${linha} ${W},${H - padB}" fill="url(#${id})"/>
+      <polyline points="${linha}" fill="none" stroke="${cor}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      ${pontos}${eixo}</svg>`;
+  };
+
+  // barras lado a lado: criados x aprovados
+  const barras = () => {
+    const max = Math.max(1, ...serie.map(d => Math.max(d.criados, d.aprovados)));
+    const slot = W / serie.length, bw = Math.max(3, Math.min(14, slot * 0.34));
+    const b = serie.map((d, i) => {
+      const xm = i * slot + slot / 2;
+      const hc = d.criados / max * (H - padB - padT), ha = d.aprovados / max * (H - padB - padT);
+      return `<rect x="${(xm - bw - 0.5).toFixed(1)}" y="${(H - padB - hc).toFixed(1)}" width="${bw}" height="${Math.max(2, hc).toFixed(1)}" rx="${Math.min(4, bw / 2)}" fill="#94a3b8" opacity=".55"><title>${dia(d.date)}, ${d.criados} criada(s)</title></rect>
+        <rect x="${(xm + 0.5).toFixed(1)}" y="${(H - padB - ha).toFixed(1)}" width="${bw}" height="${Math.max(2, ha).toFixed(1)}" rx="${Math.min(4, bw / 2)}" fill="#10B981"><title>${dia(d.date)}, ${d.aprovados} aprovada(s)</title></rect>`;
+    }).join('');
+    return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto" role="img" aria-label="Cobranças por dia">
+      ${grade}${b}${eixo}</svg>`;
+  };
+
+  const legenda = (itens) => `<div class="trk-leg">${itens.map(([cor, txt]) =>
+    `<span><i style="background:${cor}"></i>${txt}</span>`).join('')}</div>`;
+
+  return `<div class="card">
+    <h2>${ico('activity')} Evolução, últimos 30 dias</h2>
+    <div class="trk-graficos">
+      <div>
+        <h3>Receita por dia</h3>
+        ${area(serie.map(d => d.receita), '#10B981', 'trkRev', 'Receita por dia', v => fmtBRL(v))}
+        ${legenda([['#10B981', 'Receita aprovada']])}
+      </div>
+      <div>
+        <h3>Cobranças por dia</h3>
+        ${barras()}
+        ${legenda([['#94a3b8', 'Criadas'], ['#10B981', 'Aprovadas']])}
+      </div>
+      <div>
+        <h3>Cliques por dia</h3>
+        ${area(serie.map(d => d.cliques), '#53BDEB', 'trkClk', 'Cliques por dia', v => v + ' clique(s)')}
+        ${legenda([['#53BDEB', 'Cliques em links rastreáveis']])}
+      </div>
+    </div>
+  </div>`;
+}
 const trkPct = v => v === null || v === undefined ? '-' : v + '%';
 const trkX = v => v === null || v === undefined ? '-' : v + 'x';
 
@@ -12362,6 +12484,7 @@ async function trkPaintOverview(box) {
       <div class="mh-card"><span class="mh-ic">${ico('trend', 20) || ico('activity', 20)}</span><div class="mh-val">${trkBRL(d.lucro)}</div><div class="mh-lbl">Lucro (receita − anúncios)</div></div>
       <div class="mh-card"><span class="mh-ic">${ico('check', 20)}</span><div class="mh-val">${fmtN(d.pedidos.aprovados)}</div><div class="mh-lbl">Pedidos aprovados</div></div>
     </div>
+    ${trkGraficos(d.serie)}
     <div class="card"><h2>${ico('activity')} Receita</h2>
       <div class="trk-cards">
         ${card('Hoje', trkBRL(d.receita.hoje))}${card('Ontem', trkBRL(d.receita.ontem))}

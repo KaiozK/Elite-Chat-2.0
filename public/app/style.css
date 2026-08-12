@@ -3177,6 +3177,19 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   .ckb-comps { grid-template-columns: 1fr 1fr; }
 }
 
+/* Gráficos do Tracking: um por linha em telas estreitas, dois a dois quando há
+   espaço. minmax(0,...) porque um SVG com width:100% não encolhe abaixo do
+   conteúdo sem isso, e a coluna estouraria a grade. */
+.trk-graficos { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 22px; }
+.trk-graficos > div { min-width: 0; }
+.trk-graficos h3 {
+  font-size: 13px; font-weight: 800; color: var(--text2); margin: 0 0 8px;
+  letter-spacing: -.01em;
+}
+.trk-leg { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 6px; }
+.trk-leg span { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.trk-leg i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+
 /* Selo de como a conexão de tracking entrega o evento */
 .trk-mode {
   display: inline-block; margin-left: 7px; padding: 2px 8px; border-radius: 99px;

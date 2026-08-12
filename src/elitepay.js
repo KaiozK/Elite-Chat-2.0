@@ -1607,7 +1607,46 @@ function adminOverview() {
       charges: rows.reduce((s, r) => s + r.charges, 0)
     },
     accounts: rows.sort((a, b) => b.pixIn - a.pixIn),
+    pendentes: cobrancasEmAberto(accounts),
     logs: cfg.logs.slice(0, 80)
+  };
+}
+
+// ---------------------------------------------------------------------------
+// COBRANÇAS EM ABERTO (vendas pendentes e carrinhos abandonados)
+//
+// Elas sempre existiram no banco — toda cobrança nasce 'active' e só vira
+// 'paid' quando o pagamento entra —, mas o painel só mostrava a CONTAGEM
+// delas. Sem a lista não dá para saber quem quase comprou, que é justamente
+// quem vale a pena recuperar.
+//
+// A separação entre as duas é o vencimento, não um estado guardado: enquanto
+// o Pix é pagável a venda está pendente; passou do prazo sem pagar, virou
+// carrinho abandonado.
+// ---------------------------------------------------------------------------
+function cobrancasEmAberto(accounts) {
+  const agora = Date.now();
+  const lista = [];
+  for (const a of accounts) {
+    for (const c of (a.elitepay.charges || [])) {
+      if (c.status !== 'active' && c.status !== 'expired') continue;
+      const vencida = c.status === 'expired' || (c.expiresAt && c.expiresAt < agora);
+      lista.push({
+        id: c.id, accountId: a.id, accountName: a.name,
+        value: c.value, comment: c.comment || '',
+        contactName: c.contactName || null, waId: c.waId || null,
+        createdAt: c.createdAt, expiresAt: c.expiresAt || null,
+        origin: c.origin || 'manual', method: c.method || 'pix',
+        situacao: vencida ? 'abandonada' : 'pendente'
+      });
+    }
+  }
+  lista.sort((x, y) => y.createdAt - x.createdAt);
+  const soma = (f) => lista.filter(f).reduce((s, c) => s + c.value, 0);
+  return {
+    itens: lista.slice(0, 200),
+    pendentes: { qtd: lista.filter(c => c.situacao === 'pendente').length, valor: soma(c => c.situacao === 'pendente') },
+    abandonadas: { qtd: lista.filter(c => c.situacao === 'abandonada').length, valor: soma(c => c.situacao === 'abandonada') }
   };
 }
 

@@ -361,6 +361,47 @@ function charges(acc) { return (acc.elitepay && acc.elitepay.charges) || []; }
 function paidIn(acc, from, to) { return charges(acc).filter(c => c.status === 'paid' && c.paidAt >= from && (!to || c.paidAt < to)); }
 const sum = a => a.reduce((s, c) => s + c.value, 0);
 
+// Série diária dos últimos N dias, para os gráficos do Tracking.
+//
+// Só entra aqui o que existe por DIA de verdade: receita e pedidos saem do
+// carimbo de cada cobrança, cliques saem do carimbo de cada clique. O gasto
+// com anúncio fica de fora de propósito — a Meta devolve o total do período,
+// não o dia a dia, e desenhar uma curva a partir de um total só seria inventar
+// um formato que o dado não tem.
+function serieDiaria(acc, dias = 30) {
+  const t = ensure(acc);
+  const day = 86400000;
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const inicio = d0.getTime() - (dias - 1) * day;
+  const balde = [];
+  for (let i = 0; i < dias; i++) {
+    const ini = inicio + i * day;
+    balde.push({ date: new Date(ini).toISOString().slice(0, 10), ini, fim: ini + day,
+      receita: 0, aprovados: 0, criados: 0, cliques: 0 });
+  }
+  const posicao = (ts) => {
+    if (!ts || ts < inicio) return -1;
+    const i = Math.floor((ts - inicio) / day);
+    return i >= 0 && i < dias ? i : -1;
+  };
+  for (const c of charges(acc)) {
+    const iCriada = posicao(c.createdAt);
+    if (iCriada >= 0) balde[iCriada].criados++;
+    if (c.status === 'paid') {
+      const iPaga = posicao(c.paidAt);
+      if (iPaga >= 0) { balde[iPaga].aprovados++; balde[iPaga].receita += c.value; }
+    }
+  }
+  for (const l of (acc.links || [])) {
+    for (const k of (l.clicks || [])) { const i = posicao(k.ts); if (i >= 0) balde[i].cliques++; }
+  }
+  for (const e of (t.events || [])) {
+    if (e.name !== 'LinkClick') continue;
+    const i = posicao(e.ts); if (i >= 0) balde[i].cliques++;
+  }
+  return balde.map(({ ini, fim, ...resto }) => resto);
+}
+
 function dashboard(acc) {
   const t = ensure(acc);
   const now = Date.now();
@@ -388,6 +429,7 @@ function dashboard(acc) {
       total: all.length, aprovados: paid.length, pendentes: all.filter(c => c.status === 'active').length,
       recusados: all.filter(c => c.status === 'cancelled' || c.status === 'expired').length
     },
+    serie: serieDiaria(acc, 30),
     ticketMedio: paid.length ? Math.round(sum(paid) / paid.length) : 0,
     gastoAnuncios: spend,
     lucro, roi: spend ? +( (lucro / spend) * 100 ).toFixed(1) : null,
