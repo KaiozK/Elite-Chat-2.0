@@ -76,7 +76,7 @@ function variaveis(acc) {
     email: acc.email || '',
     plano: plano ? plano.name : 'nenhum',
     valor: plano ? brl(plano.price) : brl(0),
-    vencimento: fim ? new Date(fim).toLocaleDateString('pt-BR') : '',
+    vencimento: require(`./datas`).data(fim, acc),
     dias: String(dias),
     saldo: brl(acc.wallet ? acc.wallet.balance : 0),
     link: ''   // preenchido no envio, com a origem da requisição

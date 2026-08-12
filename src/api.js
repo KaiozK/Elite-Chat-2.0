@@ -3,6 +3,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const db = require('./db');
+const datas = require('./datas');
 const wa = require('./whatsapp');
 const meta = require('./meta');
 const store = require('./store');
@@ -1066,6 +1067,8 @@ module.exports = function (broadcast, clients) {
       wa: waPublic(req.wctx),
       pixels: req.acc.pixels,
       linkDomain: req.acc.linkDomain,
+      timezone: req.acc.timezone || db.get().platform.timezone || datas.PADRAO,
+      fusos: datas.FUSOS,
       kind: req.session.kind,
       webhookPath: '/webhook'
     };
@@ -1115,6 +1118,14 @@ module.exports = function (broadcast, clients) {
       }
     }
     // domínio personalizado dos links rastreáveis (qualquer conta)
+    // O fuso decide como o horário é ESCRITO nos avisos. Um valor inválido
+    // derrubaria o Intl no meio de um envio, então só entra se o Intl aceitar.
+    if (typeof req.body.timezone === 'string') {
+      const tz = req.body.timezone.trim();
+      if (!tz) delete req.acc.timezone;
+      else if (datas.valido(tz)) req.acc.timezone = tz;
+      else return res.status(400).json({ error: 'Fuso horário inválido: ' + tz });
+    }
     if (typeof req.body.linkDomain === 'string') {
       req.acc.linkDomain = req.body.linkDomain.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
     }
@@ -2731,7 +2742,7 @@ module.exports = function (broadcast, clients) {
   router.get('/consent/export', auth, (req, res) => {
     const status = String(req.query.status || 'opted_out');
     const cell = v => { v = String(v == null ? '' : v); return /[";\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-    const dt = t => t ? new Date(t).toLocaleString('pt-BR') : '';
+    const dt = t => datas.dataHora(t, req.acc);
     const rows = req.acc.contacts.map(c => consentRow(req.acc, c)).filter(r => status === 'all' || r.status === status);
     const lines = ['nome;telefone_e164;estado;cidade;origem;ultima_campanha;ultimo_atendente;etapa_funil;data_opt_out;motivo'];
     for (const r of rows) {
@@ -3339,7 +3350,7 @@ module.exports = function (broadcast, clients) {
       const rows = data.revenue.filter(r => r.ts >= s.getTime() && r.ts < e.getTime());
       const kSum = k => rows.filter(r => r.kind === k).reduce((a, r) => a + r.amount, 0);
       series.push({
-        label: s.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', ''),
+        label: datas.mesCurto(s.getTime()),
         ym: s.toISOString().slice(0, 7),
         total: rows.reduce((a, r) => a + r.amount, 0),
         first: kSum('first'), renewal: kSum('renewal'), topup: kSum('topup'),

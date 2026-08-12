@@ -200,6 +200,43 @@ function setTheme(t) {
   if (window.ECNative) ECNative.syncTheme();   // status bar do app acompanha o tema
 }
 function toggleTheme() { setTheme(currentTheme() === 'dark' ? 'light' : 'dark'); }
+// O fuso NÃO é preferência de aparelho como o tema: ele decide o horário que
+// sai escrito nas notificações e nas cobranças, então fica na conta, no
+// servidor. Sem ele, o texto saía no fuso do processo — em produção, UTC.
+function renderFusoSettings(cfg) {
+  const atual = (cfg && cfg.timezone) || 'America/Sao_Paulo';
+  const lista = (cfg && cfg.fusos) || [['America/Sao_Paulo', 'Brasília (GMT-3)']];
+  const doNavegador = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ''; } })();
+  const agora = (() => {
+    try { return new Date().toLocaleString('pt-BR', { timeZone: atual, hour: '2-digit', minute: '2-digit' }); }
+    catch { return ''; }
+  })();
+  const diferente = doNavegador && doNavegador !== atual && lista.some(([v]) => v === doNavegador);
+  return `
+    <h2>${ico('clock')} Fuso horário</h2>
+    <p class="muted" style="margin:0 0 14px;font-size:13px">
+      Define o horário escrito nos lembretes de agendamento, nas cobranças e nos avisos.
+      Agora são <b>${esc(agora)}</b> para esta conta.
+    </p>
+    <div class="row" style="align-items:flex-end">
+      <label style="flex:1;max-width:360px">Fuso da conta${ecSelect('cfg-fuso',
+        lista.map(([v, l]) => ({ value: v, label: l })), atual, 'salvarFuso()')}</label>
+    </div>
+    ${diferente ? `<p class="hint" style="margin-top:10px">${ico('info', 11)}
+      Este dispositivo está em <b>${esc(doNavegador)}</b>, diferente do fuso da conta.
+      <a href="#" onclick="usarFusoDoAparelho('${esc(doNavegador)}');return false">Usar o daqui</a>.</p>` : ''}`;
+}
+async function salvarFuso() {
+  const tz = $('#cfg-fuso')?.value;
+  if (!tz) return;
+  try { await api('/settings', { method: 'PUT', body: { timezone: tz } }); toast('Fuso salvo'); renderSettings(); }
+  catch (e) { toast(e.message, 'error'); }
+}
+async function usarFusoDoAparelho(tz) {
+  try { await api('/settings', { method: 'PUT', body: { timezone: tz } }); toast('Fuso salvo'); renderSettings(); }
+  catch (e) { toast(e.message, 'error'); }
+}
+
 function renderThemeSettings() {
   const t = currentTheme();
   return `
@@ -3824,6 +3861,7 @@ async function renderSettings() {
 
       <div class="tabpane" data-pane="prefs">
       <div class="card" id="appearance-card">${renderThemeSettings()}</div>
+      <div class="card" id="fuso-card">${renderFusoSettings(cfg)}</div>
       <div class="card" id="notif-card">${renderNotifSettings()}</div>
 
       <a class="card link-card" href="#/pixels">

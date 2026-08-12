@@ -98,7 +98,9 @@ function maybePush(event, data) {
     };
   } else if (event === 'reminder') {
     const ev = data.event || {};
-    const when = ev.start ? new Date(ev.start).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+    // O fuso vem da CONTA: sem ele o texto saía no fuso do processo (UTC em
+    // produção) e um compromisso das 9h era anunciado como 12h.
+    const when = require('./src/datas').hora(ev.start, db.findAccount(data.accountId));
     type = 'reminder';
     payload = { title: 'Lembrete ' + (data.label || 'Agendamento'), body: `${ev.title || ''}${when ? ' · ' + when : ''}`, tag: 'ev:' + (ev.id || ''), requireInteraction: true, data: { type, waId: ev.contact ? ev.contact.waId : null, url: ev.contact ? url : '/app/#/schedule' } };
   }

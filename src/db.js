@@ -69,6 +69,10 @@ function needsRehash(guardado) { return !String(guardado || "").startsWith(PREFI
 const DEFAULTS = {
   platform: {
     graphVersion: 'v26.0',
+    // Fuso usado para ESCREVER horários (notificação, cobrança, lembrete). Sem
+    // ele o servidor formatava no fuso do processo, que em produção é UTC: um
+    // agendamento das 9h virava "12h" no aviso. Cada conta pode ter o seu.
+    timezone: 'America/Sao_Paulo',
     appId: '',
     appSecret: '',
     configId: '',        // ID da configuração de login do Embedded Signup

@@ -13,6 +13,7 @@ const crypto = require('crypto');
 const db = require('./db');
 const store = require('./store');
 const woovi = require('./woovi');
+const datas = require('./datas');
 
 // ---------------------------------------------------------------------------
 // DRIVERS de gateway — interface única:
@@ -219,9 +220,9 @@ function tplValues(acc, ch, role) {
     link: ch.payUrl || payLink(ch) || '',
     codigo: role === 'confirmacao' ? (ch.id || '') : (ch.brCode || ''),
     descricao: ch.comment || 'Pagamento',
-    data: dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+    data: datas.dataHora(dt.getTime(), acc),
     metodo,
-    vencimento: ch.expiresAt ? new Date(ch.expiresAt).toLocaleDateString('pt-BR') : ''
+    vencimento: datas.data(ch.expiresAt, acc)
   };
   return (TPL_VARS[role] || []).map(v => String(mapa[v.key] == null ? '' : mapa[v.key]));
 }
@@ -598,8 +599,8 @@ function creditCardSale(acc, ch, broadcast) {
   acc.wallet.pending += liquido;
 
   const quando = agenda.length > 1
-    ? `${agenda.length}x, de ${new Date(agenda[0].availableAt).toLocaleDateString('pt-BR')} a ${new Date(agenda[agenda.length - 1].availableAt).toLocaleDateString('pt-BR')}`
-    : `libera em ${new Date(agenda[0].availableAt).toLocaleDateString('pt-BR')}`;
+    ? `${agenda.length}x, de ${datas.data(agenda[0].availableAt, acc)} a ${datas.data(agenda[agenda.length - 1].availableAt, acc)}`
+    : `libera em ${datas.data(agenda[0].availableAt, acc)}`;
   acc.wallet.transactions.push({
     id: db.genId('tx'), ts: Date.now(), amount: liquido, type: 'card_sale', pending: true,
     label: `Venda no cartão (${kind === 'debit' ? 'débito' : 'crédito'}${parcelas > 1 ? ` ${parcelas}x` : ''}), ${quando}`

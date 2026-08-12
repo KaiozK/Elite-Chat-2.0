@@ -181,8 +181,16 @@ function featuresOf(acc) {
   return db.normFeatures(cheapest.modules, cheapest.modules);
 }
 
+// O SMS não é cobrado pelo plano: cada disparo é debitado da carteira, e sem
+// saldo ele não sai de qualquer jeito. Trancá-lo por plano cobrava duas vezes
+// pela mesma coisa — quem paga o envio pode enviar, esteja em que plano
+// estiver. O interruptor continua no cadastro do plano por compatibilidade,
+// mas não decide mais nada.
+const SEMPRE_LIBERADOS = ['sms'];
+
 function featureOn(acc, key) {
   if (isUnlimited(acc)) return true;
+  if (SEMPRE_LIBERADOS.includes(key)) return true;
   if (!db.FEATURE_KEYS.includes(key)) return true;   // módulo essencial: sempre on
   return !!featuresOf(acc)[key];
 }
