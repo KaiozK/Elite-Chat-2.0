@@ -1688,7 +1688,7 @@ function autoBoxHtml(auto, meios, salvo, min) {
           <label class="pay-method">
             <input type="radio" name="autom" value="pix" ${auto.method !== 'card' ? 'checked' : ''}>
             <span class="pay-ic">${ico('pix', 17)}</span>
-            <span><b>Pix Automático</b><em>Você autoriza uma vez no seu banco e a Woovi cobra sozinha</em></span>
+            <span><b>Pix Automático</b><em>Você autoriza uma vez no seu banco e a cobrança passa a ser automática</em></span>
           </label>
           <label class="pay-method ${meios.credit && salvo.reusable ? '' : 'off'}">
             <input type="radio" name="autom" value="card" ${auto.method === 'card' ? 'checked' : ''}
@@ -5901,7 +5901,7 @@ async function paintBilling() {
                 ${d.wallet.balance >= p.price + (d.extrasCost || 0) ? `<button class="btn block" style="margin-top:7px" onclick="payWithWallet('${p.id}')">${ico('briefcase', 13)} Usar saldo (${fmtBRL(d.wallet.balance)})</button>` : ''}`}
           </div>`).join('')}</div>
           <p class="muted" style="font-size:12px;margin:12px 0 0">${ico('shield', 13)}
-            Formas de pagamento aceitas: <b>Pix</b> pela Woovi, com renovação automática por Pix Automático quando o seu banco oferece o recurso${cardOn
+            Formas de pagamento aceitas: <b>Pix</b>, com renovação automática por Pix Automático quando o seu banco oferece o recurso${cardOn
               ? `; <b>cartão de crédito</b>, com ativação imediata e renovação no cartão salvo` : ''}${(d.card || {}).boleto
               ? `; e <b>boleto bancário</b>, com liberação após a compensação` : ''}.</p>`
           : '<p class="muted">Nenhum plano publicado ainda.</p>'}
@@ -6480,17 +6480,19 @@ function payBoxHtml(pc) {
         : pc.brCode
           ? `<img src="${localQrDataUrl(pc.brCode)}" alt="QR Code Pix">`
           : `<div class="pay-qr-ph">${ico('clock', 26)}</div>`}</div>
-      <div style="flex:1;min-width:0">
+      <div class="pay-info">
         <h2 style="margin:0 0 4px">${ico('pix')} Pague com Pix para ativar</h2>
-        <p class="muted" style="margin:0 0 10px;font-size:13px">${pc.kind === 'topup' ? 'Recarga de saldo' : 'Assinatura'}, <b>${fmtBRL(pc.amount)}</b>. Escaneie o QR ou use o copia-e-cola. A confirmação é automática.</p>
-        ${pc.brCode ? `<label>Pix copia-e-cola<textarea readonly rows="3" style="font-size:11px" onclick="this.select()">${esc(pc.brCode)}</textarea></label>` : ''}
-        <div class="row" style="margin-top:10px">
-          ${pc.brCode ? `<button class="btn no-grow" onclick="copyText(${JSON.stringify(esc(pc.brCode))})">${ico('copy', 13)} Copiar código</button>` : ''}
-          ${pc.paymentLinkUrl ? `<a class="btn no-grow" href="${esc(pc.paymentLinkUrl)}" target="_blank" rel="noopener">${ico('link', 13)} Abrir página de pagamento</a>` : ''}
-          <button class="btn no-grow" onclick="checkPending(true)">${ico('refresh', 13)} Já paguei</button>
-          <button class="btn danger no-grow" onclick="cancelPending()">Cancelar</button>
+        <p class="muted" style="margin:0 0 12px;font-size:13px">${pc.kind === 'topup' ? 'Recarga de saldo' : 'Assinatura'}, <b>${fmtBRL(pc.amount)}</b>. Escaneie o QR ou use o copia-e-cola. A confirmação é automática.</p>
+        <div class="pay-acoes">
+          ${pc.brCode ? `<button class="btn primary" onclick="copyText(${JSON.stringify(esc(pc.brCode))})">${ico('copy', 13)} Copiar código Pix</button>` : ''}
+          <button class="btn" onclick="checkPending(true)">${ico('refresh', 13)} Já paguei</button>
+          <button class="btn danger" onclick="cancelPending()">Cancelar</button>
         </div>
-        <p class="muted" id="pay-status" style="font-size:12px;margin:10px 0 0">${ico('clock', 12)} Aguardando pagamento…</p>
+        ${pc.brCode ? `<details class="pay-codigo">
+          <summary>Ver o código para colar manualmente</summary>
+          <textarea readonly rows="3" onclick="this.select()">${esc(pc.brCode)}</textarea>
+        </details>` : ''}
+        <p class="muted" id="pay-status" style="font-size:12px;margin:12px 0 0">${ico('clock', 12)} Aguardando pagamento…</p>
       </div>
     </div>
   </div>`;
