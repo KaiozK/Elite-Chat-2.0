@@ -358,13 +358,50 @@ module.exports = function (broadcast, clients) {
   });
 
   // Config pública da landing (sem auth) — copy do botão conforme dias de teste
+  // Traduz os limites do plano em frases. -1 é ilimitado; 0 quer dizer que o
+  // recurso não entra no plano, então nem vira linha.
+  function limitesEmTexto(pl) {
+    const L = pl.limits || {};
+    // O terceiro item é a frase do ilimitado, escrita por extenso: concordar
+    // gênero programaticamente daria "Campanhas ilimitados".
+    const rotulos = [
+      ['whatsapps', 'número de WhatsApp', 'números de WhatsApp', 'Números de WhatsApp ilimitados'],
+      ['contacts', 'contato', 'contatos', 'Contatos ilimitados'],
+      ['sends', 'envio por mês', 'envios por mês', 'Envios ilimitados'],
+      ['campaigns', 'campanha', 'campanhas', 'Campanhas ilimitadas'],
+      ['flows', 'automação', 'automações', 'Automações ilimitadas'],
+      ['links', 'link rastreável', 'links rastreáveis', 'Links rastreáveis ilimitados'],
+      ['pixels', 'pixel', 'pixels', 'Pixels ilimitados']
+    ];
+    const nm = n => n.toLocaleString('pt-BR');
+    const linhas = [];
+    for (const [chave, sing, plur, ilimitado] of rotulos) {
+      const v = L[chave];
+      if (v === undefined || v === 0) continue;
+      linhas.push(v === -1 ? ilimitado : nm(v) + ' ' + (v === 1 ? sing : plur));
+    }
+    return linhas;
+  }
+
   router.get('/public/landing', (req, res) => {
     const p = db.get().platform;
     const trialDays = p.billing.trialDays || 0;
     const ctaText = (p.landing && p.landing.ctaText || '').trim();
+    // Os planos da landing eram escritos à mão no HTML e viviam desencontrados
+    // dos que o cliente encontra ao assinar. Aqui saem os MESMOS que o painel
+    // usa, sem os arquivados, para a página se montar a partir deles.
+    const planos = db.get().plans
+      .filter(pl => !pl.archived)
+      .map(pl => ({
+        id: pl.id, nome: pl.name, preco: pl.price, dias: pl.periodDays || 30,
+        // Quando o plano não tem descrição escrita, os limites configurados
+        // dizem o suficiente — e são dado de verdade, não texto de vitrine.
+        itens: (pl.features && pl.features.length) ? pl.features : limitesEmTexto(pl)
+      }));
     res.json({
       trialDays,
-      ctaText: ctaText || (trialDays > 0 ? `Testar por ${trialDays} dias` : 'Começar agora')
+      ctaText: ctaText || (trialDays > 0 ? `Testar por ${trialDays} dias` : 'Começar agora'),
+      planos
     });
   });
 

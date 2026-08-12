@@ -177,7 +177,75 @@
       }
     }
   }
-  fetch('/api/public/landing').then(function (r){return r.json();}).then(function (c){ if (c && c.ctaText){ ctaTxt=c.ctaText; applyCta(); } }).catch(function(){});
+  // ---- Planos: os mesmos do painel ----
+  // Os três cartões vinham escritos no HTML, com preço e limites que não
+  // acompanhavam o que o cliente encontra ao assinar. Agora a grade é montada
+  // a partir de /api/public/landing, que devolve os planos NÃO arquivados.
+  // Se a rota falhar ou não houver plano nenhum, o HTML original fica de pé:
+  // uma página desatualizada ainda vende mais que uma seção vazia.
+  var planos = null;
+  var diasTeste = null;
+  // "Teste grátis por 30 dias" estava escrito no HTML e continuava lá com o
+  // período de teste zerado no painel — promessa que a assinatura não cumpre.
+  // A frase passa a seguir o que está configurado, ou some quando não há teste.
+  function ajustarTeste() {
+    if (diasTeste === null) return;
+    var ps = document.querySelectorAll('p.lead');
+    for (var i = 0; i < ps.length; i++) {
+      var p = ps[i], t = p.textContent || '';
+      if (t.indexOf('Teste grátis por') < 0) continue;
+      var novo = diasTeste > 0
+        ? 'Teste grátis por ' + diasTeste + (diasTeste === 1 ? ' dia.' : ' dias.')
+        : '';
+      var limpo = t.replace(/Teste grátis por\s*\d*\s*dias?\.?/i, novo).replace(/\s+/g, ' ').trim();
+      if (limpo !== t.trim()) p.textContent = limpo;
+    }
+  }
+  function brl(centavos) {
+    return (centavos / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function aplicarPlanos() {
+    if (!planos || !planos.length) return;
+    var grade = document.querySelector('.pgrid');
+    if (!grade || grade.getAttribute('data-koonfy') === String(planos.length)) return;
+    // O seletor Mensal/Trimestral prometia um desconto que não existe no
+    // cadastro de planos; sai junto, para a página não oferecer o que a
+    // assinatura não faz.
+    var tgl = document.querySelector('.tgl');
+    if (tgl) tgl.style.display = 'none';
+
+    var destaque = planos.length > 1 ? 1 : -1;   // o do meio, como no desenho original
+    var html = '';
+    for (var i = 0; i < planos.length; i++) {
+      var p = planos[i], hi = (i === destaque);
+      var itens = '';
+      for (var j = 0; j < (p.itens || []).length; j++) {
+        itens += '<li><span class="pck">✓</span>' + escapar(p.itens[j]) + '</li>';
+      }
+      html += '<div class="pcard' + (hi ? ' hi' : '') + '">'
+        + (hi ? '<span class="ribbon">Mais popular</span>' : '')
+        + '<div class="pname">' + escapar(p.nome) + '</div>'
+        + '<div class="preco">R$ ' + brl(p.preco) + '<span class="pper">/mês</span></div>'
+        + '<div class="pnota">Cobrado a cada ' + p.dias + ' dias</div>'
+        + '<button class="' + (hi ? 'btn' : 'ghost') + ' w100 jc" style="margin-top:24px">' + escapar(ctaTxt || 'Começar agora') + '</button>'
+        + (itens ? '<ul class="plist">' + itens + '</ul>' : '')
+        + '</div>';
+    }
+    grade.innerHTML = html;
+    grade.setAttribute('data-koonfy', String(planos.length));
+    wireCta();
+  }
+  function escapar(t) {
+    return String(t == null ? '' : t)
+      .split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;').split('"').join('&quot;');
+  }
+
+  fetch('/api/public/landing').then(function (r){return r.json();}).then(function (c){
+    if (!c) return;
+    if (c.ctaText){ ctaTxt=c.ctaText; applyCta(); }
+    if (c.planos && c.planos.length){ planos = c.planos; aplicarPlanos(); }
+    if (typeof c.trialDays === 'number'){ diasTeste = c.trialDays; ajustarTeste(); }
+  }).catch(function(){});
 
   // ---- CTAs -> app (login/cadastro) ----
   // Botões da landing vêm sem href/onclick; direcionamos ao /app.
@@ -405,8 +473,8 @@
     }
     return ok;
   }
-  var tries = 0, iv = setInterval(function () { wireCta(); if (inject() || ++tries > 60) clearInterval(iv); }, 250);
-  new MutationObserver(function () { ensureCss(); ensureSeo(); inject(); applyCta(); wireCta(); }).observe(document.documentElement, { childList: true, subtree: true });
+  var tries = 0, iv = setInterval(function () { wireCta(); aplicarPlanos(); if (inject() || ++tries > 60) clearInterval(iv); }, 250);
+  new MutationObserver(function () { ensureCss(); ensureSeo(); inject(); applyCta(); aplicarPlanos(); ajustarTeste(); wireCta(); }).observe(document.documentElement, { childList: true, subtree: true });
 })();
 </script>
 
