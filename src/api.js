@@ -692,29 +692,83 @@ module.exports = function (broadcast, clients) {
       return res.json({ ok: false, achados });
     }
     add('ok', 'App reconhecido pela Meta: ' + (app.name || p.appId) + '.');
+    // Usada nas checagens de webhook e nas orientações do fim.
+    const origem = req.protocol + '://' + req.get('host');
 
     if (!p.configId) {
       add('erro', 'Config ID em branco. Sem ele o Embedded Signup não abre: crie a configuração em Login do Facebook para Empresas → Configurações e cole o ID aqui.');
+    } else if (!/^\d{10,}$/.test(String(p.configId).trim())) {
+      add('erro', 'O Config ID deveria ser só números (15 a 17 dígitos). Copie o valor de ' +
+        'Login do Facebook para Empresas → Configurações, sem espaços.');
     } else {
-      // A configuração do Embedded Signup pertence ao app; se o ID for de
-      // outro app, a Meta responde exatamente com "falha ao iniciar sessão".
+      // NÃO dá para validar o Config ID pela Graph API: ele não é um objeto
+      // legível. Um GET nele responde "does not exist" mesmo quando o ID está
+      // certo — foi o que esta tela chegou a acusar como erro, apontando para o
+      // lugar errado. O ID só é exercitado pelo FB.login, no navegador.
+      add('info', 'Config ID preenchido. A Meta não permite conferi-lo por aqui: ' +
+        'ele só é validado quando o Embedded Signup abre no navegador.');
+    }
+
+    // ---- O que REALMENTE derruba o recebimento de mensagens ----
+    // Duas pontas precisam estar ligadas, e elas são independentes:
+    //   1. o APP precisa ter o webhook cadastrado e ativo;
+    //   2. cada WABA precisa estar ASSINADA por esse app.
+    // A segunda é a que passa despercebida: com o app perfeitamente
+    // configurado e a WABA sem assinar, a Meta simplesmente não manda nada.
+    try {
+      const r = await fetch('https://graph.facebook.com/' + v + '/' + p.appId +
+        '/subscriptions?access_token=' + encodeURIComponent(appToken));
+      const subs = await r.json();
+      const wa = (subs.data || []).find(s => s.object === 'whatsapp_business_account');
+      if (!wa) {
+        add('erro', 'O app não tem webhook de WhatsApp cadastrado. Em Webhooks, assine o objeto ' +
+          'whatsapp_business_account com a URL ' + origem + '/webhook e o Verify Token do painel.');
+      } else if (!wa.active) {
+        add('erro', 'O webhook do app está cadastrado mas INATIVO. Reative em Webhooks.');
+      } else {
+        const campos = (wa.fields || []).map(f => f.name);
+        add('ok', 'Webhook do app ativo em ' + wa.callback_url + '.');
+        if (!campos.includes('messages')) {
+          add('erro', 'O webhook não assina o campo "messages" — é ele que entrega as mensagens ' +
+            'recebidas. Marque em Webhooks → whatsapp_business_account.');
+        }
+        if (wa.callback_url && wa.callback_url.replace(/\/+$/, '') !== (origem + '/webhook')) {
+          add('aviso', 'O webhook aponta para ' + wa.callback_url + ', e este servidor responde em ' +
+            origem + '/webhook. Se não forem o mesmo endereço, as mensagens chegam em outro lugar.');
+        }
+      }
+    } catch (e) {
+      add('aviso', 'Não deu para ler os webhooks do app: ' + e.message);
+    }
+
+    // Cada WABA conectada: está assinada por este app?
+    const wabas = [];
+    for (const acc of db.get().accounts) {
+      for (const ch of (acc.channels || [])) {
+        const w = ch.wa || {};
+        const tk = w.accessToken || p.systemToken;
+        if (w.wabaId && tk) wabas.push({ conta: acc.name, canal: ch.label, wabaId: w.wabaId, token: tk });
+      }
+    }
+    for (const x of wabas) {
       try {
-        const r = await fetch('https://graph.facebook.com/' + v + '/' + p.configId +
-          '?access_token=' + encodeURIComponent(appToken));
-        const cfg = await r.json();
-        if (cfg.error) {
-          add('erro', 'O Config ID não foi aceito por este app: ' + (cfg.error.message || '') +
-            '. Quase sempre é uma configuração criada em OUTRO app da Meta.');
+        const r = await fetch('https://graph.facebook.com/' + v + '/' + x.wabaId +
+          '/subscribed_apps?access_token=' + encodeURIComponent(x.token));
+        const j = await r.json();
+        if (j.error) { add('aviso', 'WABA ' + x.wabaId + ': ' + j.error.message); continue; }
+        if (!(j.data || []).length) {
+          add('erro', 'A WABA ' + x.wabaId + ' (' + x.conta + ' · ' + x.canal + ') NÃO está assinada por ' +
+            'nenhum app. É por isso que não chega webhook: a Meta só entrega evento de WABA assinada. ' +
+            'Resolva com o botão "Assinar app na WABA", em Configurações → Conexão & API.');
         } else {
-          add('ok', 'Config ID pertence a este app.');
+          add('ok', 'WABA ' + x.wabaId + ' assinada pelo app (' + x.conta + ' · ' + x.canal + ').');
         }
       } catch (e) {
-        add('aviso', 'Não deu para conferir o Config ID: ' + e.message);
+        add('aviso', 'Não deu para conferir a WABA ' + x.wabaId + ': ' + e.message);
       }
     }
 
     // O que a Meta NÃO conta pela API, e que responde pela maioria dos casos.
-    const origem = req.protocol + '://' + req.get('host');
     add('info', 'Se o app estiver em MODO DE DESENVOLVIMENTO, só quem está em Funções do app (administrador, desenvolvedor ou testador) consegue conectar. É a causa mais comum desta falha.');
     add('info', 'Em Login do Facebook → Configurações, o campo URIs de redirecionamento OAuth válidos precisa conter: ' + origem + '/auth/meta/callback');
     add('info', 'Em Configurações → Básico, o Domínio do app precisa conter: ' + req.get('host'));
