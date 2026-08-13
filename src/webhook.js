@@ -204,8 +204,10 @@ function processEvent(body, broadcast) {
           if (consentAction === 'opt_out') continue; // não roda flows para quem pediu para sair
 
           // dispara automações do Flow Builder (palavra-chave/link/botão/lista)
-          if ((parsed.type === 'text' || parsed.type === 'interactive') && parsed.text) {
-            const kind = parsed.type === 'interactive' ? 'interactive' : 'text';
+          // `button` entra junto: é o toque num botão de TEMPLATE, e sem ele
+          // um fluxo que manda template com botões nunca via a resposta.
+          if ((parsed.type === 'text' || parsed.type === 'interactive' || parsed.type === 'button') && parsed.text) {
+            const kind = parsed.type === 'text' ? 'text' : 'interactive';
             // replyId identifica QUAL botão/item foi tocado — é o que permite
             // retomar um fluxo em espera pelo caminho certo.
             const entregar = makeDeliver(broadcast);
@@ -409,7 +411,16 @@ function parseMessage(m) {
     return { type: 'contacts', text: '👤 ' + (names || 'Contato compartilhado') };
   }
 
-  if (t === 'button') return { type: 'button', text: (m.button && m.button.text) || '[botão]' };
+  // Botão de TEMPLATE (quick reply). Chega como `button`, e não como
+  // `interactive`: o payload é o que o template definiu, e o text é o rótulo.
+  // Levar os dois adiante é o que permite um fluxo reagir a esse toque.
+  if (t === 'button') {
+    return {
+      type: 'button',
+      text: (m.button && m.button.text) || '[botão]',
+      replyId: (m.button && m.button.payload) || ''
+    };
+  }
 
   if (t === 'interactive') {
     const r = (m.interactive && (m.interactive.button_reply || m.interactive.list_reply)) || null;

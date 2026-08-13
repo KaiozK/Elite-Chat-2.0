@@ -302,8 +302,33 @@ async function execNode(acc, node, ctx, deliver) {
     return { ok: true, detail: `cobrança ${elitepay.fmtBRL(ch.value)}` };
   }
   if (node.type === 'ai') {
-    // Responder com IA — placeholder (requer configuração de provedor de IA)
-    return { ok: true, detail: 'IA (não configurada)' };
+    // Este nó era um placeholder que não fazia nada. Agora usa o Agente de IA
+    // da conta: a mesma chave e as mesmas instruções configuradas em
+    // Agente de IA, mais o que estiver escrito no próprio nó.
+    //
+    // As guardas do agente (atendente assumido, opt-out, janela) NÃO valem
+    // aqui: quem mandou responder foi o fluxo, e o fluxo é uma ordem explícita
+    // do dono da conta. Só a configuração é reaproveitada.
+    const ia = require('./ia');
+    const cfg = ia.ensure(acc);
+    if (!cfg.apiKey || !String(cfg.prompt || '').trim()) {
+      return { ok: false, detail: 'Agente de IA sem chave ou sem instruções' };
+    }
+    const extra = interpolate(String(node.text || node.prompt || '').trim(), ctx);
+    const instrucao = [String(cfg.prompt).trim(), extra && ('\nNesta etapa: ' + extra)]
+      .filter(Boolean).join('\n');
+    const entrada = [
+      { role: 'developer', content: instrucao },
+      { role: 'user', content: String(ctx.text || 'Olá').slice(0, 2000) }
+    ];
+    let texto;
+    try { texto = await ia.chamar(cfg, entrada); }
+    catch (e) { return { ok: false, detail: 'IA: ' + e.message }; }
+    const teto = Math.max(120, Math.min(2000, Number(cfg.maxSaida) || 600));
+    if (texto.length > teto) texto = texto.slice(0, teto).replace(/\s+\S*$/, '') + '…';
+    const r = await wa.sendText(acc, to, texto);
+    if (deliver) deliver(acc, to, { type: 'text', text: texto }, r);
+    return { ok: true, detail: 'IA respondeu (' + texto.length + ' caracteres)' };
   }
   return { ok: true };
 }

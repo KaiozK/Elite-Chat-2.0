@@ -1949,21 +1949,21 @@ module.exports = function (broadcast, clients) {
     next();
   }
 
-  router.post('/send/text', auth, requireActive, requireConsent, requireWindow('text'), markAgent, h(async (req, res) => {
+  router.post('/send/text', auth, can('inbox', 'create'), requireActive, requireConsent, requireWindow('text'), markAgent, h(async (req, res) => {
     const { to, text, previewUrl } = req.body;
     if (!to || !text) return res.status(400).json({ error: 'Informe "to" e "text"' });
     const r = await wa.sendText(req.wctx, store.normalizeWaId(to), text, previewUrl);
     res.json({ ok: true, message: storeOutbound(req.wctx, to, { type: 'text', text }, r, req._agentStamp) });
   }));
 
-  router.post('/send/template', auth, requireActive, requireConsent, markAgent, h(async (req, res) => {
+  router.post('/send/template', auth, can('inbox', 'create'), requireActive, requireConsent, markAgent, h(async (req, res) => {
     const { to, name, language, components } = req.body;
     if (!to || !name) return res.status(400).json({ error: 'Informe "to" e "name"' });
     const r = await wa.sendTemplate(req.wctx, store.normalizeWaId(to), name, language, components);
     res.json({ ok: true, message: storeOutbound(req.wctx, to, { type: 'template', text: `📋 Template: ${name}` }, r, req._agentStamp) });
   }));
 
-  router.post('/send/media', auth, requireActive, requireConsent, requireWindow('media'), markAgent, h(async (req, res) => {
+  router.post('/send/media', auth, can('inbox', 'create'), requireActive, requireConsent, requireWindow('media'), markAgent, h(async (req, res) => {
     const { to, kind, mediaId, link, caption, filename } = req.body;
     if (!to || !kind) return res.status(400).json({ error: 'Informe "to" e "kind" (image|video|audio|document|sticker)' });
     const media = {};
@@ -1983,7 +1983,7 @@ module.exports = function (broadcast, clients) {
     });
   }));
 
-  router.post('/send/buttons', auth, requireActive, requireConsent, requireWindow('buttons'), markAgent, h(async (req, res) => {
+  router.post('/send/buttons', auth, can('inbox', 'create'), requireActive, requireConsent, requireWindow('buttons'), markAgent, h(async (req, res) => {
     const { to, body, buttons } = req.body;
     if (!to || !body || !Array.isArray(buttons) || !buttons.length) {
       return res.status(400).json({ error: 'Informe "to", "body" e "buttons" (até 3)' });
@@ -2004,14 +2004,14 @@ module.exports = function (broadcast, clients) {
   }));
 
   // Payload interactive completo (listas, CTA URL etc.) — passa direto para a Graph API
-  router.post('/send/interactive', auth, requireActive, requireConsent, requireWindow('interactive'), markAgent, h(async (req, res) => {
+  router.post('/send/interactive', auth, can('inbox', 'create'), requireActive, requireConsent, requireWindow('interactive'), markAgent, h(async (req, res) => {
     const { to, interactive } = req.body;
     if (!to || !interactive) return res.status(400).json({ error: 'Informe "to" e "interactive"' });
     const r = await wa.sendInteractive(req.wctx, store.normalizeWaId(to), interactive);
     res.json({ ok: true, message: storeOutbound(req.wctx, to, { type: 'interactive', text: '[mensagem interativa]' }, r) });
   }));
 
-  router.post('/send/location', auth, requireActive, requireConsent, requireWindow('location'), h(async (req, res) => {
+  router.post('/send/location', auth, can('inbox', 'create'), requireActive, requireConsent, requireWindow('location'), h(async (req, res) => {
     const { to, latitude, longitude, name, address } = req.body;
     if (!to || latitude === undefined || longitude === undefined) {
       return res.status(400).json({ error: 'Informe "to", "latitude" e "longitude"' });
@@ -2020,7 +2020,7 @@ module.exports = function (broadcast, clients) {
     res.json({ ok: true, message: storeOutbound(req.wctx, to, { type: 'location', text: `📍 ${name || ''} ${address || ''}`.trim() || '📍 Localização' }, r) });
   }));
 
-  router.post('/send/contacts', auth, requireActive, requireConsent, requireWindow('contacts'), h(async (req, res) => {
+  router.post('/send/contacts', auth, can('inbox', 'create'), requireActive, requireConsent, requireWindow('contacts'), h(async (req, res) => {
     const { to, contacts } = req.body;
     if (!to || !Array.isArray(contacts) || !contacts.length) return res.status(400).json({ error: 'Informe "to" e "contacts"' });
     const r = await wa.sendContactCard(req.wctx, store.normalizeWaId(to), contacts);
@@ -2028,7 +2028,7 @@ module.exports = function (broadcast, clients) {
     res.json({ ok: true, message: storeOutbound(req.wctx, to, { type: 'contacts', text: '👤 ' + (names || 'Contato') }, r) });
   }));
 
-  router.post('/send/reaction', auth, requireActive, requireConsent, requireWindow('reaction'), h(async (req, res) => {
+  router.post('/send/reaction', auth, can('inbox', 'create'), requireActive, requireConsent, requireWindow('reaction'), h(async (req, res) => {
     const { to, messageId, emoji } = req.body;
     if (!to || !messageId) return res.status(400).json({ error: 'Informe "to" e "messageId"' });
     const r = await wa.sendReaction(req.wctx, store.normalizeWaId(to), messageId, emoji || '👍');

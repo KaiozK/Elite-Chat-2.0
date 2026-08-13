@@ -219,7 +219,9 @@ async function responder(acc, contact, deliver, opts = {}) {
   if (String(c.assinatura || '').trim()) texto += '\n\n' + String(c.assinatura).trim();
 
   try {
-    const ctx = db.chanCtx(acc, contact.chId);
+    // chanCtx quer o OBJETO do canal, não o id: passando a string ele monta um
+    // contexto sem `wa`, e o envio morre com "Phone Number ID ausente".
+    const ctx = db.chanCtx(acc, db.findChannel(acc, contact.chId));
     const r = await wa.sendText(ctx, contact.waId, texto);
     if (deliver) deliver(acc, contact.waId, { type: 'text', text: texto, byIA: true }, r);
     log(acc, { tipo: 'resposta', waId: contact.waId, chars: texto.length });
@@ -251,4 +253,4 @@ async function testar(acc, pergunta) {
   return chamar(c, entrada);
 }
 
-module.exports = { MODELOS, padrao, ensure, configurada, podeResponder, responder, alternarNaConversa, testar, extrairTexto };
+module.exports = { MODELOS, padrao, ensure, configurada, podeResponder, responder, alternarNaConversa, testar, extrairTexto, chamar };
