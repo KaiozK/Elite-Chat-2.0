@@ -1220,7 +1220,10 @@ module.exports = function (broadcast, clients) {
     res.json(out);
   });
 
-  router.put('/settings', auth, (req, res) => {
+  // async + h(): a conexão manual agora conversa com a Meta (Business ID e
+  // assinatura da WABA), e um erro dessas chamadas precisa virar resposta HTTP
+  // em vez de promessa rejeitada sem dono.
+  router.put('/settings', auth, h(async (req, res) => {
     // ETAPAS DO PIPELINE (qualquer conta)
     //
     // Renomear ou apagar uma etapa não pode deixar contato apontando para uma
@@ -1296,11 +1299,35 @@ module.exports = function (broadcast, clients) {
       if (manualTouched) {
         w.connected = !!(wa.tokenOf(req.wctx) && w.phoneNumberId);
         w.updatedAt = Date.now();
+        // O Embedded Signup descobre o Business ID sozinho; a conexão manual
+        // ficava sem ele. Não é campo para digitar: a própria WABA diz de quem
+        // ela é, em `owner_business_info`. Falhar aqui não impede de conectar.
+        if (w.wabaId && wa.tokenOf(req.wctx) && !w.businessId) {
+          try {
+            const info = await wa.getWaba(req.wctx);
+            const dono = info && info.owner_business_info;
+            if (dono && dono.id) { w.businessId = String(dono.id); w.businessName = String(dono.name || ''); }
+          } catch (e) {
+            store.logEvent({ type: 'business_id_falhou', accountId: req.acc.id, error: e.message });
+          }
+        }
+        // Assinar o app na WABA é o passo que faz a Meta ENTREGAR webhook. Sem
+        // ele o número conecta, envia, e nunca recebe nada — foi o que
+        // aconteceu aqui. Fazer junto evita depender de lembrar do botão.
+        if (w.wabaId && wa.tokenOf(req.wctx)) {
+          try {
+            await wa.subscribeApp(req.wctx);
+            w.appSubscribed = true;
+          } catch (e) {
+            w.appSubscribed = false;
+            store.logEvent({ type: 'subscribe_waba_falhou', accountId: req.acc.id, error: e.message });
+          }
+        }
       }
     }
     db.save();
     res.json({ ok: true });
-  });
+  }));
 
   router.post('/settings/verify-token/regenerate', auth, adminOnly, (req, res) => {
     const p = db.get().platform;

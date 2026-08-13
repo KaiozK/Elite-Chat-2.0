@@ -205,9 +205,29 @@
     return (centavos / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
   function aplicarPlanos() {
-    if (!planos || !planos.length) return;
+    // `null` = a rota ainda não respondeu (ou falhou): deixa o HTML como está,
+    // porque não dá para saber. Lista VAZIA é resposta: não existe plano
+    // cadastrado, e aí os cartões escritos no HTML são ficção — preço, nome e
+    // limites que ninguém consegue assinar. Melhor não mostrar preço nenhum
+    // do que mostrar um inventado.
+    if (planos === null) return;
     var grade = document.querySelector('.pgrid');
-    if (!grade || grade.getAttribute('data-koonfy') === String(planos.length)) return;
+    if (!grade) return;
+    if (!planos.length) {
+      if (grade.getAttribute('data-koonfy') === 'vazio') return;
+      var tgl0 = document.querySelector('.tgl');
+      if (tgl0) tgl0.style.display = 'none';
+      grade.innerHTML = '<div class="pcard" style="grid-column:1/-1;text-align:center">'
+        + '<div class="pname">Planos em breve</div>'
+        + '<div class="pnota" style="margin-top:8px">Estamos finalizando as condições comerciais. '
+        + 'Fale com a gente para começar agora mesmo.</div>'
+        + '<button class="btn w100 jc" style="margin-top:20px">' + escapar(ctaTxt || 'Começar agora') + '</button>'
+        + '</div>';
+      grade.setAttribute('data-koonfy', 'vazio');
+      wireCta();
+      return;
+    }
+    if (grade.getAttribute('data-koonfy') === String(planos.length)) return;
     // O seletor Mensal/Trimestral prometia um desconto que não existe no
     // cadastro de planos; sai junto, para a página não oferecer o que a
     // assinatura não faz.
@@ -243,7 +263,8 @@
   fetch('/api/public/landing').then(function (r){return r.json();}).then(function (c){
     if (!c) return;
     if (c.ctaText){ ctaTxt=c.ctaText; applyCta(); }
-    if (c.planos && c.planos.length){ planos = c.planos; aplicarPlanos(); }
+    // Guarda o array MESMO VAZIO: é a diferença entre "não sei" e "não há".
+    if (Array.isArray(c.planos)){ planos = c.planos; aplicarPlanos(); }
     if (typeof c.trialDays === 'number'){ diasTeste = c.trialDays; ajustarTeste(); }
   }).catch(function(){});
 
