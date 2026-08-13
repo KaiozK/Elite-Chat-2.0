@@ -370,7 +370,7 @@ function renderNotifSettings() {
       ${ck('types.call', p.types.call, 'Ligações', 'Chamadas de voz recebidas')}
       ${ck('types.attendance', p.types.attendance, 'Atendimentos', 'Novo cliente iniciou conversa')}
       ${ck('types.reminder', p.types.reminder, 'Lembretes', 'Agendamentos da agenda')}
-      ${ck('types.sale', p.types.sale !== false, 'Vendas aprovadas', 'Pagamento confirmado no Elite Pay')}
+      ${ck('types.sale', p.types.sale !== false, 'Vendas aprovadas', 'Pagamento confirmado no Pagamentos')}
       ${ck('types.commission', p.types.commission !== false, 'Comissões de indicação', 'Sua parte na venda de um indicado')}
     </div>
     <div class="row" style="margin-top:16px">
@@ -744,7 +744,7 @@ const REG_TAMANHOS = ['Só eu', '2 a 5', '6 a 10', '11 a 25', '26 a 50', '51 a 1
 const REG_OBJETIVOS = [
   'Atender mais rápido', 'Vender pelo WhatsApp', 'Recuperar carrinho e lead frio',
   'Automatizar o atendimento', 'Organizar a equipe', 'Disparar campanhas',
-  'Cobrar e receber (Elite Pay)'
+  'Cobrar e receber (Pagamentos)'
 ];
 
 // Monta uma vez só: remontar a cada abertura apagaria o que a pessoa escolheu
@@ -788,6 +788,19 @@ function montarCamposDoPerfil() {
     if (!box || box.classList.contains('ecsel')) continue;   // já montado
     box.outerHTML = ecSelect(id, opcoes(lista, vazio), '');
   }
+  // Tipo da chave Pix: os mesmos valores que o servidor aceita em
+  // validateOnboarding — uma lista diferente aqui só viraria erro 400.
+  const tipo = document.getElementById('reg-pixtipo');
+  if (tipo && !tipo.classList.contains('ecsel')) {
+    tipo.outerHTML = ecSelect('reg-pixtipo', [
+      { value: '', label: 'Selecione…' },
+      { value: 'cpf', label: 'CPF' },
+      { value: 'cnpj', label: 'CNPJ' },
+      { value: 'email', label: 'E-mail' },
+      { value: 'telefone', label: 'Telefone' },
+      { value: 'aleatoria', label: 'Chave aleatória' }
+    ], '');
+  }
 }
 
 let registerMode = false;
@@ -824,9 +837,30 @@ function toggleRegister(e) {
       if (nota) nota.classList.add('hidden');
     }
   }
+  // Ao entrar no cadastro a trilha aparece e volta para a primeira etapa; ao
+  // sair, tudo se recolhe e a tela vira o login simples de e-mail e senha.
+  const trilha = $('#reg-trilha');
+  if (trilha) trilha.classList.toggle('hidden', !registerMode);
+  const pag = $('#reg-pag');
+  if (pag) pag.classList.toggle('hidden', true);
+  if (registerMode) {
+    mostrarPasso(1);
+  } else {
+    $('#login-form').querySelectorAll('[data-etapa]').forEach(el => {
+      // Fora do cadastro só sobram os campos da etapa 1 que o login usa; o
+      // nome da empresa e o resto voltam a ficar escondidos pelos ids.
+      el.classList.toggle('hidden', el.dataset.etapa !== '1');
+    });
+    $('#reg-name-wrap').classList.add('hidden');
+    $('#reg-voltar').classList.add('hidden');
+    $('#reg-pular').classList.add('hidden');
+    passoAtual = 1;
+  }
   $('#auth-title').textContent = registerMode ? 'Crie sua conta' : 'Acesse sua conta';
   $('#auth-sub').textContent = registerMode ? 'Conecte seu WhatsApp em minutos, sem configuração técnica' : 'Painel de atendimento e vendas';
-  $('#auth-btn').textContent = registerMode ? 'Criar conta' : 'Entrar';
+  // No cadastro quem manda no rótulo é a etapa (mostrarPasso já ajustou):
+  // sobrescrever aqui faria a etapa 1 dizer "Criar conta" antes da hora.
+  if (!registerMode) $('#auth-btn').textContent = 'Entrar';
   $('#auth-toggle').innerHTML = registerMode
     ? 'Já tem conta? <a href="#" onclick="toggleRegister(event)">Entrar</a>'
     : 'Não tem conta? <a href="#" onclick="toggleRegister(event)">Criar conta grátis</a>';
@@ -869,6 +903,7 @@ async function enviarCodigo2FA(btn) {
     TOKEN = r.token;
     localStorage.setItem('wacrm_token', TOKEN);
     state.user = r.user; state.kind = r.kind; state.accountId = r.accountId;
+    state.iaLigada = !!r.iaLigada;
     state.wa = r.wa; state.agent = null; state.permissions = null;
     enterApp();
   } catch (err) {
@@ -877,9 +912,79 @@ async function enviarCodigo2FA(btn) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// CADASTRO EM ETAPAS
+//
+// Eram dez campos de uma vez no mesmo cartão. Divididos em três, cada tela
+// pede uma coisa só: quem é você, o que você faz, e por onde recebe. A última
+// abre a conta de Pagamentos junto — e é opcional, porque o cadastro não pode
+// depender do gateway estar de pé.
+// ---------------------------------------------------------------------------
+let passoAtual = 1;
+const ULTIMO_PASSO = 3;
+
+function mostrarPasso(n) {
+  passoAtual = n;
+  const form = $('#login-form');
+  form.querySelectorAll('[data-etapa]').forEach(el => {
+    el.classList.toggle('hidden', String(n) !== el.dataset.etapa);
+  });
+  $('#reg-trilha').querySelectorAll('[data-passo]').forEach(s => {
+    const p = Number(s.dataset.passo);
+    s.classList.toggle('feito', p < n);
+    s.classList.toggle('agora', p === n);
+  });
+  $('#reg-voltar').classList.toggle('hidden', n === 1);
+  $('#reg-pular').classList.toggle('hidden', n !== ULTIMO_PASSO);
+  $('#auth-btn').textContent = n < ULTIMO_PASSO ? 'Continuar' : 'Criar conta';
+  $('#login-err').textContent = '';
+}
+function passoAnterior() { if (passoAtual > 1) mostrarPasso(passoAtual - 1); }
+
+// Cada etapa confere o que é dela antes de deixar passar: descobrir no fim que
+// o e-mail estava errado obrigaria a voltar três telas.
+function validarPasso(n) {
+  if (n === 1) {
+    if (!$('#reg-name').value.trim()) return 'Informe o nome da empresa';
+    const mail = $('#login-user').value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return 'Informe um e-mail válido';
+    if (($('#login-pass').value || '').length < 6) return 'A senha precisa de pelo menos 6 caracteres';
+  }
+  if (n === 2) {
+    if (!ecSelVal('reg-segment')) return 'Escolha o segmento';
+    const tel = ($('#reg-phone') || {}).value || '';
+    if (!tel.trim()) return 'Informe o WhatsApp';
+  }
+  if (n === 3) {
+    // Vazio é válido: quem pula termina o Pagamentos depois. Preenchido pela
+    // metade não é — o gateway recusaria e o erro apareceria fora de hora.
+    const doc = ($('#reg-doc').value || '').replace(/\D/g, '');
+    const chave = ($('#reg-pixkey').value || '').trim();
+    if (!doc && !chave) return null;
+    if (doc.length !== 11 && doc.length !== 14) return 'CPF ou CNPJ inválido';
+    if (!chave) return 'Informe a chave Pix que vai receber';
+    if (!ecSelVal('reg-pixtipo')) return 'Escolha o tipo da chave Pix';
+  }
+  return null;
+}
+
+// "Pular": manda criar a conta sem os dados de recebimento.
+function pularRecebimento(e) {
+  if (e) e.preventDefault();
+  $('#reg-doc').value = '';
+  $('#reg-pixkey').value = '';
+  $('#login-form').requestSubmit();
+}
+
 async function doLogin(e) {
   e.preventDefault();
   $('#login-err').textContent = '';
+  // No cadastro, o botão avança de etapa até a última.
+  if (registerMode) {
+    const erro = validarPasso(passoAtual);
+    if (erro) { $('#login-err').textContent = erro; return; }
+    if (passoAtual < ULTIMO_PASSO) return mostrarPasso(passoAtual + 1);
+  }
   try {
     const user = $('#login-user').value.trim();
     const pass = $('#login-pass').value;
@@ -895,6 +1000,13 @@ async function doLogin(e) {
             phone: ($('#reg-phone') || {}).value || '',
             country: ecSelVal('reg-country') || 'BR',
             goal: ecSelVal('reg-goal')
+          },
+          // Recebimento: vazio quando o cliente pulou a etapa. O servidor
+          // decide o que fazer — aqui não se supõe que o gateway respondeu.
+          recebimento: {
+            document: ($('#reg-doc')?.value || '').replace(/\D/g, ''),
+            pixKey: ($('#reg-pixkey')?.value || '').trim(),
+            pixKeyType: ecSelVal('reg-pixtipo') || ''
           }
         } })
       : await api('/login', { body: { user, pass } });
@@ -904,6 +1016,8 @@ async function doLogin(e) {
     localStorage.setItem('wacrm_token', TOKEN);
     state.user = r.user;
     state.kind = r.kind;
+
+    state.iaLigada = !!r.iaLigada;
     state.accountId = r.accountId;
     state.wa = r.wa;
     state.mustChangePassword = !!r.mustChangePassword;
@@ -1331,7 +1445,7 @@ function connectSSE() {
   });
   // ligações (Calling API) — tela de chamada estilo WhatsApp
   es.addEventListener('call', e => onCallEvent(JSON.parse(e.data || '{}')));
-  // Elite Pay — status das cobranças em tempo real (pago/cancelado/subconta)
+  // Pagamentos — status das cobranças em tempo real (pago/cancelado/subconta)
   es.addEventListener('elitepay', e => {
     const d = JSON.parse(e.data || '{}');
     if (d.status === 'paid' && window.ECNotify) {
@@ -1412,6 +1526,7 @@ const views = {
   integrations: renderIntegrations, webhooks: renderIntegrations, // #/webhooks continua funcionando
   elitepay: renderElitePay, tracking: renderTracking,
   consent: renderConsent, agents: renderAgents, 'agents/perf': renderAgentPerf,
+  ia: renderIA,
   'agents/logs': renderAgentLogs, schedule: renderSchedule,
   reports: () => { location.hash = '#/dashboard'; }, // aba Relatórios foi absorvida pelo Dashboard
   'templates/new': renderTemplateNew, 'campaigns/new': renderCampaignNew,
@@ -1443,7 +1558,7 @@ const VIEW_MODULE = {
   billing: null, admin: null, logs: null   // sempre acessíveis (donos/config próprios)
 };
 // O plano do cliente inclui este módulo? (null = sem restrição de plano)
-// checkouts pertence ao Elite Pay; integrations cobre webhooks/Nuvemshop.
+// checkouts pertence ao Pagamentos; integrations cobre webhooks/Nuvemshop.
 const VIEW_FEATURE = { checkouts: 'elitepay', webhooks: 'integrations' };
 // ---------------------------------------------------------------------------
 // ASSINATURA OBRIGATÓRIA
@@ -1919,7 +2034,7 @@ async function renderDashboard() {
           ['schedule', 'calendar', 'Agendamento'],
           ['campaigns', 'megaphone', 'Campanha'],
           ['tracking', 'trend', 'Tracking'],
-          ['elitepay', 'pix', 'Elite Pay']
+          ['elitepay', 'pix', 'Pagamentos']
         ];
         const mobile = isMobileLayout();
         return atalhos
@@ -2265,6 +2380,7 @@ async function loadChat(waId, keepScroll) {
   try {
     const { messages, contact, session: sess, consent: cons } = await api('/messages/' + waId);
     const c = contact || { waId, name: waId };
+    state.currentContact = c;          // o botão da IA lê o iaOff deste contato
     state.currentSession = sess || null;
     state.currentConsent = cons || null;
     const prevScroll = $('#chat-scroll');
@@ -2374,7 +2490,8 @@ function paintSession() {
     <button class="btn small" onclick="editContactModal('${state.currentWaId}')" title="Editar contato">${ico('edit', 13)}<i class="blbl">Editar</i></button>
     ${finished
       ? `<button class="btn small primary" onclick="reopenAttendance()" title="Reabrir Atendimento">${ico('refresh', 13)}<i class="blbl">Reabrir Atendimento</i></button>`
-      : `<button class="btn small" onclick="finishAttendance()" title="Finalizar Atendimento">${ico('check-circle', 13)}<i class="blbl">Finalizar Atendimento</i></button>`}`;
+      : `<button class="btn small" onclick="finishAttendance()" title="Finalizar Atendimento">${ico('check-circle', 13)}<i class="blbl">Finalizar Atendimento</i></button>`}
+    ${iaBotaoChat()}`;
 
   // --- Composer: bloqueio total fora da janela / atendimento finalizado / OPT-OUT ---
   const optedOut = !!(state.currentConsent && state.currentConsent.blocked);
@@ -3091,7 +3208,7 @@ async function paintTemplates(sync) {
     const templates = d.templates || [];
     const sel = d.selected || {};
     $('#tpl-table').innerHTML = templates.length ? `
-      <table><thead><tr><th>Nome</th><th>Uso no Elite Pay</th><th>Idioma</th><th>Status</th><th>Corpo</th><th></th></tr></thead>
+      <table><thead><tr><th>Nome</th><th>Uso no Pagamentos</th><th>Idioma</th><th>Status</th><th>Corpo</th><th></th></tr></thead>
       <tbody>${templates.map(t => `
         <tr>
           <td><b>${esc(t.name)}</b><div class="muted" style="font-size:11px">${esc(t.category || '')}</div></td>
@@ -3109,7 +3226,7 @@ async function paintTemplates(sync) {
       <p class="hint" style="margin-top:12px;text-align:left">${ico('info', 12)}
         Um modelo é <b>cobrança</b> ou <b>confirmação de pagamento</b>, nunca os dois.
         Sem papel, ele é um modelo comum de campanha. Com mais de um do mesmo papel,
-        você escolhe qual é enviado em <a href="#/elitepay">Elite Pay → Mensagens</a>.</p>`
+        você escolhe qual é enviado em <a href="#/elitepay">Pagamentos → Mensagens</a>.</p>`
       : '<p class="muted">Nenhum modelo. Clique em Sincronizar (exige WABA ID + token) ou crie um novo.</p>';
   } catch (e) {
     $('#tpl-table').innerHTML = `<p class="err">${esc(e.message)}</p><p class="muted">Verifique WABA ID e Access Token em Configurações.</p>`;
@@ -3379,7 +3496,7 @@ function renderTemplateNew() {
             <label style="flex:1">Idioma${ecSelect('nt-lang', [{ value: 'pt_BR', label: 'Português (BR)' }, { value: 'en_US', label: 'Inglês (US)' }, { value: 'es', label: 'Espanhol' }], 'pt_BR')}</label>
           </div>
           <div class="role-box">
-            <div class="role-head">${ico('pix', 13)} Uso no Elite Pay <span class="role-hint">escolha um, ou nenhum, para campanha comum</span></div>
+            <div class="role-head">${ico('pix', 13)} Uso no Pagamentos <span class="role-hint">escolha um, ou nenhum, para campanha comum</span></div>
             <label class="chk"><input type="checkbox" id="nt-role-cobranca" onchange="tplRolePick('cobranca')">
               É um modelo de <b style="margin:0 4px">Cobrança</b></label>
             <label class="chk" style="margin-top:9px"><input type="checkbox" id="nt-role-confirmacao" onchange="tplRolePick('confirmacao')">
@@ -3480,7 +3597,7 @@ function renderTplPreview() {
 const TPL_ROLE_INFO = {
   cobranca: {
     label: 'Cobrança',
-    desc: 'Enviado quando você gera uma cobrança no Elite Pay, funciona <b>fora da janela de 24h</b>.',
+    desc: 'Enviado quando você gera uma cobrança no Pagamentos, funciona <b>fora da janela de 24h</b>.',
     vars: [
       ['nome do cliente', 'Maria Silva'],
       ['valor da cobrança', 'R$ 149,90'],
@@ -4618,7 +4735,7 @@ const TITLES = {
   quick: 'Respostas rápidas', logs: 'Webhook & Logs', settings: 'Configurações',
   team: 'Chat interno', flows: 'Flow Builder', links: 'Links rastreáveis',
   integrations: 'Integrações', webhooks: 'Integrações',
-  elitepay: 'Elite Pay', 'elitepay/checkout': 'Checkout Builder', checkouts: 'Checkout Builder', tracking: 'Tracking',
+  elitepay: 'Pagamentos', 'elitepay/checkout': 'Checkout Builder', checkouts: 'Checkout Builder', tracking: 'Tracking',
   schedule: 'Agendamentos', consent: 'Opt-in & Opt-out', pixels: 'Pixels & rastreamento',
   agents: 'Atendentes', billing: 'Assinatura & Carteira', admin: 'Admin SaaS', sms: 'Disparos de SMS',
   'templates/new': 'Criar modelo', 'campaigns/new': 'Nova campanha'
@@ -6610,7 +6727,7 @@ async function renderAdmin() {
       <button data-tab="adm-aff" onclick="showSettingsTab('adm-aff')">Afiliados</button>
       <button data-tab="adm-pay" onclick="showSettingsTab('adm-pay')">Pagamentos</button>
       <button data-tab="adm-wd" onclick="showSettingsTab('adm-wd')">Saques</button>
-      <button data-tab="adm-ep" onclick="showSettingsTab('adm-ep');admEpPaint()">Elite Pay</button>
+      <button data-tab="adm-ep" onclick="showSettingsTab('adm-ep');admEpPaint()">Pagamentos</button>
       <button data-tab="adm-int" onclick="showSettingsTab('adm-int');admIntLoad()">Integrações</button>
       <button data-tab="adm-plat" onclick="showSettingsTab('adm-plat')">Plataforma</button>
       <button data-tab="adm-mkt" onclick="showSettingsTab('adm-mkt');admMktLoad()">Marketing</button>
@@ -7027,7 +7144,7 @@ const FEATURE_META = [
   { key: 'schedule',     label: 'Agendamentos' },
   { key: 'team',         label: 'Chat interno' },
   { key: 'agents',       label: 'Atendentes (equipe)' },
-  { key: 'elitepay',     label: 'Elite Pay (cobranças)' },
+  { key: 'elitepay',     label: 'Pagamentos (cobranças)' },
   { key: 'links',        label: 'Links rastreáveis' },
   { key: 'pixels',       label: 'Pixels de rastreamento' },
   { key: 'tracking',     label: 'Tracking (atribuição)' },
@@ -7079,7 +7196,7 @@ function planCheckoutField(scope, atual) {
     .concat(ADM_CHECKOUTS.map(c => ({ value: c.id, label: c.name + (c.isDefault ? ' (padrão)' : '') })));
   return `<label style="margin-top:10px">Checkout da cobrança
     ${ecSelect('pl-ck-' + scope, opcoes, atual || '')}
-    <em class="lim-extra">Montado por você em Elite Pay, Checkout Builder</em></label>`;
+    <em class="lim-extra">Montado por você em Pagamentos, Checkout Builder</em></label>`;
 }
 
 // Carregada uma vez, ao abrir o Admin: os checkouts mudam pouco.
@@ -7822,7 +7939,7 @@ async function admSaveSeo() {
   try { await api('/admin/seo', { method: 'PUT', body }); toast('SEO salvo, já vale na página inicial'); } catch (e) { toast(e.message, 'error'); }
 }
 
-// ---------- Admin → Elite Pay (gestão financeira da plataforma) ----------
+// ---------- Admin → Pagamentos (gestão financeira da plataforma) ----------
 const EP_SUB_ST = {
   active: ['Ativa', 'pill done'], pending: ['Aguardando aprovação', 'pill pending'],
   suspended: ['Suspensa', 'pill'], rejected: ['Rejeitada', 'pill']
@@ -7834,7 +7951,7 @@ const EP_LOG_LBL = {
   charge_paid: 'PIX In, pagamento', charge_cancelled: 'Cobrança cancelada',
   config_updated: 'Configuração alterada', withdraw: 'PIX Out, saque'
 };
-// ---- Admin → Elite Pay → adquirente de cartão (Pagar.me / Asaas) ----
+// ---- Admin → Pagamentos → adquirente de cartão (Pagar.me / Asaas) ----
 // ============================================================================
 // TAXAS DA PLATAFORMA — Pix e Cartão no MESMO painel.
 // Entradas (Pix In / Cartão) e saídas (Pix Out) ficam lado a lado: é uma decisão
@@ -8045,7 +8162,7 @@ function admCardSection(c, t) {
     </p>
 
     <label class="chk"><input type="checkbox" ${c.enabled ? 'checked' : ''} onchange="admCardSave({enabled:this.checked})">
-      Aceitar cartão no Elite Pay</label>
+      Aceitar cartão no Pagamentos</label>
 
     <div class="row" style="margin-top:16px;align-items:flex-end">
       <label style="max-width:260px">Adquirente${ecSelect('adm-card-prov',
@@ -8098,7 +8215,7 @@ function admCardSection(c, t) {
     </div>
 
     <label class="chk" style="margin-top:16px"><input type="checkbox" ${c.requireApproval ? 'checked' : ''} onchange="admCardSave({requireApproval:this.checked})"> Exigir minha aprovação manual antes do lojista vender no cartão</label>
-    <p class="hint" style="margin-top:12px">${ico('zap', 12)} A <b>taxa que você cobra sobre as vendas no cartão</b> fica junto das taxas de Pix, em <a href="javascript:showSettingsTab('adm-ep')"><b>Elite Pay → Taxas da plataforma</b></a>.</p>
+    <p class="hint" style="margin-top:12px">${ico('zap', 12)} A <b>taxa que você cobra sobre as vendas no cartão</b> fica junto das taxas de Pix, em <a href="javascript:showSettingsTab('adm-ep')"><b>Pagamentos → Taxas da plataforma</b></a>.</p>
 
     ${t ? `<div class="wh-meta" style="margin-top:16px">
       <span class="pill ${t.cardCount ? 'done' : ''}">${fmtN(t.cardCount || 0)} venda(s) no cartão</span>
@@ -8109,7 +8226,7 @@ function admCardSection(c, t) {
 }
 
 async function admCardSave(body) {
-  // a config vive na aba Pagamentos (paintAdmin); refaz esse painel, não o Elite Pay
+  // a config vive na aba Pagamentos (paintAdmin); refaz esse painel, não o Pagamentos
   try { await api('/admin/elitepay/card', { method: 'PUT', body }); toast('Cartão atualizado'); paintAdmin(); }
   catch (e) { toast(e.message, 'error'); }
 }
@@ -8178,7 +8295,7 @@ async function admEpPaint() {
                 ${a.sub && a.sub.status === 'suspended' ? `<button class="btn small" onclick="admEpSubStatus('${a.accountId}','active')">${ico('refresh', 13)} Reativar</button>` : ''}
               </td>
             </tr>`; }).join('')}
-        </tbody></table></div>` : '<p class="muted">Nenhum cliente ativou o Elite Pay ainda.</p>'}
+        </tbody></table></div>` : '<p class="muted">Nenhum cliente ativou o Pagamentos ainda.</p>'}
       </div>
 
       <div class="card">
@@ -8211,7 +8328,7 @@ async function admEpSaveCfg() {
     if ($('#adm-ep-splitkey')) body.splitPixKey = $('#adm-ep-splitkey').value;
     if ($('#adm-ep-approval')) body.requireApproval = $('#adm-ep-approval').checked;
     await api('/admin/elitepay/config', { method: 'PUT', body });
-    toast('Configuração do Elite Pay salva');
+    toast('Configuração do Pagamentos salva');
   } catch (e) { toast(e.message, 'error'); }
 }
 async function admEpSubStatus(accId, status) {
@@ -9011,6 +9128,148 @@ const CO_STATUS = {
 // ==================== SMS (Integra X) ====================
 // Envio avulso, disparo em massa por filtro e histórico com status de entrega.
 let SMS_CACHE = null;
+
+// Botão da IA no cabeçalho da conversa. Só aparece se o agente estiver ligado
+// na conta: um interruptor para algo que não existe só confundiria.
+// `iaOff` é por CONVERSA — desligar aqui não mexe nas outras.
+function iaBotaoChat() {
+  if (!state.iaLigada) return '';
+  const c = state.currentContact || {};
+  const ligada = !c.iaOff;
+  return `<button class="btn small ${ligada ? 'ia-on' : ''}" onclick="alternarIAConversa(${!ligada})"
+    title="${ligada ? 'IA respondendo nesta conversa. Clique para assumir' : 'IA desligada nesta conversa. Clique para devolver a ela'}">
+    ${ico('zap', 13)}<i class="blbl">IA ${ligada ? 'ligada' : 'desligada'}</i></button>`;
+}
+async function alternarIAConversa(ligar) {
+  if (!state.currentWaId) return;
+  try {
+    const r = await api('/ia/conversa/' + encodeURIComponent(state.currentWaId), { method: 'PUT', body: { ligada: !!ligar } });
+    if (state.currentContact) state.currentContact.iaOff = !r.ligada;
+    toast(r.ligada ? 'IA respondendo nesta conversa' : 'IA desligada nesta conversa');
+    paintSession();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ==================== AGENTE DE IA ====================
+// A chave da OpenAI é do cliente e fica na conta dele. O prompt também: é aqui
+// que ele escreve como o agente deve atender, sem sair do Koonfy.
+async function renderIA() {
+  $('#view').innerHTML = `<div class="page"><div id="ia-box">${skel(5)}</div></div>`;
+  paintIA();
+}
+
+async function paintIA() {
+  const box = $('#ia-box'); if (!box) return;
+  let d;
+  try { d = await api('/ia'); } catch (e) { box.innerHTML = `<div class="danger-box">${esc(e.message)}</div>`; return; }
+  const c = d.config;
+  const canais = d.canais || [];
+  box.innerHTML = `
+    <div class="page-head row">
+      <div style="flex:1"><h1>Agente de IA</h1><p>Responde sozinho quando o atendimento está aberto, ninguém assumiu e não há automação rodando</p></div>
+    </div>
+
+    <div class="card">
+      <h2>${ico('zap')} Ligar o agente</h2>
+      <label class="chk"><input type="checkbox" id="ia-on" ${c.enabled ? 'checked' : ''} onchange="salvarIA({enabled:this.checked})">
+        Deixar a IA responder automaticamente</label>
+      <p class="muted" style="font-size:12.5px;margin:10px 0 0">
+        A IA fica calada quando: um atendente assumiu a conversa, o contato está no meio de uma
+        automação, o atendimento foi finalizado, a janela de 24h fechou, ou você desligou a IA
+        naquela conversa pelo botão do chat.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>${ico('shield')} Chave da OpenAI</h2>
+      <p class="muted" style="margin:0 0 12px;font-size:13px">
+        Crie uma chave em <b>platform.openai.com → API keys</b> e cole abaixo. O consumo é cobrado
+        pela OpenAI direto no seu cartão, não passa pelo Koonfy.
+      </p>
+      <div class="row">
+        <label style="flex:2">Chave da API ${c.temChave ? `<span class="pill done" style="margin-left:6px">Salva ••••${esc(c.chaveFim)}</span>` : ''}
+          <input id="ia-key" type="password" placeholder="sk-..."></label>
+        <button class="btn primary no-grow" onclick="salvarIA({apiKey:$('#ia-key').value})">${ico('save', 14)} Salvar chave</button>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <label style="flex:1;max-width:340px">Modelo${ecSelect('ia-model',
+          (d.modelos || []).map(([v, l]) => ({ value: v, label: l })), c.model, 'salvarModeloIA()')}</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>${ico('file')} Instruções do agente</h2>
+      <p class="muted" style="margin:0 0 12px;font-size:13px">
+        Escreva como ele deve atender: quem é a empresa, o que vende, preços, prazos, o que pode e o
+        que não pode prometer. Quanto mais específico, menos ele inventa.
+      </p>
+      <textarea id="ia-prompt" rows="12" placeholder="Você é o atendente da Loja X, que vende...">${esc(c.prompt || '')}</textarea>
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary no-grow" onclick="salvarIA({prompt:$('#ia-prompt').value})">${ico('save', 14)} Salvar instruções</button>
+        <button class="btn no-grow" onclick="testarIA(this)">${ico('activity', 14)} Testar resposta</button>
+      </div>
+      <div id="ia-teste"></div>
+    </div>
+
+    <div class="card">
+      <h2>${ico('phone')} Em quais WhatsApps</h2>
+      ${canais.length > 1
+        ? `<p class="muted" style="margin:0 0 12px;font-size:13px">Deixe tudo desmarcado para a IA atender em todos os números.</p>
+           <div class="ia-canais">${canais.map(ch => `
+             <label class="chk"><input type="checkbox" value="${esc(ch.id)}" ${(c.channels || []).includes(ch.id) ? 'checked' : ''} onchange="salvarCanaisIA()">
+               <span><b>${esc(ch.label)}</b>${ch.numero ? `<em>${esc(ch.numero)}</em>` : ''}</span></label>`).join('')}</div>`
+        : `<p class="muted" style="margin:0;font-size:13px">Você tem um número só, então a IA atende nele. Ao conectar outro WhatsApp, dá para escolher aqui em quais ela responde.</p>`}
+    </div>
+
+    <div class="card">
+      <h2>${ico('gear')} Ajustes</h2>
+      <div class="row">
+        <label style="flex:1">Mensagens de contexto<input id="ia-hist" inputmode="numeric" value="${esc(String(c.historico))}"></label>
+        <label style="flex:1">Tamanho máximo da resposta<input id="ia-max" inputmode="numeric" value="${esc(String(c.maxSaida))}"></label>
+      </div>
+      <label style="margin-top:12px">Assinatura no fim da mensagem (opcional)
+        <input id="ia-assin" value="${esc(c.assinatura || '')}" placeholder="— atendimento automático"></label>
+      <button class="btn primary no-grow" style="margin-top:12px" onclick="salvarIA({historico:$('#ia-hist').value,maxSaida:$('#ia-max').value,assinatura:$('#ia-assin').value})">${ico('save', 14)} Salvar ajustes</button>
+    </div>
+
+    ${(d.logs || []).length ? `<div class="card">
+      <h2>${ico('activity')} Últimas respostas</h2>
+      <table><thead><tr><th>Quando</th><th>Contato</th><th>O que houve</th></tr></thead><tbody>
+        ${d.logs.map(l => `<tr>
+          <td class="muted" style="font-size:12px">${fmtTime(l.ts)}</td>
+          <td>${esc(l.waId || '')}</td>
+          <td>${l.tipo === 'resposta'
+            ? `<span class="pill done">respondeu</span> ${l.chars} caracteres`
+            : `<span class="pill">${esc(l.tipo)}</span> <span class="muted">${esc(l.erro || '')}</span>`}</td>
+        </tr>`).join('')}
+      </tbody></table></div>` : ''}`;
+}
+
+async function salvarIA(patch) {
+  try { await api('/ia', { method: 'PUT', body: patch }); toast('Salvo'); paintIA(); }
+  catch (e) { toast(e.message, 'error'); }
+}
+function salvarModeloIA() { salvarIA({ model: ecSelVal('ia-model') }); }
+async function salvarCanaisIA() {
+  const ids = [...document.querySelectorAll('.ia-canais input:checked')].map(i => i.value);
+  await salvarIA({ channels: ids });
+}
+async function testarIA(btn) {
+  const out = $('#ia-teste');
+  const t = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Perguntando…';
+  try {
+    // Salva o prompt antes: testar o texto que está na tela, e não o que foi
+    // salvo da última vez, é o que a pessoa espera.
+    await api('/ia', { method: 'PUT', body: { prompt: $('#ia-prompt').value } });
+    const r = await api('/ia/testar', { body: { pergunta: 'Olá! Vocês estão atendendo?' } });
+    out.innerHTML = `<div class="capi-box" style="margin-top:12px">
+      <div class="capi-head">${ico('check', 14)} Resposta do agente</div>
+      <p style="margin:8px 0 0;font-size:13.5px;white-space:pre-wrap">${esc(r.texto)}</p></div>`;
+  } catch (e) {
+    out.innerHTML = `<div class="danger-box" style="margin-top:12px">${esc(e.message)}</div>`;
+  } finally { btn.disabled = false; btn.innerHTML = t; }
+}
 
 async function renderSms() {
   $('#view').innerHTML = `<div class="page">
@@ -9907,7 +10166,7 @@ const NODE_TYPES = {
   optout: { icon: 'slash', label: 'Registrar Opt-out', sub: 'Consentimento', color: 'red', cat: 'consent' },
   reactivate: { icon: 'refresh', label: 'Reativar contato', sub: 'Consentimento', color: 'blue', cat: 'consent' },
   http: { icon: 'globe', label: 'HTTP Request', sub: 'Integração', color: 'orange', cat: 'logic' },
-  payment: { icon: 'pix', label: 'Cobrança Pix', sub: 'Elite Pay', color: 'green', cat: 'messages' },
+  payment: { icon: 'pix', label: 'Cobrança Pix', sub: 'Pagamentos', color: 'green', cat: 'messages' },
   sms: { icon: 'message', label: 'Enviar SMS', sub: 'Integra X', color: 'blue', cat: 'messages' },
   end: { icon: 'square', label: 'Fim', sub: 'Encerrar', color: 'gray', cat: 'logic' }
 };
@@ -10652,7 +10911,7 @@ function nodeInspector(n) {
         <p class="muted" style="font-size:11.5px;margin:0">{{pagamento.link}} · {{pagamento.valor}} · {{pagamento.codigo}} · {{pagamento.qrcode}} · {{pagamento.id}}</p>
         <p class="muted" style="font-size:11px;margin:6px 0 0">Dica: use {{pagamento.qrcode}} num nó de <b>Mídia (imagem)</b> para enviar o QR Code.</p>
       </div>
-      <p class="muted" style="font-size:11.5px;margin-top:8px">${ico('shield', 11)} Requer conta Elite Pay ativa. O valor aceita variáveis (ex.: {{valor}} vindo de um webhook).</p>`;
+      <p class="muted" style="font-size:11.5px;margin-top:8px">${ico('shield', 11)} Requer conta Pagamentos ativa. O valor aceita variáveis (ex.: {{valor}} vindo de um webhook).</p>`;
   }
   else if (n.type === 'buttons') {
     n.buttons = n.buttons || [{ title: 'Sim' }];
@@ -11021,22 +11280,22 @@ async function renderElitePay() {
     const kyc = d.subaccount.kyc;
     if (kyc && kyc.onboardingUrl) {
       epRenderGate(d, 'shield', 'Conclua sua verificação (KYC)',
-        'Falta pouco! Finalize a verificação de identidade na página segura da Woovi. Assim que a compliance aprovar, sua conta Elite Pay é liberada automaticamente.',
+        'Falta pouco! Finalize a verificação de identidade na página segura da Woovi. Assim que a compliance aprovar, sua conta Pagamentos é liberada automaticamente.',
         `<a class="btn primary no-grow" href="${esc(kyc.onboardingUrl)}" target="_blank" rel="noopener">${ico('shield', 14)} Continuar verificação</a>`);
     } else if (kyc && (kyc.status === 'awaiting_gateway' || kyc.status === 'error')) {
       epRenderGate(d, 'clock', 'Verificação iniciada',
         'Recebemos seu cadastro. A verificação KYC será aberta assim que o gateway estiver disponível, você será avisado quando for aprovado.');
     } else {
-      epRenderGate(d, 'clock', 'Cadastro em análise', 'Sua conta Elite Pay foi criada e está aguardando aprovação. Você será liberado automaticamente, não precisa fazer mais nada.');
+      epRenderGate(d, 'clock', 'Cadastro em análise', 'Sua conta Pagamentos foi criada e está aguardando aprovação. Você será liberado automaticamente, não precisa fazer mais nada.');
     }
     return;
   }
-  if (d.subaccount.status === 'suspended') { epRenderGate(d, 'slash', 'Conta suspensa', 'Sua conta Elite Pay está suspensa. Fale com o suporte da plataforma para reativar.'); return; }
+  if (d.subaccount.status === 'suspended') { epRenderGate(d, 'slash', 'Conta suspensa', 'Sua conta Pagamentos está suspensa. Fale com o suporte da plataforma para reativar.'); return; }
 
   // ---- Subconta ativa → módulo completo ----
   $('#view').innerHTML = `<div class="page">
     <div class="page-head row">
-      <div style="flex:1"><h1>Elite Pay</h1><p>Receba por Pix direto nas suas conversas, ${esc(d.subaccount.name)}</p></div>
+      <div style="flex:1"><h1>Pagamentos</h1><p>Receba por Pix direto nas suas conversas, ${esc(d.subaccount.name)}</p></div>
       <button class="btn primary no-grow" onclick="epNewChargeModal()">${ico('plus', 14)} Gerar cobrança</button>
     </div>
     ${!d.configured ? `<div class="card" style="border-color:var(--amber-border);background:var(--amber-bg)"><b>⚠ Gateway não configurado.</b><p class="muted" style="margin:4px 0 0;font-size:13px">O administrador precisa informar o AppID da Woovi em Admin → Pagamentos para gerar cobranças reais.</p></div>` : ''}
@@ -11055,7 +11314,7 @@ function epTab(t) { epState.tab = t; $$('.tabs button').forEach(b => b.classList
 
 function epRenderGate(d, icon, title, text, actionHtml) {
   $('#view').innerHTML = `<div class="page">
-    <div class="page-head"><h1>Elite Pay</h1><p>Pagamentos Pix integrados ao seu atendimento</p></div>
+    <div class="page-head"><h1>Pagamentos</h1><p>Pagamentos Pix integrados ao seu atendimento</p></div>
     <div class="card empty-state" style="padding:46px 20px">
       <div class="big">${ico(icon, 38)}</div><b>${title}</b>
       <p class="muted" style="margin:8px auto 0;max-width:460px">${text}</p>
@@ -11068,9 +11327,9 @@ function epRenderGate(d, icon, title, text, actionHtml) {
 function epRenderOnboarding(d) {
   const kyc = d.onboardingMode === 'kyc';
   $('#view').innerHTML = `<div class="page">
-    <div class="page-head"><h1>Elite Pay</h1><p>Crie sua conta de pagamentos e receba por Pix sem sair do Koonfy</p></div>
+    <div class="page-head"><h1>Pagamentos</h1><p>Crie sua conta de pagamentos e receba por Pix sem sair do Koonfy</p></div>
     <div class="card" style="max-width:720px">
-      <h2>${ico('sparkles')} Ative o Elite Pay</h2>
+      <h2>${ico('sparkles')} Ative o Pagamentos</h2>
       <p class="muted" style="margin:0 0 16px;font-size:13px">${kyc
         ? 'Preencha os dados da empresa e do representante legal. Após enviar, você concluirá a <b>verificação de identidade (KYC/KYB)</b> na página segura da Woovi. Assim que a compliance aprovar, sua conta é liberada automaticamente.'
         : 'Preencha os dados abaixo para criar sua conta de recebimentos. O dinheiro das suas vendas cai na <b>sua chave Pix</b>, cobranças, QR Code e links são gerados aqui dentro, direto nas conversas.'}</p>
@@ -11101,7 +11360,7 @@ function epRenderOnboarding(d) {
         ? 'A verificação de identidade é feita diretamente pela Woovi (instituição de pagamento regulada pelo Banco Central).'
         : 'Seus dados são usados apenas para criar a subconta de recebimento no gateway de pagamentos da plataforma.'}</p>
       <div class="row" style="margin-top:14px;justify-content:flex-end">
-        <button class="btn primary no-grow" id="ep-ob-btn" onclick="epSubmitOnboarding()">${ico('zap', 14)} ${kyc ? 'Iniciar verificação' : 'Criar minha conta Elite Pay'}</button>
+        <button class="btn primary no-grow" id="ep-ob-btn" onclick="epSubmitOnboarding()">${ico('zap', 14)} ${kyc ? 'Iniciar verificação' : 'Criar minha conta Pagamentos'}</button>
       </div>
       <p id="ep-ob-err" class="err"></p>
     </div>
@@ -11119,7 +11378,7 @@ async function epSubmitOnboarding() {
     const r = await api('/elitepay/subaccount', { body });
     // Modo KYC: abre a verificação hospedada da Woovi em nova aba
     if (r.onboardingUrl) { openExternal(r.onboardingUrl); toast('Conclua a verificação KYC na aba que abriu'); }
-    else toast(r.subaccount.status === 'active' ? 'Conta Elite Pay criada e ativada! 🎉' : 'Conta criada, aguardando aprovação');
+    else toast(r.subaccount.status === 'active' ? 'Conta Pagamentos criada e ativada! 🎉' : 'Conta criada, aguardando aprovação');
     renderElitePay();
   } catch (e) { const el = $('#ep-ob-err'); if (el) el.textContent = e.message; toast(e.message, 'error'); }
   finally { if ($('#ep-ob-btn')) $('#ep-ob-btn').disabled = false; }
@@ -11135,7 +11394,7 @@ async function epPaintTab() {
   return epPaintCfg(box);
 }
 
-// ---------- Elite Pay → Cartão: conta de recebimento do lojista ----------
+// ---------- Pagamentos → Cartão: conta de recebimento do lojista ----------
 // Sem recebedor próprio o dinheiro do cartão cairia na conta da plataforma —
 // por isso o cadastro (KYC) é obrigatório antes de vender no cartão.
 let epCardTabVisible = false;
@@ -11529,7 +11788,7 @@ async function renderCheckoutBuilder() {
   // sendo montada + painel DIREITO com abas Componentes/Configurações.
   $('#view').innerHTML = `<div class="ckb">
     <header class="ckb-top">
-      <button class="icon-btn" title="Voltar ao Elite Pay" onclick="location.hash='#/elitepay'">${ico('arrowleft', 17)}</button>
+      <button class="icon-btn" title="Voltar ao Pagamentos" onclick="location.hash='#/elitepay'">${ico('arrowleft', 17)}</button>
       <div class="brand ckb-brand">
         <span class="brand-mark"><img src="/assets/elitechat-logo.png" alt="Elite Builder"></span>
         <div><b class="brand-name">Elite<span class="gt2">Builder</span></b>
@@ -12114,7 +12373,7 @@ async function epkSave() {
   finally { if ($('#epk-save')) $('#epk-save').disabled = false; }
 }
 
-// ---- PRODUTOS (Elite Pay → Produtos): preenchem as variáveis do checkout ----
+// ---- PRODUTOS (Pagamentos → Produtos): preenchem as variáveis do checkout ----
 async function epPaintProducts(box) {
   box.innerHTML = skel(4);
   let d;
@@ -12241,12 +12500,12 @@ async function renderCheckoutList() {
             ${cks.length > 1 ? `<button class="btn small danger" onclick="ckDel('${c.id}')">${ico('trash', 13)}</button>` : ''}
           </td></tr>`).join('')}
       </tbody></table></div>
-      <p class="hint" style="margin-top:12px">${ico('shield', 12)} Na hora de gerar a cobrança no Elite Pay você escolhe o <b>produto</b> e qual destes <b>checkouts</b> usar.</p>
+      <p class="hint" style="margin-top:12px">${ico('shield', 12)} Na hora de gerar a cobrança no Pagamentos você escolhe o <b>produto</b> e qual destes <b>checkouts</b> usar.</p>
     </div>
     <a class="card link-card" href="#/elitepay">
       <span class="lc-ic">${ico('sparkles', 20)}</span>
       <div style="flex:1"><h2 style="margin:0 0 3px">Produtos</h2>
-        <p class="muted" style="margin:0;font-size:13px">Cadastre nome, preço e imagens em <b>Elite Pay → Produtos</b>, eles preenchem as variáveis do checkout.</p></div>
+        <p class="muted" style="margin:0;font-size:13px">Cadastre nome, preço e imagens em <b>Pagamentos → Produtos</b>, eles preenchem as variáveis do checkout.</p></div>
       <span class="lc-arrow">${ico('arrowright', 18)}</span></a>
   </div>`;
 }
@@ -12270,7 +12529,7 @@ function epNewChargeModal(waId, contactName) {
   openModal(`<h2>${ico('plus')} Gerar cobrança Pix</h2>
     ${prods.length ? `<label style="display:block;margin-bottom:10px">Produto
       ${ecSelect('ep-nc-prod', [{ value: '', label: 'Cobrança avulsa (sem produto)' }].concat(prods.map(p => ({ value: p.id, label: p.name + (p.price ? ', ' + fmtBRL(p.price) : '') }))), '', 'epPickProduct(val)')}</label>`
-      : `<p class="hint" style="margin-bottom:10px">${ico('help', 12)} Cadastre produtos em <b>Elite Pay → Produtos</b> para preencher valor, descrição e imagens automaticamente.</p>`}
+      : `<p class="hint" style="margin-bottom:10px">${ico('help', 12)} Cadastre produtos em <b>Pagamentos → Produtos</b> para preencher valor, descrição e imagens automaticamente.</p>`}
     ${cks.length ? `<label style="display:block;margin-bottom:10px">Checkout
       ${ecSelect('ep-nc-ckt', cks.map(c => ({ value: c.id, label: c.name + (c.isDefault ? ' (padrão)' : '') })), (cks.find(c => c.isDefault) || cks[0]).id)}</label>` : ''}
     <div class="row">
@@ -12593,7 +12852,7 @@ async function trkPaintConn(box) {
         ${c.lastError ? `<p class="muted" style="font-size:11.5px;margin:6px 0 0;color:#f87171">${esc(c.lastError)}</p>` : ''}
       </div>`).join('')}</div>
     <div class="card"><h2>${ico('shield')} Envio automático de conversões</h2>
-      <p class="muted" style="font-size:13px;margin:0">Toda venda confirmada no Elite Pay é enviada sozinha para <b>Meta Conversions API</b>, <b>GA4 / Google Ads</b> e <b>TikTok Events API</b> (as que estiverem ativas acima), com e-mail/telefone/CPF criptografados (SHA-256) e o click ID da origem.</p></div>`;
+      <p class="muted" style="font-size:13px;margin:0">Toda venda confirmada no Pagamentos é enviada sozinha para <b>Meta Conversions API</b>, <b>GA4 / Google Ads</b> e <b>TikTok Events API</b> (as que estiverem ativas acima), com e-mail/telefone/CPF criptografados (SHA-256) e o click ID da origem.</p></div>`;
 }
 async function trkConnSave(key, enabled) {
   const body = {};
@@ -12806,10 +13065,10 @@ async function trkSaveAlerts() {
 function trkSnippetModal() {
   const url = `${API.webOrigin}/t.js?a=${state.accountId}`;
   openModal(`<h2>${ico('code')} Instalar o Tracking no seu site</h2>
-    <p class="muted" style="font-size:13px;margin:4px 0 12px">Cole antes do <b>&lt;/body&gt;</b> das suas páginas (landing, vendas, obrigado). Ele captura <b>fbclid, gclid, ttclid e UTMs</b> e liga cada visita à venda no Elite Pay.</p>
+    <p class="muted" style="font-size:13px;margin:4px 0 12px">Cole antes do <b>&lt;/body&gt;</b> das suas páginas (landing, vendas, obrigado). Ele captura <b>fbclid, gclid, ttclid e UTMs</b> e liga cada visita à venda no Pagamentos.</p>
     <div class="ep-copy"><input readonly value='<script src="${esc(url)}"></script>' onclick="this.select()">
       <button class="btn small" onclick="epCopy(this.previousElementSibling.value)">${ico('copy', 13)}</button></div>
-    <p class="hint" style="margin-top:12px">${ico('shield', 12)} O checkout do Elite Pay já rastreia sozinho, o snippet é para as SUAS páginas.</p>
+    <p class="hint" style="margin-top:12px">${ico('shield', 12)} O checkout do Pagamentos já rastreia sozinho, o snippet é para as SUAS páginas.</p>
     <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn primary no-grow" onclick="closeModal()">Fechar</button></div>`);
 }
 

@@ -4,6 +4,7 @@ const express = require('express');
 const crypto = require('crypto');
 const db = require('./db');
 const datas = require('./datas');
+const ia = require('./ia');
 const wa = require('./whatsapp');
 const meta = require('./meta');
 const store = require('./store');
@@ -234,10 +235,40 @@ module.exports = function (broadcast, clients) {
     if (aff) acc.affiliate.refBy = aff.affiliate.code;
     db.get().accounts.push(acc);
     db.save();
+
+    // CONTA DE PAGAMENTOS JUNTO COM O CADASTRO
+    //
+    // Vem da última etapa do formulário e é opcional: sem os dados, ou com o
+    // gateway fora do ar, a conta do Koonfy é criada do mesmo jeito e o cliente
+    // termina isto depois pelo painel. Perder um cadastro porque um serviço de
+    // terceiro piscou seria caro para o problema que resolve.
+    const receb = req.body.recebimento || {};
+    let pagamentos = null;
+    // require inline: o `elitepay` do escopo só é vinculado mais abaixo, e
+    // tocá-lo aqui cairia na zona morta do const.
+    const pag = require('./elitepay');
+    if (receb.document && receb.pixKey && pag.configured()) {
+      try {
+        const sub = await pag.registerSubaccount(acc, {
+          name: acc.name, document: receb.document, email: acc.email,
+          phone: acc.profile.phone || '', pixKey: receb.pixKey, pixKeyType: receb.pixKeyType,
+          repName: '', repDocument: ''
+        });
+        db.save();
+        // `registerSubaccount` grava a subconta aqui e ADIA a sincronização com
+        // o gateway se ela falhar. Dizer só "ok" esconderia isso: o que volta é
+        // o estado de verdade, para a tela não prometer o que não aconteceu.
+        pagamentos = { criada: true, status: sub.status, sincronizada: !!sub.synced };
+      } catch (e) {
+        store.logEvent({ type: 'register_pagamentos_falhou', accountId: acc.id, error: e.message });
+        pagamentos = { criada: false, erro: e.message };
+      }
+    }
+
     const token = newSession('account', acc);
     // já nasce trancado quando a assinatura é obrigatória: a tela leva direto
     // para a escolha do plano em vez de mostrar um app que não abre
-    res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc), planRequired: precisaAssinar({ session: { kind: 'account' }, acc }) });
+    res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc), pagamentos, planRequired: precisaAssinar({ session: { kind: 'account' }, acc }) });
   }));
 
   // Segundo passo do login: troca o ticket + código pelo token de acesso.
@@ -429,6 +460,8 @@ module.exports = function (broadcast, clients) {
       agent: ag ? agentPublic(ag) : null,
       permissions: ag ? ag.permissions : null,          // null = acesso total (dono/admin)
       allowedViews: agents.allowedViews(ag),
+      // O botão da IA no chat só existe se o agente estiver ligado na conta.
+      iaLigada: ia.configurada(req.acc),
       mustChangePassword: ag ? !!ag.mustChangePassword
         : (req.session.kind === 'admin' && db.verifyPassword('admin', p.adminPassHash)),
       planRequired: precisaAssinar(req),   // trava a navegação até assinar
@@ -1000,6 +1033,61 @@ module.exports = function (broadcast, clients) {
   // ============ SMS (Integra X) ============
   // A funcionalidade só existe quando o admin liga na plataforma E o plano do
   // cliente inclui o módulo. `feat('sms')` cuida da segunda parte.
+  // ============ AGENTE DE IA ============
+  // A chave da OpenAI é do cliente e nunca volta inteira para a tela: o painel
+  // recebe só se existe e os últimos caracteres, como já é feito com os
+  // segredos da Meta e do gateway.
+  router.get('/ia', auth, can('agents'), (req, res) => {
+    const c = ia.ensure(req.acc);
+    res.json({
+      config: {
+        enabled: c.enabled, model: c.model, prompt: c.prompt, channels: c.channels,
+        historico: c.historico, maxSaida: c.maxSaida, assinatura: c.assinatura,
+        temChave: !!c.apiKey, chaveFim: c.apiKey ? c.apiKey.slice(-4) : ''
+      },
+      modelos: ia.MODELOS,
+      canais: (req.acc.channels || []).filter(ch => !ch.archived)
+        .map(ch => ({ id: ch.id, label: ch.label, numero: (ch.wa && ch.wa.displayPhoneNumber) || '' })),
+      logs: c.logs.slice(0, 30)
+    });
+  });
+
+  router.put('/ia', auth, can('agents', 'edit'), (req, res) => {
+    const c = ia.ensure(req.acc);
+    const b = req.body || {};
+    if (typeof b.enabled === 'boolean') c.enabled = b.enabled;
+    // Chave em branco não apaga a que está salva — senão bastaria abrir a tela
+    // e salvar outro campo para derrubar a integração.
+    if (typeof b.apiKey === 'string' && b.apiKey.trim()) c.apiKey = b.apiKey.trim().slice(0, 200);
+    if (b.apiKey === null) c.apiKey = '';
+    if (typeof b.model === 'string' && ia.MODELOS.some(([v]) => v === b.model)) c.model = b.model;
+    if (typeof b.prompt === 'string') c.prompt = b.prompt.slice(0, 8000);
+    if (Array.isArray(b.channels)) {
+      const validos = new Set((req.acc.channels || []).map(ch => ch.id));
+      c.channels = b.channels.filter(x => validos.has(x));
+    }
+    if (b.historico !== undefined) c.historico = Math.max(2, Math.min(40, Number(b.historico) || 12));
+    if (b.maxSaida !== undefined) c.maxSaida = Math.max(120, Math.min(2000, Number(b.maxSaida) || 600));
+    if (typeof b.assinatura === 'string') c.assinatura = b.assinatura.slice(0, 200);
+    db.save();
+    res.json({ ok: true });
+  });
+
+  // Teste do painel: responde ao dono sem tocar no WhatsApp de ninguém.
+  router.post('/ia/testar', auth, can('agents', 'edit'), h(async (req, res) => {
+    const texto = await ia.testar(req.acc, (req.body || {}).pergunta);
+    res.json({ texto });
+  }));
+
+  // Botão do chat: liga/desliga a IA nesta conversa.
+  router.put('/ia/conversa/:waId', auth, can('inbox', 'edit'), (req, res) => {
+    const contact = req.acc.contacts.find(c => c.waId === req.params.waId);
+    if (!contact) return res.status(404).json({ error: 'Contato não encontrado' });
+    const ligada = ia.alternarNaConversa(req.acc, contact, !!(req.body || {}).ligada);
+    broadcast('message', { accountId: req.acc.id, waId: contact.waId });
+    res.json({ ligada });
+  });
+
   router.get('/sms', auth, can('sms'), (req, res) => {
     res.json({
       ...sms.publicView(req.acc),

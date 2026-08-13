@@ -17,7 +17,7 @@
 <meta name="application-name" content="Koonfy">
 <link rel="apple-touch-icon" href="/assets/elitechat-logo.png">
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/app/style.css?v=mob10">
+<link rel="stylesheet" href="/app/style.css?v=ia1">
 <script>/* aplica o tema salvo antes de pintar (sem flash) */
   (function () { try {
     /* O padrão é o CLARO. Antes seguia o prefers-color-scheme do sistema, e
@@ -43,10 +43,25 @@
     </div>
     <h1 id="auth-title">Acesse sua conta</h1>
     <p class="muted lead" id="auth-sub">Painel de atendimento e vendas</p>
-    <label id="reg-name-wrap" class="hidden">Nome da empresa
+    <!-- Trilha das etapas: só aparece no cadastro. O cartão ficaria com 10
+         campos de uma vez, e a desistência mora aí. -->
+    <div id="reg-trilha" class="reg-trilha hidden">
+      <span data-passo="1"><i>1</i>Conta</span>
+      <span data-passo="2"><i>2</i>Negócio</span>
+      <span data-passo="3"><i>3</i>Recebimento</span>
+    </div>
+
+    <label id="reg-name-wrap" class="hidden" data-etapa="1">Nome da empresa
       <input id="reg-name" autocomplete="organization" placeholder="Minha Empresa">
     </label>
-    <div id="reg-perfil" class="hidden">
+    <label data-etapa="1">E-mail
+      <input id="login-user" autocomplete="username" placeholder="voce@empresa.com">
+    </label>
+    <label data-etapa="1">Senha
+      <input id="login-pass" type="password" autocomplete="current-password">
+    </label>
+
+    <div id="reg-perfil" class="hidden" data-etapa="2">
       <label>Segmento<div id="reg-segment"></div></label>
       <div class="reg-cols">
         <label>Colaboradores<div id="reg-size"></div></label>
@@ -59,17 +74,34 @@
       </div>
       <label>O que você quer resolver primeiro<div id="reg-goal"></div></label>
     </div>
-    <label>E-mail
-      <input id="login-user" autocomplete="username" placeholder="voce@empresa.com">
-    </label>
-    <label>Senha
-      <input id="login-pass" type="password" autocomplete="current-password">
-    </label>
-    <label id="reg-ref-wrap" class="hidden">Código de indicação (opcional)
+    <label id="reg-ref-wrap" class="hidden" data-etapa="2">Código de indicação (opcional)
       <input id="reg-ref" placeholder="ex.: A1B2C3D4" style="text-transform:uppercase">
       <span class="ref-locked hidden" id="reg-ref-note"></span>
     </label>
-    <button class="btn primary block" type="submit" id="auth-btn">Entrar</button>
+
+    <!-- Etapa 3: abre junto a conta de recebimento (Pagamentos). É opcional de
+         propósito — se o gateway estiver fora do ar, o cadastro não pode cair
+         junto; o cliente termina depois pelo painel. -->
+    <div id="reg-pag" class="hidden" data-etapa="3">
+      <p class="muted" style="font-size:12.5px;margin:0 0 12px">
+        Com estes dados a sua conta de <b>Pagamentos</b> já sai pronta, e você
+        começa a cobrar por Pix no mesmo dia. Dá para preencher depois, em
+        Pagamentos.
+      </p>
+      <label>CPF ou CNPJ
+        <input id="reg-doc" inputmode="numeric" placeholder="000.000.000-00">
+      </label>
+      <div class="reg-cols">
+        <label>Tipo da chave Pix<div id="reg-pixtipo"></div></label>
+        <label>Chave Pix<input id="reg-pixkey" placeholder="a chave que recebe"></label>
+      </div>
+    </div>
+
+    <div class="reg-botoes">
+      <button class="btn no-grow hidden" type="button" id="reg-voltar" onclick="passoAnterior()">Voltar</button>
+      <button class="btn primary block" type="submit" id="auth-btn">Entrar</button>
+    </div>
+    <p class="hint hidden" id="reg-pular"><a href="#" onclick="pularRecebimento(event)">Pular e criar a conta</a></p>
     <p class="hint" id="auth-toggle">Não tem conta? <a href="#" onclick="toggleRegister(event)">Criar conta grátis</a></p>
     <p id="login-err" class="err"></p>
   </form>
@@ -114,6 +146,9 @@
       <a class="nav-item" data-view="flows" href="#/flows">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="15" y="15" width="6" height="6" rx="1.5"/><path d="M9 6h5a4 4 0 0 1 4 4v5"/></svg>
         <span>Flow Builder</span></a>
+      <a class="nav-item" data-view="ia" href="#/ia">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 7V4M9 12.5h.01M15 12.5h.01M9.5 16h5"/><path d="M2 12h1.5M20.5 12H22"/></svg>
+        <span>Agente de IA</span></a>
       <a class="nav-item" data-view="integrations" href="#/integrations">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2"/><path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06"/><path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8"/></svg>
         <span>Integrações</span></a>
@@ -133,7 +168,7 @@
       <span class="nav-label">Vendas</span>
       <a class="nav-item" data-view="elitepay" href="#/elitepay">
         <svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor" transform="scale(1.5)"><path d="M11.917 11.71a2.046 2.046 0 0 1-1.454-.602l-2.1-2.1a.4.4 0 0 0-.551 0l-2.108 2.108a2.044 2.044 0 0 1-1.454.602h-.414l2.66 2.66c.83.83 2.177.83 3.007 0l2.667-2.668h-.253zM4.25 4.282c.55 0 1.066.214 1.454.602l2.108 2.108a.39.39 0 0 0 .552 0l2.1-2.1a2.044 2.044 0 0 1 1.453-.602h.253L9.503 1.623a2.127 2.127 0 0 0-3.007 0l-2.66 2.66h.414z"/><path d="m14.377 6.496-1.612-1.612a.307.307 0 0 1-.114.023h-.733c-.379 0-.75.154-1.017.422l-2.1 2.1a1.005 1.005 0 0 1-1.425 0L5.268 5.32a1.448 1.448 0 0 0-1.018-.422h-.9a.306.306 0 0 1-.109-.021L1.623 6.496c-.83.83-.83 2.177 0 3.008l1.618 1.618a.305.305 0 0 1 .108-.022h.901c.38 0 .75-.153 1.018-.421L7.375 8.57a1.034 1.034 0 0 1 1.426 0l2.1 2.1c.267.268.638.421 1.017.421h.733c.04 0 .079.01.114.024l1.612-1.612c.83-.83.83-2.178 0-3.008z"/></g></svg>
-        <span>Elite Pay</span></a>
+        <span>Pagamentos</span></a>
       <a class="nav-item" data-view="checkouts" href="#/checkouts">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6.5 14.5h4"/></svg>
         <span>Checkout Builder</span></a>
@@ -239,7 +274,7 @@
 <script src="/app/notifications.js?v=mob6"></script>
 <script src="/app/vendor/qrcode.js"></script>
 <script src="/app/br-uf.js?v=1"></script>
-<script src="/app/app.js?v=mob11"></script>
+<script src="/app/app.js?v=ia1"></script>
 <script>/* registra o Service Worker e a engine cedo (offline funciona antes do login) */
   if (window.ECNotify) { try { ECNotify.init(); } catch (e) {} }
 </script>

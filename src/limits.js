@@ -162,7 +162,7 @@ const FEATURE_LABEL = {
   schedule: 'Agendamentos',
   team: 'Chat interno',
   agents: 'Atendentes (equipe)',
-  elitepay: 'Elite Pay (cobranças)',
+  elitepay: 'Pagamentos (cobranças)',
   links: 'Links rastreáveis',
   pixels: 'Pixels de rastreamento',
   tracking: 'Tracking (atribuição)',

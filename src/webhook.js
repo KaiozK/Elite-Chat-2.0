@@ -10,6 +10,7 @@ const session = require('./session');
 const survey = require('./survey');
 const consent = require('./consent');
 const wa = require('./whatsapp');
+const ia = require('./ia');
 
 // Persiste + transmite (SSE) uma mensagem enviada por automação.
 function makeDeliver(broadcast) {
@@ -207,7 +208,16 @@ function processEvent(body, broadcast) {
             const kind = parsed.type === 'interactive' ? 'interactive' : 'text';
             // replyId identifica QUAL botão/item foi tocado — é o que permite
             // retomar um fluxo em espera pelo caminho certo.
-            flows.onInbound(acc, contact, parsed.text, kind, makeDeliver(broadcast), parsed.replyId || '')
+            const entregar = makeDeliver(broadcast);
+            flows.onInbound(acc, contact, parsed.text, kind, entregar, parsed.replyId || '')
+              .then(fluxo => {
+                // A IA só entra DEPOIS de o fluxo decidir: se a automação
+                // respondeu, quem manda é ela. `fluxo` vem preenchido quando
+                // algum fluxo tratou a mensagem.
+                if (parsed.type !== 'text') return;
+                return ia.responder(acc, contact, entregar, { flowRespondeu: !!fluxo })
+                  .then(r => { if (r && r.enviou) broadcast('message', { accountId: acc.id, waId: contact.waId }); });
+              })
               .catch(e => store.logEvent({ type: 'flow_error', accountId: acc.id, error: e.message }));
           }
         }
