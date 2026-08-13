@@ -3895,8 +3895,8 @@ async function renderSettings() {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <label style="grid-column:1/-1">Access Token permanente
             <textarea id="st-token" rows="2" placeholder="EAA…">${esc((state.manual || {}).accessToken || '')}</textarea></label>
-          <label>WABA ID<input id="st-waba" value="${esc((state.manual || {}).wabaId || '')}" placeholder="1362414642618793"></label>
-          <label>Phone Number ID<input id="st-phoneid" value="${esc((state.manual || {}).phoneNumberId || '')}" placeholder="1132426636626799"></label>
+          <label>WABA ID<input id="st-waba" value="${esc((state.manual || {}).wabaId || '')}" placeholder="123456789012345"></label>
+          <label>Phone Number ID<input id="st-phoneid" value="${esc((state.manual || {}).phoneNumberId || '')}" placeholder="123456789012345"></label>
         </div>
         <div class="row" style="margin-top:12px">
           <button class="btn primary no-grow" onclick="saveManual()">${ico('save', 14)} Salvar e conectar</button>

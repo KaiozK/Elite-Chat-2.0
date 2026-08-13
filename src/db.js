@@ -481,7 +481,7 @@ function migrateLegacy() {
 
   let acc = db.accounts.find(a => a.isAdmin);
   if (!acc) {
-    acc = newAccount({ name: 'Administrador', email: 'admin@elitechat.local', pass: crypto.randomBytes(12).toString('hex') });
+    acc = newAccount({ name: 'Administrador', email: 'admin@koonfy.local', pass: crypto.randomBytes(12).toString('hex') });
     acc.isAdmin = true;
     db.accounts.push(acc);
   }
@@ -727,7 +727,7 @@ function findWebhookByToken(token) {
 function findAdminAccount() {
   let acc = get().accounts.find(a => a.isAdmin);
   if (!acc) {
-    acc = newAccount({ name: 'Administrador', email: 'admin@elitechat.local', pass: crypto.randomBytes(12).toString('hex') });
+    acc = newAccount({ name: 'Administrador', email: 'admin@koonfy.local', pass: crypto.randomBytes(12).toString('hex') });
     acc.isAdmin = true;
     acc.passHash = get().platform.adminPassHash;
     get().accounts.push(acc);

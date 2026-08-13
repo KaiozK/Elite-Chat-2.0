@@ -2998,7 +2998,7 @@ module.exports = function (broadcast, clients) {
     if (!wh) return res.status(404).json({ error: 'Webhook não encontrado' });
     const sample = (req.body && req.body.payload) || {
       event: 'purchase.approved',
-      data: { member: { name: 'Filipe', phone: '5571984791558', email: 'filipe@email.com' }, product: { name: 'Plano Pro' } }
+      data: { member: { name: 'Cliente Exemplo', phone: '5511999998888', email: 'cliente@email.com' }, product: { name: 'Plano Pro' } }
     };
     const r = whmod.ingest(req.acc, wh, sample, broadcast);
     const origin = `${req.protocol}://${req.get('host')}`;
