@@ -18,6 +18,25 @@ pronto.then(() => { try { push.ensureKeys(); } catch (e) { console.warn('[push] 
 
 const app = express();
 
+// ---------------------------------------------------------------------------
+// ATRÁS DE PROXY (Cloudflare + DigitalOcean)
+//
+// Sem isto, `req.protocol` responde "http" mesmo o site estando em HTTPS: o TLS
+// termina no proxy, e o Express só descobre o esquema original pelo cabeçalho
+// X-Forwarded-Proto, que ele ignora até ser mandado confiar.
+//
+// Não era detalhe de exibição. `req.protocol` monta as URLs PÚBLICAS do
+// produto: o link de pagamento enviado ao cliente, o event_source_url do
+// CAPI da Meta, o webhook do adquirente e — o pior — a URI de redirecionamento
+// que o painel manda cadastrar no app da Meta. Cadastrar
+// `http://.../auth/meta/callback` quando o retorno vem por `https://` faz o
+// OAuth recusar, porque a Meta compara a URI inteira.
+//
+// Confiar no cabeçalho é seguro aqui porque nada no app autoriza por IP: o
+// único uso de X-Forwarded-For é atribuição do CAPI, e o tráfego sempre entra
+// pelo proxy da plataforma.
+app.set('trust proxy', true);
+
 // CORS para os apps das lojas. O WebView do app nativo não roda no nosso
 // domínio — no iOS a página vem de capacitor://localhost e no Android de
 // https://localhost — então toda chamada à API é cross-origin e o navegador

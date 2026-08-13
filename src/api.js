@@ -168,6 +168,8 @@ module.exports = function (broadcast, clients) {
     return {
       connected: w.connected,
       businessId: w.businessId,
+      businessName: w.businessName || '',
+      qualityRating: w.qualityRating || '',
       wabaId: w.wabaId,
       phoneNumberId: w.phoneNumberId,
       displayPhoneNumber: w.displayPhoneNumber,
@@ -895,17 +897,41 @@ module.exports = function (broadcast, clients) {
   router.get('/wa/status', auth, h(async (req, res) => {
     let health = null;
     if (req.query.health === '1' && req.wctx.wa.connected) {
+      const w = req.wctx.wa;
       try {
         health = await wa.getPhoneInfo(req.wctx);
-        req.wctx.wa.lastHealth = { at: Date.now(), ...health };
+        w.lastHealth = { at: Date.now(), ...health };
         // aproveita a resposta para manter número e nome em dia
-        if (health.display_phone_number) req.wctx.wa.displayPhoneNumber = health.display_phone_number;
-        if (health.verified_name) req.wctx.wa.verifiedName = health.verified_name;
-        req.wctx.wa.identityAt = Date.now();
+        if (health.display_phone_number) w.displayPhoneNumber = health.display_phone_number;
+        if (health.verified_name) w.verifiedName = health.verified_name;
+        if (health.quality_rating) w.qualityRating = health.quality_rating;
+        w.identityAt = Date.now();
         db.save();
       } catch (e) {
         health = { error: e.message };
       }
+
+      // A tela mostrava "-" em Business ID e "Não" em Webhook assinado mesmo
+      // com o número funcionando: esses dois campos só eram preenchidos pelo
+      // Embedded Signup, e ficavam parados para sempre em quem conectou por
+      // outro caminho. Agora esta consulta reconcilia os dois com a Meta —
+      // é a fonte da verdade, e não o que ficou gravado aqui.
+      if (w.wabaId) {
+        try {
+          const info = await wa.getWaba(req.wctx);
+          const dono = info && info.owner_business_info;
+          if (dono && dono.id) { w.businessId = String(dono.id); w.businessName = String(dono.name || ''); }
+          db.save();
+        } catch (e) { /* não impede o resto do health */ }
+        try {
+          const subs = await wa.getSubscriptions(req.wctx);
+          w.appSubscribed = !!((subs && subs.data) || []).length;
+          db.save();
+        } catch (e) { /* idem */ }
+      }
+      // Quem conectou antes de este campo existir ficava com "Conectado em: -"
+      // para sempre. A primeira consulta bem-sucedida serve de data.
+      if (!w.connectedAt && w.connected) { w.connectedAt = Date.now(); db.save(); }
     }
     res.json({ wa: waPublic(req.wctx), health });
   }));

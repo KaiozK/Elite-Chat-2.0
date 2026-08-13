@@ -3789,6 +3789,9 @@ async function renderLogs() {
 }
 
 // ---------- configurações ----------
+// Trava de uma vez por sessao: sem ela o renderSettings chamado de dentro do
+// .then() dispararia a consulta de novo, em laco.
+let SETTINGS_RECONCILIADO = false;
 async function renderSettings() {
   let cfg = {};
   try { cfg = await api('/settings'); state.settings = cfg.settings; state.wa = cfg.wa; } catch (e) { return toast(e.message, 'error'); }
@@ -3812,12 +3815,18 @@ async function renderSettings() {
           <div class="wa-row"><span>Número</span><b>${esc(w.displayPhoneNumber || '-')}</b></div>
           <div class="wa-row"><span>Nome verificado</span><b>${esc(w.verifiedName || '-')}</b></div>
           <div class="wa-row"><span>WABA ID</span><b>${esc(w.wabaId || '-')}</b></div>
-          <div class="wa-row"><span>Business ID</span><b>${esc(w.businessId || '-')}</b></div>
-          <div class="wa-row"><span>Webhook assinado</span><b>${w.appSubscribed ? 'Sim' : 'Não'}</b></div>
+          <div class="wa-row"><span>Qualidade do número</span><b>${w.qualityRating
+            ? `<span class="pill ${w.qualityRating === 'GREEN' ? 'done' : 'warn'}">${esc(w.qualityRating)}</span>` : '-'}</b></div>
+          <div class="wa-row"><span>Business ID</span><b>${esc(w.businessId || '-')}${w.businessName
+            ? ` <span class="muted" style="font-weight:600">(${esc(w.businessName)})</span>` : ''}</b></div>
+          <div class="wa-row"><span>Webhook assinado</span><b>${w.appSubscribed
+            ? '<span class="pill done">Sim</span>'
+            : '<span class="pill warn">Não, a Meta não vai entregar mensagem</span>'}</b></div>
           <div class="wa-row"><span>Conectado em</span><b>${w.connectedAt ? new Date(w.connectedAt).toLocaleString('pt-BR') : '-'}</b></div>
           <div class="wa-row"><span>Graph API</span><b>${esc(w.graphVersion || 'v26.0')}</b></div>
         </div>
         <div class="row" style="margin-top:14px">
+          <button class="btn no-grow" onclick="atualizarDadosWa(this)">${ico('refresh', 14)} Atualizar dados</button>
           <button class="btn no-grow" onclick="testConn()">${ico('activity', 14)} Testar conexão</button>
           <button class="btn no-grow" onclick="connectWhatsApp()">${ico('refresh', 14)} Reconectar</button>
           <button class="btn danger no-grow" onclick="disconnectWa()">Desconectar</button>
@@ -4012,6 +4021,14 @@ async function renderSettings() {
   loadService();
   loadSurvey();
   if (state.wa && state.wa.connected) { loadCalling(); loadProfile(true); }
+  // Conexão ligada mas com o cartão incompleto (Business ID vazio ou webhook
+  // marcado como não assinado): busca a verdade na Meta uma vez, sem esperar
+  // que a pessoa descubra o botão. Só nesse caso, para não gastar três
+  // chamadas à Graph a cada visita.
+  if (state.wa && state.wa.connected && (!state.wa.businessId || !state.wa.appSubscribed) && !SETTINGS_RECONCILIADO) {
+    SETTINGS_RECONCILIADO = true;
+    api('/wa/status?health=1').then(r => { state.wa = r.wa; renderSettings(); }).catch(() => {});
+  }
   // veio do menu do avatar: abre direto a aba certa (e o campo de novo canal)
   if (PENDING_TAB) {
     showSettingsTab(PENDING_TAB);
@@ -4412,6 +4429,22 @@ async function runDiag(path) {
   diagOut('Consultando Graph API...');
   try { diagOut(await api(path)); toast('Consulta OK'); }
   catch (e) { diagOut('ERRO: ' + e.message + (e.meta ? '\n\n' + JSON.stringify(e.meta, null, 2) : '')); toast(e.message, 'error'); }
+}
+
+// Reconcilia o cartão da conexão com a Meta: número, nome verificado,
+// qualidade, Business ID e se a WABA está assinada. A rota existia desde
+// sempre, mas nenhuma tela a chamava — por isso Business ID e "Webhook
+// assinado" ficavam parados no que o Embedded Signup tivesse gravado.
+async function atualizarDadosWa(btn) {
+  const t = btn && btn.innerHTML;
+  if (btn) { btn.disabled = true; btn.textContent = 'Consultando a Meta…'; }
+  try {
+    const r = await api('/wa/status?health=1');
+    state.wa = r.wa;
+    toast(r.health && r.health.error ? ('Meta: ' + r.health.error) : 'Dados atualizados');
+    renderSettings();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { if (btn) { btn.disabled = false; btn.innerHTML = t; } }
 }
 
 async function testConn() {
