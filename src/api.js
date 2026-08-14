@@ -248,6 +248,15 @@ module.exports = function (broadcast, clients) {
     // termina isto depois pelo painel. Perder um cadastro porque um serviço de
     // terceiro piscou seria caro para o problema que resolve.
     const receb = req.body.recebimento || {};
+    // O documento fica guardado na conta mesmo quando a subconta falha em
+    // nascer. Sem isto o dado se perdia junto com o erro, e a pessoa tinha que
+    // digitar tudo de novo no formulário do Pagamentos — que é exatamente o
+    // retrabalho que a etapa do cadastro existe para evitar.
+    if (receb.document) acc.profile.document = String(receb.document).replace(/\D/g, '').slice(0, 14);
+    if (receb.pixKey) {
+      acc.profile.pixKey = String(receb.pixKey).trim().slice(0, 120);
+      acc.profile.pixKeyType = String(receb.pixKeyType || '').slice(0, 20);
+    }
     let pagamentos = null;
     // require inline: o `elitepay` do escopo só é vinculado mais abaixo, e
     // tocá-lo aqui cairia na zona morta do const.
@@ -4200,6 +4209,17 @@ module.exports = function (broadcast, clients) {
     res.json({
       configured: elitepay.configured(),
       subaccount: ep.subaccount,
+      // O Koonfy já sabe nome, e-mail e telefone de quem cadastrou. Mandar o
+      // dono digitar tudo de novo no formulário do Pagamentos é pedir o mesmo
+      // duas vezes — o formulário chega preenchido com isto.
+      conta: {
+        name: req.acc.name || '',
+        email: req.acc.email || '',
+        phone: (req.acc.profile && req.acc.profile.phone) || '',
+        document: (req.acc.profile && req.acc.profile.document) || '',
+        pixKey: (req.acc.profile && req.acc.profile.pixKey) || '',
+        pixKeyType: (req.acc.profile && req.acc.profile.pixKeyType) || ''
+      },
       settings: ep.settings,
       checkout: ep.checkouts.find(c => c.isDefault) || ep.checkouts[0],   // layout padrão
       checkouts: ep.checkouts.map(c => ({ id: c.id, name: c.name, isDefault: c.isDefault })),

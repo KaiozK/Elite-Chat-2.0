@@ -263,7 +263,9 @@ function newAccount({ name, email, pass }) {
     createdAt: Date.now(),
     // PERFIL DA EMPRESA, informado no cadastro. Não muda nada no produto:
     // serve para o onboarding e para o time comercial saber com quem fala.
-    profile: { segment: '', size: '', phone: '', country: 'BR', goal: '' },   // phone em E.164
+    // phone em E.164. document/pixKey vêm da etapa de recebimento do cadastro e
+    // ficam aqui para o formulário do Pagamentos já nascer preenchido.
+    profile: { segment: '', size: '', phone: '', country: 'BR', goal: '', document: '', pixKey: '', pixKeyType: '' },
     // CONTA INTERNA: ligada pelo admin, roda sem plano, sem cota e sem
     // cobrança, e fica fora das métricas do SaaS. É para os negócios do
     // próprio dono, não para um cliente.

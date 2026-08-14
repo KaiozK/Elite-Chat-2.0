@@ -7,7 +7,7 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "migrar:mysql": "node scripts/migrar-mysql.js",
-    "test": "node tests/mysql-storage.test.js && node tests/app-mysql.test.js && node tests/chat-mysql.test.js && node tests/calls.test.js"
+    "test": "node tests/mysql-storage.test.js && node tests/app-mysql.test.js && node tests/chat-mysql.test.js && node tests/calls.test.js && node tests/cadastro-pagamentos.test.js"
   },
   "engines": {
     "node": ">=18"

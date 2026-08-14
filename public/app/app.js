@@ -11723,6 +11723,9 @@ function epRenderGate(d, icon, title, text, actionHtml) {
 // ---- Onboarding: criação da subconta (com KYC quando o admin exige BaaS) ----
 function epRenderOnboarding(d) {
   const kyc = d.onboardingMode === 'kyc';
+  // O que a conta já informou no cadastro entra pronto nos campos: nome,
+  // e-mail e telefone o Koonfy já tem, e digitar de novo é trabalho à toa.
+  const cta = d.conta || {};
   $('#view').innerHTML = `<div class="page">
     <div class="page-head"><h1>Pagamentos</h1><p>Crie sua conta de pagamentos e receba por Pix sem sair do Koonfy</p></div>
     <div class="card" style="max-width:720px">
@@ -11731,12 +11734,12 @@ function epRenderOnboarding(d) {
         ? 'Preencha os dados da empresa e do representante legal. Após enviar, você concluirá a <b>verificação de identidade (KYC/KYB)</b> na página segura da Woovi. Assim que a compliance aprovar, sua conta é liberada automaticamente.'
         : 'Preencha os dados abaixo para criar sua conta de recebimentos. O dinheiro das suas vendas cai na <b>sua chave Pix</b>, cobranças, QR Code e links são gerados aqui dentro, direto nas conversas.'}</p>
       <div class="row">
-        <label style="flex:2">Nome / Razão social<input id="ep-ob-name" placeholder="Minha Empresa LTDA"></label>
-        <label style="flex:1">CPF / CNPJ<input id="ep-ob-doc" placeholder="00.000.000/0000-00" inputmode="numeric"></label>
+        <label style="flex:2">Nome / Razão social<input id="ep-ob-name" value="${esc(cta.name || '')}" placeholder="Minha Empresa LTDA"></label>
+        <label style="flex:1">CPF / CNPJ<input id="ep-ob-doc" value="${esc(cta.document || '')}" placeholder="00.000.000/0000-00" inputmode="numeric"></label>
       </div>
       <div class="row" style="margin-top:9px">
-        <label style="flex:1.4">E-mail financeiro<input id="ep-ob-email" type="email" placeholder="financeiro@empresa.com"></label>
-        <label style="flex:1">Telefone<input id="ep-ob-phone" placeholder="(11) 99999-9999" inputmode="tel"></label>
+        <label style="flex:1.4">E-mail financeiro<input id="ep-ob-email" type="email" value="${esc(cta.email || '')}" placeholder="financeiro@empresa.com"></label>
+        <label style="flex:1">Telefone<input id="ep-ob-phone" value="${esc(cta.phone || '')}" placeholder="(11) 99999-9999" inputmode="tel"></label>
       </div>
       ${kyc ? `
       <div class="var-ex-box" style="margin-top:14px">
@@ -11747,11 +11750,11 @@ function epRenderOnboarding(d) {
         </div>
       </div>` : ''}
       <div class="row" style="margin-top:9px;align-items:flex-end">
-        <label style="flex:1.4">Chave Pix (onde você recebe)<input id="ep-ob-pix" placeholder="sua chave Pix"></label>
+        <label style="flex:1.4">Chave Pix (onde você recebe)<input id="ep-ob-pix" value="${esc(cta.pixKey || '')}" placeholder="sua chave Pix"></label>
         <label style="flex:1">Tipo da chave${ecSelect('ep-ob-pixtype', [
           { value: 'cpf', label: 'CPF' }, { value: 'cnpj', label: 'CNPJ' }, { value: 'email', label: 'E-mail' },
           { value: 'telefone', label: 'Telefone' }, { value: 'aleatoria', label: 'Aleatória' }
-        ], 'cpf')}</label>
+        ], cta.pixKeyType || 'cpf')}</label>
       </div>
       <p class="hint" style="margin-top:12px">${ico('shield', 12)} ${kyc
         ? 'A verificação de identidade é feita diretamente pela Woovi (instituição de pagamento regulada pelo Banco Central).'
@@ -13150,6 +13153,15 @@ async function chatChargeModal(waId) {
   if (!state.epInfo) {
     try { state.epInfo = await api('/elitepay'); }
     catch (e) { return toast(e.message, 'error'); }
+  }
+  // Sem conta de recebimento ativa, a cobrança seria montada inteira só para
+  // morrer num aviso de "crie sua conta primeiro" no fim. Em vez desse beco,
+  // vai direto para a tela que resolve — já preenchida com o que o Koonfy
+  // sabe. Nada de pop-up no meio do caminho.
+  const sub = state.epInfo.subaccount;
+  if (!sub || sub.status !== 'active') {
+    location.hash = '#/elitepay';
+    return;
   }
   epNewChargeModal(waId, c ? c.name : null);
 }
