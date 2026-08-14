@@ -38,15 +38,59 @@ function url() {
   return u;
 }
 
+// ---------------------------------------------------------------------------
+// TLS
+//
+// Banco gerenciado (DigitalOcean, Aiven, PlanetScale) recusa conexão em texto
+// claro: sem TLS a resposta é "Connections using insecure transport are
+// prohibited", e nada mais funciona. A string que a DigitalOcean entrega vem
+// com `?ssl-mode=REQUIRED`, que o mysql2 não interpreta sozinho — é preciso
+// passar a opção `ssl` explicitamente.
+//
+// Com o certificado da autoridade (DATABASE_CA) a identidade do servidor é
+// verificada de verdade. Sem ele o tráfego continua cifrado, mas ninguém
+// confere com QUEM se está falando; por isso o aviso no log.
+// ---------------------------------------------------------------------------
+function opcoesTls(uri) {
+  const caBruto = (process.env.DATABASE_CA || '').trim();
+  const pedidoNaUri = /[?&](ssl-mode|sslmode|ssl_mode)=(required|verify_ca|verify_identity|true|1)/i.test(uri);
+  const pedidoNoEnv = /^(1|true|required|yes)$/i.test(String(process.env.DB_SSL || '').trim());
+  if (!caBruto && !pedidoNaUri && !pedidoNoEnv) return null;
+
+  if (caBruto) {
+    // Aceita o PEM inteiro na variável ou o caminho de um arquivo.
+    let ca = caBruto;
+    if (!caBruto.includes('BEGIN CERTIFICATE')) {
+      try { ca = require('fs').readFileSync(caBruto, 'utf8'); }
+      catch (e) { throw new Error('DATABASE_CA não é um certificado nem um arquivo legível: ' + e.message); }
+    }
+    return { ca, rejectUnauthorized: true, minVersion: 'TLSv1.2' };
+  }
+  console.warn('[storage/mysql] TLS ligado SEM certificado da autoridade: o tráfego vai cifrado, ' +
+    'mas o servidor não é verificado. Baixe o CA do painel do banco e informe em DATABASE_CA.');
+  return { rejectUnauthorized: false, minVersion: 'TLSv1.2' };
+}
+
+// O mysql2 lê a URI, mas engasga com parâmetros que não são dele (`ssl-mode` é
+// da própria DigitalOcean). Some com eles depois de já terem sido lidos.
+function limparUri(uri) {
+  return uri.replace(/([?&])(ssl-mode|sslmode|ssl_mode)=[^&]*/gi, '$1')
+    .replace(/[?&]$/, '')
+    .replace(/\?&/, '?');
+}
+
 function conectar() {
   if (pool) return pool;
+  const uri = url();
+  const ssl = opcoesTls(uri);
   pool = mysql.createPool({
-    uri: url(),
+    uri: limparUri(uri),
     waitForConnections: true,
     connectionLimit: 6,
     charset: 'utf8mb4',          // emoji de WhatsApp não cabe no utf8 de 3 bytes
     timezone: 'Z',
-    enableKeepAlive: true
+    enableKeepAlive: true,
+    ...(ssl ? { ssl } : {})
   });
   return pool;
 }

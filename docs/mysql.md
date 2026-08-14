@@ -27,6 +27,61 @@ A partida imprime qual motor está em uso:
   Banco:               mysql
 ```
 
+---
+
+## DigitalOcean (Managed MySQL)
+
+Banco gerenciado **exige TLS**. Sem isso a conexão é recusada com
+`Connections using insecure transport are prohibited`.
+
+**1. Crie o banco.** No painel: *Databases → Create Database Cluster → MySQL 8*,
+na **mesma região do app**. Depois, na aba *Users & Databases*, crie um banco
+chamado `koonfy`.
+
+**2. Pegue a string de conexão.** Na aba *Overview → Connection Details*:
+
+- em *Connection parameters* escolha **Connection string**;
+- selecione o usuário e o banco `koonfy`;
+- copie o valor — vem no formato
+  `mysql://usuario:senha@host:25060/koonfy?ssl-mode=REQUIRED`.
+
+**3. Ligue ao app.** Em *Apps → seu app → Settings → App-Level Environment
+Variables*:
+
+```
+DB_DRIVER    = mysql
+DATABASE_URL = ${db.DATABASE_URL}
+```
+
+O `${db.DATABASE_URL}` é literal. Vincule o banco em *Resources* e a própria
+DigitalOcean substitui pela string certa — assim a senha não fica escrita em
+lugar nenhum, e o app fala com o banco pela rede interna (VPC), sem passar pela
+internet.
+
+**4. Verifique o certificado (recomendado).** Sem o CA o tráfego vai cifrado,
+mas o servidor não é verificado, e o log avisa isso na partida. Em *Connection
+Details* há o link **Download CA certificate**: abra o arquivo, copie o conteúdo
+inteiro (incluindo as linhas `BEGIN`/`END`) e crie mais uma variável:
+
+```
+DATABASE_CA = -----BEGIN CERTIFICATE-----
+...
+-----END CERTIFICATE-----
+```
+
+`DATABASE_CA` também aceita o caminho de um arquivo. Com ele, a verificação da
+identidade do servidor passa a ser feita de verdade.
+
+**5. Migre o que existe** (só se houver algo a levar), da sua máquina, com a
+string **pública** do painel:
+
+```bash
+DB_DRIVER=mysql DATABASE_URL="mysql://...?ssl-mode=REQUIRED" node scripts/migrar-mysql.js
+```
+
+Para a máquina de fora alcançar o banco, adicione o seu IP em
+*Settings → Trusted Sources* do cluster.
+
 **O `data/db.json` não é apagado nem movido.** Guarde-o até a virada estar
 confirmada: para voltar, basta subir sem as duas variáveis.
 
