@@ -2628,19 +2628,102 @@ function renderThread(messages) {
   return html;
 }
 
+// ---------------------------------------------------------------------------
+// MENSAGEM DE VOZ
+//
+// A onda é decorativa e desenhada a partir do ID da mensagem: barras iguais
+// para todo mundo seria pior, e ler o áudio inteiro só para desenhar a forma
+// de onda real custaria o download de cada mensagem ao abrir a conversa.
+// Sendo derivada do id, ela é ESTÁVEL — a mesma mensagem tem sempre a mesma
+// onda, e não fica dançando a cada repintura.
+// ---------------------------------------------------------------------------
+function ondaDe(id, n = 34) {
+  let h = 0;
+  const s = String(id || 'x');
+  const barras = [];
+  for (let i = 0; i < n; i++) {
+    h = (h * 31 + s.charCodeAt(i % s.length) + i * 7) % 997;
+    barras.push(30 + (h % 70));            // 30% a 100% da altura
+  }
+  return barras;
+}
+
+function audioBubble(m, src) {
+  const id = 'aud_' + String(m.id || Math.random()).replace(/\W/g, '').slice(-12);
+  const voz = !!m.voice;
+  const barras = ondaDe(m.id).map(h => `<i style="height:${h}%"></i>`).join('');
+  // A onda vai DUAS vezes: a de baixo cinza, e a de cima verde recortada no
+  // ponto tocado. Sem quebra de linha entre as tags — o balão usa
+  // `white-space: pre-wrap` e a indentação do template apareceria na tela.
+  return `<div class="voz ${voz ? 'is-voz' : ''}" id="${id}">` +
+    `<button class="voz-play" type="button" onclick="tocarAudio('${id}')" aria-label="Tocar">${ico('play', 15)}</button>` +
+    `<div class="voz-onda" onclick="buscarAudio('${id}', event)">${barras}<span class="voz-prog">${barras}</span></div>` +
+    `<span class="voz-tempo">--:--</span>` +
+    `<audio src="${src}" preload="metadata"></audio>` +
+    `</div>`;
+}
+
+function segParaMin(s) {
+  if (!isFinite(s) || s < 0) return '--:--';
+  const t = Math.round(s);
+  return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
+}
+
+// Um de cada vez: começar um áudio para o anterior, como no WhatsApp.
+function tocarAudio(id) {
+  const box = document.getElementById(id); if (!box) return;
+  const a = box.querySelector('audio');
+  document.querySelectorAll('.voz audio').forEach(o => { if (o !== a) { o.pause(); } });
+  if (a.paused) a.play().catch(() => {}); else a.pause();
+}
+function buscarAudio(id, ev) {
+  const box = document.getElementById(id); if (!box) return;
+  const a = box.querySelector('audio');
+  const onda = box.querySelector('.voz-onda');
+  if (!a.duration || !isFinite(a.duration)) return;
+  const r = onda.getBoundingClientRect();
+  a.currentTime = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * a.duration;
+}
+// Um listener só, no container: as mensagens são repintadas o tempo todo, e
+// prender um listener em cada <audio> vazaria a cada recarga da conversa.
+document.addEventListener('DOMContentLoaded', () => {
+  const alvo = document.body;
+  const achar = (e) => e.target && e.target.closest ? e.target.closest('.voz') : null;
+  const pinta = (box, a) => {
+    if (!box) return;
+    const pct = a.duration && isFinite(a.duration) ? (a.currentTime / a.duration) * 100 : 0;
+    const p = box.querySelector('.voz-prog');
+    if (p) p.style.clipPath = `inset(0 ${(100 - pct).toFixed(2)}% 0 0)`;
+    const t = box.querySelector('.voz-tempo');
+    if (t) t.textContent = segParaMin(a.currentTime > 0 ? a.duration - a.currentTime : a.duration);
+    box.classList.toggle('tocando', !a.paused && !a.ended);
+  };
+  for (const ev of ['timeupdate', 'loadedmetadata', 'play', 'pause', 'ended']) {
+    alvo.addEventListener(ev, (e) => {
+      if (!e.target || e.target.tagName !== 'AUDIO') return;
+      pinta(achar(e), e.target);
+    }, true);
+  }
+});
+
 function renderMsg(m, tail = true) {
   let content = '';
   const mediaSrc = m.media && m.media.id ? `/api/media/${encodeURIComponent(m.media.id)}?token=${TOKEN}` : (m.media && m.media.link) || '';
   if (['image', 'sticker'].includes(m.type) && mediaSrc) content += `<img src="${mediaSrc}" loading="lazy" alt="">`;
   else if (m.type === 'video' && mediaSrc) content += `<video src="${mediaSrc}" controls preload="metadata"></video>`;
-  else if (m.type === 'audio' && mediaSrc) content += `<audio src="${mediaSrc}" controls preload="none"></audio>`;
+  // Áudio e mensagem de voz: o player cru do navegador tem 300px de barra
+  // cinza e não combina com nada. Aqui vira uma faixa própria, com botão de
+  // tocar, onda e tempo — e o <audio> real fica escondido, tocando por trás.
+  else if (m.type === 'audio' && mediaSrc) content += audioBubble(m, mediaSrc);
   else if (m.type === 'document' && mediaSrc) content += `<a class="doc" href="${mediaSrc}&dl=${encodeURIComponent(m.media.filename || 'documento')}" target="_blank">${ico('file', 14)} ${esc(m.media.filename || 'Documento')}</a>`;
   if (m.text) content += (content ? '<div>' : '') + esc(m.text) + (content.includes('<img') || content.includes('<video') || content.includes('<audio') || content.includes('doc') ? '</div>' : '');
   if (!content) content = `<span class="muted">[${esc(m.type)}]</span>`;
-  return `<div class="msg ${m.direction} ${tail ? 'tail' : ''}">
-    ${content}
-    <div class="meta"><time>${fmtTime(m.timestamp)}</time>${statusIcon(m)}</div>
-  </div>`;
+  // Sem quebras de linha entre as tags: o balão usa `white-space: pre-wrap`
+  // para respeitar as quebras que o cliente digitou, e com isso a indentação
+  // do próprio template virava espaço em branco DENTRO da mensagem — a
+  // primeira linha saía deslocada e sobrava uma linha vazia no fim.
+  return `<div class="msg ${m.direction} ${tail ? 'tail' : ''}">${content}` +
+    `<div class="meta"><time>${fmtTime(m.timestamp)}</time>${statusIcon(m)}</div></div>`;
 }
 
 function statusIcon(m) {

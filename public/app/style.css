@@ -548,23 +548,33 @@ tbody tr:last-child td { border-bottom: none; }
   flex: 1; overflow-y: auto; padding: 22px 26px; display: flex; flex-direction: column; gap: 3px;
   background: #e9f5ef;
 }
+/* O balão acompanha o texto em vez de esticar até um teto largo: `fit-content`
+   com `max-width` faz a mensagem curta ficar curta. Antes, a caixa reservava
+   62% da largura mesmo para "ok", e o espaço vazio à direita era o que mais
+   incomodava. O respiro interno também foi apertado: 9px de altura por linha
+   somavam muito numa conversa longa. */
 .msg {
-  max-width: 62%; padding: 9px 13px; border-radius: 14px; position: relative;
-  word-wrap: break-word; white-space: pre-wrap; font-size: 13.5px; line-height: 1.5;
-  animation: msgIn .3s cubic-bezier(.2, 1.2, .4, 1) both; box-shadow: 0 2px 6px rgba(0, 0, 0, .06);
+  width: fit-content; max-width: min(62%, 560px);
+  padding: 7px 11px 5px; border-radius: 14px; position: relative;
+  word-wrap: break-word; overflow-wrap: anywhere; white-space: pre-wrap;
+  font-size: 13.5px; line-height: 1.42;
+  animation: msgIn .3s cubic-bezier(.2, 1.2, .4, 1) both; box-shadow: 0 1px 2px rgba(0, 0, 0, .07);
   font-weight: 500; color: var(--text);
 }
 @keyframes msgIn { from { opacity: 0; transform: scale(.94) translateY(8px); } }
 .msg.in { background: var(--card); align-self: flex-start; border-bottom-left-radius: 4px; }
 .msg.out { background: #d1fae5; align-self: flex-end; border-bottom-right-radius: 4px; }
-.msg .meta { display: flex; gap: 6px; justify-content: flex-end; align-items: center; font-size: 10.5px; color: var(--muted); margin-top: 3px; font-weight: 600; }
+/* A hora fica na MESMA linha do fim do texto quando cabe, como no WhatsApp:
+   uma linha inteira so para o horario era altura desperdicada em toda
+   mensagem. */
+.msg .meta { display: flex; gap: 5px; justify-content: flex-end; align-items: center; font-size: 10px; color: var(--muted); margin-top: 1px; font-weight: 600; float: right; margin-left: 10px; }
 .msg .st { letter-spacing: -1px; font-weight: 800; color: var(--faint); }
 .msg .st.read { color: var(--blue); }
 .msg .st.fail { color: var(--red); cursor: help; letter-spacing: 0; }
-.msg img, .msg video { max-width: 300px; border-radius: 10px; display: block; margin-bottom: 4px; }
-.msg audio { max-width: 260px; }
+.msg img, .msg video { max-width: min(300px, 72vw); border-radius: 10px; display: block; margin-bottom: 3px; }
+
 .msg .doc { display: inline-flex; gap: 8px; align-items: center; font-weight: 800; }
-.msg.tail { margin-bottom: 9px; }
+.msg.tail { margin-bottom: 7px; }
 .msg:not(.tail) .meta { display: none; }
 .msg.in:not(.tail) { border-bottom-left-radius: 14px; }
 .msg.out:not(.tail) { border-bottom-right-radius: 14px; }
@@ -3631,3 +3641,63 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
 /* Barra do CTR: a proporcao vista de relance, sem precisar ler o numero. */
 .ctr-bar { height: 7px; border-radius: 99px; background: var(--bg2); overflow: hidden; margin-top: 8px; }
 .ctr-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--verde), var(--verde-esc)); }
+
+/* ===================== MENSAGEM DE VOZ =====================
+   O <audio controls> do navegador é uma barra cinza de 300px que ignora o
+   tema e destoa de tudo. Aqui ele fica escondido, tocando por trás, e o que
+   aparece é botão, onda e tempo restante. */
+.voz { display: flex; align-items: center; gap: 10px; min-width: 210px; padding: 2px 0; }
+.voz audio { display: none; }
+.voz-play {
+  width: 34px; height: 34px; flex: none; border-radius: 50%; border: none; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--verde-esc); color: #fff; padding-left: 2px;   /* o triângulo pesa à esquerda */
+  transition: transform .15s, background .15s;
+}
+.voz-play:hover { background: var(--verde-deep); }
+.voz-play:active { transform: scale(.93); }
+.voz.tocando .voz-play { padding-left: 0; }
+/* Tocando, o triângulo vira pausa sem trocar de ícone: duas barras por cima. */
+.voz.tocando .voz-play svg { opacity: 0; }
+.voz.tocando .voz-play::after {
+  content: ''; position: absolute; width: 11px; height: 13px;
+  border-left: 3.5px solid #fff; border-right: 3.5px solid #fff;
+}
+.voz-play { position: relative; }
+
+.voz-onda {
+  position: relative; flex: 1; min-width: 0; height: 26px; cursor: pointer;
+  display: flex; align-items: center; gap: 2px; overflow: hidden;
+}
+.voz-onda i {
+  flex: 1; min-width: 2px; border-radius: 99px; background: var(--border2);
+  transition: background .2s;
+}
+/* A parte tocada fica verde. São DUAS ondas empilhadas: a de baixo cinza,
+   a de cima verde, recortada por clip-path na porcentagem tocada. Tentei antes
+   com mix-blend-mode e o resultado dependia do tema; recorte é exato nos dois. */
+.voz-prog {
+  position: absolute; inset: 0; display: flex; align-items: center; gap: 2px;
+  pointer-events: none; clip-path: inset(0 100% 0 0);
+  transition: clip-path .1s linear;
+}
+.voz-prog i { background: var(--verde-esc); }
+.msg.out .voz-prog i { background: var(--verde-deep); }
+
+.voz-tempo {
+  flex: none; font-size: 11px; font-weight: 700; color: var(--muted);
+  font-variant-numeric: tabular-nums; min-width: 34px; text-align: right;
+}
+.msg.out .voz-onda i { background: rgba(6, 95, 70, .22); }
+.msg.out .voz-tempo { color: var(--verde-deep); }
+/* Mensagem de voz gravada no microfone ganha o microfone; áudio anexado, não. */
+.voz.is-voz .voz-play::before {
+  content: ''; position: absolute; right: -1px; bottom: -1px;
+  width: 12px; height: 12px; border-radius: 50%; background: var(--card);
+  box-shadow: inset 0 0 0 1.5px var(--verde-esc);
+}
+@media (max-width: 720px) {
+  .voz { min-width: 0; gap: 8px; }
+  .voz-play { width: 31px; height: 31px; }
+  .voz-onda { height: 23px; }
+}
