@@ -776,7 +776,9 @@ async function montarPaises() {
     label: p.flag + ' +' + p.dial,
     full: p.label
   }));
-  box.outerHTML = ecSelect('reg-country', curtos, 'BR', null, 'fone-pais');
+  // Trocar de país reformata o que já está digitado: a máscara do Brasil não
+  // pode continuar valendo depois de escolher Portugal.
+  box.outerHTML = ecSelect('reg-country', curtos, 'BR', 'mascararTelefone($("#reg-phone"))', 'fone-pais');
   // a lista aberta mostra o nome completo
   document.querySelectorAll('#reg-country .ecsel-opt').forEach(o => {
     const p = curtos.find(x => String(x.value) === o.dataset.val);
@@ -952,6 +954,37 @@ function passoAnterior() { if (passoAtual > 1) mostrarPasso(passoAtual - 1); }
 
 // Cada etapa confere o que é dela antes de deixar passar: descobrir no fim que
 // o e-mail estava errado obrigaria a voltar três telas.
+// ---------------------------------------------------------------------------
+// TELEFONE DO CADASTRO
+//
+// O campo aceitava qualquer coisa: "1198388348343434" passava. É um campo de
+// WhatsApp, então no Brasil só serve celular — 11 dígitos, DDD e o 9 na frente.
+// A máscara desenha (XX) 9XXXX-XXXX enquanto se digita; fora do Brasil ela sai
+// do caminho, porque cada país tem o seu formato e forçar o nosso só atrapalha.
+// ---------------------------------------------------------------------------
+function mascararTelefone(input) {
+  const br = (ecSelVal('reg-country') || 'BR') === 'BR';
+  let d = (input.value || '').replace(/\D/g, '');
+  if (!br) { input.value = d.slice(0, 15); return; }
+  d = d.slice(0, 11);
+  let out = d;
+  if (d.length > 2) out = `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length > 7) out = `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+  input.value = out;
+}
+
+// Mesma regra do servidor (`paises.paraE164`), para o erro aparecer na hora de
+// digitar e não depois de enviar o cadastro inteiro.
+function erroTelefone(valor, iso) {
+  const d = String(valor || '').replace(/\D/g, '');
+  if (!d) return 'Informe o WhatsApp';
+  if ((iso || 'BR') !== 'BR') return d.length < 7 ? 'Número de WhatsApp inválido' : null;
+  if (d.length !== 11) return 'WhatsApp inválido. Use (XX) 9XXXX-XXXX, com DDD e 11 dígitos.';
+  if (Number(d.slice(0, 2)) < 11) return 'DDD inválido. Use o DDD de 2 dígitos, como (11).';
+  if (d[2] !== '9') return 'Celular no Brasil começa com 9 depois do DDD: (XX) 9XXXX-XXXX.';
+  return null;
+}
+
 function validarPasso(n) {
   if (n === 1) {
     if (!$('#reg-name').value.trim()) return 'Informe o nome da empresa';
@@ -961,8 +994,8 @@ function validarPasso(n) {
   }
   if (n === 2) {
     if (!ecSelVal('reg-segment')) return 'Escolha o segmento';
-    const tel = ($('#reg-phone') || {}).value || '';
-    if (!tel.trim()) return 'Informe o WhatsApp';
+    const err = erroTelefone(($('#reg-phone') || {}).value, ecSelVal('reg-country') || 'BR');
+    if (err) { const c = $('#reg-phone'); if (c) c.focus(); return err; }
   }
   if (n === 3) {
     // Vazio é válido: quem pula termina o Pagamentos depois. Preenchido pela

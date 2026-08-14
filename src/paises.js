@@ -69,6 +69,21 @@ function paraE164(iso, numero) {
   // zero de tronco ("0 11 9...") não entra no E.164
   n = n.replace(/^0+/, '');
 
+  // No Brasil o campo é de WHATSAPP, e WhatsApp mora em celular: 11 dígitos,
+  // DDD válido e o 9 na frente do número. A faixa de 10 dígitos da `nsn` é o
+  // telefone fixo, que aceito antes deixava passar — e um fixo nunca vai
+  // receber a mensagem. É verificado aqui, e não só na tela, porque a API
+  // também é chamada de fora do formulário.
+  if (p.iso === 'BR') {
+    if (n.length !== 11) {
+      return { ok: false, erro: `WhatsApp do Brasil tem 11 dígitos com o DDD, no formato (XX) 9XXXX-XXXX. Você digitou ${n.length}.` };
+    }
+    const ddd = Number(n.slice(0, 2));
+    if (ddd < 11 || ddd > 99) return { ok: false, erro: 'DDD inválido. Use o DDD de 2 dígitos, como (11).' };
+    if (n[2] !== '9') return { ok: false, erro: 'Número de celular no Brasil começa com 9 depois do DDD: (XX) 9XXXX-XXXX.' };
+    return { ok: true, e164: '+' + p.dial + n, iso: p.iso, dial: p.dial, national: n };
+  }
+
   const [min, max] = p.nsn;
   if (n.length < min || n.length > max) {
     return {
