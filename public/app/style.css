@@ -3701,3 +3701,49 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
   .voz-play { width: 31px; height: 31px; }
   .voz-onda { height: 23px; }
 }
+
+/* ===================== ENVIO NO ESTILO WHATSAPP =====================
+   A mensagem sai de onde foi escrita: o balão nasce embaixo, perto do campo
+   de texto, e sobe para o seu lugar na conversa. Enviada e recebida usam a
+   mesma ideia, cada uma ancorada no seu lado. */
+.msg.out { animation: balaoSai .3s cubic-bezier(.2, 1, .3, 1) both; transform-origin: bottom right; }
+.msg.in  { animation: balaoChega .3s cubic-bezier(.2, 1, .3, 1) both; transform-origin: bottom left; }
+@keyframes balaoSai   { from { opacity: 0; transform: translateY(26px) scale(.9); } }
+@keyframes balaoChega { from { opacity: 0; transform: translateY(16px) scale(.92); } }
+
+/* O balão que acabou de sair do campo de texto vem de mais longe e de baixo,
+   para o olho seguir o caminho do texto até a conversa. */
+.msg.subindo { animation: balaoDoCampo .42s cubic-bezier(.16, .9, .3, 1) both; }
+@keyframes balaoDoCampo {
+  from { opacity: 0; transform: translateY(64px) scale(.82); }
+  60%  { opacity: 1; }
+}
+
+/* Reloginho de "ainda indo". Pulsa de leve para não parecer um ✓ travado. */
+.st.pend { display: inline-flex; align-items: center; opacity: .75; animation: pendPulsa 1.4s ease-in-out infinite; }
+@keyframes pendPulsa { 50% { opacity: .35; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .msg, .msg.in, .msg.out, .msg.subindo { animation: none; }
+  .st.pend { animation: none; }
+}
+
+/* ===================== BOTÕES DO CHAT =====================
+   Ferramentas do campo de mensagem no formato do WhatsApp: ícone redondo, sem
+   caixa nem rótulo, o nome no tooltip. Eram pílulas com borda e texto, que
+   ocupavam duas linhas inteiras acima do campo. */
+.composer .tools .btn.small {
+  width: 38px; height: 38px; padding: 0; border-radius: 50%;
+  border: none; background: transparent; box-shadow: none;
+  color: var(--muted); display: inline-flex; align-items: center; justify-content: center;
+  transition: background .16s, color .16s, transform .12s;
+}
+.composer .tools .btn.small .blbl { display: none; }
+.composer .tools .btn.small svg { width: 20px; height: 20px; }
+.composer .tools .btn.small:hover:not(:disabled) { background: var(--bg2); color: var(--verde-esc); }
+.composer .tools .btn.small:active:not(:disabled) { transform: scale(.9); }
+/* Cobrança é a ação de dinheiro: fica verde para não se perder entre as outras */
+.composer .tools #tool-pay { color: var(--verde-esc); }
+
+/* Enviar: círculo cheio, como o do WhatsApp */
+.send-btn { border-radius: 50% !important; }

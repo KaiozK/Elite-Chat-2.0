@@ -154,6 +154,31 @@
     try { (SOUNDS[type] || SOUNDS.message)(); } catch (e) {}
   }
 
+  /* ---------------- Toque contínuo da ligação ----------------
+     Um bipe único não serve para chamada: quem está de costas para a tela
+     perde a ligação inteira. O toque repete até alguém atender, recusar ou o
+     cliente desistir — como qualquer telefone. Fica em teto de 60 repetições
+     (~2 min) para que uma falha em parar o toque não vire um alarme eterno. */
+  var toque = { iv: null, n: 0 };
+  function startRing() {
+    if (toque.iv) return;             // já tocando: não empilha
+    toque.n = 0;
+    var bater = function () {
+      if (++toque.n > 60) return stopRing();
+      if (state.prefs.sounds) { try { SOUNDS.call(); } catch (e) {} }
+      if (state.prefs.vibrate && navigator.vibrate) {
+        try { navigator.vibrate([400, 200, 400]); } catch (e) {}
+      }
+    };
+    bater();
+    toque.iv = setInterval(bater, 2200);   // o padrão SOUNDS.call dura ~1s
+  }
+  function stopRing() {
+    if (toque.iv) { clearInterval(toque.iv); toque.iv = null; }
+    toque.n = 0;
+    if (navigator.vibrate) { try { navigator.vibrate(0); } catch (e) {} }
+  }
+
   function vibrate(type) {
     if (!state.prefs.vibrate || !navigator.vibrate) return;
     var pat = type === 'call' ? [200, 100, 200, 100, 200] : type === 'reminder' ? [120, 60, 120] : [90];
@@ -341,6 +366,7 @@
     // estados
     permission: permission, supported: supported,
     playSound: playSound,
+    startRing: startRing, stopRing: stopRing,
     setHooks: function (h) { if (h.onOpen) state.onOpen = h.onOpen; if (h.onResync) state.onResync = h.onResync; if (h.onChange) state.onChange = h.onChange; }
   };
   window.ECNotify = api;

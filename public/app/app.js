@@ -2743,6 +2743,13 @@ function renderMsg(m, tail = true) {
 
 function statusIcon(m) {
   if (m.direction !== 'out') return '';
+  // Ainda não saiu daqui: reloginho, como no WhatsApp. É o que diz à pessoa
+  // que a mensagem não se perdeu, ela só está indo.
+  if (m.status === 'pending') {
+    return `<span class="st pend" title="Enviando…">` +
+      `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">` +
+      `<circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2"/></svg></span>`;
+  }
   if (m.status === 'failed') return `<span class="st fail" title="${esc(m.error || 'Falha no envio')}">${ico('alert', 11)} falhou</span>`;
   if (m.status === 'read') return '<span class="st read">✓✓</span>';
   if (m.status === 'delivered') return '<span class="st">✓✓</span>';
@@ -2753,16 +2760,40 @@ async function sendTextNow() {
   const ta = $('#composer-text');
   const text = ta.value.trim();
   if (!text || !state.currentWaId) return;
+  const waId = state.currentWaId;
   ta.value = '';
+  ta.style.height = '';                 // o textarea cresce ao digitar; volta a uma linha
+  // O balão aparece na hora, com o reloginho, e só depois vira ✓. Antes o texto
+  // sumia do campo e não havia nada na tela até a Meta responder — em rede
+  // ruim isso são dois segundos parecendo que a mensagem se perdeu.
+  const provisoria = balaoProvisorio(waId, text);
   try {
-    await api('/send/text', { body: { to: state.currentWaId, text } });
-    await loadChat(state.currentWaId, true);
+    await api('/send/text', { body: { to: waId, text } });
+    await loadChat(waId, true);
     $('#composer-text')?.focus();
     loadConversations();
   } catch (e) {
+    if (provisoria) provisoria.remove();
     ta.value = text;
     toast(e.message, 'error');
   }
+}
+
+// Pinta o balão pendente direto no fim da conversa. Devolve o elemento para
+// quem chamou poder tirá-lo se o envio falhar.
+function balaoProvisorio(waId, text) {
+  const sc = $('#chat-scroll');
+  if (!sc || state.currentWaId !== waId) return null;
+  const vazio = sc.querySelector('p.muted');
+  if (vazio) vazio.remove();
+  const div = document.createElement('div');
+  div.innerHTML = renderMsg({ direction: 'out', text, timestamp: Date.now(), status: 'pending' }, true);
+  const balao = div.firstElementChild;
+  if (!balao) return null;
+  balao.classList.add('subindo');       // a animação que sai do campo de texto
+  sc.appendChild(balao);
+  sc.scrollTop = sc.scrollHeight;
+  return balao;
 }
 
 function attachFile() { $('#file-input').click(); }
@@ -8590,6 +8621,7 @@ function onCallEvent(d) {
     if (callUI) return; // já em chamada, a Meta trata o busy do outro lado
     callUI = { ...d.call, sdpOffer: d.sdpOffer, phase: 'incoming', muted: false };
     paintCall();
+    if (window.ECNotify && ECNotify.startRing) ECNotify.startRing();
     if (window.ECNotify) {
       const who = (d.call && (d.call.name || d.call.contactName)) || (d.call && d.call.waId ? '+' + d.call.waId : 'Contato');
       ECNotify.notify({ type: 'call', title: 'Chamada de voz', body: who + ' está te ligando…', waId: d.call && d.call.waId, url: '/app/#/inbox', tag: 'call:' + (d.call && d.call.id), requireInteraction: true });
@@ -8730,6 +8762,7 @@ function waitIce(pc, ms = 2500) {
 // ATENDER — WebRTC no navegador: mic local + SDP answer para a Meta
 async function answerCall() {
   const c = callUI; if (!c || c.phase !== 'incoming') return;
+  pararToque();
   try {
     c.statusMsg = 'Conectando…'; paintCall();
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -8807,8 +8840,14 @@ async function startCall(waId, name) {
   }
 }
 
+// O toque precisa parar por QUALQUER saída da chamada — atender, recusar,
+// desligar, o cliente desistir ou uma falha de conexão. Todas passam por aqui
+// ou por answerCall, então é nesses dois pontos que ele para.
+function pararToque() { if (window.ECNotify && ECNotify.stopRing) ECNotify.stopRing(); }
+
 function endCallUI(msg) {
   const c = callUI; if (!c) return;
+  pararToque();
   clearInterval(c.timerIv);
   try { c.stream && c.stream.getTracks().forEach(t => t.stop()); } catch {}
   try { c.pc && c.pc.close(); } catch {}
