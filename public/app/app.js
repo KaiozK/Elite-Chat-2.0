@@ -10362,6 +10362,7 @@ async function paintFlows() {
         <div class="muted" style="font-size:12px;margin-top:2px">Gatilho: ${trDetail}</div>
         <div class="flow-meta">${ico('flow', 12)} ${flowActionCount(f)} ação(ões) · ${f.runs || 0} execução(ões)</div>
         <div class="flow-actions">
+          <button class="btn small" onclick="verCtrFluxo('${f.id}')" title="Quantos clicaram em cada botão">${ico('activity', 13)} Desempenho</button>
           <button class="btn small" onclick="editFlow('${f.id}')">${ico('edit', 13)} Editar</button>
           <button class="btn small" onclick="testFlow('${f.id}')">${ico('play', 13)} Testar</button>
           <button class="btn small danger" onclick="delFlow('${f.id}')">${ico('trash', 13)}</button>
@@ -10395,6 +10396,40 @@ function migrateToGraph(f) {
   });
   f.graph = { nodes, edges };
   return f;
+}
+
+// Desempenho dos botões do fluxo. Para o botão de LINK é a única medida que
+// existe: a pessoa sai para o site e não volta com resposta que o fluxo leia.
+async function verCtrFluxo(id) {
+  let d;
+  try { d = await api('/flows/' + id + '/ctr'); }
+  catch (e) { return toast(e.message, 'error'); }
+  const nos = d.nos || [];
+  const barra = (pct) => `<div class="ctr-bar"><i style="width:${Math.min(100, pct)}%"></i></div>`;
+  openModal(`<h2>${ico('activity')} Desempenho dos botões</h2>
+    ${nos.length ? nos.map(n => `
+      <div class="card" style="margin-top:12px">
+        <div class="row" style="align-items:baseline">
+          <b style="flex:1">${esc(n.texto || 'Mensagem com opções')}</b>
+          <span class="muted" style="font-size:12px">${fmtN(n.enviados)} receberam</span>
+        </div>
+        <div class="row" style="align-items:baseline;margin-top:2px">
+          <span class="muted" style="flex:1;font-size:12.5px">${fmtN(n.cliques)} clicaram em alguma opção</span>
+          <b style="font-size:15px">${n.ctr}%</b>
+        </div>
+        ${barra(n.ctr)}
+        <table style="margin-top:12px"><thead><tr><th>Botão</th><th style="text-align:right">Cliques</th><th style="text-align:right">CTR</th></tr></thead><tbody>
+          ${n.opcoes.map(o => `<tr>
+            <td>${esc(o.titulo)}</td>
+            <td style="text-align:right">${fmtN(o.cliques)}</td>
+            <td style="text-align:right"><b>${o.ctr}%</b></td>
+          </tr>`).join('')}
+        </tbody></table>
+      </div>`).join('')
+      : `<p class="muted" style="margin:10px 0 0;font-size:13px">Este fluxo ainda não enviou nenhuma mensagem com botões.
+         Assim que enviar, aparece aqui quantas pessoas receberam e quantas clicaram em cada opção.</p>`}
+    <p class="hint" style="margin-top:14px">${ico('info', 11)} Contagem por pessoa: quem toca duas vezes no mesmo botão conta uma vez só.</p>
+    <div class="row" style="margin-top:14px"><button class="btn no-grow" onclick="closeModal()">Fechar</button></div>`);
 }
 
 async function editFlow(id) {

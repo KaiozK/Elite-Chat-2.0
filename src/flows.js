@@ -84,7 +84,7 @@ function evalCondition(node, ctx) {
 }
 
 // Executa um único nó de ação. Atualiza ctx.vars (ex.: resposta HTTP). Retorna {ok, detail}.
-async function execNode(acc, node, ctx, deliver) {
+async function execNode(acc, node, ctx, deliver, flow) {
   const to = ctx.to ? store.normalizeWaId(ctx.to) : '';
   const need = () => { if (!to) throw new Error('sem destinatário'); };
 
@@ -104,7 +104,12 @@ async function execNode(acc, node, ctx, deliver) {
       const interactive = { type: 'cta_url', body: { text: body }, action: { name: 'cta_url', parameters: { display_text: displayText, url } } };
       const r = await wa.sendInteractive(acc, to, interactive);
       if (deliver) deliver(acc, to, { type: 'interactive', text: `${body}\n[🔗 ${displayText}]` }, r);
-      return { ok: true, detail: 'cta_url' };
+      registrarImpressao(acc, flow, node, [{ id: 'cta', title: displayText }], to);
+      // TERMINAL. Um botao de link tira a pessoa do WhatsApp: ela abre o site e
+      // nao volta com uma resposta que o fluxo possa ler. Seguir para o proximo
+      // no mandaria mais mensagem para quem acabou de sair. O que interessa
+      // medir aqui e quantos clicaram, e disso cuida o CTR.
+      return { ok: true, detail: 'cta_url', terminal: true };
     }
 
     const titles = (node.buttons || [])
@@ -121,6 +126,7 @@ async function execNode(acc, node, ctx, deliver) {
       const buttons = titles.map((t, i) => ({ type: 'reply', reply: { id: (node.buttons[i] && node.buttons[i].id) || `btn_${i + 1}`, title: t.slice(0, 20) } }));
       const r = await wa.sendInteractive(acc, to, { type: 'button', body: { text: body }, action: { buttons } });
       if (deliver) deliver(acc, to, { type: 'interactive', text: `${body}\n${buttons.map(b => `[${b.reply.title}]`).join(' ')}` }, r);
+      registrarImpressao(acc, flow, node, buttons.map(b => ({ id: b.reply.id, title: b.reply.title })), to);
       return { ok: true, detail: `${buttons.length} botões` };
     }
 
@@ -135,6 +141,7 @@ async function execNode(acc, node, ctx, deliver) {
     };
     const r = await wa.sendInteractive(acc, to, interactive);
     if (deliver) deliver(acc, to, { type: 'interactive', text: `${body}\n${rows.map(x => '• ' + x.title).join('\n')}` }, r);
+    registrarImpressao(acc, flow, node, rows, to);
     return { ok: true, detail: `lista (${rows.length} itens)` };
   }
   if (node.type === 'buttons') {
@@ -148,7 +155,12 @@ async function execNode(acc, node, ctx, deliver) {
       const interactive = { type: 'cta_url', body: { text: body }, action: { name: 'cta_url', parameters: { display_text: displayText, url } } };
       const r = await wa.sendInteractive(acc, to, interactive);
       if (deliver) deliver(acc, to, { type: 'interactive', text: `${body}\n[🔗 ${displayText}]` }, r);
-      return { ok: true, detail: 'cta_url' };
+      registrarImpressao(acc, flow, node, [{ id: 'cta', title: displayText }], to);
+      // TERMINAL. Um botao de link tira a pessoa do WhatsApp: ela abre o site e
+      // nao volta com uma resposta que o fluxo possa ler. Seguir para o proximo
+      // no mandaria mais mensagem para quem acabou de sair. O que interessa
+      // medir aqui e quantos clicaram, e disso cuida o CTR.
+      return { ok: true, detail: 'cta_url', terminal: true };
     }
     const buttons = (node.buttons || []).slice(0, 3).map((b, i) => ({
       type: 'reply',
@@ -370,7 +382,13 @@ function esperaResposta(node, saidas) {
 const ESPERA_MS = 24 * 60 * 60 * 1000;
 
 function marcarEspera(acc, ctx, flow, nodeId) {
-  const c = ctx.to ? store.findContact(acc, store.normalizeWaId(ctx.to)) : null;
+  if (!ctx.to) return;
+  const waId = store.normalizeWaId(ctx.to);
+  // Sem contato não havia onde anotar a espera, e a função saía calada: o fluxo
+  // registrava "aguardando resposta" e o toque do cliente não retomava nada.
+  // Acontecia com fluxo disparado por clique em link ou por campanha para um
+  // número que ainda não estava na base. Aqui o contato é criado.
+  const c = store.findContact(acc, waId) || store.upsertContact(acc, waId, ctx.contactName || undefined);
   if (!c) return;
   c.flowWait = { flowId: flow.id, nodeId, at: Date.now(), vars: ctx.vars || {} };
   db.save();
@@ -378,6 +396,82 @@ function marcarEspera(acc, ctx, flow, nodeId) {
 
 function limparEspera(acc, contact) {
   if (contact && contact.flowWait) { delete contact.flowWait; db.save(); }
+}
+
+// ---------------------------------------------------------------------------
+// CTR DOS BOTÕES
+//
+// Um botão de resposta continua o fluxo, e dá para acompanhar pelo caminho que
+// a pessoa tomou. Um botão de LINK não: ela sai do WhatsApp e não volta com
+// resposta nenhuma. Sem contar, não há como saber se a mensagem funcionou.
+//
+// São dois números por botão: quantas pessoas RECEBERAM e quantas CLICARAM. A
+// divisão dos dois é o CTR. Ficam no próprio nó do fluxo, para a estatística
+// morrer junto com o nó quando ele for apagado.
+//
+// Contagem por PESSOA, não por evento: quem toca duas vezes no mesmo botão não
+// vira dois cliques, senão o CTR passa de 100% e deixa de significar algo.
+// ---------------------------------------------------------------------------
+function statsDoNo(flow, nodeId) {
+  const node = ((flow.graph || {}).nodes || []).find(n => n.id === nodeId);
+  if (!node) return null;
+  if (!node.stats || typeof node.stats !== 'object') node.stats = { enviados: 0, pessoas: [], opcoes: {} };
+  if (!Array.isArray(node.stats.pessoas)) node.stats.pessoas = [];
+  if (!node.stats.opcoes || typeof node.stats.opcoes !== 'object') node.stats.opcoes = {};
+  return node.stats;
+}
+
+// A mensagem com opções saiu: conta uma exibição por pessoa.
+function registrarImpressao(acc, flow, node, opcoes, waId) {
+  if (!flow || !node) return;
+  const s = statsDoNo(flow, node.id);
+  if (!s) return;
+  for (const o of (opcoes || [])) {
+    if (!s.opcoes[o.id]) s.opcoes[o.id] = { titulo: o.title || o.id, cliques: 0, quem: [] };
+    else s.opcoes[o.id].titulo = o.title || s.opcoes[o.id].titulo;
+  }
+  const id = waId ? store.normalizeWaId(waId) : '';
+  if (id && !s.pessoas.includes(id)) {
+    s.pessoas.push(id);
+    if (s.pessoas.length > 5000) s.pessoas.shift();   // teto: a lista não pode crescer sem fim
+  }
+  s.enviados = s.pessoas.length || (s.enviados + 1);
+  db.save();
+}
+
+// A pessoa tocou: conta um clique naquela opção, uma vez por pessoa.
+function registrarClique(acc, flow, nodeId, optId, waId) {
+  const s = statsDoNo(flow, nodeId);
+  if (!s || !optId) return;
+  if (!s.opcoes[optId]) s.opcoes[optId] = { titulo: optId, cliques: 0, quem: [] };
+  const alvo = s.opcoes[optId];
+  if (!Array.isArray(alvo.quem)) alvo.quem = [];
+  const id = waId ? store.normalizeWaId(waId) : '';
+  if (id && alvo.quem.includes(id)) return;           // já contou esta pessoa
+  if (id) { alvo.quem.push(id); if (alvo.quem.length > 5000) alvo.quem.shift(); }
+  alvo.cliques++;
+  db.save();
+}
+
+// Relatório pronto para a tela: por nó, quantos receberam, e por botão os
+// cliques e o CTR.
+function relatorioCtr(flow) {
+  const nodes = ((flow.graph || {}).nodes || []).filter(n => n.stats && n.stats.enviados);
+  return nodes.map(n => {
+    const s = n.stats;
+    const opcoes = Object.entries(s.opcoes || {}).map(([id, o]) => ({
+      id, titulo: o.titulo || id, cliques: o.cliques || 0,
+      ctr: s.enviados ? +((o.cliques || 0) / s.enviados * 100).toFixed(1) : 0
+    })).sort((a, b) => b.cliques - a.cliques);
+    const total = opcoes.reduce((x, o) => x + o.cliques, 0);
+    return {
+      nodeId: n.id, tipo: n.type,
+      texto: String(n.text || n.body || '').slice(0, 60),
+      enviados: s.enviados, cliques: total,
+      ctr: s.enviados ? +(total / s.enviados * 100).toFixed(1) : 0,
+      opcoes
+    };
+  });
 }
 
 // Percorre o grafo a partir de um ponto, seguindo as conexões.
@@ -436,11 +530,18 @@ async function runGraph(acc, flow, ctx, deliver, log, inicio) {
       curId = nxt.id; continue;
     }
 
+    let resultado = null;
     try {
-      const r = await execNode(acc, nxt, ctx, deliver);
-      log.push({ node: nxt.type, ok: r.ok !== false, detail: r.detail || null });
+      resultado = await execNode(acc, nxt, ctx, deliver, flow);
+      log.push({ node: nxt.type, ok: resultado.ok !== false, detail: resultado.detail || null });
     } catch (e) {
       log.push({ node: nxt.type, ok: false, detail: e.message });
+    }
+
+    // Nó terminal (botão de link): o caminho acaba aqui, por decisão do nó.
+    if (resultado && resultado.terminal) {
+      log.push({ node: 'end', ok: true, detail: 'link enviado, o caminho termina aqui' });
+      break;
     }
 
     // A pergunta foi enviada: para aqui e espera o toque do cliente.
@@ -497,11 +598,17 @@ async function onInbound(acc, contact, text, kind, deliver, replyId) {
 
       limparEspera(acc, contact);
       if (alvo) {
+        // O clique é contado ANTES de seguir: se o ramo falhar no meio, o
+        // clique aconteceu do mesmo jeito e precisa entrar no CTR.
+        registrarClique(acc, fluxo, espera.nodeId, alvo.id, contact.waId);
         await runFlow(acc, fluxo, {
           to: contact.waId, contactName: contact.name, text, vars: espera.vars || {}
         }, deliver, { nodeId: espera.nodeId, optId: alvo.id });
         return fluxo;
       }
+      // Tocou numa opção que não tem caminho montado: o clique continua sendo
+      // um clique, e some do CTR se não for contado aqui.
+      registrarClique(acc, fluxo, espera.nodeId, (opcoes.find(o => normText(o.title) === normText(text)) || {}).id, contact.waId);
       // Tocou em algo que não é opção deste passo: segue o caminho normal.
     } else {
       limparEspera(acc, contact);   // fluxo apagado, desativado ou expirado
@@ -567,4 +674,4 @@ function validateGraph(flow) {
   return null;
 }
 
-module.exports = { runFlow, onInbound, findFlowByHook, triggerMatches, interpolate, validateGraph };
+module.exports = { runFlow, onInbound, findFlowByHook, triggerMatches, interpolate, validateGraph, relatorioCtr, registrarClique, registrarImpressao };

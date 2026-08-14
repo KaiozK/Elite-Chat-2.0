@@ -2738,6 +2738,15 @@ module.exports = function (broadcast, clients) {
     res.json({ flows: req.acc.flows.map(f => flowPublic(f, origin)) });
   });
 
+  // Desempenho dos botões de um fluxo: quantos receberam, quantos clicaram e o
+  // CTR de cada opção. É a única medida possível do botão de LINK, que tira a
+  // pessoa do WhatsApp e não devolve resposta nenhuma.
+  router.get('/flows/:id/ctr', auth, can('flows', 'view'), (req, res) => {
+    const f = (req.acc.flows || []).find(x => x.id === req.params.id);
+    if (!f) return res.status(404).json({ error: 'Automação não encontrada' });
+    res.json({ nos: flows.relatorioCtr(f) });
+  });
+
   router.post('/flows', auth, feat('flows'), can('flows','create'), (req, res) => {
     const lim = limits.check(req.acc, "flows");
     if (lim) return res.status(402).json({ error: lim, code: "limit", resource: "flows" });
