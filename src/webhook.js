@@ -140,7 +140,28 @@ function processEvent(body, broadcast) {
       if (change.field !== 'messages') continue;
 
       if (!acc) {
-        store.logEvent({ type: 'unrouted', phoneNumberId, field: change.field });
+        // "unrouted" sozinho não diz nada: a mensagem chegou, mas nenhuma conta
+        // reconhece o número. O que resolve é ver LADO A LADO o que a Meta
+        // mandou e o que está cadastrado aqui — quase sempre o número foi
+        // conectado noutra conta, ou o cadastro se perdeu e ninguém percebeu.
+        const registrados = [];
+        for (const a of db.get().accounts) {
+          for (const ch of (a.channels || [])) {
+            const w = ch.wa || {};
+            if (w.phoneNumberId) {
+              registrados.push({ conta: a.name, canal: ch.label, phoneNumberId: w.phoneNumberId });
+            }
+          }
+        }
+        store.logEvent({
+          type: 'unrouted', phoneNumberId, field: change.field,
+          explicacao: registrados.length
+            ? 'A Meta entregou uma mensagem do número ' + phoneNumberId + ', mas nenhuma conexão ' +
+              'cadastrada usa esse Phone Number ID. Confira em Configurações → Conexão & API.'
+            : 'A Meta entregou uma mensagem do número ' + phoneNumberId + ', mas NÃO HÁ nenhum ' +
+              'WhatsApp conectado neste servidor. Conecte o número em Configurações.',
+          cadastrados: registrados
+        });
         continue;
       }
 
