@@ -628,6 +628,15 @@ function fmtTime(ts) {
   return d >= today ? hm : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + hm;
 }
 
+// Dentro do balão vai SÓ a hora. `fmtTime` acrescenta a data em mensagens de
+// outros dias, o que na lista de conversas é necessário — mas na conversa a
+// data já está no separador de dia logo acima, e "12/07 12:40" custava 63px
+// de largura em todo balão, inclusive num "Oi" de 24px.
+function fmtHora(ts) {
+  if (!ts) return '';
+  return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
 function timeAgo(ts) {
   if (!ts) return '';
   const s = Math.floor((Date.now() - ts) / 1000);
@@ -2723,7 +2732,7 @@ function renderMsg(m, tail = true) {
   // do próprio template virava espaço em branco DENTRO da mensagem — a
   // primeira linha saía deslocada e sobrava uma linha vazia no fim.
   return `<div class="msg ${m.direction} ${tail ? 'tail' : ''}">${content}` +
-    `<div class="meta"><time>${fmtTime(m.timestamp)}</time>${statusIcon(m)}</div></div>`;
+    `<div class="meta" title="${esc(fmtTime(m.timestamp))}"><time>${fmtHora(m.timestamp)}</time>${statusIcon(m)}</div></div>`;
 }
 
 function statusIcon(m) {
