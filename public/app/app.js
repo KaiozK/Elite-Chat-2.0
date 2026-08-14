@@ -3775,17 +3775,123 @@ async function renderLogs() {
     </div>`;
   try {
     const { events } = await api('/webhook-log');
-    const icon = { webhook: ico('download-circle', 15), verify_attempt: ico('shield', 15), signature_invalid: ico('slash', 15), process_error: ico('alert', 15) };
-    $('#log-list').innerHTML = events.length ? events.map(e => `
-      <details class="log">
-        <summary>${icon[e.type] || '•'} <b>${esc(e.type)}</b>
-          ${e.type === 'verify_attempt' ? (e.ok ? '<span class="ok-dot">verificado ✓</span>' : '<span class="bad-dot">token incorreto ✗</span>') : ''}
-          <span class="muted" style="margin-left:auto">${new Date(e.ts).toLocaleString('pt-BR')}</span>
-        </summary>
-        <pre class="out">${esc(JSON.stringify(e.body || e, null, 2))}</pre>
-      </details>`).join('')
+    $('#log-list').innerHTML = events.length ? events.map(logLinha).join('')
       : '<div class="card"><p class="muted">Nenhum evento ainda. Configure a Callback URL no painel da Meta e clique em "Verificar e salvar", a tentativa aparecerá aqui.</p></div>';
   } catch (e) { $('#log-list').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+}
+
+// ---------------------------------------------------------------------------
+// O QUE CADA EVENTO É, EM PORTUGUÊS
+//
+// A tela mostrava o nome interno do evento — "webhook" repetido vinte vezes —,
+// e para saber o que tinha acontecido era preciso abrir o JSON e lê-lo. O nome
+// interno não some: ele vira o detalhe técnico, atrás de "Visualização
+// avançada". O que fica à vista é a frase.
+// ---------------------------------------------------------------------------
+const LOG_TEXTOS = {
+  verify_attempt:      ['Verificação do webhook', 'A Meta conferiu a URL e o Verify Token deste servidor.'],
+  signature_invalid:   ['Assinatura recusada', 'Chegou uma chamada em /webhook cuja assinatura não bate com o App Secret. Foi descartada.'],
+  process_error:       ['Erro ao processar', 'O evento chegou, mas algo falhou ao tratá-lo.'],
+  unrouted:            ['Mensagem sem dono', 'A Meta entregou uma mensagem de um número que nenhuma conexão deste servidor reconhece.'],
+  embedded_signup:     ['Conexão do WhatsApp', 'Resultado do cadastro incorporado da Meta.'],
+  opt_in:              ['Contato aceitou receber', 'O contato entrou (ou voltou) para a lista de envios.'],
+  opt_out:             ['Contato pediu para sair', 'Nenhum envio é permitido para ele até ser reativado.'],
+  opt_out_msg_error:   ['Falha ao avisar do opt-out', 'A confirmação de saída não pôde ser enviada.'],
+  flow_run:            ['Automação executada', 'Um fluxo do Flow Builder rodou.'],
+  flow_error:          ['Erro em automação', 'Um fluxo falhou no meio.'],
+  ia_error:            ['Erro do Agente de IA', 'A resposta automática não pôde ser gerada.'],
+  survey_sent:         ['Pesquisa enviada', 'A pesquisa de satisfação foi para o cliente.'],
+  survey_answered:     ['Pesquisa respondida', 'O cliente deu a nota.'],
+  survey_skipped:      ['Pesquisa não enviada', 'A pesquisa foi pulada nesta finalização.'],
+  survey_error:        ['Erro na pesquisa', 'A pesquisa de satisfação falhou.'],
+  attendance_finished: ['Atendimento finalizado', 'A conversa foi encerrada.'],
+  attendance_reopened: ['Atendimento reaberto', 'O cliente voltou a falar e a conversa reabriu.'],
+  call_connect:        ['Chamada de voz', 'Evento da API de ligações.'],
+  woovi_webhook:       ['Aviso do gateway', 'O gateway de pagamento notificou um evento.'],
+  woovi_paid:          ['Pagamento confirmado', 'Uma cobrança foi paga e conferida na API do gateway.'],
+  woovi_webhook_error: ['Erro no aviso do gateway', 'A notificação do gateway não pôde ser tratada.'],
+  woovi_unmatched:     ['Pagamento sem dono', 'Um pagamento chegou sem cobrança correspondente aqui.'],
+  sms_bulk:            ['Disparo de SMS', 'Um envio em massa de SMS foi processado.'],
+  subscribe_waba_falhou: ['Falha ao assinar a WABA', 'Sem essa assinatura a Meta não entrega mensagens deste número.'],
+  business_id_falhou:  ['Business ID não obtido', 'A conexão foi salva, mas o identificador do negócio não pôde ser lido.'],
+  register_pagamentos_falhou: ['Conta de Pagamentos não criada', 'O cadastro foi concluído, mas a conta de recebimento não abriu.']
+};
+
+// O `webhook` é o mais comum e o mais vago: o que importa é o que veio DENTRO.
+function descreverWebhook(e) {
+  const v = ((((e.body || {}).entry || [])[0] || {}).changes || [])[0];
+  const val = (v && v.value) || {};
+  const campo = e.field || (v && v.field) || '';
+  if (Array.isArray(val.messages) && val.messages.length) {
+    const m = val.messages[0];
+    const quem = ((val.contacts || [])[0] || {}).profile;
+    const nome = (quem && quem.name) || m.from || 'contato';
+    const tipos = { text: 'mensagem', image: 'imagem', audio: 'áudio', video: 'vídeo',
+      document: 'documento', sticker: 'figurinha', location: 'localização',
+      contacts: 'contato', interactive: 'resposta de botão', button: 'resposta de botão',
+      reaction: 'reação', order: 'pedido' };
+    const oque = tipos[m.type] || (m.type || 'mensagem');
+    const texto = (m.text && m.text.body) || '';
+    return ['Mensagem recebida',
+      `${nome} enviou ${oque}${texto ? ': “' + texto.slice(0, 60) + (texto.length > 60 ? '…' : '') + '”' : '.'}`];
+  }
+  if (Array.isArray(val.statuses) && val.statuses.length) {
+    const st = val.statuses[0];
+    const nomes = { sent: 'enviada', delivered: 'entregue', read: 'lida', failed: 'falhou' };
+    return ['Status de mensagem', `Uma mensagem que você enviou está ${nomes[st.status] || st.status}.`];
+  }
+  const porCampo = {
+    message_template_status_update: ['Modelo revisado pela Meta', 'A situação de um modelo de mensagem mudou (aprovado, rejeitado ou pausado).'],
+    message_template_quality_update: ['Qualidade do modelo', 'A Meta reavaliou a qualidade de um modelo.'],
+    phone_number_quality_update: ['Qualidade do número', 'A Meta reavaliou a qualidade do seu número.'],
+    phone_number_name_update: ['Nome do número', 'O nome verificado do número mudou.'],
+    account_update: ['Conta da Meta', 'Houve uma mudança na sua conta do WhatsApp Business.'],
+    account_alerts: ['Aviso da Meta', 'A Meta emitiu um alerta sobre a conta.'],
+    calls: ['Chamada de voz', 'Evento da API de ligações.'],
+    business_capability_update: ['Limites da conta', 'Os limites de envio da conta mudaram.']
+  };
+  if (porCampo[campo]) return porCampo[campo];
+  return ['Evento da Meta', campo ? `Campo “${campo}”. Abra a visualização avançada para ver o conteúdo.`
+    : 'Abra a visualização avançada para ver o conteúdo.'];
+}
+
+function logLinha(e) {
+  const icones = {
+    webhook: 'download-circle', verify_attempt: 'shield', signature_invalid: 'slash',
+    process_error: 'alert', unrouted: 'alert', opt_in: 'check', opt_out: 'slash',
+    woovi_paid: 'pix', flow_run: 'flow', ia_error: 'alert', call_connect: 'phone'
+  };
+  const ruins = ['signature_invalid', 'process_error', 'unrouted', 'flow_error', 'ia_error',
+    'woovi_webhook_error', 'woovi_unmatched', 'survey_error', 'subscribe_waba_falhou',
+    'business_id_falhou', 'register_pagamentos_falhou', 'opt_out_msg_error'];
+
+  let [titulo, detalhe] = e.type === 'webhook' ? descreverWebhook(e)
+    : (LOG_TEXTOS[e.type] || ['Evento do sistema', 'Registro interno: ' + e.type + '.']);
+
+  // Alguns eventos carregam a própria explicação, mais precisa que a genérica.
+  if (e.explicacao) detalhe = e.explicacao;
+  if (e.type === 'verify_attempt') detalhe = e.ok
+    ? 'A Meta conferiu a URL e o Verify Token, e aceitou. O webhook está válido.'
+    : 'A Meta tentou verificar, mas o Verify Token não confere com o deste servidor.';
+  if (e.error) detalhe += ' Erro: ' + e.error;
+
+  const ruim = ruins.includes(e.type) || (e.type === 'verify_attempt' && e.ok === false);
+  return `<div class="log-item ${ruim ? 'ruim' : ''}">
+    <div class="log-top">
+      <span class="log-ic">${ico(icones[e.type] || 'info', 15)}</span>
+      <b>${esc(titulo)}</b>
+      <span class="muted log-quando">${fmtDataHora(e.ts)}</span>
+    </div>
+    <p class="log-desc">${esc(detalhe)}</p>
+    <details class="log-cru">
+      <summary>Visualização avançada</summary>
+      <pre class="out">${esc(JSON.stringify(e.body || e, null, 2))}</pre>
+    </details>
+  </div>`;
+}
+
+function fmtDataHora(ts) {
+  try { return new Date(ts).toLocaleString('pt-BR'); } catch { return ''; }
 }
 
 // ---------- configurações ----------

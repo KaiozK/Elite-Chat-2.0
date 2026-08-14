@@ -658,6 +658,36 @@ tbody tr:last-child td { border-bottom: none; }
 @keyframes toastIn { from { transform: translateY(16px) scale(.95); opacity: 0; } }
 
 /* ---------- logs ---------- */
+/* ---- Webhook & Logs ----
+   O evento fala primeiro em português; o JSON continua disponível, mas atrás
+   de um link discreto, porque é o detalhe de quem foi investigar. */
+.log-item {
+  border: 1px solid var(--border); border-radius: 16px; margin-bottom: 8px;
+  background: var(--card); box-shadow: var(--shadow-xs); padding: 13px 16px;
+}
+.log-item.ruim { border-color: var(--red-border); background: var(--red-bg); }
+.log-top { display: flex; align-items: center; gap: 10px; }
+.log-top b { font-size: 13.5px; font-weight: 800; letter-spacing: -.01em; }
+.log-ic { display: inline-flex; color: var(--muted); flex: none; }
+.log-item.ruim .log-ic { color: var(--red); }
+.log-quando { margin-left: auto; font-size: 11.5px; white-space: nowrap; }
+.log-desc { margin: 5px 0 0 25px; font-size: 12.5px; color: var(--text2); line-height: 1.5; }
+.log-cru { margin: 8px 0 0 25px; }
+.log-cru summary {
+  cursor: pointer; font-size: 11.5px; font-weight: 700; color: var(--muted);
+  list-style: none; display: inline-flex; align-items: center; gap: 5px;
+}
+.log-cru summary::-webkit-details-marker { display: none; }
+.log-cru summary::before { content: '▸'; font-size: 10px; }
+.log-cru[open] summary::before { content: '▾'; }
+.log-cru summary:hover { color: var(--verde-deep); }
+.log-cru .out { margin-top: 8px; }
+@media (max-width: 620px) {
+  .log-top { flex-wrap: wrap; }
+  .log-quando { margin-left: 25px; width: 100%; }
+  .log-desc, .log-cru { margin-left: 0; }
+}
+
 details.log { border: 1px solid var(--border); border-radius: 16px; margin-bottom: 8px; background: var(--card); box-shadow: var(--shadow-xs); }
 details.log:hover { border-color: var(--border2); }
 details.log[open] { border-color: var(--brand-border); }
