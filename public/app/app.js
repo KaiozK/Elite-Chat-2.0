@@ -11241,22 +11241,42 @@ function fbBtnRows(n, max) {
   }).join('');
 }
 
+// Cada botão tem a SUA porta de saída no nó do canvas, e é dela que se puxa o
+// caminho daquela resposta. A porta é desenhada por `renderNodes`, então mexer
+// nos botões sem repintar o nó deixava o inspetor cheio de botões e o canvas
+// sem nenhuma saída para ligar — que era o motivo de não dar para ramificar.
+function fbRepintarPortas(id) { renderNodes(); renderEdges(); refreshPreview(id); scheduleSave(); }
+
+// O id do botão É o caminho dele. `Date.now()` sozinho não serve: dois botões
+// criados no mesmo milissegundo saíam com o MESMO id, os dois ramos viravam
+// "opt:<mesmo id>" e as duas respostas caíam no mesmo lugar — o cliente
+// escolhia uma coisa e recebia outra. O contador garante que não se repita.
+let fbBtnSeq = 0;
+function fbNovoIdBotao() { return 'b' + Date.now().toString(36) + (++fbBtnSeq).toString(36); }
+
 function fbAddBtn(id) {
   const n = nodeById(id); if (!n) return;
   n.buttons = n.buttons || [];
   if (n.buttons.length >= FB_BTN_MAX) return;
   const before = fbTextFormat(n);
-  n.buttons.push({ id: 'b' + Date.now().toString(36), title: '' });
+  n.buttons.push({ id: fbNovoIdBotao(), title: '' });
   // cruzar 3 opções troca o formato (botões → lista): repinta o inspetor inteiro
   if (fbTextFormat(n) !== before) renderInspector(); else $('#fb-btns').innerHTML = fbBtnRows(n, fbTextFormat(n) === 'list' ? 24 : 20);
-  refreshPreview(id); scheduleSave();
+  fbRepintarPortas(id);
 }
 function fbDelBtn(id, i) {
   const n = nodeById(id); if (!n) return;
   const before = fbTextFormat(n);
+  // O caminho que saía deste botão morre com ele. Sem isto ficava uma linha
+  // apontando para um botão que não existe mais, e o fluxo travava ali.
+  const morto = n.buttons[i];
+  if (morto) {
+    const ramo = fbOptBranch(morto.id || `btn_${i + 1}`);
+    flowDraft.graph.edges = flowDraft.graph.edges.filter(e => !(e.from === id && e.branch === ramo));
+  }
   n.buttons.splice(i, 1);
   if (fbTextFormat(n) !== before) renderInspector(); else $('#fb-btns').innerHTML = fbBtnRows(n, fbTextFormat(n) === 'list' ? 24 : 20);
-  refreshPreview(id); scheduleSave();
+  fbRepintarPortas(id);
 }
 function fbBtnTitle(id, i, v) {
   const n = nodeById(id); if (!n) return;
@@ -11264,7 +11284,9 @@ function fbBtnTitle(id, i, v) {
   const max = fbTextFormat(n) === 'list' ? 24 : 20;
   const c = $$('.fb-btn-row')[i]?.querySelector('.sv-count');
   if (c) { c.textContent = `${v.length}/${max}`; c.classList.toggle('over', v.length > max); }
-  refreshPreview(id); scheduleSave();
+  // A porta só existe quando o botão tem título — é digitando que ela nasce.
+  // Repintar só o canvas: o inspetor fica de pé e o campo não perde o foco.
+  fbRepintarPortas(id);
 }
 
 function nodeInspector(n) {
@@ -11408,7 +11430,10 @@ function removeNode(id) {
   if (fbSel === id) fbSel = null;
   renderNodes(); renderEdges(); renderInspector(); scheduleSave();
 }
-function addButton(id) { const n = nodeById(id); if (n.buttons.length < 3) n.buttons.push({ title: '' }); renderInspector(); renderNodes(); renderEdges(); refreshPreview(id); scheduleSave(); }
+// O id é o que amarra o caminho ao botão. Sem ele o ramo virava "btn_2" pela
+// POSIÇÃO, e apagar o primeiro botão fazia o segundo herdar o caminho do que
+// foi apagado.
+function addButton(id) { const n = nodeById(id); if (n.buttons.length < 3) n.buttons.push({ id: fbNovoIdBotao(), title: '' }); renderInspector(); renderNodes(); renderEdges(); refreshPreview(id); scheduleSave(); }
 function rmButton(id, i) {
   const n = nodeById(id);
   // A saída daquele botão perde o dono: sem limpar, sobraria uma aresta
