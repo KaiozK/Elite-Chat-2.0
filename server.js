@@ -50,7 +50,13 @@ const NATIVE_ORIGINS = new Set([
 ]);
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin && NATIVE_ORIGINS.has(origin)) {
+  // Com a API num host próprio (api.koonfy.com), o painel em app.koonfy.com
+  // passa a fazer chamada CROSS-ORIGIN: mesmo servidor, origens diferentes
+  // para o navegador. Sem liberar, o painel para de funcionar. A lista é
+  // fechada nos endereços do próprio produto — vitrine, painel e checkout.
+  const doProduto = require('./src/hosts').ehHostDaApi(req) && origin &&
+    require('./src/hosts').origensDoProduto(req).has(origin.replace(/\/+$/, ''));
+  if (origin && (NATIVE_ORIGINS.has(origin) || doProduto)) {
     res.set('Access-Control-Allow-Origin', origin);
     res.set('Vary', 'Origin');
     res.set('Access-Control-Allow-Credentials', 'true');
@@ -407,6 +413,18 @@ app.get('/pay/:id', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'pay.html'));
 });
 
+// No domínio de checkout a cobrança fica na raiz: pay.koonfy.com/<id>, sem o
+// /pay/ repetindo o que o próprio endereço já diz. O caminho antigo continua
+// valendo em todos os hosts, porque as cobranças já emitidas gravaram o link
+// com ele e precisam continuar abrindo.
+app.get('/:id', (req, res, next) => {
+  if (!hosts.ehHostDoPay(req)) return next();
+  // Só o que tem cara de id de cobrança; o resto (favicon, assets) segue o
+  // fluxo normal e é servido pelo express.static.
+  if (!/^epc_[a-z0-9]+$/i.test(req.params.id)) return next();
+  res.sendFile(path.join(__dirname, 'public', 'pay.html'));
+});
+
 // Webhook de pagamentos Woovi (Pix / Pix Automático) — configurar em app.woovi.com → Webhooks
 app.post('/woovi-webhook', require('./src/woovi').webhookHandler(broadcast));
 
@@ -499,8 +517,17 @@ function serveLanding(req, res) {
 // qual endereço pode ser escrito num link enviado ao cliente.
 const hosts = require('./src/hosts');
 app.get(['/', '/index.html'], (req, res, next) => {
-  if (!hosts.ehHostDoPainel(req)) return next();
-  res.redirect(302, '/app/');
+  if (hosts.ehHostDoPainel(req)) return res.redirect(302, '/app/');
+  // Raiz do domínio de checkout: não há cobrança nenhuma para mostrar, então
+  // manda para a vitrine em vez de devolver a landing num endereço que o
+  // cliente associa a pagamento.
+  if (hosts.ehHostDoPay(req)) {
+    const pub = hosts.PUBLIC_URL || '';
+    return pub ? res.redirect(302, pub) : res.status(404).send('Cobrança não encontrada');
+  }
+  // O host da API não serve página: quem chega aqui pelo navegador se enganou.
+  if (hosts.ehHostDaApi(req)) return res.status(404).json({ error: 'Este endereço serve apenas a API' });
+  next();
 });
 
 app.get('/', serveLanding);

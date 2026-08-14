@@ -1,35 +1,55 @@
 # Deploy do Koonfy
 
-## Painel em subdomínio (app.seudominio.com)
+## Subdomínios por papel
 
-O mesmo servidor atende os dois endereços; o que muda é o que a **raiz** de cada
-um entrega:
+Um servidor só atende os quatro endereços. O que muda é o papel de cada um:
 
 | endereço | entrega |
 |---|---|
 | `koonfy.com` | a landing |
 | `app.koonfy.com` | redireciona para `/app/`, o painel |
+| `api.koonfy.com` | só a API (`/` responde 404) |
+| `pay.koonfy.com` | checkout: `pay.koonfy.com/<id-da-cobrança>` |
 
-Não é separar backend de frontend: cada host serve a própria página **e** as
-chamadas de API dela, então não entra CORS nem muda a autenticação.
+Isto **não separa** backend de frontend — é organização de endereço. A vantagem
+real é mandar o cliente para `pay.` sem expor o domínio do painel, e ter um
+`api.` estável caso um dia o front saia daqui.
 
-**Para ligar:** adicione o subdomínio no painel do host (na DigitalOcean:
-*Apps → Settings → Domains → Add Domain*) apontando para o mesmo app. O código
-já reconhece qualquer host que comece com `app.`.
+### Na DigitalOcean
 
-**Variáveis opcionais:**
+*Apps → Settings → Domains → Add Domain*, um por vez: `app.`, `api.` e `pay.`,
+todos apontando para o **mesmo app**. Se o DNS estiver no Cloudflare, crie um
+CNAME de cada subdomínio para o mesmo destino do domínio raiz.
 
-- `PANEL_HOST` — fixa qual host é o do painel, se `app.` não servir
-  (ex.: `PANEL_HOST=painel.koonfy.com`).
-- `PUBLIC_URL` — o endereço público, usado para escrever links que vão para
-  fora (cobrança, rastreio, webhook). Sem ela, o sistema aprende com as
-  requisições e **ignora o host do painel**, para não mandar cliente para o
-  subdomínio administrativo. Defina se quiser controle explícito:
-  `PUBLIC_URL=https://koonfy.com`.
+### Variáveis
 
-O redirecionamento existe em vez de servir o painel direto na raiz porque o
-Service Worker do PWA tem escopo `/app/`: fora dele, o app instalado perderia
-o funcionamento offline.
+Nenhuma é obrigatória: sem configurar nada, o código reconhece os prefixos
+`app.`, `api.` e `pay.`. Use quando quiser controle explícito:
+
+| variável | para quê |
+|---|---|
+| `PUBLIC_URL` | o endereço público (`https://koonfy.com`). Usado para escrever links que vão para fora. **Recomendada.** |
+| `PAY_URL` ou `PAY_HOST` | liga o domínio de checkout. Com ele, as cobranças passam a sair como `pay.koonfy.com/<id>`. |
+| `PANEL_HOST` | fixa o host do painel, se `app.` não servir. |
+| `API_HOST` | fixa o host da API. |
+
+### Detalhes que valem saber
+
+**O link de pagamento nunca sai por um host interno.** O sistema aprende o
+endereço público com as requisições, mas ignora as que chegam por `app.` e
+`api.` — senão bastava abrir o painel para toda cobrança passar a apontar para
+o subdomínio administrativo. Com `PUBLIC_URL` definida, não depende de
+heurística.
+
+**O caminho `/pay/<id>` continua valendo em todos os hosts.** As cobranças já
+emitidas gravaram o link nesse formato e precisam continuar abrindo.
+
+**O painel redireciona em vez de ser servido na raiz** porque o Service Worker
+do PWA tem escopo `/app/`: fora dele, o app instalado perderia o offline.
+
+**CORS.** Com a API em host próprio, o painel passa a fazer chamada
+cross-origin. A liberação é automática e fechada nos endereços do próprio
+produto (vitrine, painel e checkout); qualquer outra origem é recusada.
 
 
 ## Se o app "esquece" tudo a cada restart

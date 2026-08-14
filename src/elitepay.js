@@ -122,8 +122,12 @@ function baseUrl() { return _baseUrl || db.get().platform.baseUrl || ''; }
 // Link de pagamento da cobrança: o checkout hospedado no Koonfy.
 // Fallback: o link do gateway (cobranças antigas / base URL desconhecida).
 function payLink(ch) {
-  const b = baseUrl();
-  return b ? `${b}/pay/${ch.id}` : (ch.paymentLinkUrl || '');
+  // Com um domínio de checkout configurado, a cobrança sai por ele, em forma
+  // curta: pay.koonfy.com/<id>. Sem isso, continua <publico>/pay/<id>, que é
+  // o formato que as cobranças já emitidas gravaram.
+  const { base, curto } = require('./hosts').basePagamento(baseUrl());
+  if (!base) return ch.paymentLinkUrl || '';
+  return curto ? `${base}/${ch.id}` : `${base}/pay/${ch.id}`;
 }
 
 // ---------------------------------------------------------------------------
