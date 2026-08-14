@@ -6758,7 +6758,11 @@ async function renderAdmin() {
       <button data-tab="adm-acc" onclick="showSettingsTab('adm-acc')">Contas</button>
       <button data-tab="adm-pl" onclick="showSettingsTab('adm-pl')">Planos</button>
       <button data-tab="adm-aff" onclick="showSettingsTab('adm-aff')">Afiliados</button>
-      <button data-tab="adm-pay" onclick="showSettingsTab('adm-pay')">Pagamentos</button>
+      <!-- "Gateways" e não "Pagamentos": esta aba é a dos provedores (Woovi,
+           cartão) e das regras de cobrança. A do MÓDULO, com as subcontas e as
+           cobranças dos clientes, é a adm-ep, e as duas ficaram com o mesmo
+           nome quando o Elite Pay virou Pagamentos. -->
+      <button data-tab="adm-pay" onclick="showSettingsTab('adm-pay')">Gateways</button>
       <button data-tab="adm-wd" onclick="showSettingsTab('adm-wd')">Saques</button>
       <button data-tab="adm-ep" onclick="showSettingsTab('adm-ep');admEpPaint()">Pagamentos</button>
       <button data-tab="adm-int" onclick="showSettingsTab('adm-int');admIntLoad()">Integrações</button>
