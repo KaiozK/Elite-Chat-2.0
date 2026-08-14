@@ -2731,8 +2731,14 @@ function renderMsg(m, tail = true) {
   // para respeitar as quebras que o cliente digitou, e com isso a indentação
   // do próprio template virava espaço em branco DENTRO da mensagem — a
   // primeira linha saía deslocada e sobrava uma linha vazia no fim.
-  return `<div class="msg ${m.direction} ${tail ? 'tail' : ''}">${content}` +
-    `<div class="meta" title="${esc(fmtTime(m.timestamp))}"><time>${fmtHora(m.timestamp)}</time>${statusIcon(m)}</div></div>`;
+  // Mensagem antiga sem hora existe no histórico. Melhor não pintar a caixinha
+  // vazia: ela reservava a mesma altura do horário e o balão ficava com um
+  // vão em branco embaixo do texto, sem nada dentro.
+  const hora = fmtHora(m.timestamp), st = statusIcon(m);
+  const meta = (hora || st)
+    ? `<div class="meta" title="${esc(fmtTime(m.timestamp))}"><time>${hora}</time>${st}</div>`
+    : '';
+  return `<div class="msg ${m.direction} ${tail ? 'tail' : ''}">${content}${meta}</div>`;
 }
 
 function statusIcon(m) {

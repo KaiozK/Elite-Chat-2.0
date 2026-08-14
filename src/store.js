@@ -84,6 +84,11 @@ function upsertContact(acc, waId, name, extra, chId) {
 function addMessage(acc, msg) {
   if (msg.id && acc.messages.some(m => m.id === msg.id)) return null; // dedupe (retries do webhook)
   if (!msg.chId) msg.chId = defChId(acc);   // toda mensagem carimba o canal
+  // Toda mensagem carimba a hora, aconteça o que acontecer. Vários chamadores
+  // montam o objeto espalhando conteúdo por cima (`...content`), e um
+  // `timestamp: undefined` nesse conteúdo apagava a hora que já estava lá — no
+  // chat o balão saía sem horário nenhum.
+  if (!Number.isFinite(msg.timestamp) || msg.timestamp <= 0) msg.timestamp = Date.now();
   acc.messages.push(msg);
   if (acc.messages.length > 20000) acc.messages.splice(0, acc.messages.length - 20000);
   db.save();

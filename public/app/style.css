@@ -554,7 +554,7 @@ tbody tr:last-child td { border-bottom: none; }
    incomodava. O respiro interno também foi apertado: 9px de altura por linha
    somavam muito numa conversa longa. */
 .msg {
-  width: fit-content; max-width: min(62%, 560px);
+  width: fit-content; max-width: min(58%, 430px);
   padding: 7px 11px 5px; border-radius: 14px; position: relative;
   word-wrap: break-word; overflow-wrap: anywhere; white-space: pre-wrap;
   font-size: 13.5px; line-height: 1.42;
@@ -2073,7 +2073,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   .nav-item { justify-content: center; padding: 10px 6px; border-radius: 10px; }
   .badge { position: absolute; top: 2px; right: 2px; margin: 0; padding: 0 5px; }
   .page { padding: 18px 16px 34px; }
-  .msg { max-width: 82%; }
+  .msg { max-width: min(78%, 400px); }
   .tb-user #who { display: none; }
 }
 
@@ -3149,7 +3149,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   .composer { padding: 9px 12px 11px; gap: 7px; }
   /* o balão pode usar a largura: a 62% um código Pix virava uma coluna de 5 linhas */
   .chat-scroll { padding: 12px 12px; }
-  .msg { max-width: 86%; }
+  .msg { max-width: 80%; }
   /* No celular o aviso fica com o título e o botão de saída; a explicação
      inteira (4 linhas) come mais tela do que a conversa e se repete a cada
      abertura. No desktop continua completa. */
