@@ -1,5 +1,37 @@
 # Deploy do Koonfy
 
+## Painel em subdomínio (app.seudominio.com)
+
+O mesmo servidor atende os dois endereços; o que muda é o que a **raiz** de cada
+um entrega:
+
+| endereço | entrega |
+|---|---|
+| `koonfy.com` | a landing |
+| `app.koonfy.com` | redireciona para `/app/`, o painel |
+
+Não é separar backend de frontend: cada host serve a própria página **e** as
+chamadas de API dela, então não entra CORS nem muda a autenticação.
+
+**Para ligar:** adicione o subdomínio no painel do host (na DigitalOcean:
+*Apps → Settings → Domains → Add Domain*) apontando para o mesmo app. O código
+já reconhece qualquer host que comece com `app.`.
+
+**Variáveis opcionais:**
+
+- `PANEL_HOST` — fixa qual host é o do painel, se `app.` não servir
+  (ex.: `PANEL_HOST=painel.koonfy.com`).
+- `PUBLIC_URL` — o endereço público, usado para escrever links que vão para
+  fora (cobrança, rastreio, webhook). Sem ela, o sistema aprende com as
+  requisições e **ignora o host do painel**, para não mandar cliente para o
+  subdomínio administrativo. Defina se quiser controle explícito:
+  `PUBLIC_URL=https://koonfy.com`.
+
+O redirecionamento existe em vez de servir o painel direto na raiz porque o
+Service Worker do PWA tem escopo `/app/`: fora dele, o app instalado perderia
+o funcionamento offline.
+
+
 ## Se o app "esquece" tudo a cada restart
 
 Sintoma: você cadastra, reinicia (ou faz um deploy) e volta tudo do zero —

@@ -478,6 +478,31 @@ function serveLanding(req, res) {
   res.set('Content-Type', 'text/html; charset=utf-8');
   res.send(html);
 }
+// ---------------------------------------------------------------------------
+// SUBDOMÍNIO DO PAINEL
+//
+// koonfy.com     -> a landing (vitrine)
+// app.koonfy.com -> o painel
+//
+// É o mesmo servidor nos dois: o que muda é o que a RAIZ de cada host entrega.
+// Não é separar back de front — é só dar um endereço próprio ao painel, sem
+// CORS e sem mais nada para operar, já que cada host serve tanto a página
+// quanto as chamadas dela.
+//
+// Redireciona para /app/ em vez de servir o HTML direto porque o Service
+// Worker do PWA tem escopo "/app/": servido em "/", ele não controlaria a
+// página, e o app instalado pararia de funcionar offline.
+//
+// O host do painel é configurável (PANEL_HOST) e, sem isso, qualquer host que
+// comece com "app." serve — assim funciona em qualquer domínio sem ajuste.
+// A decisão mora em src/hosts.js, que é o mesmo lugar consultado para saber
+// qual endereço pode ser escrito num link enviado ao cliente.
+const hosts = require('./src/hosts');
+app.get(['/', '/index.html'], (req, res, next) => {
+  if (!hosts.ehHostDoPainel(req)) return next();
+  res.redirect(302, '/app/');
+});
+
 app.get('/', serveLanding);
 app.get('/index.html', serveLanding);
 

@@ -4,6 +4,7 @@ const express = require('express');
 const crypto = require('crypto');
 const db = require('./db');
 const datas = require('./datas');
+const hosts = require('./hosts');
 const ia = require('./ia');
 const wa = require('./whatsapp');
 const meta = require('./meta');
@@ -33,7 +34,9 @@ module.exports = function (broadcast, clients) {
 
   function auth(req, res, next) {
     // Registra a URL pública da instalação (usada no link do checkout /pay/:id)
-    try { require('./elitepay').noteBaseUrl(`${req.protocol}://${req.get('host')}`); } catch {}
+    // Vazio quando a requisicao chegou pelo host do PAINEL: gravar o
+    // subdominio aqui faria todo link de pagamento sair apontando para ele.
+    try { const o = hosts.origemPublica(req); if (o) require('./elitepay').noteBaseUrl(o); } catch {}
     const token = ((req.get('authorization') || '').replace(/^Bearer\s+/i, '')) || req.query.token;
     const sess = token && db.get().sessions[token];
     if (!sess) return res.status(401).json({ error: 'Não autenticado' });
