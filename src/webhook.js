@@ -294,15 +294,25 @@ function handleCalls(acc, v, broadcast) {
       if (acc.calls.length > 200) acc.calls.shift();
     }
 
+    // O SDP do outro lado vem em `session`, e o que ele significa depende de
+    // quem ligou: se foi o cliente, é a OFERTA que o navegador vai responder;
+    // se fomos nós, é a RESPOSTA dele à nossa oferta. Antes só a oferta era
+    // repassada, então em ligação nossa o navegador nunca recebia a resposta e
+    // a chamada ficava sem mídia dos dois lados.
+    const sess = ev.session || {};
+    const sdp = sess.sdp || null;
+    const sdpType = String(sess.sdp_type || sess.sdpType || '').toLowerCase()
+      || (rec.direction === 'USER_INITIATED' ? 'offer' : 'answer');
+
     if (ev.event === 'connect') {
       rec.status = 'ringing';
-      rec.sdpOffer = (ev.session && ev.session.sdp) || null;
+      rec.sdpOffer = sdp;
       const contact = store.upsertContact(acc, waId, names[waId]);
       broadcast('call', {
         accountId: acc.id,
         kind: rec.direction === 'USER_INITIATED' ? 'incoming' : 'update',
         call: { id: rec.id, waId, name: contact.name, direction: rec.direction, status: rec.status },
-        sdpOffer: rec.sdpOffer
+        sdpOffer: rec.sdpOffer, sdp, sdpType
       });
       store.logEvent({ type: 'call_connect', accountId: acc.id, waId, direction: rec.direction });
     } else if (ev.event === 'terminate') {
@@ -325,8 +335,15 @@ function handleCalls(acc, v, broadcast) {
       broadcast('call', { accountId: acc.id, kind: 'terminate', call: { id: rec.id, waId, status: rec.status, duration: rec.duration } });
       broadcast('message', { accountId: acc.id, waId });
     } else {
-      // eventos intermediários (ringing/accepted/etc.)
-      broadcast('call', { accountId: acc.id, kind: 'update', call: { id: rec.id, waId, status: String(ev.event || ev.status || '').toLowerCase() } });
+      // eventos intermediários (ringing/accept/etc.). O `accept` de uma ligação
+      // NOSSA traz a resposta SDP do cliente — sem ela não há áudio.
+      const st = String(ev.event || ev.status || '').toLowerCase();
+      if (sdp) rec.sdpAnswer = sdp;
+      broadcast('call', {
+        accountId: acc.id, kind: 'update',
+        call: { id: rec.id, waId, status: st === 'accept' ? 'accepted' : st },
+        sdp, sdpType
+      });
     }
     db.save();
   }

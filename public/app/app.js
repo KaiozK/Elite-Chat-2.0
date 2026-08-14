@@ -8599,11 +8599,26 @@ function onCallEvent(d) {
       endCallUI(d.call.duration ? `Encerrada · ${fmtDur(d.call.duration * 1000, true)}` : 'Encerrada');
     }
   } else if (d.kind === 'update') {
-    if (callUI && callUI.id === d.call.id && ['accepted', 'ringing'].includes(d.call.status)) {
+    // O id só chega quando /calls/start responde; um `accept` que corra na
+    // frente disso não pode ser descartado, senão a resposta SDP se perde.
+    const minha = callUI && (!callUI.id || !d.call.id || callUI.id === d.call.id);
+    if (!minha) return;
+    if (d.sdp && d.sdpType === 'answer') aplicarResposta(d.sdp);
+    if (['accepted', 'ringing'].includes(d.call.status)) {
       if (d.call.status === 'accepted' && callUI.phase === 'calling') { callUI.phase = 'active'; callUI.startedAt = Date.now(); }
       paintCall();
     }
   }
+}
+
+// Ligação nossa: a Meta devolve a resposta SDP do cliente por webhook. Sem
+// aplicá-la o RTCPeerConnection fica só com a oferta local e nunca abre mídia
+// — a chamada "completa" e ninguém ouve ninguém.
+async function aplicarResposta(sdp) {
+  const c = callUI;
+  if (!c || !c.pc || c.pc.signalingState !== 'have-local-offer') return;
+  try { await c.pc.setRemoteDescription({ type: 'answer', sdp }); }
+  catch (e) { toast('Falha ao abrir o áudio da chamada', 'error'); }
 }
 
 const CALL_PHASE_LBL = {
@@ -8641,9 +8656,39 @@ function paintCall() {
           <div class="call-act"><button class="call-btn red" onclick="hangupCall()" title="Desligar">${callIcon('down')}</button><span>Desligar</span></div>
         `}
       </div>
-      <audio id="call-audio" autoplay></audio>
     </div>`;
   if (c.phase === 'active') startCallTimer();
+}
+
+// O <audio> que toca a voz do cliente NÃO pode morar dentro do HTML que
+// `paintCall` reescreve. Ele ficava lá: `ontrack` prendia o stream no elemento
+// e, no repaint seguinte (o que troca a tela para "em chamada"), o elemento era
+// jogado fora junto com o stream. A chamada conectava, o microfone ia embora
+// normalmente e do outro lado não saía som nenhum — exatamente o sintoma.
+function audioDaChamada() {
+  let a = document.getElementById('call-audio');
+  if (!a) {
+    a = document.createElement('audio');
+    a.id = 'call-audio';
+    a.autoplay = true;
+    a.setAttribute('playsinline', '');   // iOS não toca sem isto
+    a.style.display = 'none';
+    document.body.appendChild(a);
+  }
+  return a;
+}
+
+// Guarda o stream remoto e o liga no elemento persistente. O autoplay pode ser
+// barrado quando a aba nunca recebeu um clique; aqui houve (Atender/Ligar), mas
+// o play() explícito cobre o resto.
+function ligarAudioRemoto(stream) {
+  if (callUI) callUI.remoteStream = stream;
+  const a = audioDaChamada();
+  a.srcObject = stream;
+  a.muted = false;
+  a.volume = 1;
+  const p = a.play();
+  if (p && p.catch) p.catch(() => toast('Toque na tela para liberar o áudio da chamada'));
 }
 
 function callIcon(kind) {
@@ -8664,6 +8709,15 @@ function startCallTimer() {
   }, 1000);
 }
 
+// Sem servidor STUN o navegador só descobre endereços da rede local, e atrás de
+// qualquer NAT doméstico a mídia não acha caminho até a Meta: a chamada
+// "conecta" na sinalização e fica muda. Os STUN públicos do Google resolvem o
+// caso comum; redes corporativas fechadas ainda precisariam de um TURN, que é
+// serviço pago e fica para quando alguém reclamar.
+const RTC_CFG = {
+  iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }]
+};
+
 // Espera o ICE terminar de colher candidatos (SDP completo, sem trickle)
 function waitIce(pc, ms = 2500) {
   return new Promise(res => {
@@ -8679,10 +8733,10 @@ async function answerCall() {
   try {
     c.statusMsg = 'Conectando…'; paintCall();
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const pc = new RTCPeerConnection();
+    const pc = new RTCPeerConnection(RTC_CFG);
     c.pc = pc; c.stream = stream;
     stream.getTracks().forEach(t => pc.addTrack(t, stream));
-    pc.ontrack = ev => { const a = $('#call-audio'); if (a) a.srcObject = ev.streams[0]; };
+    pc.ontrack = ev => ligarAudioRemoto(ev.streams[0]);
     await pc.setRemoteDescription({ type: 'offer', sdp: c.sdpOffer });
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
@@ -8730,10 +8784,10 @@ async function startCall(waId, name) {
   paintCall();
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const pc = new RTCPeerConnection();
+    const pc = new RTCPeerConnection(RTC_CFG);
     callUI.pc = pc; callUI.stream = stream;
     stream.getTracks().forEach(t => pc.addTrack(t, stream));
-    pc.ontrack = ev => { const a = $('#call-audio'); if (a) a.srcObject = ev.streams[0]; };
+    pc.ontrack = ev => ligarAudioRemoto(ev.streams[0]);
     const offer = await pc.createOffer({ offerToReceiveAudio: true });
     await pc.setLocalDescription(offer);
     await waitIce(pc);
@@ -8758,6 +8812,9 @@ function endCallUI(msg) {
   clearInterval(c.timerIv);
   try { c.stream && c.stream.getTracks().forEach(t => t.stop()); } catch {}
   try { c.pc && c.pc.close(); } catch {}
+  // o elemento de áudio é persistente agora: solta o stream para o navegador
+  // não segurar o microfone/alto-falante depois de desligar
+  try { const a = document.getElementById('call-audio'); if (a) { a.pause(); a.srcObject = null; } } catch {}
   c.phase = 'ended'; c.statusMsg = msg || 'Encerrada';
   paintCall();
   const root = $('#call-root');
