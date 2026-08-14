@@ -3747,3 +3747,81 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
 
 /* Enviar: círculo cheio, como o do WhatsApp */
 .send-btn { border-radius: 50% !important; }
+
+/* ===================== COBRANÇA EM ETAPAS =====================
+   O modal da cobrança é o mais cheio do app: produto, checkout, valor,
+   descrição, destinatário e ainda o texto da mensagem. Nos 500px do modal
+   comum isso vira uma coluna interminável, então aqui ele é largo e o
+   conteúdo se divide em duas colunas — que voltam a ser uma no celular. */
+.modal.cob { max-width: 880px; }
+.modal.cob .ep-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+.modal.cob .ep-grid label { display: block; margin: 0; }
+.modal.cob .ep-etapa { display: flex; flex-direction: column; gap: 12px; }
+.modal.cob .ep-etapa.hidden { display: none; }
+
+.ep-trilha { display: flex; gap: 8px; }
+.ep-trilha span {
+  flex: 1; display: flex; align-items: center; gap: 9px;
+  font-size: 12.5px; font-weight: 700; color: var(--faint);
+  padding: 9px 12px; border-radius: 12px; background: var(--bg2);
+  border: 1px solid transparent; transition: color .18s, background .18s, border-color .18s;
+}
+.ep-trilha span i {
+  font-style: normal; width: 21px; height: 21px; flex: none; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--border2); color: var(--card); font-size: 11px; font-weight: 800;
+}
+.ep-trilha span.on { color: var(--verde-deep); background: var(--brand-bg); border-color: var(--brand-border); }
+.ep-trilha span.on i { background: var(--verde-esc); color: #fff; }
+
+.ep-para {
+  display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text2);
+  background: var(--bg2); border-radius: 11px; padding: 10px 13px;
+}
+.ep-para svg { color: var(--verde-esc); flex: none; }
+
+.ep-msg-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+.ep-msg { width: 100%; min-height: 170px; font-family: inherit; font-size: 13.5px; line-height: 1.5; resize: vertical; }
+.ep-vars { display: flex; flex-wrap: wrap; gap: 6px; }
+.ep-var {
+  border: 1px dashed var(--brand-border); background: var(--brand-bg); color: var(--verde-deep);
+  border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 700;
+  font-family: ui-monospace, Menlo, Consolas, monospace; cursor: pointer;
+  transition: background .14s, transform .1s;
+}
+.ep-var:hover { background: var(--card); }
+.ep-var:active { transform: scale(.94); }
+
+/* A prévia é o balão de verdade do chat, no fundo do chat, para não haver
+   surpresa entre o que se escreve aqui e o que chega no WhatsApp. */
+.ep-preview {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 14px;
+  padding: 14px; display: flex; justify-content: flex-end; max-height: 340px; overflow-y: auto;
+}
+.ep-preview .msg { max-width: 100%; animation: none; }
+.ep-preview-wrap { display: flex; flex-direction: column; gap: 6px; }
+.modal.cob .ep-acoes { align-items: center; gap: 8px; }
+
+@media (max-width: 760px) {
+  /* No celular o modal ocupa a tela: com 6 campos e um textarea, meia tela
+     com fundo escurecido em volta não ajuda ninguém. */
+  .modal-back:has(.modal.cob) { padding: 0; }
+  .modal.cob {
+    max-width: none; width: 100%; height: 100%; max-height: 100%;
+    border-radius: 0; border: none; padding: 18px 16px 16px;
+  }
+  .modal.cob .ep-grid, .modal.cob .ep-msg-cols { grid-template-columns: 1fr; }
+  .ep-trilha span { font-size: 11.5px; padding: 8px 10px; gap: 7px; }
+  .ep-preview { max-height: 200px; }
+  .modal.cob .ep-acoes {
+    position: sticky; bottom: 0; background: var(--card);
+    margin: 0 -16px -16px; padding: 10px 16px 14px; border-top: 1px solid var(--border);
+  }
+  /* Três botões não cabem em 375px — "Gerar e enviar" saía cortado pela borda.
+     Cancelar sai: o X do topo e o toque fora já fecham, e o que não pode ficar
+     ilegível é justamente o botão que conclui. */
+  .modal.cob .ep-acoes > span { display: none; }
+  .modal.cob .ep-acoes .btn:not(#ep-nc-voltar):not(.primary) { display: none; }
+  .modal.cob .ep-acoes .btn { flex: 1; justify-content: center; }
+  .modal.cob .ep-acoes #ep-nc-voltar { flex: 0 0 auto; }
+}

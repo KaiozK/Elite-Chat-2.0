@@ -4259,8 +4259,16 @@ module.exports = function (broadcast, clients) {
       waId: contact ? contact.waId : (b.waId || null),
       contactName: contact ? contact.name : (b.contactName || null),
       origin: b.origin || 'manual', byName: req.who.name, expiresMin: b.expiresMin,
-      productId: b.productId, checkoutId: b.checkoutId     // produto + layout escolhidos
+      productId: b.productId, checkoutId: b.checkoutId,    // produto + layout escolhidos
+      message: b.message                                   // texto montado na hora, com as variáveis
     });
+    // "Usar como padrão nas próximas": grava o texto no modelo da conta.
+    if (b.saveAsDefault && b.message) {
+      const ep = elitepay.ensure(req.acc);
+      ep.settings.autoMessage = String(b.message).slice(0, 1500);
+      ep.settings.chargeTemplateEnabled = true;
+      db.save();
+    }
     let sent = false, sendError = null;
     if (b.send && ch.waId) {
       try { await sendChargeMessage(req.wctx, ch, ch.waId, { agentId: req.who.agentId, agentName: req.who.name }); sent = true; }

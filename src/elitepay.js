@@ -687,7 +687,7 @@ function spendWallet(acc, valueCents, label, broadcast) {
 
 function findCharge(acc, id) { return ensure(acc).charges.find(c => c.id === id || c.correlationID === id); }
 
-async function createCharge(acc, { valueCents, comment, waId, contactName, origin, byName, expiresMin, productId, checkoutId, saas }) {
+async function createCharge(acc, { valueCents, comment, waId, contactName, origin, byName, expiresMin, productId, checkoutId, saas, message }) {
   const sub = activeSubaccount(acc);
   // Produto escolhido preenche valor e descrição quando não vierem explícitos
   const prod = productId ? findProduct(acc, productId) : null;
@@ -729,6 +729,9 @@ async function createCharge(acc, { valueCents, comment, waId, contactName, origi
     // guarda de quem é e de qual plano, senão o pagamento cai aqui e não há
     // como saber qual conta ativar.
     saas: saas || null,
+    // Mensagem escrita para ESTA cobrança, com as variáveis ainda cruas. Fica
+    // guardada para que reenviar mande o mesmo texto, e não o modelo padrão.
+    message: (message || '').slice(0, 1500) || null,
     feePercent, platformCut, gateway: gateway().id, gatewayId: g.gatewayId
   };
   ch.payUrl = payLink(ch);   // link enviado ao cliente → checkout hospedado (/pay/:id)
@@ -758,9 +761,12 @@ const DEFAULT_CHARGE_MSG = 'Olá {nome}! Sua cobrança de {valor} está pronta.\
 function chargeMessage(acc, ch) {
   const ep = ensure(acc);
   // Template de Cobrança ativo → usa o modelo do usuário; senão, a mensagem padrão.
-  const tpl = (ep.settings.chargeTemplateEnabled === false)
-    ? DEFAULT_CHARGE_MSG
-    : (ep.settings.autoMessage || DEFAULT_CHARGE_MSG);
+  // A mensagem escrita na hora da cobrança manda em tudo: é a decisão mais
+  // recente e mais específica de quem cobrou.
+  const tpl = ch.message
+    || ((ep.settings.chargeTemplateEnabled === false)
+      ? DEFAULT_CHARGE_MSG
+      : (ep.settings.autoMessage || DEFAULT_CHARGE_MSG));
   return tpl
     .replace(/\{nome\}/g, ch.contactName || 'cliente')
     .replace(/\{valor\}/g, fmtBRL(ch.value))

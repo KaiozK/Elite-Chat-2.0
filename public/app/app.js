@@ -12920,29 +12920,129 @@ async function ckDel(id) {
 }
 
 // ---- Nova cobrança (também usada pelo botão do chat) ----
+// ---------------------------------------------------------------------------
+// COBRANÇA EM DUAS ETAPAS
+//
+// Era um formulário só, num modal estreito: valor, descrição, produto, checkout
+// e destinatário empilhados, e a mensagem que o cliente recebe nem aparecia —
+// vinha de um modelo escondido em Pagamentos. Agora a etapa 1 é o dinheiro
+// (produto, valor, para quem) e a etapa 2 é o texto, escrito na hora, com as
+// variáveis à mão e prévia do balão como o cliente vai ver.
+// ---------------------------------------------------------------------------
+
+// Só entram aqui as variáveis que o servidor realmente substitui em
+// `chargeMessage`. Oferecer uma que ele ignora seria mandar o cliente receber
+// "{vencimento}" escrito na mensagem.
+const EP_VARS = [
+  { k: 'nome', rot: 'Nome do cliente' },
+  { k: 'valor', rot: 'Valor' },
+  { k: 'descricao', rot: 'Descrição' },
+  { k: 'link', rot: 'Link de pagamento' },
+  { k: 'codigo', rot: 'Pix copia e cola' }
+];
+const EP_MSG_PADRAO = 'Olá {nome}! Sua cobrança de {valor} está pronta.\n{descricao}\n\nPague pelo link: {link}\n\nOu use o Pix copia e cola:\n{codigo}';
+
+let epNC = null;   // { waId, contactName, etapa }
+
 function epNewChargeModal(waId, contactName) {
+  epNC = { waId: waId || null, contactName: contactName || null, etapa: 1 };
   const prods = (state.epInfo && state.epInfo.products) || [];
   const cks = (state.epInfo && state.epInfo.checkouts) || [];
-  openModal(`<h2>${ico('plus')} Gerar cobrança Pix</h2>
-    ${prods.length ? `<label style="display:block;margin-bottom:10px">Produto
-      ${ecSelect('ep-nc-prod', [{ value: '', label: 'Cobrança avulsa (sem produto)' }].concat(prods.map(p => ({ value: p.id, label: p.name + (p.price ? ', ' + fmtBRL(p.price) : '') }))), '', 'epPickProduct(val)')}</label>`
-      : `<p class="hint" style="margin-bottom:10px">${ico('help', 12)} Cadastre produtos em <b>Pagamentos → Produtos</b> para preencher valor, descrição e imagens automaticamente.</p>`}
-    ${cks.length ? `<label style="display:block;margin-bottom:10px">Checkout
-      ${ecSelect('ep-nc-ckt', cks.map(c => ({ value: c.id, label: c.name + (c.isDefault ? ' (padrão)' : '') })), (cks.find(c => c.isDefault) || cks[0]).id)}</label>` : ''}
-    <div class="row">
-      <label style="flex:1">Valor (R$)<input id="ep-nc-val" placeholder="97,00" inputmode="decimal" autofocus></label>
-      <label style="flex:2">Descrição (opcional)<input id="ep-nc-desc" maxlength="140" placeholder="Ex.: Consultoria, plano mensal"></label>
+  const padrao = (state.epInfo && state.epInfo.settings && state.epInfo.settings.autoMessage) || EP_MSG_PADRAO;
+
+  openModal(`<h2>${ico('pix')} Gerar cobrança Pix</h2>
+    <div class="ep-trilha" id="ep-nc-trilha">
+      <span data-passo="1" class="on"><i>1</i>Cobrança e produto</span>
+      <span data-passo="2"><i>2</i>Mensagem</span>
     </div>
-    ${waId
-      ? `<p class="muted" style="font-size:13px;margin:12px 0 0">Para: <b>${esc(contactName || '+' + waId)}</b></p>
-         <label class="chk" style="margin-top:8px"><input type="checkbox" id="ep-nc-send" checked> Enviar a cobrança na conversa agora</label>
-         <input type="hidden" id="ep-nc-waid" value="${esc(waId)}">`
-      : `<label style="margin-top:12px">Vincular a um contato (opcional)<input id="ep-nc-phone" placeholder="5511999999999, deixa em branco p/ cobrança avulsa" inputmode="tel"></label>
-         <label class="chk" style="margin-top:8px"><input type="checkbox" id="ep-nc-send"> Enviar no WhatsApp do contato</label>`}
-    <div class="row" style="margin-top:16px;justify-content:flex-end">
+
+    <div class="ep-etapa" data-etapa="1">
+      <div class="ep-grid">
+        ${prods.length ? `<label>Produto
+          ${ecSelect('ep-nc-prod', [{ value: '', label: 'Cobrança avulsa (sem produto)' }].concat(prods.map(p => ({ value: p.id, label: p.name + (p.price ? ', ' + fmtBRL(p.price) : '') }))), '', 'epPickProduct(val)')}</label>`
+          : `<p class="hint" style="grid-column:1/-1;margin:0">${ico('help', 12)} Cadastre produtos em <b>Pagamentos → Produtos</b> para preencher valor, descrição e imagens automaticamente.</p>`}
+        ${cks.length ? `<label>Checkout
+          ${ecSelect('ep-nc-ckt', cks.map(c => ({ value: c.id, label: c.name + (c.isDefault ? ' (padrão)' : '') })), (cks.find(c => c.isDefault) || cks[0]).id)}</label>` : ''}
+        <label>Valor (R$)<input id="ep-nc-val" placeholder="97,00" inputmode="decimal" autofocus oninput="epPreviewMsg()"></label>
+        <label>Descrição (opcional)<input id="ep-nc-desc" maxlength="140" placeholder="Ex.: Consultoria, plano mensal" oninput="epPreviewMsg()"></label>
+      </div>
+      ${waId
+        ? `<div class="ep-para">${ico('user', 14)} Para <b>${esc(contactName || '+' + waId)}</b></div>
+           <label class="chk"><input type="checkbox" id="ep-nc-send" checked> Enviar a cobrança na conversa agora</label>
+           <input type="hidden" id="ep-nc-waid" value="${esc(waId)}">`
+        : `<label>Vincular a um contato (opcional)<input id="ep-nc-phone" placeholder="5511999999999, deixe em branco para cobrança avulsa" inputmode="tel"></label>
+           <label class="chk"><input type="checkbox" id="ep-nc-send"> Enviar no WhatsApp do contato</label>`}
+    </div>
+
+    <div class="ep-etapa hidden" data-etapa="2">
+      <div class="ep-msg-cols">
+        <div>
+          <span class="fb-sub">Mensagem que o cliente recebe</span>
+          <textarea id="ep-nc-msg" class="ep-msg" rows="9" oninput="epPreviewMsg()">${esc(padrao)}</textarea>
+          <span class="fb-sub" style="margin-top:12px">Toque para inserir onde está o cursor</span>
+          <div class="ep-vars">${EP_VARS.map(v => `<button type="button" class="ep-var" onclick="epInsertVar('${v.k}')" title="${esc(v.rot)}">{${v.k}}</button>`).join('')}</div>
+          <label class="chk" style="margin-top:12px"><input type="checkbox" id="ep-nc-def"> Usar este texto como padrão nas próximas cobranças</label>
+        </div>
+        <div class="ep-preview-wrap">
+          <span class="fb-sub">Prévia</span>
+          <div class="ep-preview"><div class="msg out tail" id="ep-nc-prev"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row ep-acoes">
+      <button class="btn" id="ep-nc-voltar" onclick="epStep(1)" style="display:none">${ico('arrowleft', 13)} Voltar</button>
+      <span style="flex:1"></span>
       <button class="btn" onclick="closeModal()">Cancelar</button>
-      <button class="btn primary no-grow" id="ep-nc-btn" onclick="epCreateCharge()">${ico('zap', 14)} Gerar cobrança</button>
-    </div>`);
+      <button class="btn primary no-grow" id="ep-nc-next" onclick="epStep(2)">Continuar ${ico('arrowright', 13)}</button>
+      <button class="btn primary no-grow" id="ep-nc-btn" onclick="epCreateCharge()" style="display:none">${ico('zap', 14)} Gerar e enviar</button>
+    </div>`, 'cob');
+  epPreviewMsg();
+}
+
+function epStep(n) {
+  if (!epNC) return;
+  // Valor é o único campo sem o qual a etapa 2 não faz sentido: a mensagem
+  // mostraria "R$ 0,00" e a cobrança seria recusada no fim de qualquer jeito.
+  if (n === 2 && epParseReais($('#ep-nc-val').value) < 100) {
+    toast('Informe o valor da cobrança (mínimo R$ 1,00)', 'error');
+    $('#ep-nc-val').focus();
+    return;
+  }
+  epNC.etapa = n;
+  $$('.ep-etapa').forEach(el => el.classList.toggle('hidden', Number(el.dataset.etapa) !== n));
+  $$('#ep-nc-trilha span').forEach(el => el.classList.toggle('on', Number(el.dataset.passo) <= n));
+  $('#ep-nc-voltar').style.display = n === 2 ? '' : 'none';
+  $('#ep-nc-next').style.display = n === 2 ? 'none' : '';
+  $('#ep-nc-btn').style.display = n === 2 ? '' : 'none';
+  if (n === 2) { epPreviewMsg(); $('#ep-nc-msg').focus(); }
+}
+
+// Insere a variável exatamente onde o cursor está, sem apagar o que já foi
+// escrito — colar no fim obrigaria a pessoa a recortar e mover na mão.
+function epInsertVar(k) {
+  const ta = $('#ep-nc-msg'); if (!ta) return;
+  const tag = '{' + k + '}';
+  const ini = ta.selectionStart, fim = ta.selectionEnd;
+  ta.value = ta.value.slice(0, ini) + tag + ta.value.slice(fim);
+  ta.selectionStart = ta.selectionEnd = ini + tag.length;
+  ta.focus();
+  epPreviewMsg();
+}
+
+// A prévia usa os MESMOS nomes de variável do servidor, com valores de exemplo
+// no lugar do link e do código, que só existem depois da cobrança criada.
+function epPreviewMsg() {
+  const alvo = $('#ep-nc-prev'); if (!alvo || !epNC) return;
+  const cents = epParseReais(($('#ep-nc-val') || {}).value || '');
+  const txt = (($('#ep-nc-msg') || {}).value || EP_MSG_PADRAO)
+    .replace(/\{nome\}/g, epNC.contactName || 'cliente')
+    .replace(/\{valor\}/g, fmtBRL(cents || 0))
+    .replace(/\{descricao\}/g, (($('#ep-nc-desc') || {}).value || '').trim())
+    .replace(/\{link\}/g, 'https://pay.koonfy.com/epc_exemplo')
+    .replace(/\{codigo\}/g, '00020126580014BR.GOV.BCB.PIX…')
+    .replace(/\n{3,}/g, '\n\n').trim();
+  alvo.innerHTML = esc(txt) + `<div class="meta"><time>${fmtHora(Date.now())}</time><span class="st">✓</span></div>`;
 }
 // ao escolher o produto, preenche valor/descrição e já aponta o checkout dele
 function epPickProduct(id) {
@@ -12961,6 +13061,8 @@ async function epCreateCharge() {
       valueCents: epParseReais($('#ep-nc-val').value),
       comment: $('#ep-nc-desc').value,
       productId: ecVal('ep-nc-prod') || '', checkoutId: ecVal('ep-nc-ckt') || '',
+      message: ($('#ep-nc-msg') && $('#ep-nc-msg').value.trim()) || '',
+      saveAsDefault: !!($('#ep-nc-def') && $('#ep-nc-def').checked),
       waId, send: !!($('#ep-nc-send') && $('#ep-nc-send').checked),
       origin: state.view === 'inbox' ? 'chat' : 'manual'
     } });
@@ -13040,8 +13142,15 @@ async function epDuplicate(id) {
 }
 
 // Botão "Cobrança" dentro da conversa (composer do inbox)
-function chatChargeModal(waId) {
+async function chatChargeModal(waId) {
   const c = state.conversations.find(x => x.waId === waId);
+  // `epInfo` só era buscado ao entrar em Pagamentos. Abrindo a cobrança pelo
+  // chat, produtos, checkouts e a mensagem padrão da conta vinham vazios —
+  // justamente onde a cobrança é mais usada.
+  if (!state.epInfo) {
+    try { state.epInfo = await api('/elitepay'); }
+    catch (e) { return toast(e.message, 'error'); }
+  }
   epNewChargeModal(waId, c ? c.name : null);
 }
 
