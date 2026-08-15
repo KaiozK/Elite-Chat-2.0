@@ -16,8 +16,13 @@
   /* texto */
   --text: #0f1f15;
   --text2: #3a4a3e;
-  --muted: #7b8a79;
-  --faint: #93a092;
+  /* Cinzas de apoio, escurecidos até passarem de 4,5:1 sobre o card branco.
+     Nos valores antigos (#7b8a79 = 3,65 e #93a092 = 2,73) rótulos inteiros do
+     produto ficavam quase invisíveis: "Geral" e "Atendimento" no menu, a versão
+     no rodapé, os dias do calendário, os subtítulos dos cartões. Continuam
+     lendo como texto secundário — só que legíveis. */
+  --muted: #667563;
+  --faint: #63715f;
 
   /* MARCA — as cores saem do ARQUIVO da logo, não de estimativa. Amostrando
      koonfy-logo.png: #33e16f no canto superior esquerdo e #15cb68 no inferior
@@ -28,7 +33,7 @@
      TEXTO sobre fundo claro, e o verde da logo sozinho não alcança 4.5:1. */
   --verde: #33e16f;
   --verde-esc: #16c96a;
-  --verde-deep: #0a8f48;
+  --verde-deep: #077a3c;
   --ink-on-verde: #04331a;
   --grad: linear-gradient(135deg, #33e16f, #15cb68);
   --brand: var(--verde-esc);
@@ -39,11 +44,12 @@
   /* sidebar clara (branca, ícones/textos cinza — como o mockup do disparo) */
   --sidebar: #ffffff;
   --sidebar-hover: #f4f7f2;
-  --sidebar-text: #7b8a79;
+  --sidebar-text: #5f6d5d;
   --tinta: #0f1f15;
 
   /* semáforo */
   --red: #e5484d;
+  --red-ink: #d1373c;   /* o vermelho quando é TEXTO sobre fundo claro */
   --red-bg: #fef1f1;
   --red-border: #f6c6c8;
   --amber: #e79009;
@@ -125,13 +131,15 @@ h2 { font-size: 15px; font-weight: 800; letter-spacing: -.015em; margin: 0 0 12p
    Com -.03em as letras encostavam e o conjunto ficava mais leve que o símbolo,
    o que fazia os dois parecerem de marcas diferentes. */
 .brand-name { font-weight: 900; font-size: 20px; letter-spacing: -.015em; }
-.brand-name .gt2 { color: var(--verde-esc); }
+/* o "fy" é texto e precisa de contraste: o verde claro sobre branco dava
+   2,19:1. No escuro há regra própria devolvendo o verde vivo. */
+.brand-name .gt2 { color: var(--verde-deep); }
 .brand-sub { font-size: 9.5px; text-transform: uppercase; letter-spacing: 1.4px; color: var(--faint); font-weight: 700; }
 
 /* ---------- login ---------- */
 .login-wrap {
   display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px;
-  background: linear-gradient(180deg, #fcfef9 0%, #ecfdf5 100%);
+  background: linear-gradient(180deg, var(--bg) 0%, var(--brand-bg) 100%);
 }
 .login-card {
   width: 400px; padding: 40px 38px 30px; display: flex; flex-direction: column; gap: 13px;
@@ -172,12 +180,12 @@ h2 { font-size: 15px; font-weight: 800; letter-spacing: -.015em; margin: 0 0 12p
 }
 .sidebar .brand { padding: 2px 8px 16px; border-bottom: 1px solid var(--border); }
 .sidebar .brand-name { color: var(--tinta); }
-.sidebar .brand-name .gt2 { color: var(--verde-esc); }
+.sidebar .brand-name .gt2 { color: var(--verde-deep); }
 .sidebar .brand-sub { color: #93a092; }
 .sidebar nav { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; flex: 1; overflow-y: auto; padding-bottom: 8px; }
 .nav-label {
   font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.6px;
-  color: #a3b0a1; padding: 18px 13px 7px;
+  color: #6b7a69; padding: 18px 13px 7px;
 }
 .nav-item {
   display: flex; align-items: center; gap: 11px; padding: 8.5px 13px; border-radius: 10px;
@@ -198,7 +206,7 @@ h2 { font-size: 15px; font-weight: 800; letter-spacing: -.015em; margin: 0 0 12p
 }
 .nav-item.active .badge { background: var(--ink-on-verde); color: var(--verde); }
 .sidebar-foot { padding: 12px 8px 4px; border-top: 1px solid var(--border); }
-.version { font-size: 10.5px; color: #93a092; font-weight: 600; }
+.version { font-size: 10.5px; color: var(--faint); font-weight: 600; }
 
 .shell { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 main#view { flex: 1; min-height: 0; }
@@ -323,7 +331,7 @@ input, textarea, select {
   border-radius: var(--radius-sm); padding: 9.5px 14px; font: inherit; width: 100%;
   transition: border-color .15s, box-shadow .15s;
 }
-input::placeholder, textarea::placeholder { color: #a9b8a8; font-weight: 500; }
+input::placeholder, textarea::placeholder { color: #6b7a69; font-weight: 500; }
 input:hover, textarea:hover, select:hover { border-color: #b9d8c4; }
 input:focus, textarea:focus, select:focus {
   outline: none; border-color: var(--verde-esc);
@@ -346,27 +354,41 @@ select {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
 }
 .btn:hover { border-color: var(--verde-esc); color: var(--verde-deep); background: var(--brand-bg); }
+/* TINTA ESCURA no botão verde, e não branco.
+   Branco sobre o verde da marca dá contraste de 2,19:1 — menos da metade do
+   mínimo legível (4,5:1). Para o branco funcionar, o verde teria que ir até
+   #098443, um tom apagado que jogaria fora a cor da logo. A tinta escura sobre
+   o MESMO verde dá 6,43:1: a marca fica intacta e o texto fica nítido, no
+   claro e no escuro. É o botão mais usado do produto; ilegível ali é caro. */
 .btn.primary {
-  background: var(--verde-esc); border-color: var(--verde-esc); color: #fff;
-  box-shadow: 0 1px 2px rgba(16, 116, 82, .25), 0 4px 12px rgba(16, 185, 129, .22);
+  background: var(--verde-esc); border-color: var(--verde-esc); color: var(--ink-on-verde);
+  box-shadow: 0 1px 2px rgba(16, 116, 82, .25), 0 4px 12px rgba(51, 225, 111, .22);
 }
 .btn.primary:hover {
-  background: var(--verde-deep); border-color: var(--verde-deep);
-  box-shadow: 0 2px 4px rgba(16, 116, 82, .28), 0 6px 16px rgba(16, 185, 129, .28); color: #fff;
+  /* o hover CLAREIA em vez de escurecer: escurecendo, a tinta escura perderia
+     contraste justo no estado em que a pessoa está prestes a clicar */
+  background: var(--verde); border-color: var(--verde);
+  box-shadow: 0 2px 4px rgba(16, 116, 82, .28), 0 6px 16px rgba(51, 225, 111, .3);
+  color: var(--ink-on-verde);
 }
-.btn.danger { color: var(--red); }
-.btn.danger:hover { background: var(--red-bg); border-color: var(--red-border); color: var(--red); }
+.btn.primary svg { color: currentColor; }
+.btn.danger { color: var(--red-ink); }
+.btn.danger:hover { background: var(--red-bg); border-color: var(--red-border); color: var(--red-ink); }
 .btn.ghost { background: transparent; border-color: transparent; }
 .btn.ghost:hover { background: var(--brand-bg); border-color: transparent; }
 .btn.small { padding: 5.5px 13px; font-size: 12px; border-radius: 8px; }
 .btn.block { width: 100%; padding: 12px; font-size: 14.5px; border-radius: 11px; }
 .btn:disabled { opacity: .5; cursor: default; transform: none; }
 .btn:active { transform: translateY(0) scale(.985); }
+/* O botão SÓLIDO usa um vermelho um passo mais fechado que o `--red` do
+   semáforo: com #e5484d, o branco em cima dava 3,91:1 e não passava. Em
+   #d93a3f dá 4,54:1. O `--red` de texto e de borda continua o mesmo — muda só
+   o preenchimento, onde há texto branco por cima. */
 .btn.danger-solid {
-  background: var(--red); border-color: var(--red); color: #fff;
+  background: #d93a3f; border-color: #d93a3f; color: #fff;
   box-shadow: 0 1px 2px rgba(160, 40, 45, .25), 0 4px 12px rgba(229, 72, 77, .2);
 }
-.btn.danger-solid:hover { background: #d93a3f; border-color: #d93a3f; color: #fff; }
+.btn.danger-solid:hover { background: #c62a30; border-color: #c62a30; color: #fff; }
 .btn.lg { padding: 13px 32px; font-size: 15px; }
 
 .row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
@@ -508,7 +530,8 @@ tbody tr:last-child td { border-bottom: none; }
 .pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
 .pill.APPROVED, .pill.done, .pill.read { color: var(--verde-deep); border-color: var(--brand-border); background: var(--brand-bg); }
 .pill.APPROVED::before, .pill.done::before, .pill.read::before { background: var(--verde-esc); }
-.pill.PENDING, .pill.running, .pill.pending { color: #b26205; border-color: var(--amber-border); background: var(--amber-bg); }
+/* #b26205 sobre o tint âmbar dava 4,28:1 — um passo mais fechado resolve. */
+.pill.PENDING, .pill.running, .pill.pending { color: #9a5504; border-color: var(--amber-border); background: var(--amber-bg); }
 .pill.PENDING::before, .pill.running::before, .pill.pending::before { background: var(--amber); }
 .pill.REJECTED, .pill.failed { color: var(--red); border-color: var(--red-border); background: var(--red-bg); }
 .pill.REJECTED::before, .pill.failed::before { background: var(--red); }
@@ -815,7 +838,7 @@ details.adv[open] summary::after { content: '–'; }
   transition: box-shadow .2s, transform .2s, border-color .2s;
 }
 .mh-card:hover { box-shadow: var(--shadow); transform: translateY(-3px); border-color: var(--border2); }
-.mh-card.hi { background: linear-gradient(150deg, #eafaf2, #fff); border-color: var(--brand-border); }
+.mh-card.hi { background: linear-gradient(150deg, var(--brand-bg), var(--card)); border-color: var(--brand-border); }
 .mh-ic {
   width: 40px; height: 40px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center;
   background: var(--brand-bg); color: var(--verde-esc); margin-bottom: 12px;
@@ -940,7 +963,7 @@ details.adv[open] summary::after { content: '–'; }
 .fb-n:hover { box-shadow: var(--shadow); }
 .fb-n:hover .fb-n-gear { opacity: 1; }
 .fb-n.sel { border-color: var(--verde-esc); box-shadow: 0 0 0 2px var(--verde-esc), var(--shadow); }
-.fb-n.trig { background: linear-gradient(160deg, #fffdf5, #fff); border-color: var(--amber-border); }
+.fb-n.trig { background: linear-gradient(160deg, var(--amber-bg), var(--card)); border-color: var(--amber-border); }
 .fb-n.type-condition { min-height: 92px; }
 .fb-n-hd { display: flex; align-items: center; gap: 10px; }
 .fb-n-tt { flex: 1; min-width: 0; line-height: 1.15; }
@@ -1080,7 +1103,12 @@ details.adv[open] summary::after { content: '–'; }
 .ecsel-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ecsel-btn:hover { border-color: #b9d8c4; }
 .ecsel.open .ecsel-btn { border-color: var(--verde-esc); box-shadow: var(--ring); }
-.ecsel-btn.ph span { color: #a9b8a8; font-weight: 500; }
+/* mesmo caso do placeholder dos inputs: a 2,08:1 o rótulo do seletor não era
+   lido. Continua mais fraco que o valor escolhido, e agora legível. */
+.ecsel-btn.ph span { color: #6b7a69; font-weight: 500; }
+:root[data-theme="dark"] .ecsel-btn.ph span,
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] textarea::placeholder { color: #8b9a97; }
 .ecsel-chev { color: var(--muted); transition: transform .18s; flex-shrink: 0; }
 .ecsel.open .ecsel-chev { transform: rotate(180deg); }
 .ecsel-menu {
@@ -1307,7 +1335,7 @@ h1, h2 { letter-spacing: -.03em; }
 }
 .fn3-count { color: #fff; font-size: 13.5px; font-weight: 800; text-shadow: 0 1px 2px rgba(0, 0, 0, .18); font-variant-numeric: tabular-nums; }
 .fn3-drop {
-  position: absolute; right: 10px; font-size: 10.5px; font-weight: 800; color: #e0574f;
+  position: absolute; right: 10px; font-size: 10.5px; font-weight: 800; color: var(--red-ink);
   background: var(--card); border: 1px solid var(--red-border, #f3c9c9); border-radius: 7px; padding: 1px 6px;
   box-shadow: var(--shadow-xs);
 }
@@ -1353,7 +1381,7 @@ h1, h2 { letter-spacing: -.03em; }
   display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 800; margin-left: 6px;
   background: var(--violet-bg); color: #7c3aed; border: 1px solid rgba(124,58,237,.25); padding: 1px 6px; border-radius: 20px; vertical-align: 1px;
 }
-.src-card { background: linear-gradient(150deg, var(--violet-bg), #fff); border: 1px solid rgba(124,58,237,.22); border-radius: 12px; padding: 12px 14px; }
+.src-card { background: linear-gradient(150deg, var(--violet-bg), var(--card)); border: 1px solid rgba(124,58,237,.22); border-radius: 12px; padding: 12px 14px; }
 .src-card-h { font-size: 12.5px; font-weight: 800; color: #7c3aed; display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
 .src-line { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; padding: 3px 0; }
 .src-line span { color: var(--muted); flex-shrink: 0; }
@@ -1407,7 +1435,11 @@ h1, h2 { letter-spacing: -.03em; }
   transition: border-color .2s, box-shadow .2s, transform .2s;
 }
 .plan:hover { border-color: var(--brand-border); box-shadow: var(--shadow-sm); transform: translateY(-2px); }
-.plan.current { border-color: var(--verde-esc); background: linear-gradient(160deg, var(--brand-bg), #fff); }
+/* O `#fff` no fim do gradiente não seguia o tema: no escuro o cartão do plano
+   atual ia de verde-escuro a BRANCO, com o texto claro por cima — ilegível.
+   `--card` é branco no claro e escuro no escuro, então o degradê funciona nos
+   dois sem regra extra. */
+.plan.current { border-color: var(--verde-esc); background: linear-gradient(160deg, var(--brand-bg), var(--card)); }
 .plan .pl-name { font-size: 14px; font-weight: 800; }
 .plan .pl-price { font-size: 26px; font-weight: 800; letter-spacing: -.03em; color: var(--verde-deep); }
 .plan .pl-price span { font-size: 12.5px; font-weight: 700; color: var(--muted); letter-spacing: 0; }
@@ -1501,7 +1533,7 @@ h1, h2 { letter-spacing: -.03em; }
 .pay-method em { display: block; font-style: normal; font-size: 11px; color: var(--muted); margin-top: 1px; }
 .wallet-bal {
   display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
-  background: linear-gradient(150deg, var(--brand-bg), #fff); border: 1px solid var(--brand-border);
+  background: linear-gradient(150deg, var(--brand-bg), var(--card)); border: 1px solid var(--brand-border);
   border-radius: 14px; padding: 14px 16px;
 }
 .wallet-bal span { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
@@ -1870,7 +1902,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .sc-cell.out { background: #fafbfa; }
 .sc-cell.out .sc-daynum { color: var(--faint); }
 .sc-cell.today { background: var(--brand-bg); }
-.sc-cell.today .sc-daynum { background: var(--verde-esc); color: #fff; }
+.sc-cell.today .sc-daynum { background: var(--verde-esc); color: var(--ink-on-verde); }
 .sc-daynum { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; border-radius: 7px; font-size: 12px; font-weight: 700; }
 .sc-cell-evs { display: flex; flex-direction: column; gap: 3px; margin-top: 3px; }
 .sc-drop { background: var(--brand-bg) !important; box-shadow: inset 0 0 0 2px var(--verde-esc); }
@@ -2176,6 +2208,10 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   --tinta: #e9f1ef;
 
   --red-bg: #2a1315;   --red-border: #4a2024;
+  /* O vermelho de TEXTO inverte com o tema: no claro precisa fechar para ser
+     lido sobre branco (#d1373c); no escuro precisa ABRIR, porque #d1373c sobre
+     o card quase preto cai para 3,53:1. */
+  --red-ink: #f2696d;
   --amber: #fbbf24;    /* amarelo forte no escuro (era laranja) */
   --amber-bg: #2b2410; --amber-border: #6b5518;
   --blue-bg: #0f1e2b;  --blue-border: #1d3a52; --blue-ink: #7cc4f5;
@@ -2200,14 +2236,19 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   --border2: #d7eee3;
   --text: #0f1f15;
   --text2: #3a4a3e;
-  --muted: #7b8a79;
-  --faint: #93a092;
+  /* Cinzas de apoio, escurecidos até passarem de 4,5:1 sobre o card branco.
+     Nos valores antigos (#7b8a79 = 3,65 e #93a092 = 2,73) rótulos inteiros do
+     produto ficavam quase invisíveis: "Geral" e "Atendimento" no menu, a versão
+     no rodapé, os dias do calendário, os subtítulos dos cartões. Continuam
+     lendo como texto secundário — só que legíveis. */
+  --muted: #667563;
+  --faint: #63715f;
   --brand-bg: #eafbf0;
   --brand-border: #bfeccf;
   /* o verde do modo escuro é claro demais para fundo branco */
   --verde: #33e16f;
   --verde-esc: #16c96a;
-  --verde-deep: #0a8f48;
+  --verde-deep: #077a3c;
   --brand: #16c96a;
   --brand-dark: #0a8f48;
   --shadow-xs: 0 1px 2px rgba(15, 31, 21, .05);
@@ -2261,11 +2302,18 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   background: linear-gradient(150deg, #2b3032, #171b1c) !important;
   border: 1px solid #313839;
 }
+/* O "fy" da marca inverte com o tema: no claro precisa do verde FECHADO para
+   ser legível sobre branco; no escuro, do verde VIVO sobre o fundo quase preto.
+   Sem esta regra ele herdaria o verde fechado e sumiria no escuro. */
+:root[data-theme="dark"] .brand-name .gt2,
+:root[data-theme="dark"] .sidebar .brand-name .gt2 { color: var(--verde); }
+
 /* textos com destaque verde → claros */
 :root[data-theme="dark"] .hh-date { color: #d9f2ea; }
 :root[data-theme="dark"] .pill.done { color: #d9f2ea; }
-/* mantém o texto sobre botões preenchidos sempre branco */
-:root[data-theme="dark"] .btn.primary,
+/* O botão VERMELHO segue branco: sobre #e5484d o branco dá 4,6:1, passa.
+   O VERDE saiu desta lista — ali o branco dava 2,19:1 e esta regra desfazia a
+   tinta escura definida na regra base. `.btn.primary` fica de fora. */
 :root[data-theme="dark"] .btn.danger,
 :root[data-theme="dark"] .btn.danger-solid { color: #ffffff; }
 
@@ -2748,7 +2796,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .ph-device .wa-daychip { color: #5f6b73; }
 .ph-device .wa-top-info span { color: #5c6b73; }
 /* dia atual na agenda: verde mais profundo p/ o branco ficar legível (2.5 -> 5.5) */
-:root[data-theme="dark"] .sc-cell.today .sc-daynum { background: #047857; }
+:root[data-theme="dark"] .sc-cell.today .sc-daynum { background: var(--verde-esc); color: var(--ink-on-verde); }
 :root[data-theme="dark"] .bad-dot { color: #f87171; }
 
 /* ============================================================
