@@ -1645,7 +1645,11 @@ function moduleOfView(v) {
 // trabalhos de tela grande; ficam no navegador do computador.
 const MOBILE_VIEWS = new Set([
   'dashboard', 'inbox', 'team', 'schedule', 'contacts',
-  'funnel', 'quick', 'billing', 'afiliacao', 'settings'
+  'funnel', 'quick', 'billing', 'afiliacao', 'settings',
+  // Pagamentos no celular é uma tela PRÓPRIA, enxuta: cobrar na frente do
+  // cliente e mandar o Pix. O módulo completo (produtos, checkout, relatórios,
+  // saque) continua só no computador — ali é trabalho de mesa.
+  'elitepay'
 ]);
 // 820px é o mesmo ponto em que a sidebar já vira gaveta (style.css).
 const MOBILE_MQ = window.matchMedia('(max-width: 820px)');
@@ -1687,9 +1691,10 @@ function applyNavPermissions() {
 //
 // Os ícones são clonados da própria sidebar — assim a barra nunca diverge
 // visualmente do menu e não existe um segundo conjunto de ícones para manter.
-const TABBAR_VIEWS = ['dashboard', 'inbox', 'contacts', 'schedule'];
+const TABBAR_VIEWS = ['dashboard', 'inbox', 'contacts', 'elitepay'];
 const TABBAR_LABEL = {
-  dashboard: 'Início', inbox: 'Conversas', contacts: 'Contatos', schedule: 'Agenda',
+  dashboard: 'Início', inbox: 'Conversas', contacts: 'Contatos', elitepay: 'Cobrar',
+  schedule: 'Agenda',
   team: 'Chat interno', funnel: 'Funil', quick: 'Respostas', billing: 'Assinatura',
   afiliacao: 'Afiliação', settings: 'Ajustes'
 };
@@ -8583,7 +8588,7 @@ async function admTestarVenda(btn) {
   try {
     // este aparelho precisa estar inscrito, senão o envio sai para ninguém
     if (window.ECNotify && ECNotify.subscribePush) { try { await ECNotify.subscribePush(); } catch {} }
-    const r = await api('/admin/push/test-sale', { body: { amount: cents, name: $('#ts-nome').value.trim() } });
+    const r = await api('/push/test-sale', { body: { amount: cents, name: $('#ts-nome').value.trim() } });
     toast(r.sent
       ? `Enviado para ${r.sent} aparelho(s). Feche o app para ver como chega.`
       : 'Nenhum aparelho inscrito ainda. Ative as notificações em Configurações e tente de novo.',
@@ -12274,11 +12279,174 @@ const EP_ST = {
 function epPill(st) { const [l, c] = EP_ST[st] || [st, 'pill']; return `<span class="${c}">${l}</span>`; }
 function epParseReais(v) { return Math.round((Number(String(v || '').replace(/[^\d,.]/g, '').replace(/\./g, '').replace(',', '.')) || 0) * 100); }
 
+// ===========================================================================
+// PAGAMENTOS NO CELULAR — cobrar e mandar
+//
+// Uma tela, um caminho: digita o valor, gera, copia. O Pix copia e cola e o
+// link do checkout ficam a um toque, com botão de compartilhar do próprio
+// aparelho quando existe — que é como se manda para o cliente na prática.
+// ===========================================================================
+let epCel = null;   // { charge } — a última cobrança gerada nesta tela
+
+function epRenderCobrarNoCelular(d) {
+  const prods = (d.products || []).filter(p => p.price);
+  const semConta = !d.subaccount || d.subaccount.status !== 'active';
+
+  $('#view').innerHTML = `<div class="page">
+    <div class="page-head"><h1>Cobrar</h1><p>Gere um Pix e mande para o cliente</p></div>
+
+    ${semConta ? `<div class="card">
+      <b>${ico('alert', 14)} Conta de recebimento pendente</b>
+      <p class="muted" style="margin:6px 0 0;font-size:13px">
+        ${d.subaccount ? 'Sua conta de Pagamentos ainda está em análise.' : 'Você ainda não criou a conta de Pagamentos.'}
+        Isso é feito no computador, em <b>Pagamentos</b>.
+      </p></div>` : ''}
+
+    <div class="card cel-cob">
+      <label class="cel-valor">
+        <span>Valor</span>
+        <div class="cel-valor-in">
+          <i>R$</i>
+          <input id="cel-val" inputmode="decimal" placeholder="0,00" autocomplete="off"
+                 oninput="epCelPreco()" ${semConta ? 'disabled' : ''}>
+        </div>
+      </label>
+
+      ${prods.length ? `
+        <span class="fb-sub">Produtos</span>
+        <div class="cel-prods">
+          ${prods.slice(0, 8).map(p => `
+            <button type="button" class="cel-prod" onclick="epCelProduto('${esc(p.id)}', ${p.price}, this)">
+              <b>${esc(p.name)}</b><span>${fmtBRL(p.price)}</span>
+            </button>`).join('')}
+        </div>` : ''}
+
+      <label style="margin-top:12px">Descrição (opcional)
+        <input id="cel-desc" maxlength="140" placeholder="Ex.: Consultoria" ${semConta ? 'disabled' : ''}>
+      </label>
+
+      <button class="btn primary block" id="cel-btn" onclick="epCelGerar()" ${semConta ? 'disabled' : ''}
+              style="margin-top:14px">${ico('pix', 15)} Gerar cobrança</button>
+    </div>
+
+    <div id="cel-result"></div>
+
+    <div class="card">
+      <h2>${ico('bell')} Testar notificação de venda</h2>
+      <p class="muted" style="margin:0 0 10px;font-size:13px">
+        Dispara o aviso de <b>venda aprovada</b> neste aparelho, com o som. Serve para conferir se a notificação chega
+        antes de depender dela. Não cria cobrança nem mexe na carteira.
+      </p>
+      <div class="row" style="align-items:flex-end">
+        <label style="flex:1">Valor (R$)<input id="cel-ts" inputmode="decimal" placeholder="97,00"></label>
+        <button class="btn no-grow" id="cel-ts-btn" onclick="epCelTestarVenda(this)">${ico('zap', 14)} Disparar</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function epCelProduto(id, preco, botao) {
+  $('#cel-val').value = (preco / 100).toFixed(2).replace('.', ',');
+  const p = ((state.epInfo && state.epInfo.products) || []).find(x => x.id === id);
+  if (p && $('#cel-desc')) $('#cel-desc').value = p.name || '';
+  $$('.cel-prod').forEach(b => b.classList.toggle('on', b === botao));
+  epCelPreco();
+}
+
+// Deixa o valor sempre com duas casas enquanto digita, para não sair cobrança
+// de R$ 9,00 quando a pessoa quis R$ 9,90.
+function epCelPreco() {
+  const el = $('#cel-val'); if (!el) return;
+  const d = (el.value || '').replace(/\D/g, '');
+  el.value = d ? (Number(d) / 100).toFixed(2).replace('.', ',') : '';
+}
+
+async function epCelGerar() {
+  const cents = epParseReais($('#cel-val').value);
+  if (!cents || cents < 100) return toast('Valor mínimo: R$ 1,00', 'error');
+  const btn = $('#cel-btn'); btn.disabled = true;
+  const txt = btn.innerHTML; btn.textContent = 'Gerando…';
+  try {
+    const r = await api('/elitepay/charges', {
+      body: { valueCents: cents, comment: $('#cel-desc').value, origin: 'mobile' }
+    });
+    epCel = { charge: r.charge };
+    epCelPintarResultado(r.charge);
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; btn.innerHTML = txt; }
+}
+
+function epCelPintarResultado(ch) {
+  const link = ch.payUrl || ch.paymentLinkUrl || '';
+  const box = $('#cel-result');
+  box.innerHTML = `
+    <div class="card cel-pronto">
+      <div class="cel-ok">${ico('check-circle', 18)}<b>${fmtBRL(ch.value)} pronto para enviar</b></div>
+      ${ch.qrCodeImage ? `<img class="cel-qr" src="${esc(ch.qrCodeImage)}" alt="QR Code Pix">` : ''}
+
+      ${ch.brCode ? `
+        <button class="btn block" onclick="epCelCopiar('pix')">${ico('copy', 14)} Copiar Pix copia e cola</button>` : ''}
+      ${link ? `
+        <button class="btn block" style="margin-top:8px" onclick="epCelCopiar('link')">${ico('link', 14)} Copiar link do checkout</button>` : ''}
+      ${link && navigator.share ? `
+        <button class="btn primary block" style="margin-top:8px" onclick="epCelCompartilhar()">${ico('send', 14)} Compartilhar</button>` : ''}
+
+      <button class="btn ghost block" style="margin-top:10px" onclick="epCelNova()">Nova cobrança</button>
+    </div>`;
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function epCelCopiar(qual) {
+  const ch = epCel && epCel.charge; if (!ch) return;
+  const v = qual === 'pix' ? ch.brCode : (ch.payUrl || ch.paymentLinkUrl);
+  if (!v) return toast('Nada para copiar', 'error');
+  copyText(v);
+  toast(qual === 'pix' ? 'Pix copiado! Cole na conversa' : 'Link copiado! Cole na conversa');
+}
+
+// O compartilhar do próprio aparelho abre a lista de apps, com o WhatsApp em
+// primeiro — é o caminho mais curto entre gerar e mandar.
+async function epCelCompartilhar() {
+  const ch = epCel && epCel.charge; if (!ch) return;
+  const link = ch.payUrl || ch.paymentLinkUrl || '';
+  try {
+    await navigator.share({
+      title: 'Cobrança ' + fmtBRL(ch.value),
+      text: `Segue o link para pagamento de ${fmtBRL(ch.value)}${ch.comment ? ' — ' + ch.comment : ''}:`,
+      url: link
+    });
+  } catch { /* cancelado pelo usuário: não é erro */ }
+}
+
+function epCelNova() {
+  epCel = null;
+  $('#cel-result').innerHTML = '';
+  $('#cel-val').value = ''; $('#cel-desc').value = '';
+  $$('.cel-prod').forEach(b => b.classList.remove('on'));
+  $('#cel-val').focus();
+}
+
+async function epCelTestarVenda(btn) {
+  const cents = epParseReais($('#cel-ts').value);
+  if (!cents) return toast('Informe o valor da venda', 'error');
+  const txt = btn.innerHTML; btn.disabled = true; btn.textContent = 'Disparando…';
+  try {
+    if (window.ECNotify && ECNotify.subscribePush) { try { await ECNotify.subscribePush(); } catch {} }
+    const r = await api('/push/test-sale', { body: { amount: cents } });
+    toast(r.sent ? `Enviado para ${r.sent} aparelho(s)` : 'Ative as notificações em Ajustes e tente de novo', r.sent ? 'ok' : 'error');
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; btn.innerHTML = txt; }
+}
+
 async function renderElitePay() {
   $('#view').innerHTML = `<div class="page"><div class="card">${skel(6)}</div></div>`;
   let d;
   try { d = await api('/elitepay'); } catch (e) { $('#view').innerHTML = `<div class="page"><div class="card err">${esc(e.message)}</div></div>`; return; }
   state.epInfo = d;
+  // No CELULAR o módulo inteiro não cabe nem faz sentido: abas de produtos,
+  // checkout, relatórios e saque são trabalho de mesa. Do telefone se faz uma
+  // coisa — cobrar na frente do cliente e mandar o Pix.
+  if (isMobileLayout()) return epRenderCobrarNoCelular(d);
   // A aba Cartão só existe se a plataforma habilitou o adquirente.
   try { epCardTabVisible = (await api('/elitepay/card-account')).account.available; } catch { epCardTabVisible = false; }
   if (!epCardTabVisible && epState.tab === 'card') epState.tab = 'dash';

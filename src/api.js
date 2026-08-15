@@ -3888,7 +3888,10 @@ module.exports = function (broadcast, clients) {
   // Teste da notificação de VENDA, com o valor escolhido na hora.
   // Não cria cobrança, não mexe na carteira e não entra em relatório: é só o
   // aviso. Um "teste" que sujasse o financeiro seria pior que não existir.
-  router.post('/admin/push/test-sale', auth, adminOnly, h(async (req, res) => {
+  // A rota é do DONO da conta, não só do admin da plataforma: quem precisa
+  // conferir se o aviso de venda chega é o cliente, e ele faz isso do celular,
+  // onde não existe painel de admin. O Admin SaaS chama a mesma rota.
+  router.post('/push/test-sale', auth, ownerOnly, h(async (req, res) => {
     const cents = Math.round(Number((req.body || {}).amount) || 0);
     if (cents < 1) return res.status(400).json({ error: 'Informe o valor da venda' });
     const nome = String((req.body || {}).name || '').trim().slice(0, 60);

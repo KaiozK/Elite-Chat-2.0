@@ -4172,3 +4172,44 @@ body.has-tabbar .inbox,
 body.has-tabbar .fb2,
 body.has-tabbar .ck2,
 body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h)); }
+
+/* ===================== COBRAR NO CELULAR =====================
+   Tela de uma coisa só. O campo de valor é o maior elemento da tela porque é
+   o único que sempre precisa ser preenchido — e é digitado com o cliente
+   esperando na frente. */
+.cel-valor { display: block; margin: 0 0 14px; }
+.cel-valor > span {
+  display: block; font-size: 11.5px; font-weight: 800; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px;
+}
+.cel-valor-in { display: flex; align-items: center; gap: 8px; }
+.cel-valor-in i {
+  font-style: normal; font-size: 22px; font-weight: 800; color: var(--muted); flex: none;
+}
+.cel-valor-in input {
+  flex: 1; min-width: 0; font-size: 34px !important; font-weight: 800;
+  letter-spacing: -.02em; padding: 10px 14px; height: auto;
+  font-variant-numeric: tabular-nums;
+}
+/* Atalhos de produto: o preço já entra no campo, sem digitar. */
+.cel-prods { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-top: 6px; scrollbar-width: none; }
+.cel-prods::-webkit-scrollbar { display: none; }
+.cel-prod {
+  flex: none; display: flex; flex-direction: column; gap: 2px; text-align: left;
+  padding: 9px 13px; border-radius: 12px; cursor: pointer;
+  background: var(--card); border: 1px solid var(--border); font: inherit;
+}
+.cel-prod b { font-size: 12.5px; font-weight: 700; color: var(--text); }
+.cel-prod span { font-size: 12px; font-weight: 700; color: var(--verde-deep); }
+.cel-prod.on { border-color: var(--verde-esc); background: var(--brand-bg); }
+
+.cel-pronto { border-color: var(--brand-border); }
+.cel-ok {
+  display: flex; align-items: center; gap: 9px; margin-bottom: 12px;
+  color: var(--verde-deep); font-size: 14.5px; font-weight: 800;
+}
+.cel-qr {
+  display: block; width: 190px; height: 190px; margin: 0 auto 14px;
+  border-radius: 12px; background: #fff; padding: 8px;
+}
+.cel-cob .btn.block, .cel-pronto .btn.block { justify-content: center; }
