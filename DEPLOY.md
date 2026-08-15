@@ -17,9 +17,51 @@ real é mandar o cliente para `pay.` sem expor o domínio do painel, e ter um
 
 ### Na DigitalOcean
 
-*Apps → Settings → Domains → Add Domain*, um por vez: `app.`, `api.` e `pay.`,
-todos apontando para o **mesmo app**. Se o DNS estiver no Cloudflare, crie um
-CNAME de cada subdomínio para o mesmo destino do domínio raiz.
+**Não existe tela de "subdomains".** Na App Platform, um subdomínio é só mais
+um *domínio* que o app atende. O caminho é:
+
+> **Apps → (o app) → Settings → aba `Domains` → botão `Add Domain`**
+
+Repita três vezes, um por vez, sempre no **mesmo app** — não crie apps novos:
+
+```
+app.koonfy.com
+api.koonfy.com
+pay.koonfy.com
+```
+
+Ao adicionar, a DigitalOcean pergunta quem cuida do DNS:
+
+| resposta | o que fazer |
+|---|---|
+| **"You manage your domain"** (DNS fora da DO — Cloudflare, Registro.br, etc.) | Ela mostra um destino do tipo `koonfy-xxxxx.ondigitalocean.app`. Crie um **CNAME** de cada subdomínio para esse destino, no seu provedor de DNS. |
+| **"DigitalOcean manages your domain"** | Ela cria os registros sozinha; não há nada a fazer no DNS. |
+
+Ou seja: **só os records do DNS não bastam**. Sem adicionar o domínio no app, a
+DigitalOcean recebe a requisição, não reconhece o host e devolve erro — mesmo
+com o DNS apontando certo.
+
+### Se o DNS estiver no Cloudflare
+
+O certificado é emitido pela DigitalOcean por validação HTTP, e o **proxy
+laranja atrapalha essa etapa**: a Cloudflare responde no lugar do servidor e a
+validação não fecha.
+
+1. Deixe o registro **cinza** (DNS only) até a DO mostrar o domínio como
+   *Active* com o cadeado.
+2. Depois volte para **laranja**, se quiser o proxy.
+3. Com o proxy ligado, o modo SSL da Cloudflare precisa ser **Full (strict)** —
+   em "Flexible" o navegador vê https e a Cloudflare fala http com a DO, o que
+   gera laço de redirecionamento.
+
+### Como saber que deu certo
+
+| endereço | resposta esperada |
+|---|---|
+| `koonfy.com` | a landing |
+| `app.koonfy.com` | redireciona para `/app/` |
+| `api.koonfy.com` | `404 {"error":"Este endereço serve apenas a API"}` — **isto é o certo**, não é falha |
+| `pay.koonfy.com/epc_<id>` | a página de uma cobrança existente |
 
 ### Variáveis
 
