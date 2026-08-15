@@ -133,7 +133,7 @@ function processEvent(body, broadcast) {
       });
 
       // LIGAÇÕES (Calling API): eventos de chamada chegam no campo "calls"
-      if (change.field === 'calls' && acc) { handleCalls(acc, v, broadcast); continue; }
+      if (change.field === 'calls' && acc) { handleCalls(acc, canal, v, broadcast); continue; }
 
       // Campos assinados além de messages (template status, qualidade do número,
       // account_update etc.) ficam registrados no log acima.
@@ -312,7 +312,7 @@ function registrarCliqueCampanha(acc, waId, rotulo, replyId) {
 // Eventos do campo "calls": connect (chamada tocando, traz o SDP offer do
 // WebRTC), terminate (encerrada, traz duração/status) e updates intermediários.
 // O front recebe tudo por SSE e mostra a tela de chamada estilo WhatsApp.
-function handleCalls(acc, v, broadcast) {
+function handleCalls(acc, canalDaConta, v, broadcast) {
   const names = {};
   for (const c of v.contacts || []) names[c.wa_id] = c.profile && c.profile.name;
   // NB: `acc` pode ser um contexto de canal (herda da conta por protótipo), por
@@ -353,7 +353,13 @@ function handleCalls(acc, v, broadcast) {
       broadcast('call', {
         accountId: acc.id,
         kind: rec.direction === 'USER_INITIATED' ? 'incoming' : 'update',
-        call: { id: rec.id, waId, name: contact.name, direction: rec.direction, status: rec.status },
+        // O rótulo do CANAL vai junto: com mais de um WhatsApp na conta, saber
+        // que "está tocando" não basta — o atendente precisa saber por qual
+        // número, porque a conversa e o tom de atendimento mudam.
+        call: {
+          id: rec.id, waId, name: contact.name, direction: rec.direction, status: rec.status,
+          canal: (canalDaConta && canalDaConta.label) || ''
+        },
         sdpOffer: rec.sdpOffer, sdp, sdpType
       });
       store.logEvent({ type: 'call_connect', accountId: acc.id, waId, direction: rec.direction });

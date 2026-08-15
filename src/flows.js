@@ -125,7 +125,9 @@ async function execNode(acc, node, ctx, deliver, flow) {
     if (titles.length <= 3) {
       const buttons = titles.map((t, i) => ({ type: 'reply', reply: { id: (node.buttons[i] && node.buttons[i].id) || `btn_${i + 1}`, title: t.slice(0, 20) } }));
       const r = await wa.sendInteractive(acc, to, { type: 'button', body: { text: body }, action: { buttons } });
-      if (deliver) deliver(acc, to, { type: 'interactive', text: `${body}\n${buttons.map(b => `[${b.reply.title}]`).join(' ')}` }, r);
+      // Botões como DADO, não colados no texto: é assim que o chat consegue
+      // desenhá-los e o atendente conferir o que o lead de fato recebeu.
+      if (deliver) deliver(acc, to, { type: 'interactive', text: body, buttons: buttons.map(b => ({ id: b.reply.id, title: b.reply.title })) }, r);
       registrarImpressao(acc, flow, node, buttons.map(b => ({ id: b.reply.id, title: b.reply.title })), to);
       return { ok: true, detail: `${buttons.length} botões` };
     }
@@ -167,8 +169,7 @@ async function execNode(acc, node, ctx, deliver, flow) {
       reply: { id: b.id || `btn_${i + 1}`, title: interpolate(String(b.title || b), ctx).slice(0, 20) }
     }));
     const r = await wa.sendInteractive(acc, to, { type: 'button', body: { text: body }, action: { buttons } });
-    const resumo = buttons.map(b => `[${b.reply.title}]`).join(' ');
-    if (deliver) deliver(acc, to, { type: 'interactive', text: `${body}\n${resumo}` }, r);
+    if (deliver) deliver(acc, to, { type: 'interactive', text: body, buttons: buttons.map(b => ({ id: b.reply.id, title: b.reply.title })) }, r);
     return { ok: true };
   }
   if (node.type === 'list') {

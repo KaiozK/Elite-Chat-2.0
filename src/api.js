@@ -1600,14 +1600,52 @@ module.exports = function (broadcast, clients) {
   });
 
   // Atender: o navegador gera o SDP answer (WebRTC) e a Meta conecta o áudio
+  // ATENDER — só UM aparelho leva a chamada.
+  //
+  // O aviso de ligação vai para TODAS as sessões da conta: o computador, o
+  // celular, e cada atendente. Sem reserva, dois aparelhos mandavam SDP answer
+  // diferentes para a mesma chamada — a Meta fica com um só, o outro trava com
+  // a tela de "conectando" e a ligação não sobe em nenhum. Era o que acontecia
+  // ao tentar atender no celular estando logado também no computador.
+  //
+  // A reserva é decidida AQUI, no servidor, porque é o único ponto que os
+  // aparelhos têm em comum. Quem chega primeiro atende; os outros recebem 409
+  // e a tela se fecha sozinha dizendo onde a chamada foi atendida.
   router.post('/calls/:id/accept', auth, can('inbox', 'edit'), h(async (req, res) => {
     const sdp = String((req.body || {}).sdp || '');
     if (!sdp) return res.status(400).json({ error: 'SDP answer ausente (WebRTC)' });
-    const r = await wa.callAction(req.wctx, { call_id: req.params.id, action: 'accept', session: { sdp_type: 'answer', sdp } });
-    const call = (req.acc.calls || []).find(c => c.id === req.params.id);
-    if (call) { call.status = 'active'; call.answeredAt = Date.now(); db.save(); }
-    agents.log(req.acc, req.who, 'call_answered', 'Atendeu a ligação');
-    res.json({ ok: true, result: r });
+
+    const dono = db.findAccount(req.acc.id) || req.acc;
+    const call = (dono.calls || []).find(c => c.id === req.params.id);
+    const quem = req.who.name || 'outro aparelho';
+
+    if (call && call.claimedBy && call.claimedAt && Date.now() - call.claimedAt < 60000) {
+      return res.status(409).json({
+        error: `Esta ligação já foi atendida por ${call.claimedBy}.`,
+        code: 'call_taken', claimedBy: call.claimedBy
+      });
+    }
+    // marca ANTES de falar com a Meta: a corrida entre dois aparelhos se decide
+    // em milissegundos, e o ida-e-volta com a Graph API é lento demais para
+    // servir de trava.
+    if (call) { call.claimedBy = quem; call.claimedAt = Date.now(); db.save(); }
+
+    try {
+      const r = await wa.callAction(req.wctx, { call_id: req.params.id, action: 'accept', session: { sdp_type: 'answer', sdp } });
+      if (call) { call.status = 'active'; call.answeredAt = Date.now(); db.save(); }
+      agents.log(req.acc, req.who, 'call_answered', 'Atendeu a ligação');
+      // avisa os OUTROS aparelhos para pararem de tocar
+      broadcast('call', {
+        accountId: req.acc.id, kind: 'claimed',
+        call: { id: req.params.id, waId: call ? call.waId : null },
+        por: quem
+      });
+      res.json({ ok: true, result: r });
+    } catch (e) {
+      // a Meta recusou: libera a reserva para outro aparelho poder tentar
+      if (call) { call.claimedBy = null; call.claimedAt = 0; db.save(); }
+      throw e;
+    }
   }));
 
   // Pré-aceitar (opcional na API — acelera o estabelecimento da mídia)
@@ -1617,11 +1655,19 @@ module.exports = function (broadcast, clients) {
     res.json({ ok: true, result: r });
   }));
 
+  // Recusar também vale por todos: quem recusa encerra a chamada na Meta, e os
+  // outros aparelhos precisam parar de tocar em vez de ficarem chamando por uma
+  // ligação que já morreu.
   router.post('/calls/:id/reject', auth, can('inbox', 'edit'), h(async (req, res) => {
     const r = await wa.callAction(req.wctx, { call_id: req.params.id, action: 'reject' });
     const call = (req.acc.calls || []).find(c => c.id === req.params.id);
     if (call) { call.status = 'rejected'; call.endedAt = Date.now(); db.save(); }
     agents.log(req.acc, req.who, 'call_rejected', 'Recusou a ligação');
+    broadcast('call', {
+      accountId: req.acc.id, kind: 'claimed',
+      call: { id: req.params.id, waId: call ? call.waId : null },
+      por: req.who.name || 'outro aparelho', recusada: true
+    });
     res.json({ ok: true, result: r });
   }));
 
@@ -2064,8 +2110,17 @@ module.exports = function (broadcast, clients) {
       }
     };
     const r = await wa.sendInteractive(req.wctx, store.normalizeWaId(to), interactive);
-    const resumo = buttons.map(b => `[${b.title || b}]`).join(' ');
-    res.json({ ok: true, message: storeOutbound(req.wctx, to, { type: 'interactive', text: `${body}\n${resumo}` }, r) });
+    // Os botões ficam ESTRUTURADOS na mensagem, não amassados no texto como
+    // "[Sim] [Não]". Assim o chat desenha os botões de verdade e dá para
+    // conferir o que o lead recebeu — e, quando ele responde, dá para casar a
+    // resposta com o botão que foi enviado.
+    res.json({
+      ok: true,
+      message: storeOutbound(req.wctx, to, {
+        type: 'interactive', text: body,
+        buttons: interactive.action.buttons.map(b => ({ id: b.reply.id, title: b.reply.title }))
+      }, r)
+    });
   }));
 
   // Payload interactive completo (listas, CTA URL etc.) — passa direto para a Graph API
