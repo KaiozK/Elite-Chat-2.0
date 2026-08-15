@@ -60,6 +60,10 @@
   --blue-bg: #eef6fe;
   --blue-border: #c6dffb;
 
+  /* Altura do topo = a barra em si MAIS o recorte da tela. Sem o recorte, a
+     conta dá os mesmos 62px de sempre. */
+  --topbar-h: calc(62px + env(safe-area-inset-top, 0px));
+
   /* geometria & sombra */
   --radius: 20px;
   --radius-sm: 14px;
@@ -106,7 +110,7 @@ h2 { font-size: 15px; font-weight: 800; letter-spacing: -.015em; margin: 0 0 12p
 ::-webkit-scrollbar-thumb { background: #c3dccb; border-radius: 20px; border: 2px solid transparent; background-clip: content-box; }
 ::-webkit-scrollbar-thumb:hover { background: #a3c6ae; border: 2px solid transparent; background-clip: content-box; }
 
-.page { padding: 26px 32px 48px; overflow-y: auto; height: calc(100vh - 62px); }
+.page { padding: 26px 32px 48px; overflow-y: auto; height: calc(100vh - var(--topbar-h)); height: calc(100dvh - var(--topbar-h)); }
 .page-head { margin-bottom: 22px; }
 .page-head h1 { font-size: 22px; }
 .page-head p { margin: 3px 0 0; color: var(--muted); font-size: 13px; font-weight: 500; }
@@ -138,7 +142,7 @@ h2 { font-size: 15px; font-weight: 800; letter-spacing: -.015em; margin: 0 0 12p
 
 /* ---------- login ---------- */
 .login-wrap {
-  display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px;
+  display: flex; align-items: center; justify-content: center; min-height: 100vh; min-height: 100dvh; padding: 20px;
   background: linear-gradient(180deg, var(--bg) 0%, var(--brand-bg) 100%);
 }
 .login-card {
@@ -172,7 +176,7 @@ h2 { font-size: 15px; font-weight: 800; letter-spacing: -.015em; margin: 0 0 12p
 .hint { font-size: 12.5px; color: var(--muted); margin: 4px 0 0; text-align: center; font-weight: 500; }
 
 /* ---------- shell ---------- */
-#app { display: flex; height: 100vh; }
+#app { display: flex; height: 100vh; height: 100dvh; }
 .sidebar {
   width: 252px; flex-shrink: 0; display: flex; flex-direction: column;
   background: var(--sidebar); border-right: 1px solid var(--border2);
@@ -212,11 +216,17 @@ h2 { font-size: 15px; font-weight: 800; letter-spacing: -.015em; margin: 0 0 12p
 main#view { flex: 1; min-height: 0; }
 
 /* ---------- topbar ---------- */
+/* A altura do topo é VARIÁVEL porque ela cresce com o recorte da tela (notch,
+   ilha dinâmica, barra de status do PWA). Quem desconta o topo para calcular a
+   própria altura usa a mesma variável, então nada fica fora de lugar quando o
+   recorte existe. */
 .topbar {
-  height: 62px; flex-shrink: 0; background: var(--glass);
+  height: var(--topbar-h); flex-shrink: 0; box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  background: var(--glass);
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border2);
-  display: flex; align-items: center; gap: 18px; padding: 0 24px;
+  display: flex; align-items: center; gap: 18px; padding-left: 24px; padding-right: 24px;
   position: relative; z-index: 100;   /* acima do #view p/ o dropdown de notificações ficar na frente */
 }
 .topbar h2 { margin: 0; font-size: 15px; font-weight: 800; flex: 1; letter-spacing: -.02em; }
@@ -542,7 +552,7 @@ tbody tr:last-child td { border-bottom: none; }
 .progress i { display: block; height: 100%; background: linear-gradient(90deg, var(--verde), var(--verde-esc)); border-radius: 99px; transition: width .4s var(--ease); }
 
 /* ---------- inbox ---------- */
-.inbox { display: flex; height: calc(100vh - 62px); }
+.inbox { display: flex; height: calc(100vh - var(--topbar-h)); height: calc(100dvh - var(--topbar-h)); }
 .conv-list { width: 332px; flex-shrink: 0; border-right: 1px solid var(--border2); display: flex; flex-direction: column; background: var(--card); }
 .conv-head { padding: 16px 14px 12px; border-bottom: 1px solid var(--border); }
 .conv-head input { margin-top: 10px; background: var(--bg); border-color: transparent; border-radius: 10px; }
@@ -903,7 +913,7 @@ details.adv[open] summary::after { content: '–'; }
 .blbl { font-style: normal; }
 
 /* ---------- flow builder: canvas arrasta-e-solta (v2) ---------- */
-.fb2 { display: flex; flex-direction: column; height: calc(100vh - 62px); }
+.fb2 { display: flex; flex-direction: column; height: calc(100vh - var(--topbar-h)); height: calc(100dvh - var(--topbar-h)); }
 .fb2-top {
   display: flex; align-items: center; gap: 12px; padding: 11px 20px; flex-shrink: 0;
   background: var(--glass); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border2);
@@ -2842,7 +2852,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
    CHECKOUT BUILDER — editor dedicado (mesmo padrão do Flow Builder)
    topo fixo · seções à esquerda · edição no centro · prévia à direita
    ============================================================ */
-.ck2 { display: flex; flex-direction: column; height: calc(100vh - 62px); }
+.ck2 { display: flex; flex-direction: column; height: calc(100vh - var(--topbar-h)); height: calc(100dvh - var(--topbar-h)); }
 .ck2-top {
   display: flex; align-items: center; gap: 12px; padding: 11px 20px; flex-shrink: 0;
   background: var(--glass); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border2);
@@ -2915,7 +2925,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
    CHECKOUT BUILDER v2 — formato Kiwify:
    canvas central com a página + painel direito Componentes/Configurações
    ============================================================ */
-.ckb { display: flex; flex-direction: column; height: calc(100vh - 62px); }
+.ckb { display: flex; flex-direction: column; height: calc(100vh - var(--topbar-h)); height: calc(100dvh - var(--topbar-h)); }
 .ckb-top {
   display: flex; align-items: center; gap: 12px; padding: 10px 18px; flex-shrink: 0; flex-wrap: wrap;
   background: var(--glass); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border2);
@@ -2985,7 +2995,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 
 /* Checkout Builder = página FOCADA: some a sidebar e o topo do app */
 #app.builder-mode .sidebar, #app.builder-mode .topbar { display: none; }
-#app.builder-mode .ckb { height: 100vh; }
+#app.builder-mode .ckb { height: 100vh; height: 100dvh; }
 .ckb-brand { gap: 9px; }
 .ckb-brand .brand-mark { width: 34px; height: 34px; border-radius: 9px; overflow: hidden; }
 .ckb-brand .brand-mark img { width: 100%; height: 100%; object-fit: cover; }
@@ -3453,9 +3463,9 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   border-radius: 99px; border: 2px solid var(--card);
 }
 
-/* O conteúdo não pode terminar embaixo da barra. */
-body.has-tabbar main#view { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
-body.has-tabbar .composer { margin-bottom: calc(60px + env(safe-area-inset-bottom, 0px)); }
+/* A folga para a barra de baixo é definida mais adiante, no bloco de área
+   segura: ela precisa ir em QUEM ROLA (`.page`), e não no `main#view`, que não
+   rola. As duas regras que ficavam aqui foram substituídas por aquelas. */
 /* Com a barra no rodapé, a gaveta e o hambúrguer perdem a função. */
 body.has-tabbar .nav-toggle { display: none; }
 body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
@@ -4105,3 +4115,60 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
 :root[data-theme="dark"] .msg-btn { color: var(--verde); }
 /* a hora fica acima dos botões, como no WhatsApp */
 .msg.com-btns .meta { float: none; justify-content: flex-end; margin-left: 0; }
+
+/* ===========================================================================
+   PWA INSTALADO PELO NAVEGADOR — área segura e rolagem
+   ===========================================================================
+   Havia regra de área segura só para `.ec-native`, que é o app das LOJAS. O
+   PWA instalado pelo navegador não recebe essa classe, então rodava sem
+   nenhuma proteção: o topo entrava embaixo do relógio/notch e a barra de baixo
+   ficava atrás da barra de gestos do iPhone.
+
+   `display-mode: standalone` é o que identifica um PWA aberto fora do
+   navegador — vale tanto no iOS quanto no Android.
+   =========================================================================== */
+@media (display-mode: standalone) {
+  /* A barra de gestos come a parte de baixo: os itens sobem acima dela. */
+  .tabbar { padding-bottom: max(env(safe-area-inset-bottom, 0px), 6px); }
+
+  /* Nas laterais, o recorte só existe em tela deitada — daí o `max` com 0. */
+  .topbar { padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-right: max(24px, env(safe-area-inset-right, 0px)); }
+}
+
+/* ---------------------------------------------------------------------------
+   ROLAGEM ELÁSTICA
+   No celular, puxar além do fim faz a página inteira deslizar e aparece uma
+   faixa vazia por baixo do rodapé fixo — a sensação de que ele "não está
+   preso". Prendendo a rolagem no contêiner que realmente rola, o elástico
+   acontece DENTRO dele e as barras fixas não se mexem.
+   --------------------------------------------------------------------------- */
+html, body { overscroll-behavior: none; }
+body { background: var(--bg); }
+.page, .chat-scroll, .conv-list, main#view {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---------------------------------------------------------------------------
+   FOLGA PARA A BARRA DE BAIXO
+   A folga estava em `main#view`, que NÃO é quem rola — quem rola é `.page`,
+   e ela tem altura própria que vai até o fim da janela, ou seja, passa por
+   baixo da barra fixa. O resultado era o último bloco de cada tela escondido
+   atrás dos ícones: aconteceu em Assinatura, Opt-in, Agente de IA e Logs.
+   A reserva vai em quem rola de verdade.
+   --------------------------------------------------------------------------- */
+body.has-tabbar {
+  --tabbar-h: calc(58px + max(env(safe-area-inset-bottom, 0px), 4px));
+}
+body.has-tabbar .page { padding-bottom: calc(24px + var(--tabbar-h)); }
+body.has-tabbar main#view { padding-bottom: 0; }
+/* A conversa NÃO leva margem: a `.inbox` logo abaixo já encurta pela altura da
+   barra, e somar a margem descontava a mesma coisa duas vezes — sobrava um vão
+   morto de ~66px entre o campo de digitação e os ícones. */
+body.has-tabbar .composer { margin-bottom: 0; }
+/* Telas de altura fixa (conversa, construtores) encurtam em vez de ganhar
+   padding — senão o rodapé delas ficaria fora da vista. */
+body.has-tabbar .inbox,
+body.has-tabbar .fb2,
+body.has-tabbar .ck2,
+body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h)); }
