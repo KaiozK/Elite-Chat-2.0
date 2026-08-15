@@ -480,9 +480,37 @@
     ['rastreio', SEC_TRACK], ['mais-recursos', SEC_MORE]
   ];
 
+  // RODAPÉ LEGAL. As páginas /termos.html e /privacidade.html existiam desde
+  // sempre e não eram linkadas de lugar nenhum — ninguém as achava, nem o
+  // visitante nem a revisão do app da Meta, que exige a URL da política.
+  // Entra pelo mesmo mecanismo das outras seções porque o runtime reescreve o
+  // documento e um <footer> estático no HTML seria apagado.
+  // A landing JÁ tem rodapé, com a linha de copyright. Os links entram AO LADO
+  // dessa linha em vez de num rodapé novo — um segundo rodapé repetia o
+  // copyright e ficava com cara de remendo.
+  function ensureRodape() {
+    if (document.getElementById('kf-rodape')) return;
+    var alvo = null;
+    var cand = document.querySelectorAll('footer *, [class*="footer"] *, .sc-host *');
+    for (var i = 0; i < cand.length; i++) {
+      var el = cand[i];
+      if (el.children.length === 0 && /direitos reservados/i.test(el.textContent || '')) { alvo = el; break; }
+    }
+    if (!alvo) return;
+    var span = document.createElement('span');
+    span.id = 'kf-rodape';
+    span.style.cssText = 'margin-left:10px;white-space:nowrap';
+    span.innerHTML = '<span style="opacity:.4;margin-right:10px">·</span>'
+      + '<a href="/termos.html" style="color:inherit;text-decoration:underline;text-underline-offset:3px">Termos de Uso</a>'
+      + '<span style="opacity:.4;margin:0 8px">·</span>'
+      + '<a href="/privacidade.html" style="color:inherit;text-decoration:underline;text-underline-offset:3px">Política de Privacidade</a>';
+    alvo.appendChild(span);
+  }
+
   function inject() {
     ensureCss();
     ensureSeo();
+    ensureRodape();
     var ok = true;
 
     if (!document.getElementById('coexistencia')) {

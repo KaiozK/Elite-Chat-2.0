@@ -17,7 +17,7 @@
 <meta name="application-name" content="Koonfy">
 <link rel="apple-touch-icon" href="/assets/elitechat-logo.png">
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/app/style.css?v=rel2">
+<link rel="stylesheet" href="/app/style.css?v=leg1">
 <script>/* aplica o tema salvo antes de pintar (sem flash) */
   (function () { try {
     /* O padrão é o CLARO. Antes seguia o prefers-color-scheme do sistema, e
@@ -103,6 +103,13 @@
     </div>
     <p class="hint hidden" id="reg-pular"><a href="#" onclick="pularRecebimento(event)">Pular e criar a conta</a></p>
     <p class="hint" id="auth-toggle">Não tem conta? <a href="#" onclick="toggleRegister(event)">Criar conta grátis</a></p>
+    <!-- O aceite precisa estar VISÍVEL no momento de criar a conta: as duas
+         páginas existiam mas não eram linkadas de lugar nenhum, então ninguém
+         as encontrava — nem o cliente, nem a revisão do app da Meta, que exige
+         a URL da política de privacidade. -->
+    <p class="hint legal-hint hidden" id="auth-legal">Ao criar a conta você aceita os
+      <a href="/termos.html" target="_blank" rel="noopener">Termos de Uso</a> e a
+      <a href="/privacidade.html" target="_blank" rel="noopener">Política de Privacidade</a>.</p>
     <p id="login-err" class="err"></p>
   </form>
 </div>
@@ -277,7 +284,7 @@
 <script src="/app/notifications.js?v=wa1"></script>
 <script src="/app/vendor/qrcode.js"></script>
 <script src="/app/br-uf.js?v=1"></script>
-<script src="/app/app.js?v=rel2"></script>
+<script src="/app/app.js?v=leg1"></script>
 <script>/* registra o Service Worker e a engine cedo (offline funciona antes do login) */
   if (window.ECNotify) { try { ECNotify.init(); } catch (e) {} }
 </script>

@@ -875,6 +875,8 @@ function toggleRegister(e) {
   $('#auth-toggle').innerHTML = registerMode
     ? 'Já tem conta? <a href="#" onclick="toggleRegister(event)">Entrar</a>'
     : 'Não tem conta? <a href="#" onclick="toggleRegister(event)">Criar conta grátis</a>';
+  // O aceite só aparece no CADASTRO: em quem já tem conta seria ruído.
+  $('#auth-legal').classList.toggle('hidden', !registerMode);
   $('#login-err').textContent = '';
 }
 
