@@ -18,9 +18,13 @@ real é mandar o cliente para `pay.` sem expor o domínio do painel, e ter um
 ### Na DigitalOcean
 
 **Não existe tela de "subdomains".** Na App Platform, um subdomínio é só mais
-um *domínio* que o app atende. O caminho é:
+um *domínio* que o app atende. E ele **não fica em Settings** — fica na aba
+`Networking`, ao lado de Console:
 
-> **Apps → (o app) → Settings → aba `Domains` → botão `Add Domain`**
+> **Apps → (o app) → aba `Networking` → seção `Domains` → `Add Domain`**
+
+(Em versões antigas do painel isso ficava em *Settings → Domains*. Se a
+documentação disser Settings e você não achar, procure em Networking.)
 
 Repita três vezes, um por vez, sempre no **mesmo app** — não crie apps novos:
 
