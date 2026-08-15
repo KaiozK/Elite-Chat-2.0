@@ -480,7 +480,7 @@
     ['rastreio', SEC_TRACK], ['mais-recursos', SEC_MORE]
   ];
 
-  // RODAPÉ LEGAL. As páginas /termos.html e /privacidade.html existiam desde
+  // RODAPÉ LEGAL. As páginas /termos e /privacidade existiam desde
   // sempre e não eram linkadas de lugar nenhum — ninguém as achava, nem o
   // visitante nem a revisão do app da Meta, que exige a URL da política.
   // Entra pelo mesmo mecanismo das outras seções porque o runtime reescreve o
@@ -501,9 +501,9 @@
     span.id = 'kf-rodape';
     span.style.cssText = 'margin-left:10px;white-space:nowrap';
     span.innerHTML = '<span style="opacity:.4;margin-right:10px">·</span>'
-      + '<a href="/termos.html" style="color:inherit;text-decoration:underline;text-underline-offset:3px">Termos de Uso</a>'
+      + '<a href="/termos" style="color:inherit;text-decoration:underline;text-underline-offset:3px">Termos de Uso</a>'
       + '<span style="opacity:.4;margin:0 8px">·</span>'
-      + '<a href="/privacidade.html" style="color:inherit;text-decoration:underline;text-underline-offset:3px">Política de Privacidade</a>';
+      + '<a href="/privacidade" style="color:inherit;text-decoration:underline;text-underline-offset:3px">Política de Privacidade</a>';
     alvo.appendChild(span);
   }
 

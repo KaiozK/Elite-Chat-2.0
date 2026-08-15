@@ -538,6 +538,11 @@ app.get('/index.html', serveLanding);
 // funcionando enquanto o app estiver publicado.
 app.get('/privacidade', (req, res) => res.sendFile(path.join(__dirname, 'public', 'privacidade.html')));
 app.get('/termos', (req, res) => res.sendFile(path.join(__dirname, 'public', 'termos.html')));
+// O endereço oficial é sem extensão. Quem já tem o .html salvo (ou registrado
+// na Meta) cai no mesmo lugar, com 301 para o buscador não indexar dois
+// endereços com o mesmo texto.
+app.get('/privacidade.html', (req, res) => res.redirect(301, '/privacidade'));
+app.get('/termos.html', (req, res) => res.redirect(301, '/termos'));
 
 app.use(express.static(path.join(__dirname, 'public')));
 

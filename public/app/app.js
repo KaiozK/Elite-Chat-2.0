@@ -506,6 +506,7 @@ const ICONS = {
   buttons: '<rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="12" height="6" rx="2"/>',
   zap: '<path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/>',
   send: '<path d="m22 2-11 11"/><path d="M22 2 15 21l-4-8-8-4 19-7z"/>',
+  mic: '<rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
   edit: '<path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>',
   trash: '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/>',
   refresh: '<path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/>',
@@ -2457,6 +2458,7 @@ async function loadChat(waId, keepScroll) {
         </div>
         <div class="line">
           <textarea id="composer-text" placeholder="Digite uma mensagem... (Enter envia, Shift+Enter quebra linha)"></textarea>
+          <button class="btn send-btn no-grow mic-btn" id="mic-btn" onclick="gravarVoz()" title="Gravar mensagem de voz">${ico('mic', 18)}</button>
           <button class="btn primary send-btn no-grow" id="send-btn" onclick="sendTextNow()" title="Enviar (Enter)">${ico('send', 18)}</button>
         </div>
         <input type="file" id="file-input" class="hidden" onchange="fileChosen(this)">
@@ -2833,6 +2835,99 @@ function balaoProvisorio(waId, text) {
   sc.appendChild(balao);
   sc.scrollTop = sc.scrollHeight;
   return balao;
+}
+
+// ---------------------------------------------------------------------------
+// MENSAGEM DE VOZ
+//
+// Enviar áudio pela API oficial sempre funcionou — o que não existia era como
+// GRAVAR: só dava para anexar um arquivo pronto, e ninguém tem um .mp3 do
+// próprio recado guardado no celular. A conversão de formato mora em voz.js;
+// aqui é só o botão, o cronômetro e o envio.
+// ---------------------------------------------------------------------------
+async function gravarVoz() {
+  if (!window.ECVoz || !ECVoz.suportado()) {
+    return toast('Este navegador não grava áudio. Use o Anexo para enviar um arquivo.', 'error');
+  }
+  if (ECVoz.gravando()) return pararVoz(true);
+
+  try {
+    await ECVoz.iniciar(seg => {
+      const el = $('#mic-tempo');
+      if (el) el.textContent = `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, '0')}`;
+    });
+  } catch (e) {
+    return toast(e.name === 'NotAllowedError' ? 'Permita o microfone para gravar' : e.message, 'error');
+  }
+
+  const linha = $('.composer .line');
+  if (linha) linha.classList.add('gravando');
+  const btn = $('#mic-btn');
+  if (btn) {
+    btn.classList.add('rec');
+    btn.title = 'Parar e enviar';
+  }
+  const ta = $('#composer-text');
+  if (ta) {
+    ta.dataset.antes = ta.value;
+    ta.value = '';
+    ta.disabled = true;
+    ta.placeholder = '';
+  }
+  // O cronômetro e o cancelar entram NA linha do campo: o atendente precisa ver
+  // que está gravando sem procurar, e ter como desistir sem enviar.
+  if (linha && !$('#mic-hud')) {
+    const hud = document.createElement('div');
+    hud.id = 'mic-hud';
+    hud.innerHTML = `<span class="mic-dot"></span><span id="mic-tempo">0:00</span>
+      <button type="button" class="mic-cancel" onclick="pararVoz(false)">Cancelar</button>`;
+    linha.insertBefore(hud, linha.firstChild);
+  }
+}
+
+async function pararVoz(enviar) {
+  const linha = $('.composer .line'), btn = $('#mic-btn'), ta = $('#composer-text');
+  const limpar = () => {
+    if (linha) linha.classList.remove('gravando');
+    if (btn) { btn.classList.remove('rec'); btn.title = 'Gravar mensagem de voz'; }
+    const hud = $('#mic-hud'); if (hud) hud.remove();
+    if (ta) {
+      ta.disabled = false;
+      ta.value = ta.dataset.antes || '';
+      ta.placeholder = 'Digite uma mensagem... (Enter envia, Shift+Enter quebra linha)';
+    }
+  };
+
+  if (!enviar) { ECVoz.cancelar(); limpar(); return; }
+
+  let audio;
+  try { audio = await ECVoz.parar(); }
+  catch (e) { limpar(); return toast(e.message, 'error'); }
+  limpar();
+  if (!audio || !audio.blob.size) return;
+
+  // Recado de menos de 1 segundo é quase sempre toque sem querer no botão.
+  if (audio.segundos < 1) return toast('Gravação muito curta', 'error');
+
+  try {
+    toast('Enviando áudio…');
+    const base64 = await blobParaBase64(audio.blob);
+    const up = await api('/media/upload', {
+      body: { filename: `voz-${Date.now()}.${audio.ext}`, mime: audio.mime, data: base64 }
+    });
+    await api('/send/media', { body: { to: state.currentWaId, kind: 'audio', mediaId: up.id } });
+    loadChat(state.currentWaId, true);
+    loadConversations();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function blobParaBase64(blob) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1]);
+    r.onerror = () => rej(new Error('Falha ao ler o áudio gravado'));
+    r.readAsDataURL(blob);
+  });
 }
 
 function attachFile() { $('#file-input').click(); }
