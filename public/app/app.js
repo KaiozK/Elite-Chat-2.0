@@ -507,6 +507,8 @@ const ICONS = {
   zap: '<path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/>',
   send: '<path d="m22 2-11 11"/><path d="M22 2 15 21l-4-8-8-4 19-7z"/>',
   mic: '<rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
+  minimize: '<path d="M5 12h14"/>',
+  maximize: '<path d="M4 10V5.5A1.5 1.5 0 0 1 5.5 4H10M14 4h4.5A1.5 1.5 0 0 1 20 5.5V10M20 14v4.5a1.5 1.5 0 0 1-1.5 1.5H14M10 20H5.5A1.5 1.5 0 0 1 4 18.5V14"/>',
   upload: '<path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15"/>',
   edit: '<path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>',
   trash: '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/>',
@@ -2536,7 +2538,6 @@ function paintSession() {
   const assigned = state.currentConsent && state.currentConsent.assignedAgent;
   actions.innerHTML = `
     ${assigned ? `<span class="assign-chip" title="Responsável">${agAvatar ? agAvatar(assigned, 22) : ''}<span>${esc(assigned.name)}</span></span>` : ''}
-    <button class="btn small" onclick="startCallFromChat()" title="Ligar pelo WhatsApp">${ico('phone', 13)}<i class="blbl">Ligar</i></button>
     <button class="btn small" onclick="transferModal('${state.currentWaId}')" title="Transferir">${ico('arrowright', 13)}<i class="blbl">Transferir</i></button>
     <button class="btn small" onclick="editContactModal('${state.currentWaId}')" title="Editar contato">${ico('edit', 13)}<i class="blbl">Editar</i></button>
     ${finished
@@ -9181,10 +9182,33 @@ function paintCall() {
   const status = c.phase === 'active'
     ? `<span id="call-timer">00:00</span>`
     : `<span class="call-status-txt">${c.statusMsg || CALL_PHASE_LBL[c.phase] || ''}</span>`;
+  // MINIMIZADA: vira uma pastilha que fica por cima do app e sai do caminho.
+  // A ligação continua ativa — o que muda é só o tamanho. Sem isso, atender
+  // significava perder o painel inteiro até desligar, e o atendente não
+  // conseguia consultar a conversa enquanto falava, que é justamente a hora em
+  // que ele mais precisa dela.
+  if (c.min && c.phase !== 'ended') {
+    root.innerHTML = `
+      <div class="call-mini ${c.lado || 'dir'}" id="call-mini">
+        <span class="call-mini-av">${esc(waInitials(c.name || c.waId))}</span>
+        <div class="call-mini-tx">
+          <b>${esc(c.name || '+' + c.waId)}</b>
+          <span>${c.phase === 'active' ? `<i id="call-timer">00:00</i>` : (CALL_PHASE_LBL[c.phase] || '')}</span>
+        </div>
+        <button class="call-mini-btn" onclick="toggleMute()" title="${c.muted ? 'Ativar som' : 'Mudo'}">${callIcon('mic')}</button>
+        <button class="call-mini-btn red" onclick="hangupCall()" title="Desligar">${callIcon('down')}</button>
+        <button class="call-mini-btn ghost" onclick="restaurarChamada()" title="Abrir">${ico('maximize', 14)}</button>
+      </div>`;
+    if (c.phase === 'active') startCallTimer();
+    ligarArrasto();
+    return;
+  }
+
   root.innerHTML = `
     <div class="call-overlay">
       <div class="call-top">
         ${ico('lock', 12)} <span>Criptografia de ponta a ponta</span>
+        <button class="call-min" onclick="minimizarChamada()" title="Minimizar">${ico('minimize', 15)}</button>
       </div>
       <div class="call-brand"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.5 2 2 6.4 2 11.9c0 1.9.5 3.7 1.5 5.3L2 22l4.9-1.4c1.5.9 3.3 1.4 5.1 1.4 5.5 0 10-4.4 10-9.9S17.5 2 12 2z"/></svg> WhatsApp · Chamada de voz</div>
       <div class="call-center">
@@ -9203,6 +9227,70 @@ function paintCall() {
       </div>
     </div>`;
   if (c.phase === 'active') startCallTimer();
+}
+
+function minimizarChamada() { if (callUI) { callUI.min = true; paintCall(); } }
+function restaurarChamada() { if (callUI) { callUI.min = false; paintCall(); } }
+
+// ---------------------------------------------------------------------------
+// ARRASTAR A PASTILHA
+//
+// No COMPUTADOR ela pode ir para qualquer canto: a pessoa arrasta e ela gruda
+// no lado mais próximo, em cima ou embaixo. Grudar (em vez de parar solta no
+// meio) é de propósito — a pastilha fica sempre fora do caminho do conteúdo, e
+// a posição escolhida é lembrada.
+//
+// No CELULAR não há espaço para uma janela flutuando sobre o conteúdo: ela
+// ocupa a largura toda no topo, como a barra verde do WhatsApp, e não arrasta.
+// ---------------------------------------------------------------------------
+const CALL_POS = 'ec_call_pos';
+function ligarArrasto() {
+  const el = $('#call-mini'); if (!el) return;
+  if (isMobileLayout()) return;              // no celular a barra é fixa no topo
+
+  const salvo = (() => { try { return JSON.parse(localStorage.getItem(CALL_POS) || 'null'); } catch { return null; } })();
+  if (salvo) posicionarMini(el, salvo.x, salvo.y);
+
+  let arrastando = false, dx = 0, dy = 0;
+  const pegar = (e) => {
+    // os botões continuam clicáveis: arrastar começa só pelo corpo da pastilha
+    if (e.target.closest('button')) return;
+    arrastando = true;
+    const r = el.getBoundingClientRect();
+    dx = e.clientX - r.left; dy = e.clientY - r.top;
+    el.classList.add('arrastando');
+    el.setPointerCapture(e.pointerId);
+  };
+  const mover = (e) => {
+    if (!arrastando) return;
+    posicionarMini(el, e.clientX - dx, e.clientY - dy);
+  };
+  const soltar = () => {
+    if (!arrastando) return;
+    arrastando = false;
+    el.classList.remove('arrastando');
+    // gruda no lado mais próximo
+    const r = el.getBoundingClientRect();
+    const margem = 16;
+    const x = (r.left + r.width / 2) < window.innerWidth / 2
+      ? margem : window.innerWidth - r.width - margem;
+    const y = Math.max(margem, Math.min(window.innerHeight - r.height - margem, r.top));
+    posicionarMini(el, x, y);
+    try { localStorage.setItem(CALL_POS, JSON.stringify({ x, y })); } catch {}
+  };
+  el.addEventListener('pointerdown', pegar);
+  el.addEventListener('pointermove', mover);
+  el.addEventListener('pointerup', soltar);
+  el.addEventListener('pointercancel', soltar);
+}
+
+function posicionarMini(el, x, y) {
+  const m = 8;
+  const maxX = window.innerWidth - el.offsetWidth - m;
+  const maxY = window.innerHeight - el.offsetHeight - m;
+  el.style.left = Math.max(m, Math.min(maxX, x)) + 'px';
+  el.style.top = Math.max(m, Math.min(maxY, y)) + 'px';
+  el.style.right = 'auto'; el.style.bottom = 'auto';
 }
 
 // O <audio> que toca a voz do cliente NÃO pode morar dentro do HTML que
@@ -9315,43 +9403,17 @@ function toggleMute() {
   paintCall();
 }
 
-// Ligar a partir da conversa aberta (nome vem do estado, sem escapar em atributo)
-function startCallFromChat() {
-  const waId = state.currentWaId; if (!waId) return;
-  const conv = (state.conversations || []).find(c => c.waId === waId);
-  startCall(waId, (conv && conv.name) || waId);
-}
-
-// LIGAR para o cliente (business-initiated). Sem permissão prévia, a Meta
-// recusa — aí oferecemos enviar o pedido de permissão oficial.
-async function startCall(waId, name) {
-  if (callUI) return toast('Você já está em uma chamada', 'error');
-  callUI = { id: null, waId, name, direction: 'BUSINESS_INITIATED', phase: 'calling', muted: false };
-  paintCall();
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const pc = new RTCPeerConnection(RTC_CFG);
-    callUI.pc = pc; callUI.stream = stream;
-    stream.getTracks().forEach(t => pc.addTrack(t, stream));
-    pc.ontrack = ev => ligarAudioRemoto(ev.streams[0]);
-    const offer = await pc.createOffer({ offerToReceiveAudio: true });
-    await pc.setLocalDescription(offer);
-    await waitIce(pc);
-    const r = await api('/calls/start', { body: { to: waId, sdp: pc.localDescription.sdp } });
-    if (callUI) callUI.id = r.callId;
-  } catch (e) {
-    endCallUI('');
-    // sem permissão do cliente → oferece o pedido oficial
-    if (await confirmModal({
-      title: 'Não foi possível ligar',
-      text: (e.message || '') + '\n\nLigações para o cliente exigem a permissão dele (regra da Meta). Quer enviar agora o pedido de permissão oficial pelo WhatsApp?',
-      ok: 'Enviar pedido de permissão'
-    })) {
-      try { await api('/calls/permission', { body: { to: waId } }); toast('Pedido de permissão enviado!'); if (state.view === 'inbox') loadChat(waId, true); }
-      catch (err) { toast(err.message, 'error'); }
-    }
-  }
-}
+// LIGAR PARA O CLIENTE SAIU DO PRODUTO.
+//
+// A Calling API da Meta só permite a ligação partindo do CLIENTE, a não ser
+// que ele tenha dado permissão explícita antes — e essa permissão é rara na
+// prática. Um botão "Ligar" que quase sempre falha e abre um pedido de
+// permissão no lugar da chamada não é um recurso, é uma armadilha: o atendente
+// aperta esperando falar com a pessoa e recebe um erro.
+//
+// O que fica: RECEBER ligações, que funciona sempre. As rotas /calls/start e
+// /calls/permission continuam no servidor — se a Meta liberar, é só voltar a
+// chamar. O restante do fluxo (atender, recusar, mudo, desligar) é o mesmo.
 
 // O toque precisa parar por QUALQUER saída da chamada — atender, recusar,
 // desligar, o cliente desistir ou uma falha de conexão. Todas passam por aqui

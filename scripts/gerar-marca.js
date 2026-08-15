@@ -180,9 +180,69 @@ function escreverPng(lado, px) {
   ]);
 }
 
+// ---- ícone MASKABLE --------------------------------------------------------
+// O Android não usa o ícone como ele é: recorta em círculo, squircle ou gota,
+// conforme o aparelho. O que sobra garantido é a "zona segura" — os 80%
+// centrais. Uma arte que sangra até a borda, como a nossa, tem as pontas
+// comidas: o símbolo do infinito perde as duas voltas.
+//
+// Este ícone é o mesmo desenho REDUZIDO dentro de um campo verde, de modo que
+// tudo que importa caiba na zona segura, e a moldura que o sistema corta seja
+// só cor. Por isso ele é um arquivo separado do ícone comum.
+// A moldura não é uma cor chapada: ela CONTINUA o degradê da própria arte. Com
+// verde chapado dava para ver a emenda — um quadrado desenhado dentro de outro.
+// Os cantos são lidos do arquivo, então a moldura acompanha qualquer arte nova.
+function comMargem(img, lado) {
+  const cantoDe = (fx, fy) => {
+    const x = Math.round((img.larg - 1) * fx), y = Math.round((img.alt - 1) * fy);
+    const o = (y * img.larg + x) * 4;
+    return [img.px[o], img.px[o + 1], img.px[o + 2]];
+  };
+  const c0 = cantoDe(0.02, 0.02), c1 = cantoDe(0.98, 0.98);
+
+  const arte = 0.74;                       // dentro dos 80% que o sistema preserva
+  const interno = Math.round(lado * arte);
+  const pequeno = reduzir(img, interno);
+  const out = Buffer.alloc(lado * lado * 4);
+
+  const off = Math.round((lado - interno) / 2);
+
+  // O fundo CONTINUA o degradê da arte na MESMA escala dela — por isso o `t` é
+  // medido no sistema de coordenadas da arte e extrapolado para fora. Medindo
+  // sobre a tela inteira, o degradê de dentro ficaria comprimido em relação ao
+  // de fora e a emenda aparecia como um quadrado mais claro no meio.
+  for (let j = 0; j < lado; j++) {
+    for (let i = 0; i < lado; i++) {
+      const tx = (i - off) / (interno - 1);
+      const ty = (j - off) / (interno - 1);
+      const t = (tx + ty) / 2;
+      const d = (j * lado + i) * 4;
+      for (let k = 0; k < 3; k++) {
+        const v = c0[k] + (c1[k] - c0[k]) * t;
+        out[d + k] = Math.max(0, Math.min(255, Math.round(v)));
+      }
+      out[d + 3] = 255;
+    }
+  }
+  for (let j = 0; j < interno; j++) {
+    for (let i = 0; i < interno; i++) {
+      const s = (j * interno + i) * 4, d = ((j + off) * lado + (i + off)) * 4;
+      const a = pequeno[s + 3] / 255;
+      if (!a) continue;
+      for (let k = 0; k < 3; k++) out[d + k] = Math.round(pequeno[s + k] * a + out[d + k] * (1 - a));
+    }
+  }
+  return out;
+}
+
 // ---- saída -----------------------------------------------------------------
 const orig = recortarFundo(lerPng(fs.readFileSync(FONTE)));
 console.log(`fonte: koonfy-logo.png ${orig.larg}×${orig.alt}, ${(fs.statSync(FONTE).size / 1024).toFixed(0)} KB`);
+for (const t of [192, 512]) {
+  const arq = path.join(RAIZ, `koonfy-maskable-${t}.png`);
+  fs.writeFileSync(arq, escreverPng(t, comMargem(orig, t)));
+  console.log(`  koonfy-maskable-${t}.png  ${(fs.statSync(arq).size / 1024).toFixed(1)} KB`);
+}
 for (const t of TAMANHOS) {
   const arq = path.join(RAIZ, `koonfy-${t}.png`);
   fs.writeFileSync(arq, escreverPng(t, reduzir(orig, t)));

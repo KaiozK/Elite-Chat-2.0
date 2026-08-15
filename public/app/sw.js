@@ -2,7 +2,7 @@
  * Cache do app shell + offline + Push Notifications + clique abre a conversa.
  * Escopo: /app/  (registrado por notifications.js)
  */
-const VERSION = 'koonfy-v6';   // v6: marca nova (infinito)
+const VERSION = 'koonfy-v7';   // v7: ícone maskable próprio + /marca/logo na rede
 const SHELL = 'ec-shell-' + VERSION;
 const RUNTIME = 'ec-runtime-' + VERSION;
 
@@ -16,6 +16,7 @@ const SHELL_ASSETS = [
   '/app/voz.js',
   '/app/manifest.webmanifest',
   '/assets/koonfy-192.png',
+  '/assets/koonfy-maskable-192.png',
   // Os avisos sonoros precisam estar prontos ANTES do evento que os dispara:
   // buscar o arquivo na hora faria o som chegar depois da notificação.
   '/assets/sons/mensagem.mp3',
@@ -113,7 +114,12 @@ self.addEventListener('fetch', (e) => {
 
   // Código do app (app.js/css/notifications): rede primeiro p/ receber updates,
   // cache como fallback offline.
-  if (/\/app\/(app\.js|style\.css|notifications\.js)$/.test(url.pathname)) {
+  // `/marca/logo` entra aqui porque a marca PODE mudar pelo painel do admin.
+  // Na regra genérica lá embaixo ela era servida do cache para sempre: quem
+  // instalasse o app ficaria com a logo antiga, sem jeito de atualizar. O
+  // `voz.js` estava na mesma situação — código do app servido de cache eterno.
+  if (/\/app\/(app\.js|style\.css|notifications\.js|voz\.js)$/.test(url.pathname) ||
+      url.pathname === '/marca/logo') {
     e.respondWith(
       fetch(req).then(r => { const cp = r.clone(); caches.open(SHELL).then(c => c.put(req, cp)); return r; })
         .catch(() => caches.match(req))
