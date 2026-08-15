@@ -507,6 +507,7 @@ const ICONS = {
   zap: '<path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/>',
   send: '<path d="m22 2-11 11"/><path d="M22 2 15 21l-4-8-8-4 19-7z"/>',
   mic: '<rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
+  upload: '<path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15"/>',
   edit: '<path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>',
   trash: '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/>',
   refresh: '<path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/>',
@@ -7703,6 +7704,30 @@ async function paintAdmin() {
 
       <div class="tabpane ${activeTab === 'adm-pay' ? 'show' : ''}" data-pane="adm-pay">
         <div class="card">
+          <h2>${ico('image')} Logo do Koonfy</h2>
+          <p class="muted" style="margin:0 0 12px;font-size:13px">
+            Aparece no painel, na landing, no checkout, nas páginas de Termos e Privacidade, na aba do navegador e no
+            splash. Trocar aqui muda tudo de uma vez. Aceita <b>PNG, WEBP, SVG, JPG e ICO</b>, até 2 MB —
+            de preferência quadrada e com <b>fundo transparente</b>.
+          </p>
+          <div class="marca-linha">
+            <span class="marca-prev" id="mk-prev"><img src="/marca/logo" alt=""></span>
+            <div style="flex:1;min-width:0">
+              <div id="mk-info" class="muted" style="font-size:12.5px">Carregando…</div>
+              <div class="row" style="margin-top:10px">
+                <button class="btn no-grow" onclick="$('#mk-file').click()">${ico('upload', 14)} Escolher arquivo</button>
+                <button class="btn no-grow danger" id="mk-limpar" onclick="admMarcaRemover()" style="display:none">${ico('trash', 13)} Voltar ao padrão</button>
+              </div>
+            </div>
+          </div>
+          <input type="file" id="mk-file" class="hidden" accept="image/png,image/webp,image/svg+xml,image/jpeg,image/x-icon,image/gif,image/avif" onchange="admMarcaEnviar(this)">
+          <p class="muted" style="margin:12px 0 0;font-size:12px">
+            ${ico('help', 12)} O ícone do aplicativo instalado (PWA e lojas) continua vindo dos arquivos em
+            <code>public/assets</code>: as lojas exigem tamanhos exatos declarados no pacote.
+          </p>
+        </div>
+
+        <div class="card">
           <h2>${ico('zap')} Testar notificação de venda</h2>
           <p class="muted" style="margin:0 0 12px;font-size:13px">
             Dispara a notificação de <b>venda aprovada</b> nos aparelhos inscritos nesta conta, com o som de caixa
@@ -8478,6 +8503,64 @@ async function admNsSave(body) {
   } catch (e) { toast(e.message, 'error'); }
 }
 
+// ---------------------------------------------------------------------------
+// MARCA — trocar a logo pelo painel
+//
+// Antes, mudar a logo era editar arquivo e subir deploy. Agora é enviar aqui e
+// pronto: tudo aponta para /marca/logo, que serve o que estiver guardado.
+// ---------------------------------------------------------------------------
+async function admMarcaCarregar() {
+  const info = $('#mk-info'); if (!info) return;
+  try {
+    const d = await api('/admin/brand');
+    const img = $('#mk-prev img');
+    if (img) img.src = d.url + (d.url.includes('?') ? '' : '?t=' + Date.now());
+    info.innerHTML = d.temLogo
+      ? `<b>${esc(d.nome || 'logo enviada')}</b> · ${(d.bytes / 1024).toFixed(0)} KB · ${esc((d.mime || '').replace('image/', '').toUpperCase())}
+         <br><span style="font-size:12px">Enviada em ${fmtDataHora(d.updatedAt)}</span>`
+      : 'Usando a logo padrão do repositório. Envie um arquivo para trocar.';
+    const rm = $('#mk-limpar');
+    if (rm) rm.style.display = d.temLogo ? '' : 'none';
+  } catch (e) { info.textContent = e.message; }
+}
+
+async function admMarcaEnviar(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) return toast('Máximo 2 MB', 'error');
+  const info = $('#mk-info');
+  const antes = info.innerHTML;
+  info.textContent = 'Enviando…';
+  try {
+    const data = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result).split(',')[1]);
+      r.onerror = () => rej(new Error('Não consegui ler o arquivo'));
+      r.readAsDataURL(file);
+    });
+    // O SVG chega como image/svg+xml; alguns sistemas mandam o tipo vazio, e aí
+    // a extensão do nome é o que sobra para identificar.
+    const mime = file.type || ({ svg: 'image/svg+xml', webp: 'image/webp', png: 'image/png', ico: 'image/x-icon' })[
+      (file.name.split('.').pop() || '').toLowerCase()] || '';
+    await api('/admin/brand', { body: { data, mime, nome: file.name } });
+    toast('Logo atualizada! Recarregue as abas abertas para ver em todo lugar.');
+    admMarcaCarregar();
+    // troca a marca desta tela na hora, sem esperar recarregar
+    document.querySelectorAll('img[src^="/marca/logo"]').forEach(i => { i.src = '/marca/logo?t=' + Date.now(); });
+  } catch (e) { info.innerHTML = antes; toast(e.message, 'error'); }
+}
+
+async function admMarcaRemover() {
+  if (!await confirmModal({ title: 'Voltar à logo padrão?', text: 'A imagem enviada é apagada e o Koonfy volta a usar a logo do repositório.', ok: 'Voltar ao padrão', danger: true })) return;
+  try {
+    await api('/admin/brand', { method: 'DELETE' });
+    toast('Logo padrão restaurada');
+    admMarcaCarregar();
+    document.querySelectorAll('img[src^="/marca/logo"]').forEach(i => { i.src = '/marca/logo?t=' + Date.now(); });
+  } catch (e) { toast(e.message, 'error'); }
+}
+
 // Teste da notificação de VENDA. Existe porque o som e o texto de venda são o
 // aviso que o cliente mais espera e o mais difícil de conferir: só aparece
 // quando alguém paga de verdade. Aqui o valor é escolhido na hora.
@@ -8616,7 +8699,7 @@ function admSeoForm(seo) {
         <label style="flex:1">Título ao compartilhar<input id="seo-ogtitle" maxlength="180" value="${v('ogTitle')}" placeholder="(usa o título acima se vazio)"></label>
       </div>
       <label style="margin-top:9px">Descrição ao compartilhar<textarea id="seo-ogdesc" rows="2" maxlength="400" placeholder="(usa a descrição acima se vazio)">${v('ogDescription')}</textarea></label>
-      <label style="margin-top:9px">Imagem de preview (URL. 1200×630 recomendado)<input id="seo-ogimage" maxlength="600" value="${v('ogImage')}" placeholder="${API.webOrigin}/assets/koonfy-128.png"></label>
+      <label style="margin-top:9px">Imagem de preview (URL. 1200×630 recomendado)<input id="seo-ogimage" maxlength="600" value="${v('ogImage')}" placeholder="${API.webOrigin}/marca/logo"></label>
       <h3 class="notif-sub">Avançado</h3>
       <div class="row">
         <label style="flex:2">URL canônica<input id="seo-canonical" maxlength="400" value="${v('canonical')}" placeholder="${API.webOrigin}/"></label>
@@ -12743,7 +12826,7 @@ async function renderCheckoutBuilder() {
     <header class="ckb-top">
       <button class="icon-btn" title="Voltar ao Pagamentos" onclick="location.hash='#/elitepay'">${ico('arrowleft', 17)}</button>
       <div class="brand ckb-brand">
-        <span class="brand-mark"><img src="/assets/koonfy-128.png" alt="Checkout Builder"></span>
+        <span class="brand-mark"><img src="/marca/logo" alt="Checkout Builder"></span>
         <div><b class="brand-name">Checkout<span class="gt2"> Builder</span></b>
           <input class="ckb-cname" id="epk-name" value="${esc(epkCheckoutName)}" maxlength="60"
             title="Nome deste checkout" oninput="epkCheckoutName=this.value"></div>

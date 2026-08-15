@@ -3947,3 +3947,23 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
 .mic-cancel:hover { color: var(--red); text-decoration: underline; }
 /* Gravando, o campo some e o cronômetro ocupa o lugar dele. */
 .composer .line.gravando textarea { display: none; }
+
+/* ===================== MARCA NO ADMIN ===================== */
+.marca-linha { display: flex; align-items: center; gap: 16px; }
+/* Xadrez atrás da prévia: é como se enxerga se a logo tem fundo transparente
+   de verdade. Sobre o branco do card, um fundo branco opaco parece transparente
+   — e foi exatamente esse engano que deixou a logo com cantos pretos passar. */
+.marca-prev {
+  width: 82px; height: 82px; flex: none; border-radius: 16px; overflow: hidden;
+  border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
+  background-color: var(--card);
+  background-image:
+    linear-gradient(45deg, var(--bg2) 25%, transparent 25%, transparent 75%, var(--bg2) 75%),
+    linear-gradient(45deg, var(--bg2) 25%, transparent 25%, transparent 75%, var(--bg2) 75%);
+  background-size: 14px 14px;
+  background-position: 0 0, 7px 7px;
+}
+.marca-prev img { max-width: 74%; max-height: 74%; display: block; }
+@media (max-width: 560px) {
+  .marca-linha { flex-direction: column; align-items: flex-start; gap: 12px; }
+}

@@ -80,6 +80,12 @@ const DEFAULTS = {
     verifyToken: crypto.randomBytes(12).toString('hex'),
     adminUser: 'admin',
     adminPassHash: hash('admin'),
+    // ---- MARCA ----
+    // A logo enviada pelo admin, guardada aqui e servida por /marca/logo. Sem
+    // ela, vale o arquivo em public/assets. Fica no banco (e não em disco)
+    // porque a DigitalOcean recria o sistema de arquivos a cada deploy: um
+    // arquivo enviado pelo painel sumiria na atualização seguinte.
+    marca: { logo: '', mime: '', nome: '', bytes: 0, updatedAt: 0 },
     // ---- SaaS: pagamentos via Woovi (Pix / Pix Automático) ----
     woovi: {
       appId: '',              // AppID gerado em app.woovi.com → API/Plugins

@@ -539,6 +539,39 @@ app.get('/index.html', serveLanding);
 // Política de privacidade e termos com URL limpa. App Store e Play Store
 // exigem o link da política no cadastro do app, e ele precisa continuar
 // funcionando enquanto o app estiver publicado.
+// ---------------------------------------------------------------------------
+// A MARCA, num endereço só
+//
+// Todo lugar que mostra a logo aponta para cá. Assim, trocar a arte no Admin
+// SaaS muda o produto inteiro de uma vez — painel, landing, checkout, páginas
+// legais, favicon e ícone do app — sem editar arquivo nenhum.
+//
+// Sem logo enviada, cai no arquivo do repositório. O cache é curto de
+// propósito: quem acabou de trocar a logo precisa VER a troca, e o `?v=` que
+// as telas mandam já resolve o cache longo quando ela não muda.
+// ---------------------------------------------------------------------------
+app.get('/marca/logo', (req, res) => {
+  const m = (db.get().platform && db.get().platform.marca) || {};
+
+  // Com `?v=` o endereço muda a cada troca, então pode cachear para sempre.
+  // SEM ele, o cache tem que ser revalidado: guardar por uma hora fazia o
+  // admin trocar a logo e continuar vendo a antiga na aba já aberta — sem
+  // nenhum erro, o que é o pior tipo de bug para diagnosticar.
+  const etag = '"marca-' + (m.updatedAt || 0) + '"';
+  res.set('ETag', etag);
+  res.set('Cache-Control', req.query.v
+    ? 'public, max-age=31536000, immutable'
+    : 'public, max-age=0, must-revalidate');
+  if (req.get('if-none-match') === etag) return res.status(304).end();
+
+  if (!m.logo) return res.sendFile(path.join(__dirname, 'public', 'assets', 'koonfy-192.png'));
+
+  const buf = Buffer.from(m.logo, 'base64');
+  res.set('Content-Type', m.mime || 'image/png');
+  res.set('Content-Length', String(buf.length));
+  res.send(buf);
+});
+
 app.get('/privacidade', (req, res) => res.sendFile(path.join(__dirname, 'public', 'privacidade.html')));
 app.get('/termos', (req, res) => res.sendFile(path.join(__dirname, 'public', 'termos.html')));
 // O endereço oficial é sem extensão. Quem já tem o .html salvo (ou registrado

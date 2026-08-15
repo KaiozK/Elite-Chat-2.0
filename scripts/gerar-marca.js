@@ -88,6 +88,38 @@ function lerPng(buf) {
   return { larg, alt, px: out };
 }
 
+// ---- cantos transparentes --------------------------------------------------
+// A arte veio em RGB, SEM canal alfa: os cantos arredondados são pixels PRETOS,
+// não vazios. Sobre o fundo claro do app isso aparecia como quatro cunhas
+// escuras em volta do símbolo.
+//
+// A marca não tem nenhum pixel escuro — é verde e branco —, então tudo que for
+// quase preto é o fundo que deveria estar vazio. A varredura parte dos quatro
+// cantos e só apaga o que está LIGADO a eles, para que um pixel escuro no meio
+// do desenho (se um dia existir) não seja comido junto.
+function recortarFundo(img) {
+  const { larg, alt, px } = img;
+  const escuro = i => px[i] < 40 && px[i + 1] < 40 && px[i + 2] < 40;
+  const visto = new Uint8Array(larg * alt);
+  const fila = [];
+  const por = (x, y) => {
+    if (x < 0 || y < 0 || x >= larg || y >= alt) return;
+    const p = y * larg + x;
+    if (visto[p]) return;
+    if (!escuro(p * 4)) return;
+    visto[p] = 1; fila.push(p);
+  };
+  for (let x = 0; x < larg; x++) { por(x, 0); por(x, alt - 1); }
+  for (let y = 0; y < alt; y++) { por(0, y); por(larg - 1, y); }
+  while (fila.length) {
+    const p = fila.pop();
+    const x = p % larg, y = (p / larg) | 0;
+    px[p * 4 + 3] = 0;
+    por(x + 1, y); por(x - 1, y); por(x, y + 1); por(x, y - 1);
+  }
+  return img;
+}
+
 // ---- redução por média de área --------------------------------------------
 // A cor é ponderada pelo alfa: sem isso, pixels transparentes das bordas
 // puxariam a média para o preto e a marca ficaria com um contorno sujo.
@@ -149,7 +181,7 @@ function escreverPng(lado, px) {
 }
 
 // ---- saída -----------------------------------------------------------------
-const orig = lerPng(fs.readFileSync(FONTE));
+const orig = recortarFundo(lerPng(fs.readFileSync(FONTE)));
 console.log(`fonte: koonfy-logo.png ${orig.larg}×${orig.alt}, ${(fs.statSync(FONTE).size / 1024).toFixed(0)} KB`);
 for (const t of TAMANHOS) {
   const arq = path.join(RAIZ, `koonfy-${t}.png`);

@@ -525,7 +525,7 @@
   // como blob: pelo runtime — não há arquivo para trocar. Então ela é
   // substituída aqui, pelo mesmo caminho das outras injeções, e o observador
   // repõe se o runtime redesenhar.
-  var LOGO = '/assets/koonfy-128.png';
+  var LOGO = '/marca/logo';
   function ensureLogo() {
     var imgs = document.querySelectorAll('img[alt="Koonfy"], .nav img');
     for (var i = 0; i < imgs.length; i++) {
@@ -542,11 +542,32 @@
     }
   }
 
+  // FAVICON. O runtime do bundle troca o <link rel="icon"> por um blob: com a
+  // arte que veio embutida — a coroa antiga. Era ela na aba do navegador,
+  // mesmo com a marca nova em todo o resto da página. Aqui o ícone é reposto e
+  // o do bundle, removido; o observador garante que ele não volte.
+  function ensureIcone() {
+    var links = document.querySelectorAll('link[rel~="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]');
+    var nosso = null;
+    for (var i = 0; i < links.length; i++) {
+      var l = links[i];
+      if (l.dataset.kf) { nosso = l; continue; }
+      l.parentNode.removeChild(l);
+    }
+    if (nosso) return;
+    var link = document.createElement('link');
+    link.rel = 'icon';
+    link.href = LOGO;
+    link.dataset.kf = '1';
+    (document.head || document.documentElement).appendChild(link);
+  }
+
   function inject() {
     ensureCss();
     ensureSeo();
     ensureRodape();
     ensureLogo();
+    ensureIcone();
     var ok = true;
 
     if (!document.getElementById('coexistencia')) {
@@ -585,7 +606,7 @@
     <!-- Trocar a arte é UMA linha: o caminho aqui e o de /app/index.html.
          Para webp, é só apontar para /assets/koonfy-128.webp. -->
     <div class="kf-marca">
-      <img src="/assets/koonfy-128.png" alt="" width="44" height="44" onerror="this.dataset.erro=1">
+      <img src="/marca/logo" alt="" width="44" height="44" onerror="this.dataset.erro=1">
       <span>Koon<i>fy</i><div class="kf-giro"></div></span></div>
   </div>
   <div id="__bundler_loading" role="status" aria-live="polite">Carregando…</div>

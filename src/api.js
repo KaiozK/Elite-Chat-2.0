@@ -3781,6 +3781,55 @@ module.exports = function (broadcast, clients) {
     res.json({ ok: true, seo: p.seo });
   });
 
+  // ---- MARCA: a logo do produto, trocada pelo painel ----
+  // Aceita PNG, WEBP, SVG, JPEG e ICO. Guardada no banco, não em disco: a
+  // DigitalOcean recria o sistema de arquivos a cada deploy, e um arquivo
+  // enviado pelo painel sumiria na atualização seguinte — sem erro, só sumiria.
+  const MIMES_MARCA = {
+    'image/png': 'png', 'image/webp': 'webp', 'image/svg+xml': 'svg',
+    'image/jpeg': 'jpg', 'image/x-icon': 'ico', 'image/vnd.microsoft.icon': 'ico',
+    'image/gif': 'gif', 'image/avif': 'avif'
+  };
+  const MARCA_MAX = 2 * 1024 * 1024;
+
+  router.get('/admin/brand', auth, adminOnly, (req, res) => {
+    const m = db.get().platform.marca || {};
+    res.json({
+      temLogo: !!m.logo, mime: m.mime || '', nome: m.nome || '',
+      bytes: m.bytes || 0, updatedAt: m.updatedAt || 0,
+      url: m.logo ? '/marca/logo?v=' + (m.updatedAt || 0) : '/assets/koonfy-192.png',
+      formatos: Object.keys(MIMES_MARCA).map(k => MIMES_MARCA[k]).filter((v, i, a) => a.indexOf(v) === i)
+    });
+  });
+
+  router.post('/admin/brand', auth, adminOnly, (req, res) => {
+    const b = req.body || {};
+    const mime = String(b.mime || '').toLowerCase().split(';')[0].trim();
+    if (!MIMES_MARCA[mime]) {
+      return res.status(400).json({ error: 'Formato não aceito. Use PNG, WEBP, SVG, JPG ou ICO.' });
+    }
+    const dados = String(b.data || '');
+    if (!dados) return res.status(400).json({ error: 'Arquivo vazio' });
+    const bytes = Math.round(dados.length * 3 / 4);
+    if (bytes > MARCA_MAX) {
+      return res.status(400).json({ error: `Máximo 2 MB. Este tem ${(bytes / 1048576).toFixed(1)} MB.` });
+    }
+    const p = db.get().platform;
+    p.marca = {
+      logo: dados, mime, nome: String(b.nome || '').slice(0, 120),
+      bytes, updatedAt: Date.now()
+    };
+    db.save();
+    store.logEvent({ type: 'marca_atualizada', mime, bytes });
+    res.json({ ok: true, url: '/marca/logo?v=' + p.marca.updatedAt, bytes });
+  });
+
+  router.delete('/admin/brand', auth, adminOnly, (req, res) => {
+    db.get().platform.marca = { logo: '', mime: '', nome: '', bytes: 0, updatedAt: 0 };
+    db.save();
+    res.json({ ok: true });
+  });
+
   // Teste da notificação de VENDA, com o valor escolhido na hora.
   // Não cria cobrança, não mexe na carteira e não entra em relatório: é só o
   // aviso. Um "teste" que sujasse o financeiro seria pior que não existir.
