@@ -309,7 +309,7 @@
       var payload = {
         title: item.title, body: item.body,
         tag: opts.tag || (type + ':' + (opts.waId || '')),
-        data: data, icon: '/assets/elitechat-logo.png', badge: '/assets/elitechat-logo.png',
+        data: data, icon: '/assets/koonfy-192.png', badge: '/assets/koonfy-192.png',
         requireInteraction: type === 'call' || !!opts.requireInteraction,
         vibrate: state.prefs.vibrate ? (type === 'call' ? [200, 100, 200] : [90]) : undefined
       };

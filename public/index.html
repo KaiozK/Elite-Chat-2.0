@@ -58,7 +58,8 @@
     </div>
   </noscript>
 
-<link rel="icon" type="image/png" href="/assets/elitechat-logo.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/koonfy-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/assets/koonfy-192.png">
 <script id="ec-boot">
 (function () {
   // O runtime DimensionCraft recria o documento ao renderizar, apagando <style>
@@ -507,10 +508,32 @@
     alvo.appendChild(span);
   }
 
+  // MARCA NO CABEÇALHO. A imagem da landing vem embutida no bundle e é servida
+  // como blob: pelo runtime — não há arquivo para trocar. Então ela é
+  // substituída aqui, pelo mesmo caminho das outras injeções, e o observador
+  // repõe se o runtime redesenhar.
+  var LOGO = '/assets/koonfy-128.png';
+  function ensureLogo() {
+    var imgs = document.querySelectorAll('img[alt="Koonfy"], .nav img');
+    for (var i = 0; i < imgs.length; i++) {
+      var el = imgs[i];
+      if (el.dataset.kfLogo) continue;
+      var r = el.getBoundingClientRect();
+      // só o símbolo do cabeçalho: quadrado e pequeno. As telas do produto e
+      // os outros gráficos da página não podem ser tocados.
+      if (r.width && Math.abs(r.width - r.height) < 3 && r.width <= 64) {
+        el.src = LOGO;
+        el.srcset = '';
+        el.dataset.kfLogo = '1';
+      }
+    }
+  }
+
   function inject() {
     ensureCss();
     ensureSeo();
     ensureRodape();
+    ensureLogo();
     var ok = true;
 
     if (!document.getElementById('coexistencia')) {
@@ -547,7 +570,7 @@
          tem 2,6 MB e chegaria bem depois do momento em que o splash importa.
          88 e não 44 para ficar nítida em tela retina. -->
     <div class="kf-marca">
-      <img src="/assets/koonfy-mark-88.png" alt="" width="44" height="44">
+      <img src="/assets/koonfy-128.png" alt="" width="44" height="44">
       <span>Koon<i>fy</i></span></div>
     <div class="kf-giro"></div>
   </div>

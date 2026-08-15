@@ -14,14 +14,14 @@
   "dir": "ltr",
   "categories": ["business", "productivity"],
   "icons": [
-    { "src": "/assets/elitechat-logo.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/assets/elitechat-logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/assets/elitechat-logo.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "/assets/elitechat-logo.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "/assets/koonfy-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/koonfy-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/koonfy-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/assets/koonfy-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
-    { "name": "Conversas", "short_name": "Inbox", "url": "/app/?src=pwa#/inbox", "icons": [{ "src": "/assets/elitechat-logo.png", "sizes": "192x192" }] },
-    { "name": "Agenda", "short_name": "Agenda", "url": "/app/?src=pwa#/schedule", "icons": [{ "src": "/assets/elitechat-logo.png", "sizes": "192x192" }] },
-    { "name": "Automações", "short_name": "Flows", "url": "/app/?src=pwa#/flows", "icons": [{ "src": "/assets/elitechat-logo.png", "sizes": "192x192" }] }
+    { "name": "Conversas", "short_name": "Inbox", "url": "/app/?src=pwa#/inbox", "icons": [{ "src": "/assets/koonfy-192.png", "sizes": "192x192" }] },
+    { "name": "Agenda", "short_name": "Agenda", "url": "/app/?src=pwa#/schedule", "icons": [{ "src": "/assets/koonfy-192.png", "sizes": "192x192" }] },
+    { "name": "Automações", "short_name": "Flows", "url": "/app/?src=pwa#/flows", "icons": [{ "src": "/assets/koonfy-192.png", "sizes": "192x192" }] }
   ]
 }

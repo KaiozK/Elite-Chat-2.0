@@ -1,0 +1,158 @@
+/* ===========================================================================
+ * TAMANHOS DA MARCA KOONFY
+ *
+ * A arte oficial é public/assets/koonfy-logo.png, com 1254×1254 e quase 1 MB.
+ * Servir esse arquivo para desenhar um logotipo de 34px na barra lateral é
+ * desperdício em toda visita — e no celular, em dado de quem está pagando por
+ * ele. Este script reduz a arte para os tamanhos que a interface realmente
+ * usa, mantendo o arquivo original como fonte.
+ *
+ * Sem dependência de imagem: o PNG é lido e escrito com o zlib que já vem no
+ * Node. Redução por MÉDIA de área (box filter) — para diminuir, dá resultado
+ * melhor que interpolação, sem serrilhado nas diagonais do K.
+ *
+ * Rodar:  node scripts/gerar-marca.js
+ * =========================================================================== */
+const fs = require('fs');
+const zlib = require('zlib');
+const path = require('path');
+
+const RAIZ = path.join(__dirname, '..', 'public', 'assets');
+const FONTE = path.join(RAIZ, 'koonfy-logo.png');
+const TAMANHOS = [32, 64, 128, 180, 192, 512];
+
+// ---- leitura do PNG --------------------------------------------------------
+function lerPng(buf) {
+  if (buf.readUInt32BE(0) !== 0x89504e47) throw new Error('não é PNG');
+  let pos = 8, larg = 0, alt = 0, prof = 0, tipo = 0;
+  const pedacos = [];
+  let paleta = null, trans = null;
+
+  while (pos < buf.length) {
+    const tam = buf.readUInt32BE(pos);
+    const nome = buf.toString('ascii', pos + 4, pos + 8);
+    const dados = buf.slice(pos + 8, pos + 8 + tam);
+    if (nome === 'IHDR') {
+      larg = dados.readUInt32BE(0); alt = dados.readUInt32BE(4);
+      prof = dados[8]; tipo = dados[9];
+      if (prof !== 8) throw new Error('só 8 bits por canal (veio ' + prof + ')');
+      if (dados[12] !== 0) throw new Error('PNG entrelaçado não é suportado');
+    } else if (nome === 'PLTE') paleta = dados;
+    else if (nome === 'tRNS') trans = dados;
+    else if (nome === 'IDAT') pedacos.push(dados);
+    else if (nome === 'IEND') break;
+    pos += 12 + tam;
+  }
+
+  const canais = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[tipo];
+  if (!canais) throw new Error('tipo de cor não suportado: ' + tipo);
+  const bruto = zlib.inflateSync(Buffer.concat(pedacos));
+  const linha = larg * canais;
+  const out = Buffer.alloc(larg * alt * 4);
+  const ant = Buffer.alloc(linha);
+  const atual = Buffer.alloc(linha);
+
+  for (let y = 0; y < alt; y++) {
+    const filtro = bruto[y * (linha + 1)];
+    bruto.copy(atual, 0, y * (linha + 1) + 1, (y + 1) * (linha + 1));
+    // Desfaz o filtro da linha. São os 5 do formato; pular qualquer um faz a
+    // imagem sair rasgada em vez de dar erro, que é pior.
+    for (let i = 0; i < linha; i++) {
+      const a = i >= canais ? atual[i - canais] : 0;
+      const b = ant[i];
+      const c = i >= canais ? ant[i - canais] : 0;
+      let v = atual[i];
+      if (filtro === 1) v += a;
+      else if (filtro === 2) v += b;
+      else if (filtro === 3) v += (a + b) >> 1;
+      else if (filtro === 4) {
+        const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+        v += (pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c);
+      }
+      atual[i] = v & 0xff;
+    }
+    for (let x = 0; x < larg; x++) {
+      const s = x * canais, d = (y * larg + x) * 4;
+      if (tipo === 6) { out[d] = atual[s]; out[d + 1] = atual[s + 1]; out[d + 2] = atual[s + 2]; out[d + 3] = atual[s + 3]; }
+      else if (tipo === 2) { out[d] = atual[s]; out[d + 1] = atual[s + 1]; out[d + 2] = atual[s + 2]; out[d + 3] = 255; }
+      else if (tipo === 0) { out[d] = out[d + 1] = out[d + 2] = atual[s]; out[d + 3] = 255; }
+      else if (tipo === 4) { out[d] = out[d + 1] = out[d + 2] = atual[s]; out[d + 3] = atual[s + 1]; }
+      else if (tipo === 3) {
+        const i = atual[s] * 3;
+        out[d] = paleta[i]; out[d + 1] = paleta[i + 1]; out[d + 2] = paleta[i + 2];
+        out[d + 3] = trans && atual[s] < trans.length ? trans[atual[s]] : 255;
+      }
+    }
+    atual.copy(ant);
+  }
+  return { larg, alt, px: out };
+}
+
+// ---- redução por média de área --------------------------------------------
+// A cor é ponderada pelo alfa: sem isso, pixels transparentes das bordas
+// puxariam a média para o preto e a marca ficaria com um contorno sujo.
+function reduzir(img, lado) {
+  const out = Buffer.alloc(lado * lado * 4);
+  const ex = img.larg / lado, ey = img.alt / lado;
+  for (let j = 0; j < lado; j++) {
+    const y0 = Math.floor(j * ey), y1 = Math.max(y0 + 1, Math.floor((j + 1) * ey));
+    for (let i = 0; i < lado; i++) {
+      const x0 = Math.floor(i * ex), x1 = Math.max(x0 + 1, Math.floor((i + 1) * ex));
+      let r = 0, g = 0, b = 0, a = 0, n = 0;
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          const s = (y * img.larg + x) * 4, al = img.px[s + 3];
+          r += img.px[s] * al; g += img.px[s + 1] * al; b += img.px[s + 2] * al;
+          a += al; n++;
+        }
+      }
+      const d = (j * lado + i) * 4;
+      if (a === 0) { out[d] = out[d + 1] = out[d + 2] = out[d + 3] = 0; continue; }
+      out[d] = Math.round(r / a); out[d + 1] = Math.round(g / a); out[d + 2] = Math.round(b / a);
+      out[d + 3] = Math.round(a / n);
+    }
+  }
+  return out;
+}
+
+// ---- escrita do PNG --------------------------------------------------------
+function crc32(buf) {
+  let c, crc = 0xffffffff;
+  for (let n = 0; n < buf.length; n++) {
+    c = (crc ^ buf[n]) & 0xff;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    crc = c ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+function bloco(tipo, dados) {
+  const t = Buffer.from(tipo, 'ascii');
+  const tam = Buffer.alloc(4); tam.writeUInt32BE(dados.length, 0);
+  const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(Buffer.concat([t, dados])), 0);
+  return Buffer.concat([tam, t, dados, crc]);
+}
+function escreverPng(lado, px) {
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(lado, 0); ihdr.writeUInt32BE(lado, 4);
+  ihdr[8] = 8; ihdr[9] = 6;
+  const linhas = Buffer.alloc((lado * 4 + 1) * lado);
+  for (let j = 0; j < lado; j++) {
+    linhas[j * (lado * 4 + 1)] = 0;
+    px.copy(linhas, j * (lado * 4 + 1) + 1, j * lado * 4, (j + 1) * lado * 4);
+  }
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    bloco('IHDR', ihdr),
+    bloco('IDAT', zlib.deflateSync(linhas, { level: 9 })),
+    bloco('IEND', Buffer.alloc(0))
+  ]);
+}
+
+// ---- saída -----------------------------------------------------------------
+const orig = lerPng(fs.readFileSync(FONTE));
+console.log(`fonte: koonfy-logo.png ${orig.larg}×${orig.alt}, ${(fs.statSync(FONTE).size / 1024).toFixed(0)} KB`);
+for (const t of TAMANHOS) {
+  const arq = path.join(RAIZ, `koonfy-${t}.png`);
+  fs.writeFileSync(arq, escreverPng(t, reduzir(orig, t)));
+  console.log(`  koonfy-${t}.png  ${(fs.statSync(arq).size / 1024).toFixed(1)} KB`);
+}

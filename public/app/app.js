@@ -8582,7 +8582,7 @@ function admSeoForm(seo) {
         <label style="flex:1">Título ao compartilhar<input id="seo-ogtitle" maxlength="180" value="${v('ogTitle')}" placeholder="(usa o título acima se vazio)"></label>
       </div>
       <label style="margin-top:9px">Descrição ao compartilhar<textarea id="seo-ogdesc" rows="2" maxlength="400" placeholder="(usa a descrição acima se vazio)">${v('ogDescription')}</textarea></label>
-      <label style="margin-top:9px">Imagem de preview (URL. 1200×630 recomendado)<input id="seo-ogimage" maxlength="600" value="${v('ogImage')}" placeholder="${API.webOrigin}/assets/elitechat-logo.png"></label>
+      <label style="margin-top:9px">Imagem de preview (URL. 1200×630 recomendado)<input id="seo-ogimage" maxlength="600" value="${v('ogImage')}" placeholder="${API.webOrigin}/assets/koonfy-128.png"></label>
       <h3 class="notif-sub">Avançado</h3>
       <div class="row">
         <label style="flex:2">URL canônica<input id="seo-canonical" maxlength="400" value="${v('canonical')}" placeholder="${API.webOrigin}/"></label>
@@ -12709,7 +12709,7 @@ async function renderCheckoutBuilder() {
     <header class="ckb-top">
       <button class="icon-btn" title="Voltar ao Pagamentos" onclick="location.hash='#/elitepay'">${ico('arrowleft', 17)}</button>
       <div class="brand ckb-brand">
-        <span class="brand-mark"><img src="/assets/elitechat-logo.png" alt="Checkout Builder"></span>
+        <span class="brand-mark"><img src="/assets/koonfy-128.png" alt="Checkout Builder"></span>
         <div><b class="brand-name">Checkout<span class="gt2"> Builder</span></b>
           <input class="ckb-cname" id="epk-name" value="${esc(epkCheckoutName)}" maxlength="60"
             title="Nome deste checkout" oninput="epkCheckoutName=this.value"></div>
