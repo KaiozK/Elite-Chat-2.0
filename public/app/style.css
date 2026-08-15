@@ -4017,14 +4017,30 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
 }
 
 /* ===================== CHAMADA MINIMIZADA ===================== */
-.call-top { position: relative; }
+/* MINIMIZAR — canto superior ESQUERDO, com rótulo.
+   Estava como um ícone translúcido de 30px no canto direito, encostado no
+   texto da criptografia: ninguém achava. Agora é uma pastilha com fundo
+   sólido, texto e área de toque de 40px de altura. */
 .call-min {
-  position: absolute; right: 14px; top: -2px; background: rgba(255, 255, 255, .14);
-  border: none; color: #fff; width: 30px; height: 30px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center; cursor: pointer;
-  transition: background .15s;
+  position: absolute; left: 18px; top: 18px; z-index: 2;
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 40px; padding: 0 16px 0 13px; border-radius: 99px;
+  background: rgba(255, 255, 255, .16); border: 1px solid rgba(255, 255, 255, .28);
+  color: #fff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: background .15s, transform .1s, border-color .15s;
 }
-.call-min:hover { background: rgba(255, 255, 255, .26); }
+.call-min:hover { background: rgba(255, 255, 255, .3); border-color: rgba(255, 255, 255, .5); }
+.call-min:active { transform: scale(.96); }
+.call-min svg { flex: none; }
+/* o cabeçalho da criptografia desce, para não brigar com o botão */
+.call-overlay .call-top { margin-top: 46px; }
+@media (max-width: 560px) {
+  .call-min { left: 12px; top: calc(12px + env(safe-area-inset-top, 0px)); }
+  /* no celular o rótulo sai e sobra o ícone, mas o alvo continua com 40px */
+  .call-min span { display: none; }
+  .call-min { padding: 0; width: 40px; justify-content: center; }
+}
 
 /* A pastilha fica ACIMA de tudo e some do caminho do conteúdo. `position:
    fixed` com left/top escritos pelo arrasto — sem transform, para o cálculo do

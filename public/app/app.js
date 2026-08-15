@@ -9206,9 +9206,14 @@ function paintCall() {
 
   root.innerHTML = `
     <div class="call-overlay">
+      <!-- Canto superior ESQUERDO e com rótulo: é o primeiro lugar onde se
+           procura por "voltar/reduzir", e um ícone solto e translúcido no
+           canto direito passava despercebido. -->
+      <button class="call-min" onclick="minimizarChamada()" title="Minimizar a chamada">
+        ${ico('minimize', 16)}<span>Minimizar</span>
+      </button>
       <div class="call-top">
         ${ico('lock', 12)} <span>Criptografia de ponta a ponta</span>
-        <button class="call-min" onclick="minimizarChamada()" title="Minimizar">${ico('minimize', 15)}</button>
       </div>
       <div class="call-brand"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.5 2 2 6.4 2 11.9c0 1.9.5 3.7 1.5 5.3L2 22l4.9-1.4c1.5.9 3.3 1.4 5.1 1.4 5.5 0 10-4.4 10-9.9S17.5 2 12 2z"/></svg> WhatsApp · Chamada de voz</div>
       <div class="call-center">
