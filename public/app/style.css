@@ -1,6 +1,6 @@
 /* ============================================================
    Koonfy — Design system do app (identidade da landing)
-   Manrope · verde claro #34D399 · tinta #0F1F15 · mint #ECFDF5
+   Inter Tight · verde da logo #33E16F→#15CB68 · tinta #0F1F15
    Botões pill, cards 20px, sombras verdes suaves
    ============================================================ */
 
@@ -19,16 +19,22 @@
   --muted: #7b8a79;
   --faint: #93a092;
 
-  /* marca (verde claro da landing) */
-  --verde: #34d399;
-  --verde-esc: #10b981;
-  --verde-deep: #0b815a;
-  --ink-on-verde: #04341f;
-  --grad: linear-gradient(135deg, #4ade9f, #10b981);
+  /* MARCA — as cores saem do ARQUIVO da logo, não de estimativa. Amostrando
+     koonfy-logo.png: #33e16f no canto superior esquerdo e #15cb68 no inferior
+     direito. O verde antigo (#34d399) tinha matiz ~165°, que puxa para o
+     azul-esverdeado; o da logo é ~140°, verde puro. Lado a lado, o app e a
+     marca pareciam de empresas diferentes.
+     O --verde-deep é escurecido de propósito além do gradiente: ele é usado em
+     TEXTO sobre fundo claro, e o verde da logo sozinho não alcança 4.5:1. */
+  --verde: #33e16f;
+  --verde-esc: #16c96a;
+  --verde-deep: #0a8f48;
+  --ink-on-verde: #04331a;
+  --grad: linear-gradient(135deg, #33e16f, #15cb68);
   --brand: var(--verde-esc);
   --brand-dark: var(--verde-deep);
-  --brand-bg: #ecfdf5;
-  --brand-border: #bdebd7;
+  --brand-bg: #eafbf0;
+  --brand-border: #bfeccf;
 
   /* sidebar clara (branca, ícones/textos cinza — como o mockup do disparo) */
   --sidebar: #ffffff;
@@ -55,8 +61,8 @@
   --shadow-sm: 0 2px 8px rgba(15, 31, 21, .05);
   --shadow: 0 14px 34px -8px rgba(20, 60, 20, .14);
   --shadow-lg: 0 30px 70px -16px rgba(20, 60, 20, .22);
-  --glow: 0 8px 24px rgba(52, 211, 153, .35);
-  --ring: 0 0 0 3px rgba(52, 211, 153, .25);
+  --glow: 0 8px 24px rgba(51, 225, 111, .35);
+  --ring: 0 0 0 3px rgba(51, 225, 111, .25);
 
   --font: 'Inter Tight', 'Segoe UI', system-ui, sans-serif;
   --ease: cubic-bezier(.22, .8, .3, 1);
@@ -85,7 +91,7 @@ a:hover { color: var(--verde-deep); text-decoration: underline; }
 h1 { font-size: 19px; font-weight: 800; letter-spacing: -.02em; margin: 0 0 4px; }
 h2 { font-size: 15px; font-weight: 800; letter-spacing: -.015em; margin: 0 0 12px; }
 
-::selection { background: rgba(52, 211, 153, .3); }
+::selection { background: rgba(51, 225, 111, .3); }
 :focus-visible { outline: 2px solid var(--verde-esc); outline-offset: 2px; border-radius: 8px; }
 
 * { scrollbar-width: thin; scrollbar-color: #c3dccb transparent; }
@@ -107,7 +113,7 @@ h2 { font-size: 15px; font-weight: 800; letter-spacing: -.015em; margin: 0 0 12p
   width: 38px; height: 38px; flex-shrink: 0; border-radius: 12px;
   background: var(--verde);
   display: flex; align-items: center; justify-content: center; color: var(--ink-on-verde);
-  box-shadow: 0 6px 16px rgba(52, 211, 153, .4); overflow: hidden;
+  box-shadow: 0 6px 16px rgba(51, 225, 111, .4); overflow: hidden;
 }
 .brand-mark svg { width: 21px; height: 21px; }
 .brand-mark img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -183,7 +189,7 @@ h2 { font-size: 15px; font-weight: 800; letter-spacing: -.015em; margin: 0 0 12p
 .nav-item:hover svg { opacity: 1; }
 .nav-item.active {
   background: var(--verde); color: var(--ink-on-verde); font-weight: 800;
-  box-shadow: 0 6px 18px rgba(52, 211, 153, .35);
+  box-shadow: 0 6px 18px rgba(51, 225, 111, .35);
 }
 .nav-item.active svg { color: var(--ink-on-verde); opacity: 1; }
 .badge {
@@ -620,7 +626,7 @@ tbody tr:last-child td { border-bottom: none; }
   padding: 0 9px; font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums;
 }
 .kcol .kbody { padding: 9px; display: flex; flex-direction: column; gap: 9px; min-height: 60px; }
-.kcol.drag-over { border-color: var(--verde-esc); box-shadow: 0 0 0 3px rgba(52, 211, 153, .2); }
+.kcol.drag-over { border-color: var(--verde-esc); box-shadow: 0 0 0 3px rgba(51, 225, 111, .2); }
 .kcard {
   background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 12px 13px;
   cursor: grab; box-shadow: var(--shadow-xs); transition: box-shadow .2s, transform .2s, border-color .2s;
@@ -1542,7 +1548,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
    marca): 7% no vazio, até 92% no estado com mais leads. Assim o claro escurece
    e o escuro acende conforme cresce, sem JS ciente do tema. */
 :root {
-  --geo-ink: var(--verde-esc);      /* #10b981 — a única cor do mapa de calor */
+  --geo-ink: var(--verde-esc);      /* verde da marca — a única cor do mapa de calor */
   --geo-hover: var(--verde-deep);   /* #0b815a */
   /* divisas ESCURAS no claro / CLARAS no escuro — a linha separa por contraste
      com o preenchimento, então inverte junto com o tema. */
@@ -1553,7 +1559,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   --geo-halo: rgba(255, 255, 255, .9);
 }
 :root[data-theme="dark"] {
-  --geo-ink: var(--verde);          /* #34d399 — mais vivo sobre card escuro */
+  --geo-ink: var(--verde);          /* verde claro da marca — mais vivo sobre card escuro */
   --geo-hover: var(--verde-deep);   /* vira #6ee7b7 no escuro */
   /* Lateral da placa CLARA no escuro: num card quase preto não há espaço de
      luminância para uma "sombra" — a #202426 ficava a 1.09:1 do fundo, ou seja,
@@ -2178,7 +2184,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, .45);
   --shadow: 0 16px 40px -10px rgba(0, 0, 0, .6);
   --shadow-lg: 0 30px 70px -16px rgba(0, 0, 0, .7);
-  --glow: 0 8px 24px rgba(52, 211, 153, .22);
+  --glow: 0 8px 24px rgba(51, 225, 111, .22);
 }
 
 /* Exceções que usavam gradiente/branco fixo */
@@ -2196,14 +2202,14 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   --text2: #3a4a3e;
   --muted: #7b8a79;
   --faint: #93a092;
-  --brand-bg: #ecfdf5;
-  --brand-border: #bdebd7;
+  --brand-bg: #eafbf0;
+  --brand-border: #bfeccf;
   /* o verde do modo escuro é claro demais para fundo branco */
-  --verde: #34d399;
-  --verde-esc: #10b981;
-  --verde-deep: #0b815a;
-  --brand: #10b981;
-  --brand-dark: #0b815a;
+  --verde: #33e16f;
+  --verde-esc: #16c96a;
+  --verde-deep: #0a8f48;
+  --brand: #16c96a;
+  --brand-dark: #0a8f48;
   --shadow-xs: 0 1px 2px rgba(15, 31, 21, .05);
   --shadow-sm: 0 2px 8px rgba(15, 31, 21, .05);
   background: linear-gradient(180deg, #fcfef9 0%, #ecfdf5 100%);
@@ -2265,11 +2271,11 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 
 /* ---- MODO ESCURO: hover dos botões reforça o VERDE (não branco) ---- */
 :root[data-theme="dark"] .btn:not(.primary):not(.danger):not(.danger-solid):hover {
-  color: #34d399;
-  border-color: #34d399;
+  color: var(--verde);
+  border-color: var(--verde);
   background: var(--brand-bg);
 }
-:root[data-theme="dark"] .btn:not(.primary):not(.danger):not(.danger-solid):hover svg { color: #34d399; }
+:root[data-theme="dark"] .btn:not(.primary):not(.danger):not(.danger-solid):hover svg { color: var(--verde); }
 
 /* ---- MODO ESCURO: hover de linha da tabela → fundo um pouco mais forte (não branco) ---- */
 :root[data-theme="dark"] tbody tr:hover td { background: #202a27; }
@@ -2287,7 +2293,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 /* gráfico de recebimentos (14 dias) */
 .ep-chart { display: flex; align-items: flex-end; gap: 6px; height: 150px; padding-top: 8px; }
 .ep-bar-w { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; height: 100%; justify-content: flex-end; min-width: 0; }
-.ep-bar { width: 100%; max-width: 34px; border-radius: 7px 7px 3px 3px; background: linear-gradient(180deg, #4ade9f, var(--verde-esc)); transition: height .3s var(--ease); }
+.ep-bar { width: 100%; max-width: 34px; border-radius: 7px 7px 3px 3px; background: linear-gradient(180deg, #33e16f, var(--verde-esc)); transition: height .3s var(--ease); }
 .ep-bar-w span { font-size: 10px; color: var(--faint); font-weight: 700; }
 
 /* detalhe da cobrança (QR + copia e cola) */
@@ -2335,7 +2341,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .epk-browser { border: 1px solid var(--border2); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow2, 0 12px 34px -18px rgba(0, 0, 0, .25)); background: var(--card); }
 .epk-bbar { display: flex; align-items: center; gap: 5px; padding: 9px 12px; background: var(--bg2); border-bottom: 1px solid var(--border2); }
 .epk-bbar i { width: 9px; height: 9px; border-radius: 50%; background: var(--border2); }
-.epk-bbar i:nth-child(1) { background: #f87171; } .epk-bbar i:nth-child(2) { background: #fbbf24; } .epk-bbar i:nth-child(3) { background: #34d399; }
+.epk-bbar i:nth-child(1) { background: #f87171; } .epk-bbar i:nth-child(2) { background: #fbbf24; } .epk-bbar i:nth-child(3) { background: var(--verde); }
 .epk-bbar span { flex: 1; text-align: center; font-size: 10.5px; color: var(--faint); background: var(--card); border-radius: 6px; padding: 3px 8px; margin-left: 6px; }
 
 /* réplica fiel da página /pay/:id — modelo card em 2 colunas (ref. Figma "Checkout Page") */
@@ -2343,7 +2349,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .epk2-topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .epk2-brand { display: flex; align-items: center; gap: 8px; }
 .epk2-brand img { width: 26px; height: 26px; border-radius: 6px; object-fit: cover; background: #fff; }
-.epk2-brand .ph { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; background: var(--epkc, #10b981); color: #fff; font-weight: 700; font-size: 12px; }
+.epk2-brand .ph { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; background: var(--epkc, #16c96a); color: #fff; font-weight: 700; font-size: 12px; }
 .epk2-brand b { font-size: 11px; font-weight: 700; display: block; }
 .epk2-brand small { font-size: 8.5px; color: #6b7488; }
 .epk2-secure { font-size: 8.5px; font-weight: 600; color: #4b5568; background: #fff; border: 1px solid #e7eaf0; padding: 4px 8px; border-radius: 99px; }
@@ -2355,10 +2361,10 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .epk2-steps { display: flex; align-items: center; margin-bottom: 10px; }
 .epk2-stp { display: flex; align-items: center; gap: 4px; font-size: 8px; font-weight: 600; color: #97a0b3; }
 .epk2-stp i { width: 15px; height: 15px; border-radius: 50%; font-style: normal; font-size: 8px; font-weight: 700; display: flex; align-items: center; justify-content: center; background: #eef1f6; color: #97a0b3; border: 1.5px solid #e2e6ee; }
-.epk2-stp.cur { color: #1a2233; } .epk2-stp.cur i { background: var(--epkc, #10b981); border-color: var(--epkc, #10b981); color: #fff; }
-.epk2-stp.done i { background: color-mix(in srgb, var(--epkc, #10b981) 15%, #fff); border-color: color-mix(in srgb, var(--epkc, #10b981) 45%, #fff); color: var(--epkc, #10b981); }
+.epk2-stp.cur { color: #1a2233; } .epk2-stp.cur i { background: var(--epkc, #16c96a); border-color: var(--epkc, #16c96a); color: #fff; }
+.epk2-stp.done i { background: color-mix(in srgb, var(--epkc, #16c96a) 15%, #fff); border-color: color-mix(in srgb, var(--epkc, #16c96a) 45%, #fff); color: var(--epkc, #16c96a); }
 .epk2-stpsep { flex: 1; height: 1.5px; background: #e2e6ee; margin: 0 6px; }
-.epk2-stpsep.done { background: color-mix(in srgb, var(--epkc, #10b981) 45%, #fff); }
+.epk2-stpsep.done { background: color-mix(in srgb, var(--epkc, #16c96a) 45%, #fff); }
 
 .epk2-mtitle { font-size: 12px; font-weight: 700; }
 .epk2-msub { font-size: 8.5px; color: #6b7488; margin-bottom: 9px; }
@@ -2379,17 +2385,17 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .epk2-sumhead { font-size: 8px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase; color: #97a0b3; padding: 9px 11px 0; }
 .epk2-prod { display: flex; gap: 8px; padding: 7px 11px 9px; border-bottom: 1px solid #e7eaf0; }
 .epk2-thumb { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; flex: none; }
-.epk2-thumb.ph { display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--epkc, #10b981) 12%, #fff); color: var(--epkc, #10b981); font-weight: 700; font-size: 13px; }
+.epk2-thumb.ph { display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--epkc, #16c96a) 12%, #fff); color: var(--epkc, #16c96a); font-weight: 700; font-size: 13px; }
 .epk2-pinfo { min-width: 0; align-self: center; }
 .epk2-pinfo b { font-size: 9.5px; font-weight: 700; line-height: 1.25; display: block; }
 .epk2-pinfo span { font-size: 8px; color: #6b7488; display: block; margin-top: 2px; line-height: 1.35; }
 .epk2-rows { padding: 8px 11px; }
 .epk2-row { display: flex; justify-content: space-between; font-size: 9px; color: #4b5568; padding: 2px 0; }
 .epk2-row.total { font-size: 11px; font-weight: 700; color: #1a2233; border-top: 1px dashed #e7eaf0; margin-top: 4px; padding-top: 6px; }
-.epk2-btn { margin: 0 11px; text-align: center; font-size: 9.5px; font-weight: 600; color: #fff; padding: 8px; border-radius: 7px; background: var(--epkc, #10b981); }
+.epk2-btn { margin: 0 11px; text-align: center; font-size: 9.5px; font-weight: 600; color: #fff; padding: 8px; border-radius: 7px; background: var(--epkc, #16c96a); }
 .epk2-note { font-size: 7.5px; color: #97a0b3; text-align: center; padding: 6px 11px 11px; }
-.epk2-wait { margin: 0 11px 11px; display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 8.5px; font-weight: 600; color: var(--epkc, #10b981); border: 1px solid color-mix(in srgb, var(--epkc, #10b981) 30%, #fff); background: color-mix(in srgb, var(--epkc, #10b981) 6%, #fff); border-radius: 7px; padding: 8px; }
-.epk2-wait i { width: 6px; height: 6px; border-radius: 50%; background: var(--epkc, #10b981); }
+.epk2-wait { margin: 0 11px 11px; display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 8.5px; font-weight: 600; color: var(--epkc, #16c96a); border: 1px solid color-mix(in srgb, var(--epkc, #16c96a) 30%, #fff); background: color-mix(in srgb, var(--epkc, #16c96a) 6%, #fff); border-radius: 7px; padding: 8px; }
+.epk2-wait i { width: 6px; height: 6px; border-radius: 50%; background: var(--epkc, #16c96a); }
 .epk2-support { text-align: center; font-size: 8px; color: #97a0b3; margin-top: 8px; }
 
 /* página do builder: passos do fluxo + tabs da prévia */
@@ -2400,7 +2406,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .epk-prevtabs { margin-bottom: 10px; justify-content: center; display: flex; }
 
 /* modo escuro: só a moldura escurece — a página em si permanece clara */
-:root[data-theme="dark"] .epk-upload:hover { background: rgba(52, 211, 153, .07); }
+:root[data-theme="dark"] .epk-upload:hover { background: rgba(51, 225, 111, .07); }
 :root[data-theme="dark"] .epk-page { background: #fff; }
 /* relatório: volume por cliente (admin) */
 /* ---- Lista de conexões WhatsApp (Configurações) ---- */
@@ -2538,7 +2544,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .ep-volrow > span { width: 160px; flex-shrink: 0; font-weight: 700; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ep-volrow > b { width: 110px; text-align: right; flex-shrink: 0; font-size: 13px; }
 .ep-volbar { flex: 1; height: 12px; background: var(--bg2); border-radius: 99px; overflow: hidden; }
-.ep-volbar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #4ade9f, var(--verde-esc)); }
+.ep-volbar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #33e16f, var(--verde-esc)); }
 
 /* ============================================================
    MODO ESCURO — fundo preto→cinza (app + sidebar) e TODOS os
@@ -2580,7 +2586,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 /* ---- Ajuste fino do dark: menu ativo disfarçado + widgets internos pretos/cinza ---- */
 /* item ativo do menu lateral: sem o verde chapado — fundo sutil + acento verde */
 :root[data-theme="dark"] .nav-item.active {
-  background: rgba(52, 211, 153, .10);
+  background: rgba(51, 225, 111, .10);
   color: #eafdf4;
   box-shadow: inset 3px 0 0 0 var(--verde-esc);
 }
@@ -2643,7 +2649,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .bar-col { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
 .bar-stack { width: 100%; max-width: 40px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 7px 7px 0 0; overflow: hidden; background: rgba(128, 138, 128, .10); }
 .bar-seg { width: 100%; transition: height .45s var(--ease); }
-.seg-first { background: linear-gradient(180deg, #4ade9f, var(--verde-esc)); }
+.seg-first { background: linear-gradient(180deg, #33e16f, var(--verde-esc)); }
 .seg-renewal { background: linear-gradient(180deg, #67d3ee, #2c9fd6); }
 .seg-topup { background: linear-gradient(180deg, #f6cc6a, #e79009); }
 .seg-acct { background: linear-gradient(180deg, #a58cff, #6d54e0); }
@@ -2735,7 +2741,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 /* segmentados (períodos do dashboard, semana/dia da agenda, abas do consent) */
 :root[data-theme="dark"] .seg button { color: #95a4a0; }
 /* etiqueta de gatilho do Flow Builder */
-:root[data-theme="dark"] .flow-badge { color: #34d399; }
+:root[data-theme="dark"] .flow-badge { color: var(--verde); }
 /* textos secundários do mockup do WhatsApp: mantém a cara do app real,
    só escurece o cinza o suficiente para leitura confortável */
 .ph-device .wa-time, .ph-device .wa-ft { color: #667781; }
@@ -2957,11 +2963,11 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .trk-frow { display: grid; grid-template-columns: 110px 1fr 70px 70px; align-items: center; gap: 12px; padding: 6px 0; }
 .trk-fname { font-size: 13px; font-weight: 700; }
 .trk-fbar { height: 14px; background: var(--bg2); border-radius: 99px; overflow: hidden; }
-.trk-fbar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #4ade9f, var(--verde-esc)); }
+.trk-fbar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #33e16f, var(--verde-esc)); }
 .trk-frow > b { text-align: right; font-variant-numeric: tabular-nums; }
 .trk-frate { font-size: 12px; font-weight: 700; color: var(--muted); }
 .pill-ok { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 99px; background: var(--bgt, #ecfdf5); color: var(--verde-esc); }
-:root[data-theme="dark"] .pill-ok { background: rgba(52, 211, 153, .12); }
+:root[data-theme="dark"] .pill-ok { background: rgba(51, 225, 111, .12); }
 @media (max-width: 620px) { .trk-frow { grid-template-columns: 84px 1fr 54px 54px; gap: 8px; } }
 
 /* ===== Checkout Builder: blocos, ordem arrastável e uploads por dispositivo ===== */
@@ -2999,29 +3005,29 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .epk2-blk { background: #fff; border: 1px solid #e7eaf0; border-radius: 10px; padding: 9px 11px; font-size: 9px; color: #4a5468; line-height: 1.5; }
 .epk2-blkt { display: block; font-size: 10px; font-weight: 700; color: #1a2233; margin-bottom: 6px; }
 .epk2-timer { display: flex; align-items: center; justify-content: center; gap: 7px; font-weight: 600; color: #33405c;
-  background: color-mix(in srgb, var(--epkc, #10b981) 8%, #fff); border-color: color-mix(in srgb, var(--epkc, #10b981) 25%, #fff); }
+  background: color-mix(in srgb, var(--epkc, #16c96a) 8%, #fff); border-color: color-mix(in srgb, var(--epkc, #16c96a) 25%, #fff); }
 .epk2-clock { display: flex; gap: 3px; }
 .epk2-clock i { background: #1a2233; color: #fff; font-style: normal; font-weight: 700; padding: 2px 5px; border-radius: 4px; font-size: 9px; }
 .epk2-notice { background: #fff8e6; border-color: #f5e2b0; color: #8a6412; display: flex; gap: 6px; align-items: flex-start; }
 .epk2-bitem { display: flex; gap: 6px; align-items: flex-start; margin-bottom: 4px; }
-.epk2-bitem svg { color: var(--epkc, #10b981); flex: none; margin-top: 1px; }
+.epk2-bitem svg { color: var(--epkc, #16c96a); flex: none; margin-top: 1px; }
 .epk2-testi { display: flex; gap: 8px; }
 .epk2-testi .av { width: 24px; height: 24px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center;
-  background: color-mix(in srgb, var(--epkc, #10b981) 13%, #fff); color: var(--epkc, #10b981); font-weight: 700; font-size: 11px; }
+  background: color-mix(in srgb, var(--epkc, #16c96a) 13%, #fff); color: var(--epkc, #16c96a); font-weight: 700; font-size: 11px; }
 .epk2-testi .st { color: #f5a524; font-size: 8px; letter-spacing: .5px; }
 .epk2-testi p { font-style: italic; margin: 2px 0 3px; }
 .epk2-testi b { font-size: 9px; }
 .epk2-guar { display: flex; gap: 9px; align-items: center; }
-.epk2-guar svg { color: var(--epkc, #10b981); flex: none; }
+.epk2-guar svg { color: var(--epkc, #16c96a); flex: none; }
 .epk2-guar b { display: block; font-size: 10px; color: #1a2233; }
 .epk2-guar span { display: block; }
 .epk2-faq { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; border-bottom: 1px solid #eef1f6; font-weight: 600; color: #33405c; }
 .epk2-faq:last-child { border-bottom: 0; }
-.epk2-faq em { color: var(--epkc, #10b981); font-style: normal; font-weight: 700; }
+.epk2-faq em { color: var(--epkc, #16c96a); font-style: normal; font-weight: 700; }
 .epk2-badges { display: flex; gap: 6px; justify-content: center; margin-top: 9px; flex-wrap: wrap; }
 .epk2-badges span { display: inline-flex; align-items: center; gap: 4px; font-size: 8px; font-weight: 600; color: #55607a;
   background: #fff; border: 1px solid #e7eaf0; padding: 4px 7px; border-radius: 6px; }
-.epk2-badges svg { color: var(--epkc, #10b981); }
+.epk2-badges svg { color: var(--epkc, #16c96a); }
 /* nome editável do checkout no header do Checkout Builder */
 .ckb-cname {
   display: block; border: 1px solid transparent; background: transparent; font: inherit;
@@ -3034,20 +3040,20 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 /* ===== CANVAS ARRASTA-E-SOLTA do Checkout Builder ===== */
 /* cada bloco da prévia é um alvo posicionável */
 .epk2-drop { position: relative; border-radius: 10px; cursor: grab; transition: box-shadow .12s, opacity .12s; }
-.epk2-drop:hover { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--epkc, #10b981) 55%, transparent); }
+.epk2-drop:hover { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--epkc, #16c96a) 55%, transparent); }
 .epk2-drop.dragging { opacity: .4; cursor: grabbing; }
 .epk2-drop.fixed { cursor: grab; }
 /* linha indicando onde o widget vai cair */
 .epk2-drop.over-before::before, .epk2-drop.over-after::after {
   content: ''; position: absolute; left: 0; right: 0; height: 3px; border-radius: 3px;
-  background: var(--epkc, #10b981); box-shadow: 0 0 0 3px color-mix(in srgb, var(--epkc, #10b981) 25%, transparent);
+  background: var(--epkc, #16c96a); box-shadow: 0 0 0 3px color-mix(in srgb, var(--epkc, #16c96a) 25%, transparent);
 }
 .epk2-drop.over-before::before { top: -5px; }
 .epk2-drop.over-after::after { bottom: -5px; }
 /* alça (aparece no hover) */
 .epk2-handle {
   position: absolute; top: 4px; left: -3px; z-index: 2; display: flex; opacity: 0;
-  background: var(--epkc, #10b981); color: #fff; border-radius: 5px; padding: 2px 3px;
+  background: var(--epkc, #16c96a); color: #fff; border-radius: 5px; padding: 2px 3px;
   transition: opacity .12s; pointer-events: none;
 }
 .epk2-drop:hover .epk2-handle { opacity: 1; }
@@ -3059,9 +3065,9 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   padding: 9px 11px; font-size: 9px; font-weight: 700; color: #8892a4;
 }
 .epk2-ghost em { font-style: normal; font-weight: 500; font-size: 8px; color: #aab2c2; width: 100%; }
-.epk2-drop.off:hover .epk2-ghost { border-color: var(--epkc, #10b981); color: #55607a; }
+.epk2-drop.off:hover .epk2-ghost { border-color: var(--epkc, #16c96a); color: #55607a; }
 /* canvas em modo "recebendo" */
-.epk2-col.dropping { outline: 2px dashed color-mix(in srgb, var(--epkc, #10b981) 45%, transparent); outline-offset: 4px; border-radius: 12px; }
+.epk2-col.dropping { outline: 2px dashed color-mix(in srgb, var(--epkc, #16c96a) 45%, transparent); outline-offset: 4px; border-radius: 12px; }
 /* item da paleta arrastável */
 .ckb-comp.drag { cursor: grab; }
 .ckb-comp.drag:active { cursor: grabbing; }

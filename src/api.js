@@ -3781,6 +3781,24 @@ module.exports = function (broadcast, clients) {
     res.json({ ok: true, seo: p.seo });
   });
 
+  // Teste da notificação de VENDA, com o valor escolhido na hora.
+  // Não cria cobrança, não mexe na carteira e não entra em relatório: é só o
+  // aviso. Um "teste" que sujasse o financeiro seria pior que não existir.
+  router.post('/admin/push/test-sale', auth, adminOnly, h(async (req, res) => {
+    const cents = Math.round(Number((req.body || {}).amount) || 0);
+    if (cents < 1) return res.status(400).json({ error: 'Informe o valor da venda' });
+    const nome = String((req.body || {}).name || '').trim().slice(0, 60);
+    const valor = elitepay.fmtBRL(cents);
+    const inscritos = (req.acc.pushSubs || []).length;
+    await push.sendToAccount(req.acc, 'sale', {
+      title: 'Venda aprovada! 💸',
+      body: `${valor}${nome ? ' de ' + nome : ''} — pagamento confirmado no Pix.`,
+      tag: 'venda-teste', data: { type: 'sale', url: '/app/#/elitepay' }
+    });
+    store.logEvent({ type: 'push_test_sale', accountId: req.acc.id, amount: cents });
+    res.json({ sent: inscritos });
+  }));
+
   router.post('/admin/plans', auth, adminOnly, (req, res) => {
     const { name, price, periodDays, features } = req.body || {};
     const cents = Math.round(Number(String(price || '0').replace(',', '.')) * 100);

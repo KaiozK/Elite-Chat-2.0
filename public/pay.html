@@ -10,7 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   /* ===== Checkout Elite Pay, card em 2 colunas (ref. Figma "Checkout Page") ===== */
-  :root { --ac: #10b981; --ink: #1a2233; --mut: #6b7488; --line: #e7eaf0; --bg: #eef1f6; --card: #fff; }
+  :root { --ac: #16c96a; --ink: #1a2233; --mut: #6b7488; --line: #e7eaf0; --bg: #eef1f6; --card: #fff; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: 'Inter Tight', -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -764,7 +764,7 @@
   // ---------- render ----------
   function render() {
     var ck = data.checkout || {};
-    document.documentElement.style.setProperty('--ac', ck.color || '#10b981');
+    document.documentElement.style.setProperty('--ac', ck.color || '#16c96a');
     document.title = (ck.title || ck.merchant || 'Pagamento') + '. Pix';
 
     if (data.demo && !document.querySelector('.demo-tag')) {
@@ -774,7 +774,7 @@
     if (data.status === 'paid') {
       root.innerHTML = siteHead(ck) + '<div class="wrap"><div class="grid">' +
         '<div class="card fade-in"><div class="final ok">' +
-          '<div class="fic"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="' + esc(ck.color || '#10b981') + '" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>' +
+          '<div class="fic"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="' + esc(ck.color || '#16c96a') + '" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>' +
           '<h2>Pagamento concluído</h2>' +
           '<p>' + esc(ck.successMsg || ('Recebemos seu pagamento' + (ck.merchant ? ', ' + ck.merchant : '') + '. Obrigado!')) + '</p>' +
           '<div class="receipt">' +

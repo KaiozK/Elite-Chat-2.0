@@ -196,7 +196,7 @@ function setTheme(t) {
   const ic = $('#theme-ic'); if (ic) ic.innerHTML = t === 'dark' ? THEME_IC.sun : THEME_IC.moon;
   const btn = $('#theme-btn'); if (btn) btn.title = t === 'dark' ? 'Mudar para claro' : 'Mudar para escuro';
   const card = $('#appearance-card'); if (card) card.innerHTML = renderThemeSettings();
-  const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', t === 'dark' ? '#080a08' : '#34D399');
+  const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', t === 'dark' ? '#080a08' : '#33E16F');
   if (window.ECNative) ECNative.syncTheme();   // status bar do app acompanha o tema
 }
 function toggleTheme() { setTheme(currentTheme() === 'dark' ? 'light' : 'dark'); }
@@ -2121,7 +2121,7 @@ async function renderDashboard() {
               <h2 style="margin:0 0 2px">Mensagens no período</h2>
               <span class="big-num">${fmtN(t.out + t.in)}</span><span class="muted" style="font-weight:600;margin-left:8px">${fmtN(t.out)} enviadas · ${fmtN(t.in)} recebidas</span>
             </div>
-            <span class="legend"><i style="background:#10B981"></i> Enviadas</span>
+            <span class="legend"><i style="background:#16C96A"></i> Enviadas</span>
             <span class="legend"><i style="background:#53BDEB"></i> Recebidas</span>
           </div>
           ${chVolume(rep.days, kind)}
@@ -2129,8 +2129,8 @@ async function renderDashboard() {
         <div class="card">
           <h2>Status dos envios</h2>
           ${donut([
-            { label: 'Lidas', value: t.read, color: '#10B981' },
-            { label: 'Entregues', value: Math.max(0, t.delivered - t.read), color: '#34D399' },
+            { label: 'Lidas', value: t.read, color: '#16C96A' },
+            { label: 'Entregues', value: Math.max(0, t.delivered - t.read), color: '#33E16F' },
             { label: 'Enviadas', value: pend, color: '#A7F3D0' },
             { label: 'Falhas', value: t.failed, color: '#E5484D' }
           ])}
@@ -2146,7 +2146,7 @@ async function renderDashboard() {
             <h2 style="margin:0;flex:1">Cliques em links</h2>
             <span class="big-num sm">${fmtN(clicksPeriod)}</span>
           </div>
-          ${dayBars(rep.linksByDay || [], '#10B981')}
+          ${dayBars(rep.linksByDay || [], '#16C96A')}
         </div>
       </div>
       <div class="card svc-card">
@@ -5222,15 +5222,15 @@ function chLine(days, h = 230) {
   const labels = days.map((d, i) => i % step ? '' :
     `<text x="${X(i).toFixed(1)}" y="${h - 8}" font-size="10" fill="#98a2b3" text-anchor="middle">${d.date.slice(8)}/${d.date.slice(5, 7)}</text>`).join('');
   return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;margin-top:8px">
-    <defs><linearGradient id="gA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#10B981" stop-opacity=".22"/><stop offset="1" stop-color="#10B981" stop-opacity="0"/></linearGradient></defs>
+    <defs><linearGradient id="gA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#16C96A" stop-opacity=".22"/><stop offset="1" stop-color="#16C96A" stop-opacity="0"/></linearGradient></defs>
     ${grid}${labels}
     <path d="${area}" fill="url(#gA)"/>
-    <polyline points="${line('out')}" fill="none" stroke="#10B981" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="${line('out')}" fill="none" stroke="#16C96A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
     <polyline points="${line('in')}" fill="none" stroke="#53BDEB" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>`;
 }
 
-function spark(values, color = '#10B981', w = 110, h = 30) {
+function spark(values, color = '#16C96A', w = 110, h = 30) {
   const max = Math.max(1, ...values);
   const pts = values.map((v, i) => `${(i / Math.max(1, values.length - 1) * w).toFixed(1)},${(h - 3 - (v / max) * (h - 8)).toFixed(1)}`).join(' ');
   return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -5438,7 +5438,7 @@ function brazilMap3D(g) {
 }
 
 // Barras por dia (série única) — divs, com tooltip e eixo
-function dayBars(series, color = '#10B981') {
+function dayBars(series, color = '#16C96A') {
   const max = Math.max(1, ...series.map(d => d.count));
   const fmtD = iso => { const [, m, d] = iso.split('-'); return `${d}/${m}`; };
   return `<div class="hbars" style="height:130px">${series.map(d =>
@@ -5465,7 +5465,7 @@ function chVolume(days, kind = 'line', h = 240) {
       bars += `<rect x="${(xm + 0.5).toFixed(1)}" y="${(h - padB - hi).toFixed(1)}" width="${bw}" height="${Math.max(2.5, hi).toFixed(1)}" rx="${Math.min(4, bw / 2)}" fill="#53BDEB" opacity=".8"><title>${fmtD(d.date)}, ${d.in} recebidas</title></rect>`;
     });
     return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto" class="chv">
-      <defs><linearGradient id="gvb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34D399"/><stop offset="1" stop-color="#0B815A"/></linearGradient></defs>
+      <defs><linearGradient id="gvb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#33E16F"/><stop offset="1" stop-color="#0A8F48"/></linearGradient></defs>
       ${grid}${bars}${labels}</svg>`;
   }
   // área dupla
@@ -5474,14 +5474,14 @@ function chVolume(days, kind = 'line', h = 240) {
   const lineIn = days.map((d, i) => pt(d.in, i)).join(' ');
   return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto" class="chv">
     <defs>
-      <linearGradient id="gaO" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#10B981" stop-opacity=".30"/><stop offset="1" stop-color="#10B981" stop-opacity="0"/></linearGradient>
+      <linearGradient id="gaO" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#16C96A" stop-opacity=".30"/><stop offset="1" stop-color="#16C96A" stop-opacity="0"/></linearGradient>
       <linearGradient id="gaI" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#53BDEB" stop-opacity=".25"/><stop offset="1" stop-color="#53BDEB" stop-opacity="0"/></linearGradient>
     </defs>
     ${grid}
     <polygon points="0,${h - padB} ${lineIn} ${w},${h - padB}" fill="url(#gaI)"/>
     <polyline points="${lineIn}" fill="none" stroke="#53BDEB" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
     <polygon points="0,${h - padB} ${lineOut} ${w},${h - padB}" fill="url(#gaO)"/>
-    <polyline points="${lineOut}" fill="none" stroke="#10B981" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="${lineOut}" fill="none" stroke="#16C96A" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
     ${labels}</svg>`;
 }
 
@@ -5550,7 +5550,7 @@ async function renderReports(daysOverride) {
         <div class="card chart-card">
           <div class="row" style="align-items:center;margin-bottom:2px">
             <h2 style="margin:0;flex:1">Volume de mensagens</h2>
-            <span class="legend"><i style="background:#10B981"></i> Enviadas</span>
+            <span class="legend"><i style="background:#16C96A"></i> Enviadas</span>
             <span class="legend"><i style="background:#53BDEB"></i> Recebidas</span>
           </div>
           ${chLine(r.days)}
@@ -6233,7 +6233,7 @@ function paintTeamSide() {
       ${del}</div>`;
   };
   side.innerHTML = `
-    <div class="team-me"><span class="avatar sm" style="background:#10B981">${esc((state.user || 'V')[0].toUpperCase())}</span><div><b style="font-size:13px">${esc(state.user || 'Você')}</b><div class="muted" style="font-size:11px">Você · online</div></div></div>
+    <div class="team-me"><span class="avatar sm" style="background:#16C96A">${esc((state.user || 'V')[0].toUpperCase())}</span><div><b style="font-size:13px">${esc(state.user || 'Você')}</b><div class="muted" style="font-size:11px">Você · online</div></div></div>
     <div class="team-grp">Canais</div>
     ${channels.map(row).join('')}
     <div class="team-grp">Mensagens diretas</div>
@@ -6249,7 +6249,7 @@ async function openThread(id, initial) {
   try {
     const { thread, messages } = await api('/team/thread/' + id);
     if (head) {
-      const av = thread.kind === 'dm' ? avatarHtml({ name: thread.name }) : `<span class="avatar" style="background:#10B981">${thread.kind === 'sector' ? '#' : '@'}</span>`;
+      const av = thread.kind === 'dm' ? avatarHtml({ name: thread.name }) : `<span class="avatar" style="background:#16C96A">${thread.kind === 'sector' ? '#' : '@'}</span>`;
       const sub = thread.kind === 'dm' ? `Conversa privada · ${esc(thread.role || 'Atendente')}`
         : thread.kind === 'sector' ? 'Canal do setor, visível para a equipe' : 'Canal geral, todos os atendentes';
       head.innerHTML = `${av}<div class="info"><b>${esc(thread.name)}</b><span>${sub}</span></div>`;
@@ -7703,6 +7703,20 @@ async function paintAdmin() {
 
       <div class="tabpane ${activeTab === 'adm-pay' ? 'show' : ''}" data-pane="adm-pay">
         <div class="card">
+          <h2>${ico('zap')} Testar notificação de venda</h2>
+          <p class="muted" style="margin:0 0 12px;font-size:13px">
+            Dispara a notificação de <b>venda aprovada</b> nos aparelhos inscritos nesta conta, com o som de caixa
+            registradora. É o mesmo caminho de uma venda de verdade — só o valor é seu. Nenhuma cobrança é criada
+            e nada entra na carteira.
+          </p>
+          <div class="row" style="align-items:flex-end">
+            <label style="flex:1">Valor (R$)<input id="ts-valor" inputmode="decimal" placeholder="97,00"></label>
+            <label style="flex:1.4">Cliente (opcional)<input id="ts-nome" maxlength="60" placeholder="Maria Silva"></label>
+            <button class="btn primary no-grow" id="ts-btn" onclick="admTestarVenda(this)">${ico('bell', 14)} Disparar</button>
+          </div>
+        </div>
+
+        <div class="card">
           <h2>${ico('shield')} Woovi. Pix &amp; Pix Automático</h2>
           <p class="muted" style="margin:0 0 12px;font-size:13px">Gere um <b>AppID</b> em API/Plugins → Nova integração e cole abaixo. Método de pagamento: <b>apenas Pix</b> (cobrança na hora) e <b>Pix Automático</b> (recorrência), sem cartão.</p>
           <label class="chk" style="margin:0 0 12px"><input type="checkbox" ${d.config.woovi.sandbox ? 'checked' : ''} onchange="admSaveConfig({wooviSandbox:this.checked})"> Usar o <b>ambiente de testes</b> da Woovi</label>
@@ -8464,6 +8478,26 @@ async function admNsSave(body) {
   } catch (e) { toast(e.message, 'error'); }
 }
 
+// Teste da notificação de VENDA. Existe porque o som e o texto de venda são o
+// aviso que o cliente mais espera e o mais difícil de conferir: só aparece
+// quando alguém paga de verdade. Aqui o valor é escolhido na hora.
+async function admTestarVenda(btn) {
+  const cents = epParseReais($('#ts-valor').value);
+  if (!cents) return toast('Informe o valor da venda', 'error');
+  const txt = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Disparando…';
+  try {
+    // este aparelho precisa estar inscrito, senão o envio sai para ninguém
+    if (window.ECNotify && ECNotify.subscribePush) { try { await ECNotify.subscribePush(); } catch {} }
+    const r = await api('/admin/push/test-sale', { body: { amount: cents, name: $('#ts-nome').value.trim() } });
+    toast(r.sent
+      ? `Enviado para ${r.sent} aparelho(s). Feche o app para ver como chega.`
+      : 'Nenhum aparelho inscrito ainda. Ative as notificações em Configurações e tente de novo.',
+      r.sent ? 'ok' : 'error');
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; btn.innerHTML = txt; }
+}
+
 async function admSaveConfig(body) {
   try {
     await api('/admin/config', { method: 'PUT', body });
@@ -8570,7 +8604,7 @@ function admSeoForm(seo) {
       <p class="muted" style="margin:0 0 14px;font-size:13px">Personalize como sua página inicial (a landing pública em <code>${API.webOrigin}/</code>) aparece no Google e ao ser compartilhada. As tags são injetadas no HTML lido pelos buscadores.</p>
       <div class="row">
         <label style="flex:2">Título (title / aba do navegador)<input id="seo-title" maxlength="180" value="${v('title')}" placeholder="Koonfy. CRM de WhatsApp com IA"></label>
-        <label style="flex:1">Theme color<input id="seo-theme" value="${v('themeColor')}" placeholder="#34D399"></label>
+        <label style="flex:1">Theme color<input id="seo-theme" value="${v('themeColor')}" placeholder="#33E16F"></label>
       </div>
       <label style="margin-top:9px">Descrição (meta description, ideal até 160 caracteres)<textarea id="seo-desc" rows="2" maxlength="400" placeholder="Automatize o atendimento no WhatsApp, gerencie leads e dispare campanhas com o Koonfy.">${v('description')}</textarea></label>
       <div class="row" style="margin-top:9px">
@@ -12667,7 +12701,7 @@ async function epSaveCfg() {
 // ---- CHECKOUT BUILDER: página dedicada (#/elitepay/checkout) ----
 let epkState = null;
 let epkPrevStep = 1;   // etapa exibida na prévia: 1 dados · 2 pix
-const EPK_COLORS = ['#10b981', '#2563eb', '#7c3aed', '#db2777', '#ea580c', '#0891b2', '#111827'];
+const EPK_COLORS = ['#16c96a', '#2563eb', '#7c3aed', '#db2777', '#ea580c', '#0891b2', '#111827'];
 
 async function renderCheckoutBuilder() {
   $('#view').innerHTML = `<div class="page"><div class="card">${skel(6)}</div></div>`;
@@ -12688,7 +12722,7 @@ async function renderCheckoutBuilder() {
     banner: ck.banner || '', bannerMobile: ck.bannerMobile || '',
     logo: ck.logo || '', logoMobile: ck.logoMobile || '',
     title: ck.title || '', description: ck.description || '',
-    color: ck.color || '#10b981', successMsg: ck.successMsg || '', supportText: ck.supportText || '',
+    color: ck.color || '#16c96a', successMsg: ck.successMsg || '', supportText: ck.supportText || '',
     blocks: (ck.blocks && ck.blocks.length) ? ck.blocks.slice() : EPK_BLOCK_KEYS.slice(),
     timer: Object.assign({ on: false, minutes: 15, text: 'Oferta por tempo limitado!' }, ck.timer || {}),
     benefits: Object.assign({ on: false, title: 'O que você recebe', items: [] }, ck.benefits || {}),
@@ -13413,7 +13447,7 @@ async function renderCheckoutList() {
         ${cks.map(c => `<tr>
           <td><b>${esc(c.name)}</b> ${c.isDefault ? '<span class="pill on">Padrão</span>' : ''}</td>
           <td class="muted">-</td>
-          <td><span style="display:inline-block;width:16px;height:16px;border-radius:5px;background:${esc(c.color || '#10b981')};vertical-align:middle"></span></td>
+          <td><span style="display:inline-block;width:16px;height:16px;border-radius:5px;background:${esc(c.color || '#16c96a')};vertical-align:middle"></span></td>
           <td style="text-align:right;white-space:nowrap">
             <button class="btn small" onclick="ckEdit('${c.id}')">${ico('edit', 13)} Editar</button>
             ${cks.length > 1 ? `<button class="btn small danger" onclick="ckDel('${c.id}')">${ico('trash', 13)}</button>` : ''}
@@ -13736,7 +13770,7 @@ function trkGraficos(serie) {
       const xm = i * slot + slot / 2;
       const hc = d.criados / max * (H - padB - padT), ha = d.aprovados / max * (H - padB - padT);
       return `<rect x="${(xm - bw - 0.5).toFixed(1)}" y="${(H - padB - hc).toFixed(1)}" width="${bw}" height="${Math.max(2, hc).toFixed(1)}" rx="${Math.min(4, bw / 2)}" fill="#94a3b8" opacity=".55"><title>${dia(d.date)}, ${d.criados} criada(s)</title></rect>
-        <rect x="${(xm + 0.5).toFixed(1)}" y="${(H - padB - ha).toFixed(1)}" width="${bw}" height="${Math.max(2, ha).toFixed(1)}" rx="${Math.min(4, bw / 2)}" fill="#10B981"><title>${dia(d.date)}, ${d.aprovados} aprovada(s)</title></rect>`;
+        <rect x="${(xm + 0.5).toFixed(1)}" y="${(H - padB - ha).toFixed(1)}" width="${bw}" height="${Math.max(2, ha).toFixed(1)}" rx="${Math.min(4, bw / 2)}" fill="#16C96A"><title>${dia(d.date)}, ${d.aprovados} aprovada(s)</title></rect>`;
     }).join('');
     return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto" role="img" aria-label="Cobranças por dia">
       ${grade}${b}${eixo}</svg>`;
@@ -13750,13 +13784,13 @@ function trkGraficos(serie) {
     <div class="trk-graficos">
       <div>
         <h3>Receita por dia</h3>
-        ${area(serie.map(d => d.receita), '#10B981', 'trkRev', 'Receita por dia', v => fmtBRL(v))}
-        ${legenda([['#10B981', 'Receita aprovada']])}
+        ${area(serie.map(d => d.receita), '#16C96A', 'trkRev', 'Receita por dia', v => fmtBRL(v))}
+        ${legenda([['#16C96A', 'Receita aprovada']])}
       </div>
       <div>
         <h3>Cobranças por dia</h3>
         ${barras()}
-        ${legenda([['#94a3b8', 'Criadas'], ['#10B981', 'Aprovadas']])}
+        ${legenda([['#94a3b8', 'Criadas'], ['#16C96A', 'Aprovadas']])}
       </div>
       <div>
         <h3>Cliques por dia</h3>
