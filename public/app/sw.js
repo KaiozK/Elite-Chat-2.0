@@ -2,7 +2,7 @@
  * Cache do app shell + offline + Push Notifications + clique abre a conversa.
  * Escopo: /app/  (registrado por notifications.js)
  */
-const VERSION = 'koonfy-v5';   // v5: marca nova (o v4 tem o logotipo antigo em cache)
+const VERSION = 'koonfy-v6';   // v6: marca nova (infinito)
 const SHELL = 'ec-shell-' + VERSION;
 const RUNTIME = 'ec-runtime-' + VERSION;
 

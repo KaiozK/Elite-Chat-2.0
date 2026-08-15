@@ -72,6 +72,37 @@ for (const nome of ASSETS_DO_APP) {
   await cp(join(PUBLIC, 'assets', nome), join(WWW, 'assets', nome));
 }
 
+// A MARCA no app das lojas.
+//
+// No navegador a logo vem de /marca/logo, uma rota do Express que serve o que o
+// admin enviou. Dentro do WebView não há Express: o HTML sai do próprio pacote,
+// e esse caminho resolveria para um arquivo inexistente — imagem quebrada em
+// todas as telas. Aqui ele vira o arquivo local.
+//
+// O custo é conhecido: trocar a logo pelo painel NÃO muda o app já publicado,
+// só a próxima versão enviada para as lojas. Melhor isso do que um app que
+// depende da rede para desenhar a própria marca.
+{
+  const { readdir } = await import('node:fs/promises');
+  const alvos = [];
+  const varrer = async (dir) => {
+    for (const e of await readdir(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) await varrer(p);
+      else if (/\.(html|js|css)$/i.test(e.name)) alvos.push(p);
+    }
+  };
+  await varrer(join(WWW, 'app'));
+  let trocados = 0;
+  for (const p of alvos) {
+    const antes = await readFile(p, 'utf8');
+    if (!antes.includes('/marca/logo')) continue;
+    await writeFile(p, antes.split('/marca/logo').join('/assets/koonfy-192.png'));
+    trocados++;
+  }
+  if (trocados) console.log(`  marca: /marca/logo → /assets/koonfy-192.png em ${trocados} arquivo(s)`);
+}
+
 // Configuração injetada: lida pelo public/app/config.js já no primeiro script.
 await writeFile(join(WWW, 'app', 'native-config.js'),
   `/* Gerado por mobile/scripts/build-www.mjs — não editar à mão. */\n` +

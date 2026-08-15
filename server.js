@@ -557,13 +557,33 @@ app.get('/marca/logo', (req, res) => {
   // SEM ele, o cache tem que ser revalidado: guardar por uma hora fazia o
   // admin trocar a logo e continuar vendo a antiga na aba já aberta — sem
   // nenhum erro, o que é o pior tipo de bug para diagnosticar.
-  const etag = '"marca-' + (m.updatedAt || 0) + '"';
+  // O ETag precisa mudar quando a IMAGEM muda — inclusive quando é a arte
+  // padrão que foi trocada no repositório. Usando só `updatedAt`, ele ficava
+  // "marca-0" antes e depois de um deploy com logo nova: o navegador mandava o
+  // ETag, recebia 304 e continuava desenhando a logo antiga por tempo
+  // indeterminado. A marca do arquivo entra na conta.
+  let selo = String(m.updatedAt || 0);
+  if (!m.logo) {
+    try {
+      const st = fs.statSync(path.join(__dirname, 'public', 'assets', 'koonfy-192.png'));
+      selo = 'p' + st.size + '-' + Math.floor(st.mtimeMs);
+    } catch { selo = 'p'; }
+  }
+  const etag = '"marca-' + selo + '"';
   res.set('ETag', etag);
   res.set('Cache-Control', req.query.v
     ? 'public, max-age=31536000, immutable'
     : 'public, max-age=0, must-revalidate');
   if (req.get('if-none-match') === etag) return res.status(304).end();
 
+  // Sem logo enviada pelo painel, vale a arte do repositório — o PNG de 192px,
+  // com 36 KB.
+  //
+  // Cheguei a servir o WEBP aqui por ele ser 30% menor que o PNG do MESMO
+  // tamanho, mas o webp original tem 1254px e 674 KB: seriam 674 KB baixados
+  // para desenhar um símbolo de 38px, quase 19x mais que o PNG reduzido. O que
+  // pesa numa logo é a DIMENSÃO, não o formato. O webp fica guardado como
+  // arte-fonte; quem quiser um webp pequeno servido aqui envia pelo Admin.
   if (!m.logo) return res.sendFile(path.join(__dirname, 'public', 'assets', 'koonfy-192.png'));
 
   const buf = Buffer.from(m.logo, 'base64');

@@ -3963,7 +3963,7 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
   background-size: 14px 14px;
   background-position: 0 0, 7px 7px;
 }
-.marca-prev img { max-width: 74%; max-height: 74%; display: block; }
+.marca-prev img { max-width: 74%; max-height: 74%; display: block; border-radius: 12px; }
 @media (max-width: 560px) {
   .marca-linha { flex-direction: column; align-items: flex-start; gap: 12px; }
 }
