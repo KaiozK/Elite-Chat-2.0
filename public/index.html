@@ -3,8 +3,21 @@
 <head>
   <meta charset="utf-8">
   <title>Koonfy | CRM de WhatsApp Profissional</title>
+  <!-- MESMA FONTE DO PAINEL. A landing vinha em Manrope e o app em Inter Tight:
+       quem clicava em "Entrar" trocava de tipografia no meio do caminho e o
+       produto parecia outro. O bundle da landing declara Manrope lá dentro, e
+       reescrever aquele arquivo gerado é frágil — então a fonte é carregada
+       aqui e imposta por cima, que o `!important` garante mesmo com o estilo do
+       bundle sendo injetado depois. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    /* `pre`, `code` e afins continuam monoespaçados: só o texto corrido muda. */
+    body, body *:not(pre):not(code):not(kbd):not(samp) {
+      font-family: 'Inter Tight', 'Segoe UI', system-ui, sans-serif !important;
+    }
     body { background: #faf9f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
     /* O script de carga escreve o progresso aqui ("Unpacking N assets..."),
        então o elemento precisa existir — mas é recado de ferramenta, não de

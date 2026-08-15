@@ -1565,6 +1565,7 @@ const views = {
   funnel: renderFunnel, campaigns: renderCampaigns, templates: renderTemplates, quick: renderQuick,
   logs: renderLogs, settings: renderSettings, team: renderTeam, flows: renderFlows, links: renderLinks,
   pixels: renderPixels, billing: renderBilling, admin: renderAdmin, sms: renderSms,
+  afiliacao: renderAfiliacao,
   integrations: renderIntegrations, webhooks: renderIntegrations, // #/webhooks continua funcionando
   elitepay: renderElitePay, tracking: renderTracking,
   consent: renderConsent, agents: renderAgents, 'agents/perf': renderAgentPerf,
@@ -1636,7 +1637,7 @@ function moduleOfView(v) {
 // trabalhos de tela grande; ficam no navegador do computador.
 const MOBILE_VIEWS = new Set([
   'dashboard', 'inbox', 'team', 'schedule', 'contacts',
-  'funnel', 'quick', 'billing', 'settings'
+  'funnel', 'quick', 'billing', 'afiliacao', 'settings'
 ]);
 // 820px é o mesmo ponto em que a sidebar já vira gaveta (style.css).
 const MOBILE_MQ = window.matchMedia('(max-width: 820px)');
@@ -1681,7 +1682,8 @@ function applyNavPermissions() {
 const TABBAR_VIEWS = ['dashboard', 'inbox', 'contacts', 'schedule'];
 const TABBAR_LABEL = {
   dashboard: 'Início', inbox: 'Conversas', contacts: 'Contatos', schedule: 'Agenda',
-  team: 'Chat interno', funnel: 'Funil', quick: 'Respostas', billing: 'Assinatura', settings: 'Ajustes'
+  team: 'Chat interno', funnel: 'Funil', quick: 'Respostas', billing: 'Assinatura',
+  afiliacao: 'Afiliação', settings: 'Ajustes'
 };
 
 function navItemVisivel(v) {
@@ -2031,7 +2033,7 @@ function route() {
     target = home;
   }
   state.view = target;
-  // EliteBuilder é uma página FOCADA: esconde a sidebar e o topo do app
+  // O Checkout Builder é uma página FOCADA: esconde a sidebar e o topo do app
   const appEl = document.getElementById('app');
   if (appEl) appEl.classList.toggle('builder-mode', target === 'elitepay/checkout');
   const navKey = NAV_OF[state.view] || state.view;
@@ -6373,19 +6375,59 @@ async function paintBilling() {
           : '<p class="muted">Nenhum plano publicado ainda.</p>'}
       </div>
 
+      ${walletCard(d)}
+
+      <div class="card">
+        <h2>${ico('sparkles')} Indique e ganhe</h2>
+        <p class="muted" style="margin:0;font-size:13px">O seu link de indicação, os indicados e o saque das comissões
+        agora ficam na aba <b>Afiliação</b>, no menu — aqui dentro de Assinatura quase ninguém achava.</p>
+        <div class="row" style="margin-top:12px"><a class="btn primary no-grow" href="#/afiliacao">${ico('sparkles', 14)} Abrir Afiliação</a></div>
+      </div>`;
+    if (pc) startPayPoll();
+  } catch (e) { $('#view').innerHTML = `<div class="page"><div class="card err">${esc(e.message)}</div></div>`; }
+}
+
+// ---------------------------------------------------------------------------
+// AFILIAÇÃO — página própria
+//
+// Estava como um cartão no fim de "Assinatura & Carteira", abaixo dos planos:
+// quem não rolasse a tela até o fim nunca descobria que o programa existe. É um
+// canal de aquisição, e canal de aquisição escondido não é usado.
+// ---------------------------------------------------------------------------
+async function renderAfiliacao() {
+  $('#view').innerHTML = `<div class="page"><div class="card">${skel(5)}</div></div>`;
+  try {
+    const d = await api('/billing');
+    const refLink = `${API.webOrigin}/app/?ref=${d.affiliate.code}`;
+    $('#view').innerHTML = `<div class="page">
+      <div class="page-head"><h1>Afiliação</h1><p>Indique o Koonfy e receba comissão de cada assinatura, para sempre</p></div>
+
+      <div class="aff-hero">
+        <div class="aff-hero-n"><b>${d.affiliate.percentFirst}%</b><span>na primeira assinatura</span></div>
+        <div class="aff-hero-n"><b>${d.affiliate.percentRenewal}%</b><span>em toda renovação</span></div>
+        <div class="aff-hero-n"><b>${d.affiliate.referrals.length}</b><span>indicados</span></div>
+        <div class="aff-hero-n"><b>${fmtBRL(d.affiliate.earned)}</b><span>já ganhos</span></div>
+      </div>
+
+      <div class="card">
+        <h2>${ico('link')} Seu link de indicação</h2>
+        <p class="muted" style="margin:0 0 10px;font-size:13px">Quem entrar por ele fica marcado como seu indicado. A comissão cai na
+        sua carteira <b>automaticamente</b> a cada pagamento confirmado — na primeira assinatura e em todas as renovações.</p>
+        <div class="linkrow"><code>${esc(refLink)}</code><button class="icon-btn" title="Copiar" onclick="copyText('${esc(refLink)}')">${ico('copy', 13)}</button></div>
+        <p class="muted" style="margin:10px 0 0;font-size:12.5px">Seu código: <b>${esc(d.affiliate.code)}</b></p>
+      </div>
+
       <div class="two-col even">
-        ${walletCard(d)}
+        <div class="card">
+          <h2>${ico('users')} Seus indicados</h2>
+          ${d.affiliate.referrals.length
+            ? d.affiliate.referrals.map(r => `<div class="tx"><span class="tx-lbl">${esc(r.name)}</span><span class="pill ${r.status === 'active' ? 'done' : ''}">${(BILL_ST[r.status] || [r.status])[0]}</span></div>`).join('')
+            : '<p class="muted" style="margin:0;font-size:13px">Ninguém ainda. Compartilhe o seu link acima para começar.</p>'}
+        </div>
 
         <div class="card aff-card">
-          <h2>${ico('sparkles')} Indique e ganhe</h2>
-          <p class="muted" style="margin:0 0 10px;font-size:13px">Ganhe <b style="color:var(--verde-deep)">${d.affiliate.percentFirst}%</b> de cada nova assinatura e <b style="color:var(--verde-deep)">${d.affiliate.percentRenewal}%</b> de cada renovação dos indicados, direto na sua carteira.</p>
-          <div class="linkrow"><code>${esc(refLink)}</code><button class="icon-btn" title="Copiar" onclick="copyText('${esc(refLink)}')">${ico('copy', 13)}</button></div>
-          <div class="lk-kpis" style="margin-top:12px">
-            <div><b>${d.affiliate.referrals.length}</b><span>Indicados</span></div>
-            <div><b>${fmtBRL(d.affiliate.earned)}</b><span>Comissões</span></div>
-          </div>
-          ${d.affiliate.referrals.length ? `<span class="fb-sub" style="margin-top:12px">Seus indicados</span>
-            ${d.affiliate.referrals.map(r => `<div class="tx"><span class="tx-lbl">${esc(r.name)}</span><span class="pill ${r.status === 'active' ? 'done' : ''}">${(BILL_ST[r.status] || [r.status])[0]}</span></div>`).join('')}` : ''}
+          <h2>${ico('download-circle')} Sacar comissões</h2>
+          <p class="muted" style="margin:0 0 4px;font-size:13px">Saldo da carteira: <b>${fmtBRL(d.wallet.balance)}</b>. O saque cai na chave Pix que você informar.</p>
           <div class="row" style="margin-top:14px">
             <label style="flex:1.4">Chave Pix p/ saque<input id="wd-key" placeholder="CPF, e-mail ou aleatória"></label>
             <label style="flex:1">Valor (R$)<input id="wd-amount" placeholder="mín. 20,00" inputmode="decimal" oninput="wdQuote()"></label>
@@ -6396,9 +6438,9 @@ async function paintBilling() {
             <div class="tx"><span class="tx-lbl">Saque ${fmtBRL(w.amount)}</span><span class="muted" style="font-size:11px">${timeAgo(w.ts)}</span>
             <span class="pill ${w.status === 'paid' ? 'done' : w.status === 'rejected' ? '' : 'pending'}">${{ pending: 'Em análise', paid: 'Pago', rejected: 'Recusado' }[w.status] || w.status}</span></div>`).join('')}</div>` : ''}
         </div>
-      </div>`;
-    if (pc) startPayPoll();
-  } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+      </div>
+    </div>`;
+  } catch (e) { $('#view').innerHTML = `<div class="page"><div class="card err">${esc(e.message)}</div></div>`; }
 }
 
 // ============================================================================
@@ -12352,8 +12394,8 @@ async function renderCheckoutBuilder() {
     <header class="ckb-top">
       <button class="icon-btn" title="Voltar ao Pagamentos" onclick="location.hash='#/elitepay'">${ico('arrowleft', 17)}</button>
       <div class="brand ckb-brand">
-        <span class="brand-mark"><img src="/assets/elitechat-logo.png" alt="Elite Builder"></span>
-        <div><b class="brand-name">Elite<span class="gt2">Builder</span></b>
+        <span class="brand-mark"><img src="/assets/elitechat-logo.png" alt="Checkout Builder"></span>
+        <div><b class="brand-name">Checkout<span class="gt2"> Builder</span></b>
           <input class="ckb-cname" id="epk-name" value="${esc(epkCheckoutName)}" maxlength="60"
             title="Nome deste checkout" oninput="epkCheckoutName=this.value"></div>
       </div>

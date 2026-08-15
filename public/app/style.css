@@ -2925,7 +2925,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 /* tipografia unificada (Inter Tight = mesma do Koonfy) */
 .epk-page { font-family: 'Inter Tight', -apple-system, 'Segoe UI', Roboto, sans-serif; }
 
-/* EliteBuilder = página FOCADA: some a sidebar e o topo do app */
+/* Checkout Builder = página FOCADA: some a sidebar e o topo do app */
 #app.builder-mode .sidebar, #app.builder-mode .topbar { display: none; }
 #app.builder-mode .ckb { height: 100vh; }
 .ckb-brand { gap: 9px; }
@@ -3018,7 +3018,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .epk2-badges span { display: inline-flex; align-items: center; gap: 4px; font-size: 8px; font-weight: 600; color: #55607a;
   background: #fff; border: 1px solid #e7eaf0; padding: 4px 7px; border-radius: 6px; }
 .epk2-badges svg { color: var(--epkc, #10b981); }
-/* nome editável do checkout no header do EliteBuilder */
+/* nome editável do checkout no header do Checkout Builder */
 .ckb-cname {
   display: block; border: 1px solid transparent; background: transparent; font: inherit;
   font-size: 11.5px; font-weight: 600; color: var(--muted); padding: 1px 5px;
@@ -3862,4 +3862,20 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
   #ep-box table thead, #ep-box table tbody { width: 100%; min-width: 0; }
   #ep-box table { overflow-x: visible; }
   #ep-box table td { white-space: normal; word-break: break-word; }
+}
+
+/* ===================== AFILIAÇÃO ===================== */
+.aff-hero {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px;
+}
+.aff-hero-n {
+  background: var(--brand-bg); border: 1px solid var(--brand-border); border-radius: var(--radius);
+  padding: 16px 18px; display: flex; flex-direction: column; gap: 3px;
+}
+.aff-hero-n b { font-size: 24px; font-weight: 800; letter-spacing: -.02em; color: var(--verde-deep); line-height: 1.1; }
+.aff-hero-n span { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+@media (max-width: 760px) {
+  .aff-hero { grid-template-columns: 1fr 1fr; gap: 9px; }
+  .aff-hero-n { padding: 13px 14px; }
+  .aff-hero-n b { font-size: 20px; }
 }
