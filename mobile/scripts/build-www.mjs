@@ -4,7 +4,7 @@
  *
  * A pasta é um espelho do layout que o Express serve (/app/… e /assets/…).
  * Isso é de propósito: o painel usa caminhos absolutos em centenas de lugares
- * (`/assets/elitechat-logo.png`, `/app/style.css`), e manter a mesma árvore faz
+ * (`/assets/koonfy-192.png`, `/app/style.css`), e manter a mesma árvore faz
  * todos continuarem válidos dentro do WebView, sem reescrever nada.
  *
  *   www/
@@ -57,8 +57,17 @@ await cp(join(PUBLIC, 'app'), join(WWW, 'app'), {
 // Só os assets que o painel realmente referencia. public/assets guarda também
 // o material da landing (vídeos, logos de parceiros) — 6 MB que não têm por que
 // pesar no download da loja.
-const ASSETS_DO_APP = ['elitechat-logo.png'];
-await mkdir(join(WWW, 'assets'), { recursive: true });
+// Esta lista tem que ser EXATAMENTE o que public/app referencia. Depois da
+// troca da marca ela ficou apontando para o logotipo antigo: o app das lojas
+// sairia com a coroa e sem nenhuma das imagens novas — ícone quebrado no lugar
+// da logo. Para conferir:  grep -rho "/assets/[^\"']*" public/app | sort -u
+const ASSETS_DO_APP = [
+  'koonfy-32.png', 'koonfy-128.png', 'koonfy-180.png', 'koonfy-192.png', 'koonfy-512.png',
+  // Os avisos sonoros são buscados por caminho; sem eles o app cai no tom
+  // sintetizado, que funciona mas não é o som de venda que se reconhece.
+  'sons/mensagem.mp3', 'sons/venda.mp3'
+];
+await mkdir(join(WWW, 'assets', 'sons'), { recursive: true });
 for (const nome of ASSETS_DO_APP) {
   await cp(join(PUBLIC, 'assets', nome), join(WWW, 'assets', nome));
 }

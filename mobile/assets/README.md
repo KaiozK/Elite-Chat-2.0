@@ -12,5 +12,5 @@ exigem, para as duas plataformas.
 Opcionalmente, `icon-foreground.png` e `icon-background.png` (1024×1024) geram
 o ícone adaptativo do Android, que se deforma conforme a máscara do launcher.
 
-O logo em `public/assets/elitechat-logo.png` (1418×1418) serve de base para o
+O logo em `public/assets/koonfy-logo.png` (1254×1254) serve de base para o
 `icon.png` — basta achatar a transparência sobre um fundo sólido.

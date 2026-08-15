@@ -461,7 +461,10 @@ function buildSeoHead(seo, origin) {
   const desc = seo.description || 'Automatize o atendimento no WhatsApp, gerencie leads no CRM e dispare campanhas em massa com o Koonfy.';
   const ogTitle = seo.ogTitle || title;
   const ogDesc = seo.ogDescription || desc;
-  const ogImg = seo.ogImage || (origin + '/assets/elitechat-logo.png');
+  // Imagem do preview quando o link é compartilhado (WhatsApp, redes, buscador).
+  // Ficou apontando para a logo antiga depois da troca da marca — e é
+  // justamente onde ninguém olha, porque só aparece fora do produto.
+  const ogImg = seo.ogImage || (origin + '/assets/koonfy-512.png');
   const url = seo.canonical || origin + '/';
   const theme = seo.themeColor || '#34D399';
   const t = [];

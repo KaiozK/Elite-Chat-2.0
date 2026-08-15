@@ -71,7 +71,7 @@ npx capacitor-assets generate
 ```
 
 Isso gera todos os tamanhos exigidos pelas duas lojas. O logo atual
-(`public/assets/elitechat-logo.png`, 1418×1418) serve como base para o ícone.
+(`public/assets/koonfy-logo.png`, 1418×1418) serve como base para o ícone.
 
 ---
 
