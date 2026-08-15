@@ -110,6 +110,40 @@ function cobranca(acc, { valor, metodo, taxa }) {
   for (const s of mapPagarme) ok(fonte.includes(`'${s}'`), `Pagar.me reconhece "${s}"`);
   for (const s of mapAsaas) ok(fonte.includes(`'${s}'`), `Asaas reconhece "${s}"`);
 
+  console.log('\n=== 9. Assinatura no Pix SEM Pix Automático é debitada da carteira ===');
+  // Este grupo não renovava por NADA: não entra em cartão nem em boleto, e a
+  // recorrência da Woovi que renovaria não existe sem `wooviSubId`. A
+  // assinatura vencia com o dinheiro parado na carteira.
+  const billing = require(R + 'src/saasbilling');
+  const limits = require(R + 'src/limits');
+  const plano = { id: 'p_teste', name: 'Starter', price: 9700, limits: {} };
+  db.get().plans.push(plano);
+
+  acc = contaNova();
+  acc.billing = { planId: plano.id, status: 'active', method: 'pix', wooviSubId: '', periodEnd: Date.now() + 3600000, card: {} };
+  const custo = limits.chargeTotal(acc, plano);
+  acc.wallet.balance = custo;
+  await billing.runRenewals(null);
+  ok(acc.wallet.balance === 0, `o saldo pagou a assinatura: sobrou ${brl(acc.wallet.balance)}`);
+  ok(acc.billing.status === 'active', 'e a conta continua ativa: ' + acc.billing.status);
+  ok(acc.wallet.transactions.some(t => /Pix Automático não ativado/.test(t.label || '')),
+    'o extrato explica de onde saiu o débito');
+
+  console.log('\n=== 10. Sem saldo, NÃO derruba a conta antes da hora ===');
+  acc = contaNova();
+  acc.billing = { planId: plano.id, status: 'active', method: 'pix', wooviSubId: '', periodEnd: Date.now() + 3600000, card: {} };
+  acc.wallet.balance = 100;   // muito abaixo do plano
+  await billing.runRenewals(null);
+  ok(acc.billing.status === 'active', 'conta sem saldo segue ativa, não vai para past_due: ' + acc.billing.status);
+  ok(acc.wallet.balance === 100, 'e o saldo não foi tocado');
+
+  console.log('\n=== 11. Quem TEM Pix Automático não é debitado duas vezes ===');
+  acc = contaNova();
+  acc.billing = { planId: plano.id, status: 'active', method: 'pix', wooviSubId: 'sub_woovi_123', periodEnd: Date.now() + 3600000, card: {} };
+  acc.wallet.balance = 50000;
+  await billing.runRenewals(null);
+  ok(acc.wallet.balance === 50000, 'a recorrência da Woovi cobra, a carteira fica quieta');
+
   console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTODOS OS TESTES PASSARAM');
   process.exit(falhas ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

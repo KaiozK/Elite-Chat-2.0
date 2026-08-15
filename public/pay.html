@@ -145,6 +145,8 @@
   .prod { display: flex; gap: 13px; padding: 14px 22px 16px; border-bottom: 1px solid var(--line); }
   .prod-img { width: 62px; height: 62px; border-radius: 11px; object-fit: cover; flex: none; background: #f1f3f8; }
   .prod-img.ph { display: flex; align-items: center; justify-content: center; color: var(--ac); background: color-mix(in srgb, var(--ac) 12%, #fff); font-weight: 700; font-size: 22px; }
+  /* o SVG da marca do Pix nasce com 14px: aqui ele é o elemento do quadrado */
+  .prod-img.pix svg { width: 30px; height: 30px; }
   .prod-info { min-width: 0; align-self: center; }
   .prod-info b { font-size: 14.5px; font-weight: 700; line-height: 1.3; display: block; }
   .prod-info span { font-size: 12px; color: var(--mut); display: block; margin-top: 3px; line-height: 1.45; }
@@ -360,12 +362,15 @@
 
   function summary(ck, ctaHtml) {
     var name = ck.title || 'Pagamento Pix';
-    var initial = (ck.merchant || name).trim().charAt(0).toUpperCase();
     var logo = pickLogo(ck);
     return '<aside class="summary"><div class="card">' +
       '<div class="sum-head">Resumo do pedido</div>' +
       '<div class="prod">' +
-        (logo ? '<img class="prod-img" src="' + esc(logo) + '" alt="">' : '<div class="prod-img ph">' + esc(initial) + '</div>') +
+        // Sem logo, aqui vai a MARCA DO PIX, não a inicial do lojista. Este
+        // quadrado é o slot do produto, e uma letra sozinha nele lê como imagem
+        // quebrada — "O" de "ONG" virava um zero na tela. O nome do lojista já
+        // está no cabeçalho; o que falta dizer aqui é como se paga.
+        (logo ? '<img class="prod-img" src="' + esc(logo) + '" alt="">' : '<div class="prod-img ph pix">' + pix + '</div>') +
         '<div class="prod-info"><b>' + esc(name) + '</b>' +
           (ck.description ? '<span>' + esc(ck.description.length > 70 ? ck.description.slice(0, 70) + '…' : ck.description) + '</span>' : '') +
         '</div>' +

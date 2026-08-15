@@ -377,9 +377,15 @@ function renewWallet(acc, broadcast) {
   const total = limits.chargeTotal(acc, plan);
   const cid = `wallet-ren-${acc.id}-${plan.id}-${Date.now().toString(36)}`;
   try {
-    require('./elitepay').spendWallet(acc, total, `Renovação ${plan.name}`, broadcast);
+    // Quem está no Pix sem recorrência ativa vê de onde saiu o dinheiro: o
+    // extrato precisa explicar um débito que a pessoa não agendou.
+    const socorro = acc.billing.method === 'pix' && !acc.billing.wooviSubId;
+    const rotulo = socorro
+      ? `Renovação ${plan.name} pelo saldo (Pix Automático não ativado)`
+      : `Renovação ${plan.name}`;
+    require('./elitepay').spendWallet(acc, total, rotulo, broadcast);
     require('./woovi').applyPayment({ correlationID: cid, value: total }, broadcast);
-    store.logEvent({ type: 'saas_wallet_renewed', accountId: acc.id, value: total });
+    store.logEvent({ type: 'saas_wallet_renewed', accountId: acc.id, value: total, fallbackPix: socorro });
     return { ok: true, amount: total };
   } catch (e) {
     acc.billing.status = 'past_due';
@@ -433,7 +439,20 @@ async function runRenewals(broadcast) {
     ? db.get().accounts.filter(a => vencendo(a) &&
         a.billing.method === 'credit' && a.billing.card && a.billing.card.token)
     : [];
-  const naCarteira = db.get().accounts.filter(a => vencendo(a) && a.billing.method === 'wallet');
+  // Carteira: quem escolheu pagar pelo saldo, MAIS quem está no Pix e nunca
+  // ativou o Pix Automático. Este segundo grupo não renovava por nada: não
+  // entra em cartão, nem em boleto, e a recorrência da Woovi que renovaria não
+  // existe sem `wooviSubId`. A assinatura simplesmente vencia com o dinheiro
+  // parado na carteira. Só entra quem TEM saldo suficiente — sem isso o débito
+  // falharia e a conta cairia em `past_due` antes da hora, tirando o acesso de
+  // quem ainda podia pagar de outro jeito.
+  const semPixAutomatico = a => a.billing.method === 'pix' && !a.billing.wooviSubId;
+  const temSaldo = a => {
+    const plan = limits.planOf(a);
+    return plan && a.wallet && a.wallet.balance >= limits.chargeTotal(a, plan);
+  };
+  const naCarteira = db.get().accounts.filter(a => vencendo(a) &&
+    (a.billing.method === 'wallet' || (semPixAutomatico(a) && temSaldo(a))));
 
   // boleto precisa de tempo para o cliente pagar e o banco compensar
   const folga = (methods().boletoDueDays + 2) * 86400000;
