@@ -3087,6 +3087,110 @@ module.exports = function (broadcast, clients) {
     return stats;
   }
 
+  // ---------------------------------------------------------------------------
+  // RELATÓRIO DA CAMPANHA
+  //
+  // O funil real de um disparo: enviada → entregue → LIDA → clicou. A leitura
+  // vem do status da mensagem (a Meta só manda `read` se o cliente tiver
+  // confirmação de leitura ligada — quem desliga aparece como entregue, e o
+  // relatório diz isso em vez de fingir número cheio).
+  //
+  // Tudo é recortado por UF a partir do DDD, que é o que permite o mapa
+  // responder "onde estão os leads mais quentes" — quente aqui é quem LEU e
+  // CLICOU, não quem só recebeu.
+  // ---------------------------------------------------------------------------
+  function campaignReport(acc, camp) {
+    const vazio = () => ({ total: 0, enviadas: 0, entregues: 0, lidas: 0, cliques: 0, falhas: 0, pendentes: 0 });
+    const geral = vazio();
+    const porUf = {};
+    const porBotao = {};
+    const semUf = vazio();
+
+    for (const r of camp.recipients || []) {
+      const uf = geo.ufOf(r.waId);
+      const bucket = uf ? (porUf[uf] = porUf[uf] || vazio()) : semUf;
+      geral.total++; bucket.total++;
+
+      if (r.status === 'pending') { geral.pendentes++; bucket.pendentes++; continue; }
+      if (r.status === 'failed') { geral.falhas++; bucket.falhas++; continue; }
+
+      const msg = r.msgId ? acc.messages.find(m => m.id === r.msgId) : null;
+      const st = msg ? msg.status : 'sent';
+      geral.enviadas++; bucket.enviadas++;
+      // "entregue" e "lida" são cumulativos: quem leu também recebeu. Contar
+      // exclusivo faria a taxa de entrega cair quando a leitura subisse.
+      if (st === 'read') { geral.lidas++; bucket.lidas++; geral.entregues++; bucket.entregues++; }
+      else if (st === 'delivered') { geral.entregues++; bucket.entregues++; }
+      else if (st === 'failed') { geral.falhas++; bucket.falhas++; geral.enviadas--; bucket.enviadas--; }
+
+      if (r.clickedAt) {
+        geral.cliques++; bucket.cliques++;
+        const chave = r.clickedLabel || r.clickedId || 'Botão';
+        porBotao[chave] = porBotao[chave] || { rotulo: chave, cliques: 0, ufs: {} };
+        porBotao[chave].cliques++;
+        if (uf) porBotao[chave].ufs[uf] = (porBotao[chave].ufs[uf] || 0) + 1;
+      }
+    }
+
+    const taxa = (a, b) => (b > 0 ? Math.round((a / b) * 1000) / 10 : 0);
+    const comTaxas = s => ({
+      ...s,
+      taxaEntrega: taxa(s.entregues, s.enviadas),
+      taxaLeitura: taxa(s.lidas, s.enviadas),
+      taxaClique: taxa(s.cliques, s.enviadas),
+      // CTR sobre quem LEU: mede a mensagem, não a entrega. É o número que diz
+      // se o texto e o botão convencem.
+      ctrSobreLidas: taxa(s.cliques, s.lidas)
+    });
+
+    const estados = Object.entries(porUf)
+      .map(([uf, s]) => ({ uf, nome: geo.UF_NAME[uf] || uf, ...comTaxas(s) }))
+      .sort((a, b) => b.total - a.total);
+
+    return {
+      id: camp.id, nome: camp.name, template: camp.templateName,
+      canal: camp.chLabel || '', criadaEm: camp.createdAt, terminadaEm: camp.finishedAt,
+      status: camp.status,
+      geral: comTaxas(geral),
+      estados,
+      semUf: semUf.total ? comTaxas(semUf) : null,
+      botoes: Object.values(porBotao).sort((a, b) => b.cliques - a.cliques),
+      // a leitura depende de o cliente ter confirmação ligada; o relatório avisa
+      leituraParcial: geral.enviadas > 0 && geral.lidas === 0 && geral.entregues > 0
+    };
+  }
+
+  router.get('/campaigns/:id/report', auth, can('campaigns'), (req, res) => {
+    const camp = (req.acc.campaigns || []).find(c => c.id === req.params.id);
+    if (!camp) return res.status(404).json({ error: 'Campanha não encontrada' });
+    res.json(campaignReport(req.acc, camp));
+  });
+
+  // Mapa de leads consolidado: junta TODAS as campanhas do período, para
+  // responder "onde estão meus leads quentes" sem abrir uma a uma.
+  router.get('/campaigns/mapa', auth, can('campaigns'), (req, res) => {
+    const dias = Math.min(365, Math.max(1, Number(req.query.dias) || 90));
+    const desde = Date.now() - dias * 86400000;
+    const campanhas = (req.acc.campaigns || []).filter(c => (c.createdAt || 0) >= desde);
+    const acc = req.acc;
+    const soma = {};
+    for (const camp of campanhas) {
+      for (const e of campaignReport(acc, camp).estados) {
+        const s = soma[e.uf] = soma[e.uf] || { uf: e.uf, nome: e.nome, total: 0, enviadas: 0, entregues: 0, lidas: 0, cliques: 0, falhas: 0, pendentes: 0 };
+        for (const k of ['total', 'enviadas', 'entregues', 'lidas', 'cliques', 'falhas', 'pendentes']) s[k] += e[k];
+      }
+    }
+    const taxa = (a, b) => (b > 0 ? Math.round((a / b) * 1000) / 10 : 0);
+    const estados = Object.values(soma).map(s => ({
+      ...s,
+      taxaEntrega: taxa(s.entregues, s.enviadas),
+      taxaLeitura: taxa(s.lidas, s.enviadas),
+      taxaClique: taxa(s.cliques, s.enviadas),
+      ctrSobreLidas: taxa(s.cliques, s.lidas)
+    })).sort((a, b) => b.total - a.total);
+    res.json({ dias, campanhas: campanhas.length, estados });
+  });
+
   // Variáveis dinâmicas nos valores das campanhas — resolvidas POR DESTINATÁRIO:
   //   {contato.nome} {contato.email} {contato.telefone}  → dados do sistema
   //   {webhook.<flowId>.<campo>}                          → último payload do gatilho webhook
@@ -3141,6 +3245,7 @@ module.exports = function (broadcast, clients) {
         if (contact) { contact.lastCampaignId = camp.id; contact.lastCampaignName = camp.name; contact.lastCampaignAt = Date.now(); }
         r.msgId = (resp && resp.messages && resp.messages[0] && resp.messages[0].id) || null;
         r.status = 'sent';
+        r.sentAt = Date.now();   // âncora do clique: casa a resposta com ESTE disparo
         storeOutbound(acc, r.waId, { type: 'template', text: `📋 Template: ${camp.templateName}` }, resp, null, chId);
       } catch (e) {
         r.status = 'failed';

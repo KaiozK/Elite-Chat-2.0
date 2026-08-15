@@ -1574,6 +1574,7 @@ const views = {
   reports: () => { location.hash = '#/dashboard'; }, // aba Relatórios foi absorvida pelo Dashboard
   'templates/new': renderTemplateNew, 'campaigns/new': renderCampaignNew,
   'links/new': renderLinkForm, 'links/edit': renderLinkForm, 'links/stats': renderLinkStats,
+  'campaigns/report': renderCampaignReport, 'campaigns/mapa': renderMapaLeads,
   'elitepay/checkout': renderCheckoutBuilder,
   checkouts: renderCheckoutList
 };
@@ -1582,6 +1583,7 @@ const NAV_OF = {
   'templates/new': 'templates', 'campaigns/new': 'campaigns',
   'links/new': 'links', 'links/edit': 'links', 'links/stats': 'links',
   'agents/perf': 'agents', 'agents/logs': 'agents',
+  'campaigns/report': 'campaigns', 'campaigns/mapa': 'campaigns',
   'elitepay/checkout': 'checkouts'
 };
 
@@ -5302,6 +5304,16 @@ function brazilMap3D(g) {
     <g class="geo-base">${base}</g>
     <g class="geo-faces">${svg}</g>`;
 
+  // O relatório da campanha quer SÓ o desenho: ele tem a própria tabela por
+  // estado, e os blocos laterais do Dashboard (origem do tráfego, top 5)
+  // apareciam vazios ou repetindo a tabela logo abaixo. `g.soMapa` corta.
+  if (g.soMapa) {
+    return `<div class="geo-map geo-solo">
+      <svg viewBox="${geoViewBox()}" style="width:100%;height:auto">${svg}</svg>
+      <div class="geo-tip" id="geo-tip" aria-hidden="true"></div>
+    </div>`;
+  }
+
   const top5 = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const maxSrc = Math.max(1, ...(g.sources || []).map(s => s.count));
   const maxRef = Math.max(1, ...(g.referrers || []).map(r => r.count));
@@ -5511,6 +5523,7 @@ async function renderCampaigns() {
   $('#view').innerHTML = `<div class="page">
     <div class="page-head row">
       <div style="flex:1"><h1>Campanhas</h1><p>Disparos em massa com templates aprovados e relatório de envio em tempo real</p></div>
+      <a class="btn no-grow" href="#/campaigns/mapa">${ico('globe', 14)} Mapa de leads</a>
       <a class="btn primary no-grow" href="#/campaigns/new">${ico('plus', 14)} Nova campanha</a>
     </div>
     <div class="card" id="camp-table">${skel(4)}</div>
@@ -5544,7 +5557,7 @@ async function paintCampaigns() {
           <td><b>${s.read}</b></td>
           <td style="color:${s.failed ? 'var(--red)' : 'inherit'}"><b>${s.failed}</b></td>
           <td><span class="pill ${c.status}">${c.status === 'running' ? 'Enviando' : 'Concluída'}</span></td>
-          <td><button class="btn small" onclick="campaignDetail('${c.id}')">Ver relatório</button></td>
+          <td><a class="btn small" href="#/campaigns/report?c=${c.id}">Ver relatório</a></td>
         </tr>`;
       }).join('')}</tbody></table>`;
     if (campaigns.some(c => c.status === 'running')) {
@@ -5763,6 +5776,211 @@ async function createCampaign() {
     location.hash = '#/campaigns';
   } catch (e) { toast(e.message, 'error'); }
 }
+
+// ===========================================================================
+// RELATÓRIO DA CAMPANHA
+//
+// O funil de um disparo é: enviada → entregue → LIDA → clicou. As duas últimas
+// são as que dizem se a mensagem funcionou, e eram as que não apareciam.
+//
+// O MAPA responde "onde estão os leads mais quentes". Quente aqui não é quem
+// recebeu — é quem LEU e CLICOU; por isso o mapa é pintado pela métrica que se
+// escolhe, e não sempre pelo volume, que só mostra onde há mais gente.
+// ===========================================================================
+let RC = { rel: null, metrica: 'cliques', ordem: 'total', filtro: '' };
+
+const RC_METRICAS = [
+  ['total', 'Leads (enviadas)'],
+  ['entregues', 'Entregues'],
+  ['lidas', 'Lidas'],
+  ['cliques', 'Clicaram'],
+  ['taxaLeitura', '% que leu'],
+  ['taxaClique', '% que clicou'],
+  ['ctrSobreLidas', 'CTR sobre quem leu']
+];
+const RC_PCT = new Set(['taxaLeitura', 'taxaClique', 'ctrSobreLidas']);
+const rcVal = (e, k) => (RC_PCT.has(k) ? e[k] + '%' : fmtN(e[k]));
+
+async function renderCampaignReport() {
+  const id = new URLSearchParams((location.hash.split('?')[1] || '')).get('c');
+  if (!id) { location.hash = '#/campaigns'; return; }
+  $('#view').innerHTML = `<div class="page"><div class="card">${skel(6)}</div></div>`;
+  try {
+    RC.rel = await api('/campaigns/' + id + '/report');
+    RC.filtro = '';
+    pintarRelatorio();
+  } catch (e) {
+    $('#view').innerHTML = `<div class="page"><div class="card err">${esc(e.message)}</div></div>`;
+  }
+}
+
+function pintarRelatorio() {
+  const r = RC.rel, g = r.geral;
+  $('#view').innerHTML = `<div class="page">
+    <div class="page-head row" style="align-items:center">
+      <a class="btn no-grow" href="#/campaigns">${ico('arrowleft', 14)} Voltar</a>
+      <div style="flex:1">
+        <h1>${esc(r.nome)}</h1>
+        <p>Modelo <code>${esc(r.template)}</code>${r.canal ? ' · ' + esc(r.canal) : ''} · ${fmtDataHora(r.criadaEm)}
+        · <span class="pill ${r.status}">${r.status === 'running' ? 'Enviando' : 'Concluída'}</span></p>
+      </div>
+    </div>
+
+    <div class="rc-funil">
+      ${rcEtapa('Enviadas', g.enviadas, null, 'send')}
+      ${rcEtapa('Entregues', g.entregues, g.taxaEntrega, 'check-circle')}
+      ${rcEtapa('Lidas', g.lidas, g.taxaLeitura, 'eye')}
+      ${rcEtapa('Clicaram', g.cliques, g.taxaClique, 'zap')}
+      ${rcEtapa('Falhas', g.falhas, null, 'alert', g.falhas > 0)}
+    </div>
+
+    ${r.leituraParcial ? `<div class="card" style="border-color:var(--amber-border);background:var(--amber-bg)">
+      <b>${ico('help', 14)} Nenhuma leitura confirmada</b>
+      <p class="muted" style="margin:5px 0 0;font-size:13px">As mensagens foram entregues, mas ninguém apareceu como "lida".
+      A Meta só informa a leitura quando o cliente mantém a <b>confirmação de leitura ligada</b> no WhatsApp dele — quem desliga
+      conta apenas como entregue. O número aqui é o piso real, não o total de quem leu.</p></div>` : ''}
+
+    <div class="card">
+      <h2>${ico('buttons')} Botões</h2>
+      ${r.botoes.length ? `
+        <p class="muted" style="margin:0 0 10px;font-size:12.5px">Quantas pessoas tocaram em cada botão. Conta uma vez por pessoa —
+        quem clica duas vezes continua sendo um lead.</p>
+        <table><thead><tr><th>Botão</th><th style="text-align:right">Cliques</th><th style="text-align:right">Sobre enviadas</th><th style="text-align:right">Sobre quem leu</th><th>Onde mais clicaram</th></tr></thead><tbody>
+        ${r.botoes.map(b => {
+          const topo = Object.entries(b.ufs).sort((x, y) => y[1] - x[1]).slice(0, 3);
+          return `<tr>
+            <td><b>${esc(b.rotulo)}</b></td>
+            <td style="text-align:right"><b>${fmtN(b.cliques)}</b></td>
+            <td style="text-align:right">${g.enviadas ? (Math.round(b.cliques / g.enviadas * 1000) / 10) : 0}%</td>
+            <td style="text-align:right">${g.lidas ? (Math.round(b.cliques / g.lidas * 1000) / 10) : 0}%</td>
+            <td class="muted">${topo.length ? topo.map(([uf, n]) => `${uf} (${n})`).join(', ') : '—'}</td>
+          </tr>`;
+        }).join('')}</tbody></table>`
+        : `<p class="muted" style="margin:0;font-size:13px">Este modelo não tem botões, ou ninguém tocou ainda.
+           Botões de <b>resposta rápida</b> são contados aqui; botões de <b>link</b> saem do WhatsApp e a Meta não avisa o toque —
+           para medir link, use um link rastreável do Koonfy dentro do template.</p>`}
+    </div>
+
+    <div class="card">
+      <div class="row" style="align-items:center;margin-bottom:12px">
+        <h2 style="flex:1;margin:0">${ico('globe')} Mapa de leads</h2>
+        <label style="margin:0">Pintar por
+          ${ecSelect('rc-metrica', RC_METRICAS.map(([v, l]) => ({ value: v, label: l })), RC.metrica, 'rcSetMetrica(val)')}
+        </label>
+      </div>
+      <p class="muted" style="margin:0 0 10px;font-size:12.5px">Quanto mais escuro, maior o valor da métrica escolhida.
+      Passe o mouse num estado para ver o número exato.</p>
+      ${brazilMap3D({ states: rcMapaCounts(), soMapa: true })}
+    </div>
+
+    <div class="card">
+      <div class="row" style="align-items:center;margin-bottom:12px">
+        <h2 style="flex:1;margin:0">${ico('list')} Por estado</h2>
+        <input id="rc-busca" placeholder="Filtrar estado…" value="${esc(RC.filtro)}" oninput="rcFiltrar(this.value)" style="max-width:200px">
+        <label style="margin:0">Ordenar por
+          ${ecSelect('rc-ordem', RC_METRICAS.map(([v, l]) => ({ value: v, label: l })), RC.ordem, 'rcSetOrdem(val)')}
+        </label>
+      </div>
+      <div id="rc-tabela">${rcTabela()}</div>
+      ${r.semUf ? `<p class="muted" style="margin:10px 0 0;font-size:12px">${fmtN(r.semUf.total)} contato(s) sem estado identificado
+      (número de fora do Brasil ou sem DDD reconhecível) ficam fora do mapa.</p>` : ''}
+    </div>
+  </div>`;
+}
+
+function rcEtapa(rotulo, valor, pct, icone, alerta) {
+  return `<div class="rc-et${alerta ? ' bad' : ''}">
+    <span class="rc-et-ic">${ico(icone, 15)}</span>
+    <b>${fmtN(valor)}</b>
+    <span class="rc-et-lb">${rotulo}</span>
+    ${pct === null || pct === undefined ? '' : `<span class="rc-et-pc">${pct}%</span>`}
+  </div>`;
+}
+
+// O mapa é pintado pela métrica escolhida. Em porcentagem, estados com pouquíssimos
+// envios distorceriam a escala (1 de 1 = 100%), então abaixo de 5 enviadas o
+// estado não colore — o dado existe na tabela, mas não manda no mapa.
+function rcMapaCounts() {
+  const out = {};
+  for (const e of RC.rel.estados) {
+    if (RC_PCT.has(RC.metrica) && e.enviadas < 5) continue;
+    out[e.uf] = e[RC.metrica] || 0;
+  }
+  return out;
+}
+
+function rcTabela() {
+  const q = RC.filtro.trim().toLowerCase();
+  const linhas = RC.rel.estados
+    .filter(e => !q || e.uf.toLowerCase().includes(q) || e.nome.toLowerCase().includes(q))
+    .sort((a, b) => b[RC.ordem] - a[RC.ordem]);
+  if (!linhas.length) return '<p class="muted" style="margin:0;font-size:13px">Nenhum estado com esse filtro.</p>';
+  const max = Math.max(1, ...linhas.map(e => e[RC.ordem]));
+  return `<table><thead><tr>
+      <th>Estado</th><th style="text-align:right">Leads</th><th style="text-align:right">Entregues</th>
+      <th style="text-align:right">Lidas</th><th style="text-align:right">Clicaram</th>
+      <th style="text-align:right">% leu</th><th style="text-align:right">% clicou</th><th></th>
+    </tr></thead><tbody>
+    ${linhas.map(e => `<tr>
+      <td><b>${e.uf}</b> <span class="muted">${esc(e.nome)}</span></td>
+      <td style="text-align:right">${fmtN(e.total)}</td>
+      <td style="text-align:right">${fmtN(e.entregues)}</td>
+      <td style="text-align:right">${fmtN(e.lidas)}</td>
+      <td style="text-align:right"><b>${fmtN(e.cliques)}</b></td>
+      <td style="text-align:right">${e.taxaLeitura}%</td>
+      <td style="text-align:right"><b>${e.taxaClique}%</b></td>
+      <td style="width:110px"><div class="rc-bar"><i style="width:${Math.round((e[RC.ordem] / max) * 100)}%"></i></div></td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+function rcSetMetrica(v) { RC.metrica = v; pintarRelatorio(); }
+function rcSetOrdem(v) { RC.ordem = v; const t = $('#rc-tabela'); if (t) t.innerHTML = rcTabela(); }
+function rcFiltrar(v) { RC.filtro = v; const t = $('#rc-tabela'); if (t) t.innerHTML = rcTabela(); }
+
+// Mapa consolidado de TODAS as campanhas do período — para achar o estado mais
+// quente sem abrir campanha por campanha.
+let RM = { dados: null, dias: 90, metrica: 'cliques', ordem: 'total', filtro: '' };
+
+async function renderMapaLeads() {
+  $('#view').innerHTML = `<div class="page"><div class="card">${skel(6)}</div></div>`;
+  try {
+    RM.dados = await api('/campaigns/mapa?dias=' + RM.dias);
+    RC.rel = { estados: RM.dados.estados, semUf: null };   // reaproveita o desenho
+    RC.metrica = RM.metrica; RC.ordem = RM.ordem; RC.filtro = RM.filtro;
+    $('#view').innerHTML = `<div class="page">
+      <div class="page-head row" style="align-items:center">
+        <a class="btn no-grow" href="#/campaigns">${ico('arrowleft', 14)} Voltar</a>
+        <div style="flex:1"><h1>Mapa de leads</h1>
+          <p>${fmtN(RM.dados.campanhas)} campanha(s) nos últimos ${RM.dias} dias, somadas por estado</p></div>
+        ${ecSelect('rm-dias', [{ value: '30', label: '30 dias' }, { value: '90', label: '90 dias' }, { value: '180', label: '180 dias' }, { value: '365', label: '1 ano' }], String(RM.dias), 'rmSetDias(val)')}
+      </div>
+      <div class="card">
+        <div class="row" style="align-items:center;margin-bottom:12px">
+          <h2 style="flex:1;margin:0">${ico('globe')} Onde estão os leads quentes</h2>
+          <label style="margin:0">Pintar por
+            ${ecSelect('rc-metrica', RC_METRICAS.map(([v, l]) => ({ value: v, label: l })), RC.metrica, 'rcSetMetricaMapa(val)')}
+          </label>
+        </div>
+        ${brazilMap3D({ states: rcMapaCounts(), soMapa: true })}
+      </div>
+      <div class="card">
+        <div class="row" style="align-items:center;margin-bottom:12px">
+          <h2 style="flex:1;margin:0">${ico('list')} Por estado</h2>
+          <input id="rc-busca" placeholder="Filtrar estado…" value="${esc(RC.filtro)}" oninput="rcFiltrar(this.value)" style="max-width:200px">
+          <label style="margin:0">Ordenar por
+            ${ecSelect('rc-ordem', RC_METRICAS.map(([v, l]) => ({ value: v, label: l })), RC.ordem, 'rcSetOrdem(val)')}
+          </label>
+        </div>
+        <div id="rc-tabela">${rcTabela()}</div>
+      </div>
+    </div>`;
+  } catch (e) {
+    $('#view').innerHTML = `<div class="page"><div class="card err">${esc(e.message)}</div></div>`;
+  }
+}
+function rmSetDias(v) { RM.dias = Number(v) || 90; renderMapaLeads(); }
+function rcSetMetricaMapa(v) { RM.metrica = v; renderMapaLeads(); }
 
 async function campaignDetail(id) {
   openModal('<h2>Relatório da campanha</h2><p class="muted">Carregando…</p>');

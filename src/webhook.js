@@ -213,6 +213,15 @@ function processEvent(body, broadcast) {
           });
           if (t && t.reopened) broadcast('attendance', { accountId: acc.id, waId: contact.waId, status: 'open', reason: 'inbound', name: contact.name || ('+' + contact.waId) });
 
+          // CLIQUE EM BOTÃO DE CAMPANHA. O toque num botão de template chega
+          // como uma mensagem comum; sem casar com o disparo que a originou,
+          // não há como dizer quantas pessoas responderam a uma campanha, nem
+          // qual botão elas escolheram.
+          if (parsed.type === 'button' || parsed.type === 'interactive') {
+            try { registrarCliqueCampanha(acc, contact.waId, parsed.text, parsed.replyId); }
+            catch (e) { store.logEvent({ type: 'campanha_clique_erro', accountId: acc.id, error: e.message }); }
+          }
+
           // Resposta da Pesquisa de Satisfação (botão ou item de lista)
           if (parsed.type === 'interactive' && parsed.replyId) {
             const ans = survey.handleReply(acc, contact, parsed.replyId, parsed.text);
@@ -267,6 +276,39 @@ function processEvent(body, broadcast) {
 }
 
 // ---- LIGAÇÕES (Calling API) ----
+// ---------------------------------------------------------------------------
+// CLIQUE EM BOTÃO DE CAMPANHA
+//
+// A Meta não diz "esta resposta é da campanha X". O que dá para afirmar com
+// segurança é: se a pessoa recebeu um disparo e tocou num botão depois disso,
+// o toque é daquele disparo. Por isso o casamento é pela campanha mais RECENTE
+// que enviou para aquele número, dentro de uma janela de 7 dias — depois disso
+// a atribuição vira chute, e chute em relatório é pior que dado faltando.
+//
+// Só o PRIMEIRO clique conta: o relatório mede quantas PESSOAS responderam, e
+// quem toca duas vezes continua sendo uma pessoa.
+const JANELA_CLIQUE = 7 * 24 * 3600 * 1000;
+
+function registrarCliqueCampanha(acc, waId, rotulo, replyId) {
+  const dono = db.findAccount(acc.id) || acc;
+  const agora = Date.now();
+  let alvo = null, quando = 0;
+
+  for (const camp of dono.campaigns || []) {
+    const r = (camp.recipients || []).find(x => x.waId === waId && x.sentAt);
+    if (!r || r.clickedAt) continue;
+    if (agora - r.sentAt > JANELA_CLIQUE) continue;
+    if (r.sentAt > quando) { quando = r.sentAt; alvo = r; }
+  }
+  if (!alvo) return null;
+
+  alvo.clickedAt = agora;
+  alvo.clickedLabel = String(rotulo || '').slice(0, 60);
+  alvo.clickedId = String(replyId || '').slice(0, 60);
+  db.save();
+  return alvo;
+}
+
 // Eventos do campo "calls": connect (chamada tocando, traz o SDP offer do
 // WebRTC), terminate (encerrada, traz duração/status) e updates intermediários.
 // O front recebe tudo por SSE e mostra a tela de chamada estilo WhatsApp.
@@ -474,3 +516,7 @@ function parseMessage(m) {
 
   return { type: t || 'unknown', text: `[${t || 'desconhecido'}] tipo de mensagem não suportado` };
 }
+
+// Exposto para teste: a atribuição do clique é a parte do relatório que mais
+// pode enganar em silêncio, então ela é verificada diretamente.
+module.exports.registrarCliqueCampanha = registrarCliqueCampanha;
