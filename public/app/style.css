@@ -3825,3 +3825,41 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
   .modal.cob .ep-acoes .btn { flex: 1; justify-content: center; }
   .modal.cob .ep-acoes #ep-nc-voltar { flex: 0 0 auto; }
 }
+
+/* ===================== PAGAMENTOS · SAQUE =====================
+   Os dois tempos do dinheiro lado a lado. O disponível é o número que a pessoa
+   veio ver, então ele é o maior e o único colorido; o pendente fica ao lado
+   com a data da próxima liberação, que é a pergunta seguinte. */
+.sq-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+.sq-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 18px 20px; display: flex; flex-direction: column; gap: 5px;
+}
+.sq-card.ok { border-color: var(--brand-border); background: var(--brand-bg); }
+.sq-card.neg { border-color: var(--red-border); background: var(--red-bg); }
+.sq-lbl {
+  display: flex; align-items: center; gap: 7px; font-size: 10.5px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+}
+.sq-val { font-size: 27px; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; }
+.sq-card.ok .sq-val { color: var(--verde-deep); }
+.sq-card.neg .sq-val { color: var(--red); }
+.sq-hint { font-size: 12px; color: var(--muted); }
+
+@media (max-width: 760px) {
+  .sq-cards { grid-template-columns: 1fr; gap: 10px; }
+  .sq-val { font-size: 23px; }
+  /* A coluna do VALOR não pode sair da tela: é o número que a pessoa veio ver.
+     Fonte e respiro menores fazem as três colunas caberem em 375px sem rolagem
+     lateral dentro do cartão. */
+  #ep-box table { font-size: 11.5px; }
+  #ep-box table th, #ep-box table td { padding: 8px 6px; }
+  #ep-box table td:last-child, #ep-box table th:last-child { white-space: nowrap; }
+  /* A regra geral do celular manda as tabelas do card rolarem na horizontal
+     (`width: max-content`). Aqui isso escondia o VALOR atrás da rolagem. Nestas
+     três tabelas o texto do meio quebra e a coluna do dinheiro fica sempre à
+     vista, que é o ponto da tela. */
+  #ep-box table thead, #ep-box table tbody { width: 100%; min-width: 0; }
+  #ep-box table { overflow-x: visible; }
+  #ep-box table td { white-space: normal; word-break: break-word; }
+}

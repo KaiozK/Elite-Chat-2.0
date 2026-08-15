@@ -569,6 +569,74 @@ function debitWithdraw(acc, valueCents) {
 // RECEBÍVEIS — a venda no cartão entra como "a liberar" e vira saldo no prazo
 // do adquirente (Pagar.me D+30 crédito / D+1 débito; Asaas D+32 / D+3).
 // ---------------------------------------------------------------------------
+// Venda no PIX cai disponível na hora — não existe prazo de liberação como no
+// cartão. A assinatura do próprio Koonfy paga pelo checkout do dono NÃO entra:
+// aquele dinheiro é da plataforma, não venda do cliente.
+function creditPixSale(acc, ch, broadcast) {
+  if (ch.saas) return null;
+  if (ch.walletCredited) return null;              // idempotente: webhook repete
+  const liquido = Math.max(0, ch.value - (ch.platformCut || 0));
+  if (liquido <= 0) return null;
+
+  acc.wallet.balance += liquido;
+  ch.walletCredited = liquido;
+  acc.wallet.transactions.push({
+    id: db.genId('tx'), ts: Date.now(), amount: liquido, type: 'pix_sale',
+    label: `Venda no Pix${ch.contactName ? ', ' + ch.contactName : ''}, disponível para saque`
+  });
+  if (acc.wallet.transactions.length > 400) acc.wallet.transactions.splice(0, acc.wallet.transactions.length - 400);
+  db.save();
+  log(acc, { type: 'pix_receivable', chargeId: ch.id, amount: liquido, detail: 'Pix disponível na carteira' });
+  if (broadcast) broadcast('wallet', { accountId: acc.id });
+  return liquido;
+}
+
+// ---------------------------------------------------------------------------
+// CONTESTAÇÕES — estorno e chargeback
+//
+// Uma venda contestada tem que sair da carteira, senão o cliente saca dinheiro
+// que já voltou para o comprador e a plataforma cobre o rombo. O desfazer
+// segue a ordem do que dói menos:
+//   1) recebíveis do cartão ainda NÃO liberados são cancelados (some do pendente)
+//   2) o que já virou saldo é debitado do disponível
+// O saldo PODE ficar negativo — é a verdade da conta, e o saque já barra quem
+// não tem saldo. Esconder isso seria deixar a dívida invisível.
+// ---------------------------------------------------------------------------
+function reverterVenda(acc, ch, motivo, broadcast) {
+  const w = acc.wallet;
+  if (ch.walletReversed) return null;              // idempotente
+  const liquido = Math.max(0, ch.value - (ch.platformCut || 0));
+  if (liquido <= 0) return null;
+
+  let cancelado = 0;
+  for (const r of w.receivables) {
+    if (r.chargeId !== ch.id || r.released) continue;
+    r.released = true; r.cancelled = true; r.releasedAt = Date.now();
+    cancelado += r.amount;
+    w.pending = Math.max(0, w.pending - r.amount);
+  }
+  const doSaldo = Math.max(0, liquido - cancelado);
+  if (doSaldo > 0) {
+    w.balance -= doSaldo;
+    // o que veio de cartão sai também do contador de origem, para a taxa de
+    // saque seguinte não cobrar como se ainda houvesse dinheiro de cartão ali
+    if (ch.method === 'card') w.cardAvailable = Math.max(0, (Number(w.cardAvailable) || 0) - doSaldo);
+  }
+
+  ch.walletReversed = liquido;
+  w.transactions.push({
+    id: db.genId('tx'), ts: Date.now(), amount: -liquido, type: motivo,
+    label: `${motivo === 'chargeback' ? 'Chargeback' : 'Estorno'} de venda${ch.contactName ? ', ' + ch.contactName : ''}` +
+      (cancelado ? ` (${fmtBRL(cancelado)} cancelado antes de liberar)` : '')
+  });
+  if (w.transactions.length > 400) w.transactions.splice(0, w.transactions.length - 400);
+  db.save();
+  log(acc, { type: motivo, chargeId: ch.id, amount: liquido, detail: `Valor retirado da carteira${cancelado ? `, ${fmtBRL(cancelado)} ainda não liberado` : ''}` });
+  plog({ type: motivo, accountId: acc.id, accountName: acc.name, amount: liquido });
+  if (broadcast) { broadcast('wallet', { accountId: acc.id }); broadcast('elitepay', { accountId: acc.id, chargeId: ch.id, status: ch.status }); }
+  return { liquido, cancelado, doSaldo };
+}
+
 function creditCardSale(acc, ch, broadcast) {
   const card = cardConfig();
   if (card.settleMode !== 'wallet') return null;    // modo split: o dinheiro vai direto ao lojista
@@ -1010,6 +1078,11 @@ function finalizePaid(acc, ch, broadcast) {
   // (a liberar, conforme o prazo do adquirente) para ele usar na plataforma
   // ou sacar depois.
   if (ch.method === 'card') { try { creditCardSale(acc, ch, broadcast); } catch (e) { log(acc, { type: 'wallet_error', chargeId: ch.id, detail: e.message }); } }
+  // Venda no PIX: o líquido entra na MESMA carteira, já disponível. O dinheiro
+  // fica na subconta da Woovi; a carteira é o registro do quanto é do cliente.
+  // Sem isto o Pix não aparecia em lugar nenhum e o cliente não tinha como
+  // saber quanto tinha para sacar.
+  else { try { creditPixSale(acc, ch, broadcast); } catch (e) { log(acc, { type: 'wallet_error', chargeId: ch.id, detail: e.message }); } }
   // Tracking: atribui a venda à campanha de origem + reenvia a conversão
   // (Meta CAPI / GA4 / TikTok) automaticamente — não bloqueia a confirmação.
   try { require('./tracking').onPaid(acc, ch, broadcast); } catch {}
@@ -1515,11 +1588,17 @@ function applyCardStatus(acc, ch, status, broadcast) {
 
   if (status === 'paid') {
     finalizePaid(acc, ch, broadcast);           // idempotente
-  } else if (status === 'refunded' && ch.status === 'paid') {
-    ch.status = 'refunded';
-    log(acc, { type: 'card_refunded', chargeId: ch.id, amount: ch.value, detail: 'Pagamento estornado pelo adquirente' });
-    plog({ type: 'card_refunded', accountId: acc.id, accountName: acc.name, amount: ch.value });
-    if (broadcast) broadcast('elitepay', { accountId: acc.id, chargeId: ch.id, status: 'refunded' });
+  } else if ((status === 'refunded' || status === 'chargeback') && ch.status === 'paid') {
+    ch.status = status;
+    ch.contestedAt = Date.now();
+    log(acc, { type: status === 'chargeback' ? 'card_chargeback' : 'card_refunded', chargeId: ch.id, amount: ch.value,
+      detail: status === 'chargeback' ? 'Compra contestada pelo portador (chargeback)' : 'Pagamento estornado pelo adquirente' });
+    plog({ type: status === 'chargeback' ? 'card_chargeback' : 'card_refunded', accountId: acc.id, accountName: acc.name, amount: ch.value });
+    // Tira o valor da carteira: sem isto o cliente sacaria dinheiro que já
+    // voltou para o comprador, e o rombo sobraria para a plataforma.
+    try { reverterVenda(acc, ch, status === 'chargeback' ? 'chargeback' : 'refund_sale', broadcast); }
+    catch (e) { log(acc, { type: 'wallet_error', chargeId: ch.id, detail: e.message }); }
+    if (broadcast) broadcast('elitepay', { accountId: acc.id, chargeId: ch.id, status });
   } else if (status === 'refused' && antes === 'pending') {
     log(acc, { type: 'card_refused', chargeId: ch.id, detail: 'Recusado após análise do adquirente' });
   }
@@ -1672,7 +1751,8 @@ module.exports = {
   findChargeAnywhere,
   cardConfig, cardPublic, payWithCard, payWithBoleto, refreshCardStatus, installmentOptions,
   cardAccount, cardAccountView, cardCapability, cardReady, registerCardAccount, syncCardAccount,
-  creditCardSale, releaseFor, releaseReceivables, spendWallet, computeWithdrawFee, debitWithdraw,
+  creditCardSale, creditPixSale, reverterVenda,
+  releaseFor, releaseReceivables, spendWallet, computeWithdrawFee, debitWithdraw,
   cardWebhookHandler, cardWebhookToken,
   DRIVERS
 };

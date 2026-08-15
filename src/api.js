@@ -4240,6 +4240,38 @@ module.exports = function (broadcast, clients) {
     });
   });
 
+  // ---- SAQUE em Pagamentos: um saldo só, Pix e cartão juntos ----
+  // O Pix cai disponível na hora; a venda no cartão fica pendente até o prazo
+  // do adquirente. A tela mostra os dois, e as contestações do período, porque
+  // um chargeback tira dinheiro da carteira e a pessoa precisa saber por quê.
+  router.get('/elitepay/saldo', auth, ownerOnly, (req, res) => {
+    const w = req.acc.wallet;
+    const ep = elitepay.ensure(req.acc);
+    const aLiberar = (w.receivables || []).filter(r => !r.released);
+    const prox = [...aLiberar].sort((a, b) => a.availableAt - b.availableAt)[0] || null;
+    const contestadas = (ep.charges || [])
+      .filter(c => c.status === 'chargeback' || c.status === 'refunded')
+      .slice(0, 50)
+      .map(c => ({
+        id: c.id, valor: c.value, status: c.status, quando: c.contestedAt || c.paidAt,
+        contato: c.contactName || '', descricao: c.comment || '',
+        metodo: c.method === 'card' ? 'cartão' : 'Pix'
+      }));
+    res.json({
+      disponivel: w.balance,            // Pix imediato + cartão já liberado
+      pendente: w.pending,              // cartão dentro do prazo do adquirente
+      doCartao: w.cardAvailable || 0,   // parte do disponível que veio de cartão (muda a taxa)
+      proximaLiberacao: prox ? { valor: prox.amount, quando: prox.availableAt } : null,
+      aLiberar: aLiberar.sort((a, b) => a.availableAt - b.availableAt).slice(0, 30)
+        .map(r => ({ valor: r.amount, quando: r.availableAt, parcela: r.installment, de: r.installments, tipo: r.kind })),
+      contestadas,
+      limites: { ...db.get().platform.affiliate.withdraw },
+      chavePix: (ep.subaccount && ep.subaccount.pixKey) || '',
+      extrato: (w.transactions || []).slice(-40).reverse(),
+      saques: db.get().withdrawals.filter(x => x.accountId === req.acc.id).slice(-10).reverse()
+    });
+  });
+
   // Onboarding — cria a subconta do cliente (via API do gateway, sem sair do Koonfy)
   router.post('/elitepay/subaccount', auth, can('elitepay', 'create'), h(async (req, res) => {
     // redirectUrl: para onde a Woovi devolve o cliente após concluir o KYC hospedado

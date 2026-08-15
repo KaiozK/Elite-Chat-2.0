@@ -4052,6 +4052,12 @@ function logLinha(e) {
   </div>`;
 }
 
+// Nas tabelas de dinheiro a hora não acrescenta nada e, no celular, empurra a
+// coluna do VALOR para fora da tela — que é a coluna que a pessoa foi ver.
+function fmtDataCurta(ts) {
+  try { return new Date(ts).toLocaleDateString('pt-BR'); } catch { return ''; }
+}
+
 function fmtDataHora(ts) {
   try { return new Date(ts).toLocaleString('pt-BR'); } catch { return ''; }
 }
@@ -11733,6 +11739,7 @@ async function renderElitePay() {
       <button class="${epState.tab === 'dash' ? 'active' : ''}" data-tab="ep-dash" onclick="epTab('dash')">Dashboard</button>
       <button class="${epState.tab === 'charges' ? 'active' : ''}" data-tab="ep-charges" onclick="epTab('charges')">Cobranças</button>
       <button class="${epState.tab === 'products' ? 'active' : ''}" data-tab="ep-products" onclick="epTab('products')">Produtos</button>
+      <button class="${epState.tab === 'saque' ? 'active' : ''}" data-tab="ep-saque" onclick="epTab('saque')">Saque</button>
       ${epCardTabVisible ? `<button class="${epState.tab === 'card' ? 'active' : ''}" data-tab="ep-card" onclick="epTab('card')">Cartão</button>` : ''}
       <button class="${epState.tab === 'cfg' ? 'active' : ''}" data-tab="ep-cfg" onclick="epTab('cfg')">Configurações</button>
     </div>
@@ -11823,8 +11830,130 @@ async function epPaintTab() {
   if (epState.tab === 'dash') return epPaintDash(box);
   if (epState.tab === 'charges') return epPaintCharges(box);
   if (epState.tab === 'products') return epPaintProducts(box);
+  if (epState.tab === 'saque') return epPaintSaque(box);
   if (epState.tab === 'card') return epPaintCard(box);
   return epPaintCfg(box);
+}
+
+// ---------------------------------------------------------------------------
+// PAGAMENTOS → SAQUE
+//
+// Uma carteira só, com os dois tempos do dinheiro à vista:
+//   · DISPONÍVEL — Pix cai na hora, mais o cartão que já passou do prazo
+//   · PENDENTE   — cartão dentro do prazo do adquirente, com a data de cada parcela
+// As contestações ficam na mesma tela de propósito: um chargeback tira dinheiro
+// da carteira, e quem vê o saldo cair precisa achar o motivo sem procurar.
+// ---------------------------------------------------------------------------
+let epSaldo = null;
+
+async function epPaintSaque(box) {
+  box.innerHTML = `<div class="card">${skel(5)}</div>`;
+  try { epSaldo = await api('/elitepay/saldo'); }
+  catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
+  const d = epSaldo;
+  const devendo = d.disponivel < 0;
+
+  box.innerHTML = `
+    <div class="sq-cards">
+      <div class="sq-card ${devendo ? 'neg' : 'ok'}">
+        <span class="sq-lbl">${ico('zap', 13)} Disponível para saque</span>
+        <b class="sq-val">${fmtBRL(d.disponivel)}</b>
+        <span class="sq-hint">Pix cai na hora${d.doCartao ? `, ${fmtBRL(d.doCartao)} veio de cartão` : ''}</span>
+      </div>
+      <div class="sq-card">
+        <span class="sq-lbl">${ico('clock', 13)} Saldo pendente</span>
+        <b class="sq-val">${fmtBRL(d.pendente)}</b>
+        <span class="sq-hint">${d.proximaLiberacao
+          ? `Próxima liberação: ${fmtBRL(d.proximaLiberacao.valor)} em ${fmtDataHora(d.proximaLiberacao.quando)}`
+          : 'Cartão de crédito, dentro do prazo do adquirente'}</span>
+      </div>
+    </div>
+
+    ${devendo ? `<div class="card" style="border-color:var(--red-border);background:var(--red-bg)">
+      <b>${ico('alert', 14)} Saldo negativo</b>
+      <p class="muted" style="margin:5px 0 0;font-size:13px">Uma venda foi contestada depois de o valor já ter sido liberado.
+      O saldo volta ao positivo com as próximas vendas, e o saque fica bloqueado até lá.</p></div>` : ''}
+
+    <div class="card">
+      <h2>${ico('download-circle')} Sacar para a sua chave Pix</h2>
+      <p class="muted" style="margin:0;font-size:13px">
+        ${d.chavePix ? `Cai na chave cadastrada em Pagamentos: <b>${esc(d.chavePix)}</b>.` : 'Cadastre a sua chave Pix na conta de Pagamentos para sacar.'}
+        Mínimo ${fmtBRL(d.limites.min)}${d.limites.max > 0 ? `, máximo ${fmtBRL(d.limites.max)} por saque` : ''}.
+      </p>
+      <div class="row" style="margin-top:12px;align-items:flex-end">
+        <label style="flex:1">Valor<input id="sq-val" inputmode="decimal" placeholder="0,00" oninput="epSaqueQuote()"></label>
+        <button class="btn no-grow" onclick="epSaqueTudo()">Sacar tudo</button>
+        <button class="btn primary no-grow" id="sq-btn" onclick="epSacar()" ${d.disponivel < d.limites.min ? 'disabled' : ''}>${ico('zap', 14)} Solicitar saque</button>
+      </div>
+      <p class="muted" id="sq-quote" style="margin:10px 0 0;font-size:12.5px"></p>
+    </div>
+
+    ${d.aLiberar.length ? `<div class="card">
+      <h2>${ico('calendar')} A liberar</h2>
+      <table><thead><tr><th>Quando</th><th>Origem</th><th style="text-align:right">Valor</th></tr></thead><tbody>
+      ${d.aLiberar.map(r => `<tr><td>${fmtDataCurta(r.quando)}</td>
+        <td>${r.tipo === 'debit' ? 'Débito' : 'Crédito'}${r.de > 1 ? ` · parcela ${r.parcela}/${r.de}` : ''}</td>
+        <td style="text-align:right"><b>${fmtBRL(r.valor)}</b></td></tr>`).join('')}
+      </tbody></table></div>` : ''}
+
+    <div class="card">
+      <h2>${ico('alert')} Contestações</h2>
+      ${d.contestadas.length ? `
+        <p class="muted" style="margin:0 0 10px;font-size:12.5px">Vendas estornadas ou contestadas pelo comprador. O valor sai da carteira automaticamente.</p>
+        <table><thead><tr><th>Quando</th><th>Cliente</th><th>Tipo</th><th style="text-align:right">Valor</th></tr></thead><tbody>
+        ${d.contestadas.map(c => `<tr>
+          <td>${c.quando ? fmtDataCurta(c.quando) : '—'}</td>
+          <td>${esc(c.contato || '—')}${c.descricao ? `<br><span class="muted" style="font-size:11.5px">${esc(c.descricao)}</span>` : ''}</td>
+          <td><span class="pill ${c.status === 'chargeback' ? 'err' : ''}">${c.status === 'chargeback' ? 'Chargeback' : 'Estorno'}</span> <span class="muted" style="font-size:11.5px">${esc(c.metodo)}</span></td>
+          <td style="text-align:right"><b style="color:var(--red)">-${fmtBRL(c.valor)}</b></td></tr>`).join('')}
+        </tbody></table>`
+        : '<p class="muted" style="margin:0;font-size:13px">Nenhuma contestação até agora.</p>'}
+    </div>
+
+    <div class="card">
+      <h2>${ico('activity')} Extrato</h2>
+      ${d.extrato.length ? `<table><tbody>
+        ${d.extrato.map(t => `<tr><td>${fmtDataCurta(t.ts)}</td><td>${esc(t.label || t.type)}</td>
+          <td style="text-align:right"><b style="color:${t.amount < 0 ? 'var(--red)' : 'var(--verde-deep)'}">${t.amount < 0 ? '-' : '+'}${fmtBRL(Math.abs(t.amount))}</b></td></tr>`).join('')}
+        </tbody></table>` : '<p class="muted" style="margin:0;font-size:13px">Sem movimentação ainda.</p>'}
+    </div>`;
+}
+
+function epSaqueTudo() {
+  if (!epSaldo) return;
+  $('#sq-val').value = (Math.max(0, epSaldo.disponivel) / 100).toFixed(2).replace('.', ',');
+  epSaqueQuote();
+}
+
+// Mostra a taxa ANTES de confirmar. A taxa depende da origem do dinheiro —
+// cartão tem taxa própria — e descobrir isso só depois de sacar seria ruim.
+async function epSaqueQuote() {
+  const el = $('#sq-quote'); if (!el) return;
+  const cents = epParseReais($('#sq-val').value);
+  if (!cents) { el.textContent = ''; return; }
+  try {
+    const q = await api('/wallet/withdraw/quote?amount=' + cents);
+    el.innerHTML = q.fee
+      ? `Taxa de ${fmtBRL(q.fee)} · você recebe <b>${fmtBRL(q.net)}</b>`
+      : `Sem taxa · você recebe <b>${fmtBRL(cents)}</b>`;
+  } catch { el.textContent = ''; }
+}
+
+async function epSacar() {
+  const cents = epParseReais($('#sq-val').value);
+  if (!cents) return toast('Informe o valor do saque', 'error');
+  if (!epSaldo.chavePix) return toast('Cadastre a sua chave Pix na conta de Pagamentos', 'error');
+  if (!await confirmModal({
+    title: 'Confirmar saque',
+    text: `${fmtBRL(cents)} para a chave ${epSaldo.chavePix}. O valor sai da carteira agora e o pagamento é processado pela plataforma.`,
+    ok: 'Solicitar saque'
+  })) return;
+  const btn = $('#sq-btn'); btn.disabled = true;
+  try {
+    const r = await api('/wallet/withdraw', { body: { amount: (cents / 100).toFixed(2), pixKey: epSaldo.chavePix } });
+    toast(`Saque de ${fmtBRL(cents)} solicitado! Você recebe ${fmtBRL(r.net)}`);
+    epPaintSaque($('#ep-box'));
+  } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
 }
 
 // ---------- Pagamentos → Cartão: conta de recebimento do lojista ----------

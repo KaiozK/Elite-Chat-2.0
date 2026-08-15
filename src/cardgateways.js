@@ -20,7 +20,7 @@
 //   getCharge({ cfg, gatewayId })        -> { status, paidAt }
 //   refund({ cfg, gatewayId, valueCents })-> { ok }
 //
-// status normalizado: 'paid' | 'pending' | 'refused' | 'refunded' | 'canceled'
+// status normalizado: 'paid' | 'pending' | 'refused' | 'refunded' | 'chargeback' | 'canceled'
 //
 // Docs:
 //   Pagar.me v5 — https://docs.pagar.me/reference  (Basic auth: sk_ como usuário, senha vazia)
@@ -293,6 +293,10 @@ function mapPagarme(s) {
     case 'paid': case 'captured': return 'paid';
     case 'pending': case 'processing': case 'authorized_pending_capture': return 'pending';
     case 'refunded': case 'partial_refunded': return 'refunded';
+    // Contestação do portador. Sem este caso caía no `default` e virava
+    // "recusado": o dinheiro continuava na carteira do lojista depois de já
+    // ter voltado para o comprador.
+    case 'chargedback': case 'chargeback': return 'chargeback';
     case 'canceled': case 'voided': return 'canceled';
     default: return 'refused';
   }
@@ -502,6 +506,8 @@ function mapAsaas(s) {
     case 'CONFIRMED': case 'RECEIVED': case 'RECEIVED_IN_CASH': return 'paid';
     case 'PENDING': case 'AWAITING_RISK_ANALYSIS': return 'pending';
     case 'REFUNDED': case 'REFUND_REQUESTED': return 'refunded';
+    case 'CHARGEBACK_REQUESTED': case 'CHARGEBACK_DISPUTE':
+    case 'AWAITING_CHARGEBACK_REVERSAL': return 'chargeback';
     case 'OVERDUE': case 'DELETED': return 'canceled';
     default: return 'refused';
   }
