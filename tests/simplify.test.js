@@ -88,6 +88,9 @@ global.fetch = async (u, o) => {
   ok(c.corpo.external_id === 'ep-abc123', 'external_id é o correlationID do Koonfy');
   ok(c.corpo.payer.document === '84748914009', 'CPF vai só com dígitos: ' + c.corpo.payer.document);
   ok(c.corpo.webhookURL === 'https://koonfy.com/simplify-webhook', 'webhook vai na própria cobrança: ' + c.corpo.webhookURL);
+  // O TELEFONE vai NACIONAL, sem o 55. Mandando com o código do país, a
+  // Simplify lê o "55" como DDD e mostra o telefone de outra pessoa no painel.
+  ok(c.corpo.payer.phone === '82981440676', 'telefone sem o DDI: ' + c.corpo.payer.phone);
   ok(r.brCode === respostaFalsa.qrcode, 'o campo `qrcode` vira o Pix copia e cola');
   ok(r.gatewayId === 'TXN_TESTE123', 'guarda o internal_id da Simplify');
 

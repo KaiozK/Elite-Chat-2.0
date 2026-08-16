@@ -1344,34 +1344,69 @@ h1, h2 { letter-spacing: -.03em; }
 .dl-track { grid-column: 1 / -1; height: 6px; background: var(--bg2); border-radius: 99px; overflow: hidden; }
 .dl-track div { height: 100%; border-radius: 99px; transition: width .5s var(--ease); }
 
-/* gráfico de funil — barras centralizadas */
-.funnel3 { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
-.fn3-row { display: grid; grid-template-columns: 152px 1fr 62px; align-items: center; gap: 14px; }
-.fn3-label { display: flex; align-items: center; gap: 8px; justify-content: flex-end; text-align: right; min-width: 0; }
-.fn3-idx {
-  flex: none; width: 22px; height: 22px; border-radius: 7px; background: var(--bg2);
-  color: var(--muted); font-size: 11px; font-weight: 800; display: grid; place-items: center;
+/* ---------- FUNIL DE VENDAS (trapézios empilhados) ----------
+   Substitui as barras horizontais: elas davam os números certos mas não
+   pareciam um funil. A silhueta é o que faz a pessoa ver de relance onde o
+   lead trava. Cada etapa é um trapézio recortado por clip-path, um pouco mais
+   estreito que o de cima. */
+.funil { display: flex; flex-direction: column; align-items: center; padding: 6px 0 2px; }
+/* Os trapézios quase se tocam: é isso que faz o conjunto ler como UM funil
+   em vez de seis caixas soltas. */
+.fn-etapa { position: relative; cursor: pointer; margin-bottom: 3px; }
+.fn-forma {
+  position: relative; min-height: 62px; padding: 10px 26px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  color: #fff; text-align: center;
+  transition: transform .22s var(--ease), filter .22s var(--ease);
 }
-.fn3-name { font-size: 12.5px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fn3-track { position: relative; display: flex; justify-content: center; align-items: center; }
-.fn3-bar {
-  height: 38px; border-radius: 11px; min-width: 42px;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 6px 16px -6px rgba(13, 130, 95, .55), inset 0 1px 0 rgba(255, 255, 255, .25);
-  transition: width .6s var(--ease);
+.fn-etapa:hover .fn-forma { transform: scale(1.035); filter: brightness(1.06); }
+.fn-etapa.aberta .fn-forma { transform: scale(1.035); filter: brightness(1.06); }
+.fn-nome {
+  font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+  opacity: .92; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.fn3-count { color: #fff; font-size: 13.5px; font-weight: 800; text-shadow: 0 1px 2px rgba(0, 0, 0, .18); font-variant-numeric: tabular-nums; }
-.fn3-drop {
-  position: absolute; right: 10px; font-size: 10.5px; font-weight: 800; color: var(--red-ink);
-  background: var(--card); border: 1px solid var(--red-border, #f3c9c9); border-radius: 7px; padding: 1px 6px;
-  box-shadow: var(--shadow-xs);
+.fn-num {
+  font-size: 21px; font-weight: 800; letter-spacing: -.03em; line-height: 1.1;
+  font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(0, 0, 0, .18);
 }
-.fn3-conv { text-align: right; line-height: 1.05; }
-.fn3-conv b { display: block; font-size: 14px; font-weight: 800; color: var(--verde-deep); font-variant-numeric: tabular-nums; }
-.fn3-conv span { font-size: 10px; font-weight: 700; color: var(--faint); text-transform: uppercase; letter-spacing: .04em; }
+.fn-taxa { font-size: 10px; font-weight: 700; opacity: .82; }
+/* A queda fica FORA do trapézio: dentro, ela competia com o número e o
+   trapézio estreito cortava o texto. */
+.fn-queda {
+  position: absolute; top: 50%; right: -8px; transform: translate(100%, -50%);
+  font-size: 10.5px; font-weight: 800; color: var(--red-ink);
+  background: var(--card); border: 1px solid var(--red-border, #f3c9c9); border-radius: 7px;
+  padding: 1px 6px; box-shadow: var(--shadow-xs); white-space: nowrap;
+}
+/* Detalhe da etapa: fechado por padrão, abre no clique. Usa grid 0fr → 1fr
+   para animar a altura sem precisar saber o tamanho do conteúdo.
+   O conteúdo vai dentro de UM wrapper (.fn-det-in) de propósito: com vários
+   filhos diretos, o 0fr zera só a primeira linha e as outras ficam em auto —
+   era por isso que o detalhe fechado ainda ocupava ~70px e abria um buraco
+   entre os trapézios. */
+.fn-detalhe {
+  display: grid; grid-template-rows: 0fr; overflow: hidden;
+  transition: grid-template-rows .24s var(--ease), margin-top .24s var(--ease);
+}
+.fn-detalhe > .fn-det-in { min-height: 0; overflow: hidden; }
+.fn-etapa.aberta .fn-detalhe { grid-template-rows: 1fr; margin-top: 8px; }
+.fn-det-linha {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  padding: 7px 13px; font-size: 12.5px; color: var(--text2);
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 5px;
+}
+.fn-det-linha b { font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+.fn-det-linha b.ok { color: var(--verde-deep); }
+.fn-det-nota { font-size: 11.5px; color: var(--muted); text-align: center; line-height: 1.5; }
+.fn-det-nota b { color: var(--text2); font-weight: 700; }
+
 @media (max-width: 560px) {
-  .fn3-row { grid-template-columns: 96px 1fr 48px; gap: 9px; }
-  .fn3-idx { display: none; }
+  .fn-forma { min-height: 54px; padding: 8px 16px; }
+  .fn-num { font-size: 18px; }
+  .fn-nome { font-size: 9.5px; letter-spacing: .05em; }
+  /* Em tela estreita não há espaço à direita do trapézio: a queda vira uma
+     etiqueta sobreposta ao canto, em vez de sair da tela. */
+  .fn-queda { right: 2px; transform: translate(0, -50%); font-size: 9.5px; }
 }
 
 /* ---------- sugestões (funil) ---------- */

@@ -96,8 +96,29 @@ function dadosDoPagador({ contactName, waId, payer }) {
     name: String(p.name || contactName).trim().slice(0, 120),
     email: String(p.email).trim().toLowerCase().slice(0, 140),
     document: doc,
-    phone: String(p.phone || waId || '').replace(/\D/g, '').slice(0, 15)
+    phone: telefoneNacional(p.phone || waId)
   };
+}
+
+// ---------------------------------------------------------------------------
+// TELEFONE — SEM o código do país
+//
+// O Koonfy guarda o telefone no formato do WhatsApp (E.164): 5511987654321,
+// com o 55 do Brasil na frente. A Simplify espera o número NACIONAL, DDD mais
+// o assinante — o exemplo da documentação dela é "82981440676", 11 dígitos.
+//
+// Mandando com o 55, ela lê o "55" como DDD: um (11) 98765-4321 chegava no
+// painel dela como "(55) 11987-6543", telefone de outra pessoa. Se ela usar
+// esse número para avisar o pagador, o aviso vai para o lugar errado.
+//
+// O tamanho desfaz a ambiguidade com o DDD 55 (Santa Maria/RS): um número
+// nacional tem no máximo 11 dígitos, então 12 ou 13 dígitos começando em 55 só
+// pode ser o código do país.
+// ---------------------------------------------------------------------------
+function telefoneNacional(valor) {
+  let d = String(valor || '').replace(/\D/g, '');
+  if (d.length >= 12 && d.startsWith('55')) d = d.slice(2);
+  return d.slice(0, 11);
 }
 
 // ---------------------------------------------------------------------------
@@ -152,4 +173,4 @@ function webhookHandler(broadcast) {
   };
 }
 
-module.exports = { BASE, cfg, configured, call, dadosDoPagador, webhookHandler };
+module.exports = { BASE, cfg, configured, call, dadosDoPagador, telefoneNacional, webhookHandler };

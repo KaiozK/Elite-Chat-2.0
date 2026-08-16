@@ -5409,35 +5409,62 @@ function donut(items, size = 168, thick = 22) {
   </div>`;
 }
 
-// Gráfico de funil (trapézios centrados)
-// Funil de vendas — barras centralizadas que formam a silhueta do funil,
-// com % de conversão (relativo à 1ª etapa) e queda entre etapas.
+// ---------------------------------------------------------------------------
+// FUNIL DE VENDAS — trapézios empilhados, no formato de funil de verdade
+//
+// Substitui as barras horizontais que havia aqui: elas mostravam os números
+// certos, mas não pareciam um funil — a silhueta que faz a pessoa entender de
+// relance onde o lead trava.
+//
+// A largura de cada etapa é FIXA e decrescente (não proporcional ao volume),
+// como no desenho de referência. É de propósito: com uma etapa em 2 e as
+// outras em 0, o proporcional achata tudo numa tira e o gráfico não comunica
+// nada. A silhueta mostra a JORNADA; os números e as porcentagens ao lado
+// mostram o volume.
+//
+// Clicar numa etapa abre o detalhe (volume, conversão e quantos vieram da
+// etapa anterior), como no protótipo.
+// ---------------------------------------------------------------------------
 function funnelChart(stages) {
   if (!stages || !stages.length) return '<p class="muted">Sem etapas.</p>';
   const n = stages.length;
-  const max = Math.max(1, ...stages.map(s => s.count));
   const first = stages[0].count || 0;
-  return `<div class="funnel3">${stages.map((s, i) => {
-    const w = Math.max(9, Math.round(s.count / max * 100));           // largura da barra (%)
-    const t = n > 1 ? i / (n - 1) : 0;                                 // 0 (topo) → 1 (base)
-    const l1 = (26 + t * 20).toFixed(0), l2 = (40 + t * 22).toFixed(0);
-    const conv = first ? Math.round(s.count / first * 100) : 0;        // conversão desde a 1ª etapa
+  const larguras = stages.map((_, i) => 100 - (i * (n > 1 ? 46 / (n - 1) : 0)));  // 100% → 54%
+  return `<div class="funil" onclick="funilToggle(event)">${stages.map((s, i) => {
+    const conv = first ? Math.round(s.count / first * 100) : 0;   // conversão desde a 1ª etapa
     const prev = i > 0 ? stages[i - 1].count : null;
+    const passo = (prev != null && prev > 0) ? Math.round(s.count / prev * 100) : null;
     const drop = (prev != null && prev > 0 && s.count < prev) ? Math.round((prev - s.count) / prev * 100) : null;
-    return `<div class="fn3-row">
-      <div class="fn3-label" title="${esc(s.stage)}">
-        <span class="fn3-idx">${i + 1}</span>
-        <span class="fn3-name">${esc(s.stage)}</span>
+    const t = n > 1 ? i / (n - 1) : 0;                            // 0 (topo) → 1 (base)
+    // Do verde da marca (topo) ao verde fechado (base): a mesma família de cor
+    // do resto do app, escurecendo conforme o lead avança.
+    const c1 = `hsl(150 ${(64 - t * 10).toFixed(0)}% ${(62 - t * 22).toFixed(0)}%)`;
+    const c2 = `hsl(154 ${(66 - t * 8).toFixed(0)}% ${(46 - t * 21).toFixed(0)}%)`;
+    const ultima = i === n - 1;
+    return `<div class="fn-etapa" data-i="${i}" style="width:${larguras[i].toFixed(1)}%">
+      <div class="fn-forma" style="background:linear-gradient(160deg,${c1},${c2});
+           clip-path:polygon(0 0, 100% 0, ${ultima ? '92% 100%, 8%' : '94% 100%, 6%'} 100%)">
+        <span class="fn-nome">${esc(s.stage)}</span>
+        <b class="fn-num">${fmtNk(s.count)}</b>
+        ${passo != null ? `<span class="fn-taxa">${passo}% da anterior</span>` : ''}
       </div>
-      <div class="fn3-track">
-        <div class="fn3-bar" style="width:${w}%;background:linear-gradient(180deg,hsl(158 58% ${l2}%),hsl(160 62% ${l1}%))">
-          <b class="fn3-count">${fmtN(s.count)}</b>
-        </div>
-        ${drop != null ? `<span class="fn3-drop" title="Queda em relação à etapa anterior">▼ ${drop}%</span>` : ''}
-      </div>
-      <div class="fn3-conv"><b>${conv}%</b><span>conv.</span></div>
+      ${drop != null && drop > 0 ? `<span class="fn-queda" title="Queda em relação à etapa anterior">▼ ${drop}%</span>` : ''}
+      <div class="fn-detalhe"><div class="fn-det-in">
+        <div class="fn-det-linha"><span>Volume</span><b>${fmtN(s.count)}</b></div>
+        <div class="fn-det-linha"><span>Conversão desde ${esc(stages[0].stage)}</span><b class="ok">${conv}%</b></div>
+        ${i > 0 ? `<div class="fn-det-nota">${fmtN(s.count)} de ${fmtN(prev)} avançaram de <b>${esc(stages[i - 1].stage)}</b> para cá</div>` : ''}
+      </div></div>
     </div>`;
   }).join('')}</div>`;
+}
+
+// Uma etapa aberta por vez: duas abertas empurram o cartão e a silhueta do
+// funil se perde no meio dos detalhes.
+function funilToggle(ev) {
+  const et = ev.target.closest('.fn-etapa'); if (!et) return;
+  const abrir = !et.classList.contains('aberta');
+  et.closest('.funil').querySelectorAll('.fn-etapa.aberta').forEach(e => e.classList.remove('aberta'));
+  if (abrir) et.classList.add('aberta');
 }
 
 // ==================== MAPA DO BRASIL (leads por estado) ====================
