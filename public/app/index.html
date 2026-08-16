@@ -18,7 +18,7 @@
 <meta name="application-name" content="Koonfy">
 <link rel="apple-touch-icon" href="/assets/koonfy-180.png">
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/app/style.css?v=per2">
+<link rel="stylesheet" href="/app/style.css?v=fx1">
 <!-- Cores da marca definidas no Admin (aba Personalização). Vem DEPOIS do
      style.css porque só redefine variáveis; campo vazio no painel não é
      escrito e o padrão continua valendo. -->
@@ -204,11 +204,10 @@
       <a class="nav-item" data-view="afiliacao" href="#/afiliacao">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2l2.1 4.5 4.9.6-3.6 3.4.9 4.9-4.3-2.4-4.3 2.4.9-4.9L5 8.3l4.9-.6z"/><path d="M8.5 20.5h7"/></svg>
         <span>Afiliação</span></a>
-      <!-- A trilha de configuração morava no topo da dashboard e ocupava metade
-           dela. Aqui ela tem tela própria e continua fácil de achar. -->
-      <a class="nav-item" data-view="missoes" href="#/missoes">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11.5l2 2 4.5-4.5"/><path d="M20.5 12a8.5 8.5 0 1 1-3.6-6.9"/><path d="M21 4.5l-2.5 2.5"/></svg>
-        <span>Primeiros passos</span></a>
+      <!-- "Primeiros passos" NÃO tem item no menu de propósito: é uma tela de
+           quem está começando, não um lugar para onde se volta todo dia. A
+           entrada é a faixa no topo da dashboard, que some quando a
+           configuração termina. A rota #/missoes continua valendo. -->
       <a class="nav-item hidden" id="nav-admin" data-view="admin" href="#/admin">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 4.6-3.1 8.6-8 9.9C7.1 20.6 4 16.6 4 12V7l8-4z"/><path d="M9.2 12.2l2 2 3.8-4"/></svg>
         <span>Admin SaaS</span></a>
@@ -295,7 +294,7 @@
 <script src="/app/vendor/qrcode.js"></script>
 <script src="/app/br-uf.js?v=1"></script>
 <script src="/app/voz.js?v=1"></script>
-<script src="/app/app.js?v=per2"></script>
+<script src="/app/app.js?v=fx1"></script>
 <script>/* registra o Service Worker e a engine cedo (offline funciona antes do login) */
   if (window.ECNotify) { try { ECNotify.init(); } catch (e) {} }
 </script>

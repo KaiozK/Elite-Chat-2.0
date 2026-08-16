@@ -2319,6 +2319,7 @@ async function renderDashboard() {
         <div class="seg">${segKind.map(([k, l]) => `<button class="${k === kind ? 'on' : ''}" title="${l}" onclick="setChartKind('${k}')">${l}</button>`).join('')}</div>
       </div>
     </div>
+    <div id="missoes-faixa"></div>
     <div class="dash-tiles">
       ${(() => {
         // Os atalhos seguem o mesmo recorte do menu: no celular não faz sentido
@@ -2464,9 +2465,36 @@ async function renderDashboard() {
       ${dashScheduleCard(d.schedule)}
       ${d.agents ? dashAgentsCard(d.agents) : ''}`;
     loadGeo();
+    faixaMissoes();
   } catch (e) {
     $('#dash').innerHTML = `<div class="card err">${esc(e.message)}</div>`;
   }
+}
+
+// ---------------------------------------------------------------------------
+// FAIXA DAS MISSÕES na dashboard
+//
+// É só a PORTA: uma linha com o progresso e o próximo passo, que abre a tela
+// de Primeiros passos. A trilha inteira aqui ocupava metade da dashboard; um
+// item fixo no menu também não serve, porque isto é tela de quem está
+// começando, não lugar de voltar todo dia.
+//
+// Termina a configuração, a faixa some sozinha — sem precisar fechar nada.
+// ---------------------------------------------------------------------------
+async function faixaMissoes() {
+  const box = $('#missoes-faixa'); if (!box) return;
+  let m = null;
+  try { m = await api('/missoes'); } catch { return; }
+  if (!m || m.completo) { box.innerHTML = ''; return; }
+  box.innerHTML = `
+    <a class="mis-faixa" href="#/missoes">
+      <span class="mis-faixa-anel" style="--p:${m.percent}"><i>${m.feitas}</i></span>
+      <span class="mis-faixa-tx">
+        <b>Comece por aqui · ${m.feitas} de ${m.total} passos</b>
+        ${m.proxima ? `<span>Próximo: ${esc(m.proxima.titulo)}</span>` : ''}
+      </span>
+      <span class="mis-faixa-ir">Continuar ${ico('arrowright', 13)}</span>
+    </a>`;
 }
 
 // ===========================================================================
