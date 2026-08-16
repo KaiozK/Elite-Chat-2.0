@@ -4031,20 +4031,153 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
   #ep-box table td { white-space: normal; word-break: break-word; }
 }
 
-/* ===================== AFILIAÇÃO ===================== */
-.aff-hero {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px;
+/* ===================== AFILIAÇÃO =====================
+   A tela vende uma coisa só: o link. O desenho segue essa ordem — a oferta e o
+   link dividem a primeira dobra, com a oferta em fundo escuro (é o único bloco
+   escuro do painel, e por isso o olho vai nele primeiro) e o link em cartão
+   claro ao lado, pronto para copiar. */
+.aff-top {
+  display: grid; grid-template-columns: 1.05fr 1fr; gap: 14px; margin-bottom: 14px;
+  align-items: stretch;
 }
-.aff-hero-n {
-  background: var(--brand-bg); border: 1px solid var(--brand-border); border-radius: var(--radius);
-  padding: 16px 18px; display: flex; flex-direction: column; gap: 3px;
+.aff-oferta {
+  position: relative; overflow: hidden;
+  border-radius: var(--radius); padding: 22px 24px;
+  background: radial-gradient(120% 130% at 0% 0%, #146b4d 0%, #0e4c39 48%, #0a3428 100%);
+  color: #eaf6f0;
+  display: flex; flex-direction: column; justify-content: center; gap: 14px;
 }
-.aff-hero-n b { font-size: 24px; font-weight: 800; letter-spacing: -.02em; color: var(--verde-deep); line-height: 1.1; }
-.aff-hero-n span { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+/* brilho discreto no canto, para o bloco não ficar chapado */
+.aff-oferta::after {
+  content: ''; position: absolute; right: -60px; top: -60px; width: 200px; height: 200px;
+  border-radius: 50%; background: rgba(80, 234, 95, .16); filter: blur(28px); pointer-events: none;
+}
+.aff-tag {
+  display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
+  padding: 4px 11px; border-radius: 999px; font-size: 10.5px; font-weight: 800;
+  letter-spacing: .07em; text-transform: uppercase;
+  background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .18); color: #d6f5e5;
+}
+.aff-nums { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.aff-num { display: flex; flex-direction: column; gap: 2px; }
+/* O número é o argumento: tamanho grande, peso 800 e o "%" menor colado nele. */
+.aff-num b {
+  display: flex; align-items: baseline; gap: 1px;
+  font-size: 44px; font-weight: 800; letter-spacing: -.045em; line-height: 1; color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.aff-num b i { font-style: normal; font-size: 20px; font-weight: 700; opacity: .85; }
+.aff-num span { font-size: 12.5px; color: #b7dccb; }
+.aff-num span b { font-weight: 800; color: #eaf6f0; font-size: 12.5px; display: inline; }
+.aff-mais { font-size: 22px; font-weight: 300; color: rgba(255, 255, 255, .38); }
+.aff-recorrente {
+  display: flex; align-items: flex-start; gap: 9px; margin: 0;
+  font-size: 12.5px; line-height: 1.5; color: #c9e6d8;
+  padding-top: 13px; border-top: 1px solid rgba(255, 255, 255, .12);
+}
+.aff-recorrente svg { flex: none; margin-top: 1px; color: var(--verde); }
+.aff-recorrente b { color: #fff; font-weight: 700; }
+
+.aff-link-box {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 20px 22px; box-shadow: var(--shadow-xs);
+  display: flex; flex-direction: column; justify-content: center; gap: 11px;
+}
+.aff-lbl {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 10.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--faint);
+}
+.aff-lbl svg { color: var(--verde-esc); }
+.aff-link {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px 14px; overflow: hidden;
+}
+.aff-link code {
+  font-size: 13px; font-weight: 600; color: var(--text); word-break: break-all;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.aff-acoes { display: flex; gap: 9px; flex-wrap: wrap; }
+.aff-acoes .btn { flex: 1 1 150px; justify-content: center; }
+.aff-cod { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
+.aff-cod b { color: var(--text); font-weight: 800; letter-spacing: .04em; }
+
+/* Placar: o que já aconteceu. O dinheiro ganho é o único em destaque. */
+.aff-placar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
+.aff-placar-i {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 15px 17px; display: flex; flex-direction: column; gap: 7px;
+}
+.aff-placar-i.hi { background: linear-gradient(150deg, var(--brand-bg), var(--card)); border-color: var(--brand-border); }
+.aff-placar-lbl {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 700; color: var(--muted);
+}
+.aff-placar-lbl svg { color: var(--verde-esc); flex: none; }
+.aff-placar-i b {
+  font-size: 22px; font-weight: 800; letter-spacing: -.035em; color: var(--text);
+  font-variant-numeric: tabular-nums; line-height: 1;
+}
+.aff-placar-i.hi b { color: var(--verde-deep); }
+
+/* Simulação: o número que faz a pessoa querer indicar, com o preço REAL do
+   plano publicado — nada inventado. */
+.aff-sim-linha { display: flex; align-items: center; gap: 16px; margin: 18px 0 16px; }
+.aff-range { flex: 1; min-width: 0; accent-color: var(--verde-esc); height: 4px; cursor: pointer; }
+.aff-sim-qtd { flex: none; font-size: 12.5px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.aff-sim-qtd b {
+  font-size: 17px; font-weight: 800; color: var(--text); margin-right: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.aff-sim-out { display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px; }
+.aff-sim-box {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 13px;
+  padding: 13px 15px; display: flex; flex-direction: column; gap: 5px;
+}
+.aff-sim-box.hi { background: linear-gradient(150deg, var(--brand-bg), var(--card)); border-color: var(--brand-border); }
+.aff-sim-box span { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.aff-sim-box b {
+  font-size: 20px; font-weight: 800; letter-spacing: -.035em; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.aff-sim-box.hi b { color: var(--verde-deep); }
+
+/* Lista de indicados: linha com avatar, como no resto do app. */
+.aff-lista { display: flex; flex-direction: column; gap: 2px; }
+.aff-ref { display: flex; align-items: center; gap: 11px; padding: 9px 2px; border-bottom: 1px solid var(--border); }
+.aff-ref:last-child { border-bottom: none; }
+.aff-ref-av {
+  flex: none; width: 34px; height: 34px; border-radius: 50%;
+  background: var(--brand-bg); color: var(--verde-deep);
+  display: grid; place-items: center; font-size: 12px; font-weight: 800;
+}
+.aff-ref-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.aff-ref-tx b { font-size: 13.5px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aff-ref-tx span { font-size: 11.5px; color: var(--muted); }
+
+/* Vazio que CONVIDA em vez de só informar: sem indicados, o passo seguinte é
+   copiar o link, então ele está ali. */
+.aff-vazio { text-align: center; padding: 26px 18px 8px; display: flex; flex-direction: column; align-items: center; gap: 9px; }
+.aff-vazio-ic {
+  width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--brand-bg); color: var(--verde-esc); margin-bottom: 2px;
+}
+.aff-vazio b { font-size: 15px; font-weight: 800; color: var(--text); }
+.aff-vazio p { margin: 0 0 6px; font-size: 12.5px; color: var(--muted); line-height: 1.55; max-width: 330px; }
+
+@media (max-width: 900px) {
+  .aff-top { grid-template-columns: 1fr; }
+}
 @media (max-width: 760px) {
-  .aff-hero { grid-template-columns: 1fr 1fr; gap: 9px; }
-  .aff-hero-n { padding: 13px 14px; }
-  .aff-hero-n b { font-size: 20px; }
+  .aff-placar { grid-template-columns: 1fr 1fr; gap: 9px; }
+  .aff-placar-i { padding: 12px 14px; }
+  .aff-placar-i b { font-size: 19px; }
+  .aff-oferta { padding: 18px; }
+  .aff-num b { font-size: 36px; }
+  .aff-num b i { font-size: 17px; }
+  .aff-sim-out { grid-template-columns: 1fr; }
+  .aff-sim-linha { flex-direction: column; align-items: stretch; gap: 9px; }
+  .aff-sim-qtd { text-align: center; }
+  .aff-acoes .btn { flex: 1 1 100%; }
 }
 
 /* ===================== RELATÓRIO DA CAMPANHA ===================== */
@@ -4403,15 +4536,20 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 .mis-tit p { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
 /* Anel de progresso em conic-gradient: uma variável (--p) e nenhum SVG. */
 .mis-anel {
-  flex: none; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center;
+  flex: none; width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center;
   background: conic-gradient(var(--verde-esc) calc(var(--p) * 1%), var(--border) 0);
 }
+/* O "%" fica AO LADO do número, na mesma linha. Com `place-items:center` num
+   grid, os dois viravam duas linhas e o miolo do anel ficava com "64" em cima
+   e "%" embaixo. Flex em linha com alinhamento pela base é o que põe o símbolo
+   colado no número, como se lê. */
 .mis-anel span {
-  width: 36px; height: 36px; border-radius: 50%; background: var(--card);
-  display: grid; place-items: center; font-size: 12px; font-weight: 800; color: var(--verde-deep);
-  font-variant-numeric: tabular-nums;
+  width: 43px; height: 43px; border-radius: 50%; background: var(--card);
+  display: flex; align-items: baseline; justify-content: center; gap: 1px;
+  font-size: 14px; font-weight: 800; color: var(--verde-deep); line-height: 1;
+  font-variant-numeric: tabular-nums; letter-spacing: -.03em;
 }
-.mis-anel i { font-style: normal; font-size: 8.5px; margin-left: 1px; }
+.mis-anel i { font-style: normal; font-size: 9px; font-weight: 700; }
 /* Recolhido por padrão em quem já conhece: o corpo colapsa com grid 0fr→1fr,
    e o conteúdo vai num wrapper único (senão só a primeira linha zera). */
 .mis-corpo { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .26s var(--ease); }

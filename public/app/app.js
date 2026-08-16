@@ -2207,7 +2207,10 @@ async function renderDashboard() {
         ];
         const mobile = isMobileLayout();
         return atalhos
-          .filter(([v]) => (mobile ? MOBILE_VIEWS.has(v) : v !== 'schedule'))
+          // No celular a Agenda sai também dos atalhos: ela já não está na
+          // barra de baixo, e com ela sobravam 4 itens quebrando em duas
+          // fileiras — uma delas com um item solto. Três é uma fileira só.
+          .filter(([v]) => (mobile ? (MOBILE_VIEWS.has(v) && v !== 'schedule') : v !== 'schedule'))
           // um atalho para um módulo fora do plano só levaria o cliente a um
           // redirecionamento para Assinatura, então nem aparece
           .filter(([v]) => planHas(v))
@@ -7023,53 +7026,174 @@ async function paintBilling() {
 // quem não rolasse a tela até o fim nunca descobria que o programa existe. É um
 // canal de aquisição, e canal de aquisição escondido não é usado.
 // ---------------------------------------------------------------------------
+// ============================================================================
+// AFILIAÇÃO
+//
+// Esta tela vende uma coisa só: o LINK. Ela estava com quatro caixas de número
+// e três cartões iguais empilhados — tudo com o mesmo peso visual, e o link,
+// que é o produto, perdido no meio de um deles.
+//
+// Agora há uma ordem de leitura: (1) quanto eu ganho e por quanto tempo,
+// (2) o link, grande e pronto para compartilhar, (3) quanto isso dá em dinheiro
+// no MEU caso, com o preço real do plano publicado, e só depois a lista de
+// indicados e o saque.
+// ============================================================================
+let AFF = null;
+let AFF_SIM = 5;   // quantos indicados a simulação considera
+
 async function renderAfiliacao() {
   $('#view').innerHTML = `<div class="page"><div class="card">${skel(5)}</div></div>`;
   try {
-    const d = await api('/billing');
-    const refLink = `${API.webOrigin}/app/?ref=${d.affiliate.code}`;
-    $('#view').innerHTML = `<div class="page">
-      <div class="page-head"><h1>Afiliação</h1><p>Indique o Koonfy e receba comissão de cada assinatura, para sempre</p></div>
-
-      <div class="aff-hero">
-        <div class="aff-hero-n"><b>${d.affiliate.percentFirst}%</b><span>na primeira assinatura</span></div>
-        <div class="aff-hero-n"><b>${d.affiliate.percentRenewal}%</b><span>em toda renovação</span></div>
-        <div class="aff-hero-n"><b>${d.affiliate.referrals.length}</b><span>indicados</span></div>
-        <div class="aff-hero-n"><b>${fmtBRL(d.affiliate.earned)}</b><span>já ganhos</span></div>
-      </div>
-
-      <div class="card">
-        <h2>${ico('link')} Seu link de indicação</h2>
-        <p class="muted" style="margin:0 0 10px;font-size:13px">Quem entrar por ele fica marcado como seu indicado. A comissão cai na
-        sua carteira <b>automaticamente</b> a cada pagamento confirmado — na primeira assinatura e em todas as renovações.</p>
-        <div class="linkrow"><code>${esc(refLink)}</code><button class="icon-btn" title="Copiar" onclick="copyText('${esc(refLink)}')">${ico('copy', 13)}</button></div>
-        <p class="muted" style="margin:10px 0 0;font-size:12.5px">Seu código: <b>${esc(d.affiliate.code)}</b></p>
-      </div>
-
-      <div class="two-col even">
-        <div class="card">
-          <h2>${ico('users')} Seus indicados</h2>
-          ${d.affiliate.referrals.length
-            ? d.affiliate.referrals.map(r => `<div class="tx"><span class="tx-lbl">${esc(r.name)}</span><span class="pill ${r.status === 'active' ? 'done' : ''}">${(BILL_ST[r.status] || [r.status])[0]}</span></div>`).join('')
-            : '<p class="muted" style="margin:0;font-size:13px">Ninguém ainda. Compartilhe o seu link acima para começar.</p>'}
-        </div>
-
-        <div class="card aff-card">
-          <h2>${ico('download-circle')} Sacar comissões</h2>
-          <p class="muted" style="margin:0 0 4px;font-size:13px">Saldo da carteira: <b>${fmtBRL(d.wallet.balance)}</b>. O saque cai na chave Pix que você informar.</p>
-          <div class="row" style="margin-top:14px">
-            <label style="flex:1.4">Chave Pix p/ saque<input id="wd-key" placeholder="CPF, e-mail ou aleatória"></label>
-            <label style="flex:1">Valor (R$)<input id="wd-amount" placeholder="mín. 20,00" inputmode="decimal" oninput="wdQuote()"></label>
-            <button class="btn no-grow" onclick="withdrawWallet()">Sacar</button>
-          </div>
-          <p class="hint" id="wd-quote" style="margin-top:8px;text-align:left"></p>
-          ${d.withdrawals.length ? `<div class="tx-list" style="margin-top:10px">${d.withdrawals.map(w => `
-            <div class="tx"><span class="tx-lbl">Saque ${fmtBRL(w.amount)}</span><span class="muted" style="font-size:11px">${timeAgo(w.ts)}</span>
-            <span class="pill ${w.status === 'paid' ? 'done' : w.status === 'rejected' ? '' : 'pending'}">${{ pending: 'Em análise', paid: 'Pago', rejected: 'Recusado' }[w.status] || w.status}</span></div>`).join('')}</div>` : ''}
-        </div>
-      </div>
-    </div>`;
+    AFF = await api('/billing');
+    pintarAfiliacao();
   } catch (e) { $('#view').innerHTML = `<div class="page"><div class="card err">${esc(e.message)}</div></div>`; }
+}
+
+// O plano de referência da simulação é o mais CARO publicado: é o teto honesto
+// do que dá para ganhar, e é o número que faz a pessoa querer indicar.
+function affPlano() {
+  const planos = ((AFF && AFF.plans) || []).filter(p => !p.archived && p.price > 0);
+  return planos.length ? planos.reduce((x, y) => (y.price > x.price ? y : x)) : null;
+}
+
+function pintarAfiliacao() {
+  const d = AFF, a = d.affiliate;
+  const refLink = `${API.webOrigin}/app/?ref=${a.code}`;
+  const ativos = a.referrals.filter(r => r.status === 'active').length;
+  const plano = affPlano();
+  const porMes = plano ? Math.floor(plano.price * a.percentRenewal / 100) : 0;
+  const primeira = plano ? Math.floor(plano.price * a.percentFirst / 100) : 0;
+  const zap = 'Uso o Koonfy para atender e vender pelo WhatsApp. Se quiser testar: ' + refLink;
+
+  $('#view').innerHTML = `<div class="page aff">
+    <div class="page-head">
+      <h1>Afiliação</h1>
+      <p>Indique o Koonfy e receba comissão de cada assinatura, todo mês, enquanto ela durar</p>
+    </div>
+
+    <div class="aff-top">
+      <div class="aff-oferta">
+        <span class="aff-tag">${ico('sparkles', 12)} Programa de indicação</span>
+        <div class="aff-nums">
+          <div class="aff-num">
+            <b>${a.percentFirst}<i>%</i></b>
+            <span>na <b>1ª</b> assinatura</span>
+          </div>
+          <span class="aff-mais">+</span>
+          <div class="aff-num">
+            <b>${a.percentRenewal}<i>%</i></b>
+            <span>em <b>toda</b> renovação</span>
+          </div>
+        </div>
+        <p class="aff-recorrente">
+          ${ico('refresh', 14)}
+          <span>A comissão de renovação <b>não tem prazo</b>. Enquanto o seu indicado pagar, você recebe.</span>
+        </p>
+      </div>
+
+      <div class="aff-link-box">
+        <span class="aff-lbl">${ico('link', 13)} Seu link de indicação</span>
+        <div class="aff-link"><code>${esc(refLink)}</code></div>
+        <div class="aff-acoes">
+          <button class="btn primary" onclick="copyText('${esc(refLink)}')">${ico('copy', 14)} Copiar link</button>
+          <a class="btn" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(zap)}">
+            ${waLogo(14, 'currentColor')} Enviar no WhatsApp</a>
+        </div>
+        <p class="aff-cod">Código <b>${esc(a.code)}</b> — quem entrar por ele fica marcado como seu indicado <b>para sempre</b>.</p>
+      </div>
+    </div>
+
+    <div class="aff-placar">
+      <div class="aff-placar-i hi">
+        <span class="aff-placar-lbl">${ico('briefcase', 13)} Já ganho</span>
+        <b>${fmtBRL(a.earned)}</b>
+      </div>
+      <div class="aff-placar-i">
+        <span class="aff-placar-lbl">${ico('users', 13)} Indicados</span>
+        <b>${fmtN(a.referrals.length)}</b>
+      </div>
+      <div class="aff-placar-i">
+        <span class="aff-placar-lbl">${ico('check-circle', 13)} Assinando agora</span>
+        <b>${fmtN(ativos)}</b>
+      </div>
+      <div class="aff-placar-i">
+        <span class="aff-placar-lbl">${ico('zap', 13)} Recorrente por mês</span>
+        <b>${fmtBRL(ativos * porMes)}</b>
+      </div>
+    </div>
+
+    ${plano ? `
+    <div class="card aff-sim">
+      <h2>${ico('trend')} Quanto isso dá por mês</h2>
+      <p class="muted" style="margin:2px 0 0;font-size:13px">
+        Contas com o plano <b>${esc(plano.name)}</b> (${fmtBRL(plano.price)}/mês). Arraste para ver com mais indicados.
+      </p>
+      <div class="aff-sim-linha">
+        <input type="range" min="1" max="50" value="${AFF_SIM}" oninput="affSim(this.value)" class="aff-range" aria-label="Quantidade de indicados">
+        <span class="aff-sim-qtd"><b id="aff-sim-n">${AFF_SIM}</b> indicados</span>
+      </div>
+      <div class="aff-sim-out">
+        <div class="aff-sim-box"><span>Entra no 1º mês</span><b id="aff-sim-1">${fmtBRL(AFF_SIM * primeira)}</b></div>
+        <div class="aff-sim-box hi"><span>Todo mês, depois</span><b id="aff-sim-m">${fmtBRL(AFF_SIM * porMes)}</b></div>
+        <div class="aff-sim-box"><span>Em 12 meses</span><b id="aff-sim-a">${fmtBRL(AFF_SIM * primeira + AFF_SIM * porMes * 11)}</b></div>
+      </div>
+      <p class="hint" style="text-align:left;margin-top:12px">
+        ${ico('help', 12)} Estimativa com todos no mesmo plano e sem cancelamentos. O que conta é o pagamento confirmado.
+      </p>
+    </div>` : ''}
+
+    <div class="two-col even">
+      <div class="card">
+        <h2>${ico('users')} Seus indicados</h2>
+        ${a.referrals.length ? `
+          <div class="aff-lista">
+            ${a.referrals.map(r => `
+              <div class="aff-ref">
+                <span class="aff-ref-av">${esc(waInitials(r.name))}</span>
+                <div class="aff-ref-tx">
+                  <b>${esc(r.name)}</b>
+                  <span>entrou ${timeAgo(r.createdAt)}</span>
+                </div>
+                <span class="pill ${r.status === 'active' ? 'done' : 'pending'}">${(BILL_ST[r.status] || [r.status])[0]}</span>
+              </div>`).join('')}
+          </div>` : `
+          <div class="aff-vazio">
+            <span class="aff-vazio-ic">${ico('send', 22)}</span>
+            <b>Ninguém ainda</b>
+            <p>Mande o seu link para quem atende no WhatsApp e responde tudo à mão. A comissão começa no primeiro pagamento.</p>
+            <button class="btn primary no-grow" onclick="copyText('${esc(refLink)}')">${ico('copy', 14)} Copiar meu link</button>
+          </div>`}
+      </div>
+
+      <div class="card aff-card">
+        <h2>${ico('download-circle')} Sacar comissões</h2>
+        <p class="muted" style="margin:0 0 4px;font-size:13px">Saldo da carteira: <b>${fmtBRL(d.wallet.balance)}</b>. O saque cai na chave Pix que você informar.</p>
+        <div class="row" style="margin-top:14px">
+          <label style="flex:1.4">Chave Pix p/ saque<input id="wd-key" placeholder="CPF, e-mail ou aleatória"></label>
+          <label style="flex:1">Valor (R$)<input id="wd-amount" placeholder="mín. 20,00" inputmode="decimal" oninput="wdQuote()"></label>
+          <button class="btn no-grow" onclick="withdrawWallet()">Sacar</button>
+        </div>
+        <p class="hint" id="wd-quote" style="margin-top:8px;text-align:left"></p>
+        ${d.withdrawals.length ? `<div class="tx-list" style="margin-top:10px">${d.withdrawals.map(w => `
+          <div class="tx"><span class="tx-lbl">Saque ${fmtBRL(w.amount)}</span><span class="muted" style="font-size:11px">${timeAgo(w.ts)}</span>
+          <span class="pill ${w.status === 'paid' ? 'done' : w.status === 'rejected' ? '' : 'pending'}">${{ pending: 'Em análise', paid: 'Pago', rejected: 'Recusado' }[w.status] || w.status}</span></div>`).join('')}</div>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
+// Recalcula sem repintar a tela: repintar perderia o foco do controle
+// deslizante no meio do arrasto.
+function affSim(n) {
+  AFF_SIM = Math.max(1, Math.min(50, Number(n) || 1));
+  const a = AFF.affiliate, plano = affPlano();
+  if (!plano) return;
+  const prim = Math.floor(plano.price * a.percentFirst / 100);
+  const mes = Math.floor(plano.price * a.percentRenewal / 100);
+  $('#aff-sim-n').textContent = AFF_SIM;
+  $('#aff-sim-1').textContent = fmtBRL(AFF_SIM * prim);
+  $('#aff-sim-m').textContent = fmtBRL(AFF_SIM * mes);
+  $('#aff-sim-a').textContent = fmtBRL(AFF_SIM * prim + AFF_SIM * mes * 11);
 }
 
 // ============================================================================
