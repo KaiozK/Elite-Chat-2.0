@@ -4539,22 +4539,22 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
   flex: none; width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center;
   background: conic-gradient(var(--verde-esc) calc(var(--p) * 1%), var(--border) 0);
 }
-/* O "%" fica AO LADO do número, na mesma linha. Com `place-items:center` num
-   grid, os dois viravam duas linhas e o miolo do anel ficava com "64" em cima
-   e "%" embaixo. Flex em linha com alinhamento pela base é o que põe o símbolo
-   colado no número, como se lê. */
+/* Um bloco de texto SÓ no miolo: o número de etapas concluídas.
+   Antes eram dois ("64" grande + "%" pequeno), e por mais que o CSS
+   centralizasse, o peso visual pendia para o número e o conjunto parecia
+   torto. Com um glifo só, centralizar é centralizar. O progresso é o anel; o
+   total está escrito ao lado. */
 .mis-anel span {
   width: 43px; height: 43px; border-radius: 50%; background: var(--card);
-  display: flex; align-items: baseline; justify-content: center; gap: 1px;
-  font-size: 14px; font-weight: 800; color: var(--verde-deep); line-height: 1;
+  display: grid; place-items: center;
+  font-size: 17px; font-weight: 800; color: var(--verde-deep); line-height: 1;
   font-variant-numeric: tabular-nums; letter-spacing: -.03em;
 }
-.mis-anel i { font-style: normal; font-size: 9px; font-weight: 700; }
 /* Recolhido por padrão em quem já conhece: o corpo colapsa com grid 0fr→1fr,
    e o conteúdo vai num wrapper único (senão só a primeira linha zera). */
 .mis-corpo { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .26s var(--ease); }
 .mis-card.aberta .mis-corpo { grid-template-rows: 1fr; }
-.mis-corpo > * { min-height: 0; overflow: hidden; }
+.mis-corpo > .mis-corpo-in { min-height: 0; overflow: hidden; }
 .mis-grupo { padding: 0 18px; }
 .mis-grupo:last-child { padding-bottom: 16px; }
 .mis-grupo-tit {
@@ -4592,4 +4592,11 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
   .mis-grupo { padding: 0 14px; }
   .mis-item { flex-wrap: wrap; }
   .mis-item .btn { width: 100%; }
+  /* Fechado, o cartão tem de ser UMA linha. No celular o "próximo passo"
+     empurrava o texto para três linhas e o cartão recolhido ficava com quase a
+     altura de um aberto — o oposto do que recolher serve. O passo seguinte
+     continua lá dentro, a um toque. */
+  .mis-prox { display: none; }
+  .mis-tit h2 { font-size: 15px; }
+  .mis-topo .btn { padding: 6px 10px; font-size: 12px; }
 }

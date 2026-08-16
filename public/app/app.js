@@ -2370,7 +2370,7 @@ async function carregarMissoes() {
 function pintarMissoes() {
   const box = $('#missoes-box'); if (!box || !MISSOES) return;
   const m = MISSOES;
-  const aberta = localStorage.getItem('ec_missoes_open') !== '0';
+  const aberta = localStorage.getItem('ec_missoes_open') === '1';
 
   if (m.completo) {
     box.innerHTML = `<div class="mis-pronto">
@@ -2383,17 +2383,25 @@ function pintarMissoes() {
 
   box.innerHTML = `<div class="card mis-card ${aberta ? 'aberta' : ''}">
     <div class="mis-topo" onclick="missoesAlternar()">
-      <div class="mis-anel" style="--p:${m.percent}">
-        <span>${m.percent}<i>%</i></span>
+      <!-- No miolo vai só o NÚMERO de etapas concluídas, um bloco de texto só.
+           Com "64" grande e "%" pequeno ao lado, o conjunto ficava opticamente
+           torto por mais que o CSS centralizasse: o peso visual pendia para o
+           número. O progresso quem mostra é o anel, e o total está escrito
+           logo ao lado — o símbolo não fazia falta. -->
+      <div class="mis-anel" style="--p:${m.percent}" title="${m.feitas} de ${m.total} passos concluídos">
+        <span>${m.feitas}</span>
       </div>
       <div class="mis-tit">
         <h2>Comece por aqui</h2>
-        <p>${m.feitas} de ${m.total} passos concluídos${m.proxima ? ` · próximo: <b>${esc(m.proxima.titulo)}</b>` : ''}</p>
+        <p>${m.feitas} de ${m.total} passos concluídos${m.proxima ? `<span class="mis-prox"> · próximo: <b>${esc(m.proxima.titulo)}</b></span>` : ''}</p>
       </div>
       <button class="btn small no-grow" onclick="event.stopPropagation();missoesAlternar()">
         ${aberta ? 'Recolher' : 'Ver os passos'} ${ico(aberta ? 'chevron-up' : 'chevron-down', 13)}</button>
     </div>
-    <div class="mis-corpo">
+    <!-- O conteúdo vai dentro de UM wrapper: o \`grid-template-rows: 0fr\` que
+         recolhe o cartão zera só a PRIMEIRA linha, e com um grupo por filho
+         direto o corpo continuava com quase 1000px de altura mesmo fechado. -->
+    <div class="mis-corpo"><div class="mis-corpo-in">
       ${m.grupos.map(g => `
         <div class="mis-grupo">
           <div class="mis-grupo-tit">${esc(g.nome)}
@@ -2408,12 +2416,12 @@ function pintarMissoes() {
               ${it.feita ? '' : `<a class="btn small no-grow" href="${it.rota}">${esc(it.acao)}</a>`}
             </div>`).join('')}
         </div>`).join('')}
-    </div>
+    </div></div>
   </div>`;
 }
 
 function missoesAlternar() {
-  const aberta = localStorage.getItem('ec_missoes_open') !== '0';
+  const aberta = localStorage.getItem('ec_missoes_open') === '1';
   localStorage.setItem('ec_missoes_open', aberta ? '0' : '1');
   pintarMissoes();
 }
