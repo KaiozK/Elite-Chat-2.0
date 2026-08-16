@@ -349,6 +349,10 @@ function handleCalls(acc, canalDaConta, v, broadcast) {
     if (ev.event === 'connect') {
       rec.status = 'ringing';
       rec.sdpOffer = sdp;
+      // Guardado no registro (e não só no aviso por SSE) para o aparelho que
+      // estava em segundo plano conseguir remontar a tela da chamada ao voltar
+      // — inclusive saber por QUAL número o cliente está ligando.
+      rec.canal = (canalDaConta && canalDaConta.label) || '';
       const contact = store.upsertContact(acc, waId, names[waId]);
       broadcast('call', {
         accountId: acc.id,

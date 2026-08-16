@@ -228,6 +228,10 @@ function applyPayment(charge, broadcast) {
             id: db.genId('tx'), ts: Date.now(), amount: cut, type: 'commission',
             label: `Comissão ${pct}%, ${kind === 'first' ? 'nova assinatura' : 'renovação'} (${acc.name})`
           });
+          // Notificação nos aparelhos do afiliado. O SSE abaixo só chega em
+          // quem está com o app aberto naquele instante; a comissão cai a
+          // qualquer hora do dia.
+          try { require('./avisos').avisarComissao(aff, { amount: cut, percent: pct, kind, indicado: acc.name }); } catch {}
           if (broadcast) {
             broadcast('wallet', { accountId: aff.id });
             // Venda do indicado aprovada: o afiliado é avisado na hora, com o

@@ -140,8 +140,11 @@ const GENTE = [
   ok(mapa.campanhas === 1, `somou 1 campanha do período: ${mapa.campanhas}`);
   ok(spm && spm.cliques === 2, `SP consolidado com 2 cliques: ${spm && spm.cliques}`);
 
-  await new Promise(r => srv.close(r));
-  await db.close();
+  // Nada de db.close() aqui: o pool é o falso, não há conexão real para
+  // encerrar, e fechá-lo junto com o process.exit derrubava o Node com uma
+  // asserção do libuv (exit 127) — o que travava a cadeia do `npm test`.
+  srv.close();
   console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTODOS OS TESTES PASSARAM');
-  process.exit(falhas ? 1 : 0);
+  process.exitCode = falhas ? 1 : 0;
+  setTimeout(() => process.exit(falhas ? 1 : 0), 50).unref();
 })().catch(e => { console.error(e); process.exit(1); });

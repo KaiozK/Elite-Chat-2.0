@@ -148,6 +148,44 @@ const chamar = async (metodo, rota, corpo, token) => {
   ok(!!avisoRec, 'os outros aparelhos são avisados da recusa');
   ok(avisoRec && avisoRec.dados.recusada === true, 'marcada como recusa, não como atendimento');
 
+  console.log('\n=== 6. Atender pela NOTIFICAÇÃO, com o app vindo do segundo plano ===');
+  // No celular a ligação chega com o app dormindo: o SO derruba o SSE e o
+  // aviso de "está tocando" nunca chega na tela. Ao tocar na notificação, o app
+  // precisa remontar a chamada pelo servidor — e para responder o WebRTC ele
+  // depende do `sdpOffer`, que o GET /calls esconde de propósito.
+  novaChamada('call_4');
+  const c4 = acc.calls.find(c => c.id === 'call_4');
+  c4.sdpOffer = 'v=0 oferta-do-cliente';
+  c4.canal = 'Vendas';
+
+  const lista = await chamar('GET', '/api/calls', null, tok);
+  const naLista = (lista.calls || []).find(c => c.id === 'call_4');
+  ok(!!naLista && naLista.sdpOffer === undefined, 'GET /calls continua sem devolver o SDP');
+
+  let pend = await chamar('GET', '/api/calls/pending', null, tok);
+  ok(pend.call && pend.call.id === 'call_4', `a chamada tocando é recuperada: ${pend.call && pend.call.id}`);
+  ok(!!pend.sdpOffer, 'COM o SDP offer, senão não há como atender');
+  ok(pend.call && pend.call.canal === 'Vendas', `sabendo por qual número tocou: "${pend.call && pend.call.canal}"`);
+
+  // E o aparelho consegue atender com o que recebeu.
+  chamadasAceitas.length = 0;
+  const viaNotif = await chamar('POST', '/api/calls/call_4/accept', { sdp: 'v=0 resposta' }, tok);
+  ok(viaNotif.http === 200, `atendeu pela notificação: ${viaNotif.http}`);
+  ok(chamadasAceitas.length === 1, 'e o SDP chegou à Meta');
+
+  console.log('\n=== 7. O que NÃO dá mais para atender não volta ===');
+  // Devolver uma ligação já pega faria o aparelho tocar sozinho por uma
+  // chamada que já está acontecendo em outro lugar.
+  pend = await chamar('GET', '/api/calls/pending', null, tok);
+  ok(!pend.call, 'a que acabou de ser atendida não aparece como pendente');
+
+  novaChamada('call_5');
+  const c5 = acc.calls.find(c => c.id === 'call_5');
+  c5.sdpOffer = 'v=0 velha';
+  c5.startedAt = Date.now() - 5 * 60 * 1000;   // 5 minutos atrás
+  pend = await chamar('GET', '/api/calls/pending', null, tok);
+  ok(!pend.call, 'uma ligação de 5 minutos atrás também não — a Meta já desistiu');
+
   await new Promise(r => servidor.close(r));
   await db.close();
   console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTODOS OS TESTES PASSARAM');

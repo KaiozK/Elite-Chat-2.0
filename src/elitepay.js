@@ -13,6 +13,8 @@ const crypto = require('crypto');
 const db = require('./db');
 const store = require('./store');
 const woovi = require('./woovi');
+const simplify = require('./simplify');
+const documento = require('./documento');
 const datas = require('./datas');
 
 // ---------------------------------------------------------------------------
@@ -22,6 +24,89 @@ const datas = require('./datas');
 //   getCharge(correlationID) · cancelCharge(correlationID) · withdraw(pixKey)
 // ---------------------------------------------------------------------------
 const DRIVERS = {
+  // -------------------------------------------------------------------------
+  // SIMPLIFY — https://simplifybr.gitbook.io/documentacao-simplify
+  //
+  // Não tem subconta: o depósito cai na conta da PLATAFORMA e a carteira do
+  // Koonfy é quem registra quanto é de cada cliente (a venda credita o saldo,
+  // o cliente saca em Pagamentos). Por isso `createSubaccount` aqui não chama
+  // a Simplify — ele apenas confirma o cadastro local, e a conta do cliente
+  // nasce ativa em vez de ficar esperando aprovação que não existe.
+  // -------------------------------------------------------------------------
+  simplify: {
+    id: 'simplify',
+    label: 'Simplify (Pix)',
+    configured: () => simplify.configured(),
+    // A Simplify EXIGE nome, CPF/CNPJ, e-mail e telefone do pagador para gerar
+    // o depósito — a Woovi não. Com esta marca, o Koonfy adia a criação do Pix
+    // até o cliente se identificar no checkout, em vez de tentar gerar sem os
+    // dados e falhar. Ver `criarCobrancaNoGateway` e `identifyPayer`.
+    requiresPayer: true,
+
+    async createSubaccount({ name, pixKey }) {
+      return { gatewayId: pixKey || name, raw: { local: true } };
+    },
+
+    async createCharge({ correlationID, value, comment, customer, expiresIn, splits }) {
+      const c = simplify.cfg();
+      // Os dados do pagador são obrigatórios: sem eles, `dadosDoPagador` levanta
+      // um erro que já diz o que falta e onde resolver.
+      const payer = simplify.dadosDoPagador({
+        contactName: customer && customer.name,
+        waId: customer && customer.phone,
+        payer: customer && customer.payer
+      });
+
+      const body = {
+        amount: Number((value / 100).toFixed(2)),   // a Simplify quer reais, não centavos
+        external_id: correlationID,
+        payer
+      };
+      const url = webhookUrlPublica('/simplify-webhook');
+      if (url) body.webhookURL = url;
+
+      // O split da PLATAFORMA. `splits` chega em centavos (mesma interface da
+      // Woovi), mas a Simplify trabalha em PORCENTAGEM — a conversão é feita
+      // aqui, respeitando o teto de 90% que a API impõe.
+      const pct = splits && splits.length && value > 0
+        ? Math.min(90, Math.round((splits[0].value / value) * 10000) / 100)
+        : Number(c.splitPercent) || 0;
+      if (c.splitUsername && pct >= 0.01) {
+        body.split = [{ username: c.splitUsername, percentage: Math.min(90, pct) }];
+      }
+
+      const d = await simplify.call('POST', '/pix/deposit', body);
+      const codigo = d.qrcode || d.qrCode || d.pix || '';
+      return {
+        gatewayId: d.internal_id || d.id || '',
+        brCode: codigo,
+        // A Simplify devolve só o código copia e cola; a imagem do QR é gerada
+        // no navegador a partir dele, então não há imagem para guardar aqui.
+        qrCodeImage: '',
+        paymentLinkUrl: '',
+        expiresAt: Date.now() + (expiresIn || 86400) * 1000,
+        raw: undefined
+      };
+    },
+
+    // A documentação não expõe consulta de transação nem cancelamento: a
+    // confirmação vem só pelo webhook. Devolver `null` mantém a interface e
+    // deixa claro para quem chama que não há o que perguntar.
+    async getCharge() { return null; },
+    async cancelCharge() { return null; },
+    async getSubBalance() { return null; },
+    async withdraw() {
+      const e = new Error('Saque pela Simplify é feito no painel dela; o Koonfy registra o pedido.');
+      e.status = 400; throw e;
+    },
+    async createCustomer() { return null; },
+    async createPixKey() { return null; },
+    async submitKyc() {
+      const e = new Error('A Simplify não usa KYC pelo Koonfy: a conta é criada direto com ela.');
+      e.status = 400; throw e;
+    }
+  },
+
   woovi: {
     id: 'woovi',
     label: 'Woovi (OpenPix)',
@@ -119,6 +204,14 @@ function noteBaseUrl(url) {
   if (p.baseUrl !== url) { p.baseUrl = url; db.save(); }
 }
 function baseUrl() { return _baseUrl || db.get().platform.baseUrl || ''; }
+
+// Endereço público de um webhook. A Simplify recebe a URL em CADA cobrança —
+// não há cadastro fixo no painel dela —, então ela é montada a partir da mesma
+// origem que o sistema já usa nos links enviados ao cliente.
+function webhookUrlPublica(rota) {
+  const base = baseUrl();
+  return base ? base.replace(/\/+$/, '') + rota : '';
+}
 // Link de pagamento da cobrança: o checkout hospedado no Koonfy.
 // Fallback: o link do gateway (cobranças antigas / base URL desconhecida).
 function payLink(ch) {
@@ -369,7 +462,8 @@ function validateOnboarding(f, mode) {
   const errs = [];
   if (!String(f.name || '').trim() || String(f.name).trim().length < 3) errs.push('Nome/Razão social inválido');
   const doc = String(f.document || '').replace(/\D/g, '');
-  if (doc.length !== 11 && doc.length !== 14) errs.push('CPF/CNPJ inválido');
+  const eDoc = documento.erroDoc(doc);
+  if (eDoc) errs.push(eDoc);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(f.email || ''))) errs.push('E-mail inválido');
   const phone = String(f.phone || '').replace(/\D/g, '');
   if (phone.length < 10) errs.push('Telefone inválido');
@@ -379,7 +473,7 @@ function validateOnboarding(f, mode) {
   if (mode === 'kyc') {
     if (!String(f.repName || '').trim() || String(f.repName).trim().length < 3) errs.push('Nome do representante legal inválido');
     const rep = String(f.repDocument || '').replace(/\D/g, '');
-    if (rep.length !== 11) errs.push('CPF do representante legal inválido');
+    if (!documento.cpfValido(rep)) errs.push('CPF do representante legal inválido');
   }
   return errs;
 }
@@ -755,7 +849,7 @@ function spendWallet(acc, valueCents, label, broadcast) {
 
 function findCharge(acc, id) { return ensure(acc).charges.find(c => c.id === id || c.correlationID === id); }
 
-async function createCharge(acc, { valueCents, comment, waId, contactName, origin, byName, expiresMin, productId, checkoutId, saas, message }) {
+async function createCharge(acc, { valueCents, comment, waId, contactName, origin, byName, expiresMin, productId, checkoutId, saas, message, pagador }) {
   const sub = activeSubaccount(acc);
   // Produto escolhido preenche valor e descrição quando não vierem explícitos
   const prod = productId ? findProduct(acc, productId) : null;
@@ -777,11 +871,27 @@ async function createCharge(acc, { valueCents, comment, waId, contactName, origi
   // split da plataforma: só entra no payload quando configurado (arquitetura pronta)
   const splits = (platformCut > 0 && cfg.splitPixKey) ? [{ pixKey: cfg.splitPixKey, value: platformCut }] : null;
 
-  const g = await gateway().createCharge({
-    correlationID, value: valueCents, comment: (comment || '').slice(0, 140),
-    customer: contactName ? { name: contactName, phone: waId ? '+' + waId : undefined } : null,
-    expiresIn, subPixKey: sub.pixKey, splits
-  });
+  // -------------------------------------------------------------------------
+  // PIX AGORA OU DEPOIS DA IDENTIFICAÇÃO?
+  //
+  // A Woovi gera o Pix na hora, sem saber quem vai pagar. A Simplify não: ela
+  // exige nome, CPF/CNPJ, e-mail e telefone do pagador, dados que a cobrança
+  // criada do chat não tem (ali só se sabe o nome e o WhatsApp).
+  //
+  // Tentar gerar assim mesmo derrubaria TODA cobrança feita pelo chat. Então o
+  // Pix é ADIADO: a cobrança nasce sem código, o cliente abre o link, preenche
+  // os dados no checkout e é aí que o Pix é gerado — em `identifyPayer`.
+  // -------------------------------------------------------------------------
+  const temPagador = !!(pagador && pagador.document && pagador.email);
+  const adiar = !!gateway().requiresPayer && !temPagador;
+  const g = adiar ? { brCode: '', qrCodeImage: '', paymentLinkUrl: '', gatewayId: '', expiresAt: Date.now() + expiresIn * 1000 }
+    : await gateway().createCharge({
+      correlationID, value: valueCents, comment: (comment || '').slice(0, 140),
+      customer: contactName || temPagador
+        ? { name: contactName, phone: waId ? '+' + waId : undefined, payer: pagador || null }
+        : null,
+      expiresIn, subPixKey: sub.pixKey, splits
+    });
 
   const ch = {
     id: db.genId('epc'),
@@ -835,7 +945,23 @@ function chargeMessage(acc, ch) {
     || ((ep.settings.chargeTemplateEnabled === false)
       ? DEFAULT_CHARGE_MSG
       : (ep.settings.autoMessage || DEFAULT_CHARGE_MSG));
-  return tpl
+  // SEM código Pix ainda (gateway que exige os dados do pagador — o código só
+  // nasce depois de o cliente se identificar no checkout). Deixar o
+  // {codigo} vazio mandaria "Ou use o Pix copia e cola:" seguido de nada.
+  // Então a chamada do código sai da mensagem e fica só o link, que é
+  // justamente onde o cliente vai preencher e receber o Pix.
+  let texto = tpl;
+  if (!ch.brCode) {
+    texto = texto.split('\n')
+      .filter((linha, i, todas) => {
+        if (linha.includes('{codigo}')) return false;
+        // a linha anterior que só apresentava o código ("Ou use o Pix...:")
+        const prox = todas[i + 1] || '';
+        return !(prox.includes('{codigo}') && /:\s*$/.test(linha));
+      })
+      .join('\n');
+  }
+  return texto
     .replace(/\{nome\}/g, ch.contactName || 'cliente')
     .replace(/\{valor\}/g, fmtBRL(ch.value))
     .replace(/\{descricao\}/g, ch.comment || '')
@@ -861,8 +987,11 @@ function validatePayer(f) {
   const errs = [];
   if (!String(f.name || '').trim() || String(f.name).trim().length < 3) errs.push('Informe seu nome completo');
   const doc = String(f.taxID || '').replace(/\D/g, '');
-  if (doc.length !== 11 && doc.length !== 14) errs.push('CPF/CNPJ inválido');
-  else if (/^(\d)\1+$/.test(doc)) errs.push('CPF/CNPJ inválido');
+  // Dígitos verificadores de verdade: antes bastava ter 11 ou 14 dígitos, e um
+  // CPF inventado passava direto — para ser recusado depois pelo adquirente,
+  // com uma mensagem que não ajudava quem estava preenchendo.
+  const erroDoc = documento.erroDoc(doc);
+  if (erroDoc) errs.push(erroDoc);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(f.email || ''))) errs.push('E-mail inválido');
   const phone = normalizePayerPhone(f.phone);
   if (phone.length < 12 || phone.length > 15) errs.push('Celular/WhatsApp inválido');
@@ -889,10 +1018,53 @@ async function identifyPayer(chargeId, fields, broadcast) {
   const { errs, doc, phone } = validatePayer(fields || {});
   if (errs.length) { const e = new Error(errs.join(' · ')); e.status = 400; throw e; }
 
+  // CNPJ: além dos dígitos, confere na Receita Federal se a empresa existe.
+  // Para CPF não há consulta pública gratuita — quem confirma a existência é o
+  // adquirente ao gerar a cobrança, e a mensagem dele já chega ao cliente.
+  // Consulta fora do ar não reprova ninguém (ver src/documento.js).
+  if (doc.length === 14) {
+    const eCnpj = await documento.erroDocCompleto(doc);
+    if (eCnpj) { const e = new Error(eCnpj); e.status = 400; throw e; }
+  }
+
   const name = String(fields.name).trim().slice(0, 120);
   const email = String(fields.email).trim().toLowerCase().slice(0, 140);
   ch.payer = { name, taxID: doc, email, phone, at: Date.now() };
   if (!ch.contactName) ch.contactName = name;
+
+  // -------------------------------------------------------------------------
+  // PIX ADIADO: agora dá para gerar
+  //
+  // Com um gateway que exige o pagador (Simplify), a cobrança nasceu sem
+  // código — era impossível gerá-lo antes de saber quem ia pagar. Os dados
+  // acabaram de chegar, então o Pix é criado AQUI, e o cliente vê o código na
+  // tela seguinte sem perceber que houve duas etapas.
+  //
+  // Se o gateway recusar (CPF que passa nos dígitos mas não existe, por
+  // exemplo), o erro dele sobe para o formulário: é a única verificação de
+  // existência que se tem para CPF, e ela é boa.
+  // -------------------------------------------------------------------------
+  if (!ch.brCode && gateway().requiresPayer && ch.status === 'active') {
+    const sub = activeSubaccount(acc);
+    const cfg = platformCfg();
+    const splits = (ch.platformCut > 0 && cfg.splitPixKey)
+      ? [{ pixKey: cfg.splitPixKey, value: ch.platformCut }] : null;
+    const expiresIn = Math.max(300, Math.round(((ch.expiresAt || 0) - Date.now()) / 1000) || 86400);
+    const g = await gateway().createCharge({
+      correlationID: ch.correlationID, value: ch.value, comment: ch.comment || '',
+      customer: {
+        name, phone: phone ? '+' + phone : undefined,
+        payer: { name, document: doc, email, phone }
+      },
+      expiresIn, subPixKey: sub && sub.pixKey, splits
+    });
+    ch.brCode = g.brCode || '';
+    ch.qrCodeImage = g.qrCodeImage || '';
+    if (g.paymentLinkUrl) ch.paymentLinkUrl = g.paymentLinkUrl;
+    if (g.gatewayId) ch.gatewayId = g.gatewayId;
+    if (g.expiresAt) ch.expiresAt = g.expiresAt;
+    log(acc, { type: 'charge_pix_gerado', chargeId: ch.id, amount: ch.value, detail: 'Pix gerado após a identificação no checkout' });
+  }
 
   // Tracking: guarda os dados de origem capturados na página do checkout
   // (fbclid/gclid/ttclid, UTMs e sessão) e vincula a sessão ao cliente.
@@ -1083,6 +1255,10 @@ function finalizePaid(acc, ch, broadcast) {
   // Sem isto o Pix não aparecia em lugar nenhum e o cliente não tinha como
   // saber quanto tinha para sacar.
   else { try { creditPixSale(acc, ch, broadcast); } catch (e) { log(acc, { type: 'wallet_error', chargeId: ch.id, detail: e.message }); } }
+  // AVISO nos aparelhos: o dono da conta e, quando é venda de cliente, o admin
+  // da plataforma. Best-effort — push com problema não pode impedir a
+  // confirmação de um pagamento que já entrou.
+  try { require('./avisos').avisarVenda(acc, ch); } catch (e) { log(acc, { type: 'push_error', chargeId: ch.id, detail: e.message }); }
   // Tracking: atribui a venda à campanha de origem + reenvia a conversão
   // (Meta CAPI / GA4 / TikTok) automaticamente — não bloqueia a confirmação.
   try { require('./tracking').onPaid(acc, ch, broadcast); } catch {}
@@ -1313,7 +1489,8 @@ async function payWithCard(chargeId, body, broadcast) {
   const nome = String(pagador.name || (ch.payer && ch.payer.name) || ch.contactName || '').trim();
   const doc = String(pagador.taxId || (ch.payer && ch.payer.taxID) || '').replace(/\D/g, '');
   if (!nome) { const e = new Error('Informe o nome do titular'); e.status = 400; throw e; }
-  if (doc.length !== 11 && doc.length !== 14) { const e = new Error('Informe um CPF ou CNPJ válido'); e.status = 400; throw e; }
+  const errDoc = documento.erroDoc(doc);
+  if (errDoc) { const e = new Error(errDoc); e.status = 400; throw e; }
 
   const parcelas = Math.max(1, Math.min(Number(body.installments) || 1, Number(card.maxInstallments) || 1));
   const fee = cards.computeCardFee(card, ch.value);
@@ -1411,7 +1588,8 @@ async function payWithBoleto(chargeId, body, broadcast) {
   const nome = String(pagador.name || (ch.payer && ch.payer.name) || ch.contactName || '').trim();
   const doc = String(pagador.taxId || (ch.payer && ch.payer.taxID) || '').replace(/\D/g, '');
   if (!nome) { const e = new Error('Informe o nome do pagador'); e.status = 400; throw e; }
-  if (doc.length !== 11 && doc.length !== 14) { const e = new Error('Informe um CPF ou CNPJ válido'); e.status = 400; throw e; }
+  const errDoc = documento.erroDoc(doc);
+  if (errDoc) { const e = new Error(errDoc); e.status = 400; throw e; }
 
   const fee = cards.computeCardFee(card, ch.value);
   const ca = pronto.ca;
@@ -1749,6 +1927,9 @@ module.exports = {
   identifyPayer, fmtCpfCnpj, findProduct, findCheckout, checkoutBranding,
   TPL_ROLES, TPL_VARS, tplValues, roleOf, setTemplateRole, templatesByRole, pickTemplate,
   findChargeAnywhere,
+  // Ponto de entrada dos webhooks de gateway: confirma o pagamento sem que cada
+  // adquirente precise conhecer o funil (funil, tracking, aviso no WhatsApp).
+  markPaidFromGateway: (acc, ch, broadcast) => finalizePaid(acc, ch, broadcast),
   cardConfig, cardPublic, payWithCard, payWithBoleto, refreshCardStatus, installmentOptions,
   cardAccount, cardAccountView, cardCapability, cardReady, registerCardAccount, syncCardAccount,
   creditCardSale, creditPixSale, reverterVenda,

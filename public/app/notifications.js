@@ -295,7 +295,10 @@
     if (!opts.silent) { playSound(type); vibrate(type); }
 
     var focusedHere = !document.hidden;
-    var data = { type: type, waId: opts.waId || null, url: opts.url || ('/app/#/inbox') };
+    // `callId` viaja com a notificação de ligação: é por ele que o toque na
+    // notificação sabe QUAL chamada atender depois de o app voltar do segundo
+    // plano — sem isso o toque só abria o app e a pessoa perdia a ligação.
+    var data = { type: type, waId: opts.waId || null, url: opts.url || ('/app/#/inbox'), callId: opts.callId || null };
 
     // App em foco: o aviso interno aparece sempre; a notificação do sistema
     // depende da preferência. Antes o toast encerrava aqui, então quem ficava
@@ -313,6 +316,16 @@
         requireInteraction: type === 'call' || !!opts.requireInteraction,
         vibrate: state.prefs.vibrate ? (type === 'call' ? [200, 100, 200] : [90]) : undefined
       };
+      // Botões na própria notificação: no celular a ligação chega com o app
+      // fechado, e obrigar a abrir o app, achar a tela e só então atender custa
+      // os poucos segundos que a chamada dura. Só o Service Worker desenha
+      // ações — o `new Notification()` do fallback as ignora.
+      if (type === 'call') {
+        payload.actions = [
+          { action: 'answer', title: 'Atender' },
+          { action: 'reject', title: 'Recusar' }
+        ];
+      }
       if (EC.native) {
         // WebView não tem Notification API: quem desenha na bandeja é o plugin nativo.
         if (window.ECNative) ECNative.localNotify(payload);

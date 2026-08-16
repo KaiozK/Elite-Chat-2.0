@@ -444,10 +444,57 @@ module.exports = function (broadcast, clients) {
         // dizem o suficiente — e são dado de verdade, não texto de vitrine.
         itens: (pl.features && pl.features.length) ? pl.features : limitesEmTexto(pl)
       }));
+    // -----------------------------------------------------------------------
+    // O QUE A LANDING PODE PROMETER
+    //
+    // A página vendia recursos escritos à mão que não correspondiam ao que o
+    // cliente encontra depois — a Nuvemshop aparecia como "integrada" com a
+    // integração DESLIGADA no Admin, o boleto era anunciado sem adquirente que
+    // o emita. Aqui sai o que de fato está ligado; o que estiver desligado a
+    // landing simplesmente não mostra.
+    //
+    // Dois níveis, e os dois precisam valer:
+    //   · plataforma — o admin ligou a integração e pôs as credenciais;
+    //   · plano      — pelo menos um plano publicado inclui o módulo. Um
+    //                  recurso que nenhum plano vende não é vitrine, é isca.
+    // -----------------------------------------------------------------------
+    const card = elitepay.cardConfig();
+    const cardOn = !!(card.enabled && require('./cardgateways').isConfigured(card));
+    // Sem plano publicado nenhum, o padrão do sistema é o que vale (é o mesmo
+    // critério que `limits.featuresOf` usa para quem está em teste).
+    const emAlgumPlano = (chave) => {
+      const pubs = db.get().plans.filter(pl => !pl.archived);
+      if (!pubs.length) return !!db.defaultFeatures()[chave];
+      return pubs.some(pl => db.normFeatures(pl.modules, pl.modules)[chave]);
+    };
+    const pix = elitepay.configured();
+    const cartao = cardOn && !!card.credit;
+    const boleto = cardOn && !!card.boleto;
+    const recursos = {
+      pix, cartao, boleto,
+      pixAutomatico: (elitepay.platformCfg().gateway || 'woovi') === 'woovi' && !!p.woovi.pixAutomatic,
+      // Sem NENHUM meio de pagamento configurado não há o que vender: a seção
+      // inteira sai, em vez de anunciar uma cobrança que não pode ser gerada.
+      pagamentos: emAlgumPlano('elitepay') && (pix || cartao || boleto),
+      // `isAvailable`/`configured` são as MESMAS funções que decidem se o
+      // cliente vê a integração dentro do app. Ligar o interruptor sem
+      // preencher as credenciais não faz a Nuvemshop existir — e era assim que
+      // ela aparecia na landing sem funcionar em lugar nenhum.
+      nuvemshop: require('./nuvemshop').isAvailable() && emAlgumPlano('integrations'),
+      webhooks: emAlgumPlano('integrations'),
+      sms: require('./sms').configured(),
+      campanhas: emAlgumPlano('campaigns'),
+      fluxos: emAlgumPlano('flows'),
+      agenda: emAlgumPlano('schedule'),
+      equipe: emAlgumPlano('agents'),
+      chatInterno: emAlgumPlano('team'),
+      links: emAlgumPlano('links'),
+      rastreio: emAlgumPlano('tracking') || emAlgumPlano('pixels')
+    };
     res.json({
       trialDays,
       ctaText: ctaText || (trialDays > 0 ? `Testar por ${trialDays} dias` : 'Começar agora'),
-      planos
+      planos, recursos
     });
   });
 
@@ -1597,6 +1644,40 @@ module.exports = function (broadcast, clients) {
       return { ...pub, name: ct ? ct.name : c.waId };
     });
     res.json({ calls: list });
+  });
+
+  // -------------------------------------------------------------------------
+  // CHAMADA TOCANDO AGORA (para quem chegou depois do aviso)
+  //
+  // O aviso de "está tocando" vai por SSE, e o sistema operacional derruba o
+  // SSE quando o app do celular vai para segundo plano. Resultado: a
+  // notificação chegava, a pessoa tocava nela, o app abria — e não havia
+  // chamada nenhuma na tela, porque o evento se perdeu enquanto o app dormia.
+  //
+  // Aqui a chamada que ainda está chamando é recuperada, COM o `sdpOffer` (que
+  // GET /calls remove de propósito) — sem ele o navegador não tem o que
+  // responder e atender é impossível.
+  //
+  // Só devolve o que ainda dá para atender: tocando, sem ninguém ter pegado, e
+  // recente. A Meta desiste por volta de 30s; devolver uma ligação velha faria
+  // o aparelho tocar por uma chamada que já morreu.
+  // -------------------------------------------------------------------------
+  router.get('/calls/pending', auth, can('inbox', 'view'), (req, res) => {
+    const agora = Date.now();
+    const call = (req.acc.calls || []).slice().reverse().find(c =>
+      c.direction === 'USER_INITIATED' && c.status === 'ringing' && c.sdpOffer &&
+      !(c.claimedBy && c.claimedAt && agora - c.claimedAt < 60000) &&
+      agora - (c.startedAt || 0) < 60000
+    );
+    if (!call) return res.json({ call: null });
+    const ct = store.findContact(req.wctx, call.waId);
+    res.json({
+      call: {
+        id: call.id, waId: call.waId, name: ct ? ct.name : call.waId,
+        direction: call.direction, status: call.status, canal: call.canal || ''
+      },
+      sdpOffer: call.sdpOffer
+    });
   });
 
   // Atender: o navegador gera o SDP answer (WebRTC) e a Meta conecta o áudio
@@ -3788,7 +3869,16 @@ module.exports = function (broadcast, clients) {
       plans: data.plans,
       withdrawals: data.withdrawals.slice(-50).reverse(),
       revenue: data.revenue.slice(-100).reverse(),
-      config: { woovi: { appId: data.platform.woovi.appId ? '••••' + data.platform.woovi.appId.slice(-6) : '', configured: woovi.configured(), pixAutomatic: data.platform.woovi.pixAutomatic, sandbox: !!data.platform.woovi.sandbox, base: woovi.base() }, billing: data.platform.billing, affiliate: data.platform.affiliate, landing: data.platform.landing },
+      config: {
+        // O adquirente ATIVO do Pix: é ele que cria as próximas cobranças.
+        gateway: elitepay.platformCfg().gateway || 'woovi',
+        woovi: { appId: data.platform.woovi.appId ? '••••' + data.platform.woovi.appId.slice(-6) : '', configured: woovi.configured(), pixAutomatic: data.platform.woovi.pixAutomatic, sandbox: !!data.platform.woovi.sandbox, base: woovi.base() },
+        // As credenciais nunca voltam inteiras — só o suficiente para o admin
+        // reconhecer qual está gravada.
+        simplify: (() => { const sp = require('./simplify'); const c = sp.cfg();
+          return { clientId: c.clientId ? '••••' + c.clientId.slice(-6) : '', configured: sp.configured(),
+                   splitUsername: c.splitUsername || '', splitPercent: c.splitPercent || 0, base: sp.BASE }; })(),
+        billing: data.platform.billing, affiliate: data.platform.affiliate, landing: data.platform.landing },
       // Credenciais do app da Meta (Tech Provider). Rota já é adminOnly, então
       // o cliente nunca recebe isto: a configuração vive só no Admin SaaS.
       platform: {
@@ -3956,6 +4046,22 @@ module.exports = function (broadcast, clients) {
     if (b.wooviAppId !== undefined) p.woovi.appId = String(b.wooviAppId).trim();
     if (b.pixAutomatic !== undefined) p.woovi.pixAutomatic = !!b.pixAutomatic;
     if (b.wooviSandbox !== undefined) p.woovi.sandbox = !!b.wooviSandbox;
+
+    // ---- SIMPLIFY (adquirente Pix alternativa) ----
+    if (!p.simplify) p.simplify = { clientId: '', clientSecret: '', splitUsername: '', splitPercent: 0 };
+    if (b.simplifyClientId !== undefined) p.simplify.clientId = String(b.simplifyClientId).trim();
+    if (b.simplifyClientSecret !== undefined) p.simplify.clientSecret = String(b.simplifyClientSecret).trim();
+    if (b.simplifySplitUser !== undefined) p.simplify.splitUsername = String(b.simplifySplitUser).trim();
+    // A Simplify recusa split acima de 90%, e abaixo de 0,01% ela ignora.
+    if (b.simplifySplitPct !== undefined) {
+      p.simplify.splitPercent = Math.min(90, Math.max(0, Number(String(b.simplifySplitPct).replace(',', '.')) || 0));
+    }
+    // Qual adquirente atende o Pix. Trocar aqui vale para as PRÓXIMAS
+    // cobranças; as já emitidas continuam sendo confirmadas pelo gateway que
+    // as criou, porque cada uma guarda o seu.
+    if (b.gateway !== undefined && ['woovi', 'simplify'].includes(String(b.gateway))) {
+      elitepay.platformCfg().gateway = String(b.gateway);
+    }
     if (b.trialDays !== undefined) p.billing.trialDays = Math.max(0, Number(b.trialDays) || 0);
     if (b.enforce !== undefined) p.billing.enforce = !!b.enforce;
     if (b.requirePlan !== undefined) p.billing.requirePlan = !!b.requirePlan;

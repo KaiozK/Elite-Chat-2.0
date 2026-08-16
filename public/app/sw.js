@@ -57,7 +57,9 @@ function notifOptions(p) {
     data: p.data || {},
     vibrate: p.vibrate || undefined,
     requireInteraction: !!p.requireInteraction,
-    silent: !!p.silent
+    silent: !!p.silent,
+    // Atender/Recusar direto na notificação da ligação.
+    actions: p.actions || undefined
   };
 }
 
@@ -69,15 +71,26 @@ self.addEventListener('push', (e) => {
 });
 
 // Clique na notificação → foca o app já aberto (e abre a conversa) ou abre o app.
+//
+// LIGAÇÃO: o toque (no corpo ou no botão "Atender") precisa ATENDER, não só
+// abrir o app. Como o app pode nem estar rodando, a intenção vai grudada na
+// URL — `?atender=<id>` — e o app a executa assim que sobe. Com o app já
+// aberto, a mensagem resolve na hora.
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
   const data = e.notification.data || {};
-  const url = data.url || '/app/#/inbox';
+  const acao = e.action || '';
+  let url = data.url || '/app/#/inbox';
+  if (data.type === 'call' && data.callId && acao !== 'reject') {
+    const [caminho, hash] = url.split('#');
+    const base = (caminho || '/app/').split('?')[0];
+    url = base + '?atender=' + encodeURIComponent(data.callId) + (hash ? '#' + hash : '');
+  }
   e.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const c of all) {
       if (c.url.includes('/app')) {
-        c.postMessage({ type: 'NOTIFICATION_CLICK', data });
+        c.postMessage({ type: 'NOTIFICATION_CLICK', data: { ...data, action: acao } });
         return c.focus();
       }
     }

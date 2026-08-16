@@ -255,6 +255,46 @@
     if (d.length <= 11) return d.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d{1,2})$/, '.$1-$2');
     return d.replace(/^(\d{2})(\d)/, '$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d)/, '.$1/$2').replace(/(\d{4})(\d{1,2})$/, '$1-$2');
   }
+  // ---- CPF / CNPJ: dígitos verificadores ----
+  // Antes só se contava quantos dígitos tinham, então "123.456.789-01" passava
+  // e a cobrança só era recusada lá na frente, pelo adquirente, com uma
+  // mensagem que não dizia o que corrigir. A conta é a mesma que a Receita usa;
+  // acertar os dois dígitos no chute é 1 em 100.
+  function cpfOk(d) {
+    if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+    for (var r = 0; r < 2; r++) {
+      var ate = 9 + r, soma = 0;
+      for (var i = 0; i < ate; i++) soma += Number(d[i]) * (ate + 1 - i);
+      var resto = (soma * 10) % 11;
+      if ((resto === 10 ? 0 : resto) !== Number(d[ate])) return false;
+    }
+    return true;
+  }
+  function cnpjOk(d) {
+    if (d.length !== 14 || /^(\d)\1{13}$/.test(d)) return false;
+    function confere(ate) {
+      var soma = 0, peso = ate - 7;
+      for (var i = 0; i < ate; i++) { soma += Number(d[i]) * peso; peso = peso === 2 ? 9 : peso - 1; }
+      var resto = soma % 11;
+      return (resto < 2 ? 0 : 11 - resto) === Number(d[ate]);
+    }
+    return confere(12) && confere(13);
+  }
+  function docOk(v) {
+    var d = String(v || '').replace(/\D/g, '');
+    return d.length === 11 ? cpfOk(d) : d.length === 14 ? cnpjOk(d) : false;
+  }
+  // Mensagem que diz onde olhar: "CPF inválido", não "documento inválido".
+  function docErro(v) {
+    var d = String(v || '').replace(/\D/g, '');
+    if (!d) return 'Informe o CPF ou CNPJ.';
+    if (d.length !== 11 && d.length !== 14) {
+      return 'CPF ou CNPJ incompleto: ' + (d.length < 11 ? 'faltam dígitos.' : 'dígitos a mais.');
+    }
+    if (docOk(d)) return '';
+    return d.length === 11 ? 'CPF inválido. Confira os números digitados.'
+                           : 'CNPJ inválido. Confira os números digitados.';
+  }
   function maskPhone(v) {
     var d = v.replace(/\D/g, '').slice(0, 13);
     if (d.startsWith('55') && d.length > 11) d = d.slice(2);
@@ -439,7 +479,23 @@
 
   function bindIdentify() {
     var fd = document.getElementById('f-doc'), fp = document.getElementById('f-phone');
-    if (fd) fd.addEventListener('input', function () { fd.value = maskDoc(fd.value); });
+    if (fd) {
+      fd.addEventListener('input', function () {
+        fd.value = maskDoc(fd.value);
+        // enquanto digita, só limpa o vermelho — avisar de "inválido" a cada
+        // tecla acusa o campo antes de a pessoa terminar de preencher
+        if (docOk(fd.value)) fd.classList.remove('bad');
+      });
+      // ao sair do campo, aí sim: o erro aparece na hora, sem esperar o envio
+      fd.addEventListener('blur', function () {
+        var e = fd.value.replace(/\D/g, '') ? docErro(fd.value) : '';
+        fd.classList.toggle('bad', !!e);
+        var box = document.getElementById('ferr');
+        if (!box) return;
+        if (e) { box.textContent = e; box.classList.add('show'); }
+        else if (!document.querySelectorAll('#ferr ~ * .bad, .fld input.bad').length) box.classList.remove('show');
+      });
+    }
     if (fp) fp.addEventListener('input', function () { fp.value = maskPhone(fp.value); });
     var btn = document.getElementById('go-pay');
     if (btn) btn.onclick = submitIdentify;
@@ -467,11 +523,16 @@
     };
     var bad = [];
     if (f.name.length < 3) bad.push('f-name');
-    var dd = f.taxID.replace(/\D/g, ''); if (dd.length !== 11 && dd.length !== 14) bad.push('f-doc');
+    var eDoc = docErro(f.taxID); if (eDoc) bad.push('f-doc');
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email)) bad.push('f-email');
     if (f.phone.replace(/\D/g, '').length < 10) bad.push('f-phone');
     ['f-name', 'f-doc', 'f-email', 'f-phone'].forEach(function (i) { document.getElementById(i).classList.toggle('bad', bad.indexOf(i) >= 0); });
-    if (bad.length) { err.textContent = 'Confira os campos destacados.'; err.classList.add('show'); return; }
+    // Quando o único problema é o documento, a mensagem é a do documento —
+    // "confira os campos destacados" não diz que o CPF não fecha a conta.
+    if (bad.length) {
+      err.textContent = (bad.length === 1 && eDoc) ? eDoc : 'Confira os campos destacados.';
+      err.classList.add('show'); return;
+    }
     err.classList.remove('show');
 
     if (data.demo) { data.needsId = false; data.payerName = f.name; render(); return; }
@@ -566,11 +627,14 @@
       var nomeEl = document.getElementById('b-holder');
       var doc = docEl ? docEl.value.replace(/\D/g, '') : '';
       erro.style.display = 'none';
-      if (doc.length !== 11 && doc.length !== 14) {
-        erro.textContent = 'Informe um CPF ou CNPJ válido.';
+      var eDoc = docErro(doc);
+      if (eDoc) {
+        erro.textContent = eDoc;
         erro.style.display = 'block';
+        if (docEl) docEl.classList.add('bad');
         return;
       }
+      if (docEl) docEl.classList.remove('bad');
       var original = btn.textContent;
       btn.disabled = true; btn.textContent = 'Emitindo…';
       fetch('/api/public/pay/' + encodeURIComponent(id) + '/boleto', {
@@ -729,7 +793,7 @@
     var mes = Number(exp[0]);
     if (mes < 1 || mes > 12) return cardErr('Mês de validade inválido.');
     if (cvv.length < 3) return cardErr('Informe o CVV (3 ou 4 dígitos).');
-    if (docEl && docEl.value.replace(/\D/g, '').length < 11) return cardErr('Informe o CPF do titular.');
+    if (docEl) { var eDoc = docErro(docEl.value); if (eDoc) return cardErr(eDoc); }
 
     cardErr('');
     btn.disabled = true;

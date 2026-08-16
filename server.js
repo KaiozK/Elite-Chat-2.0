@@ -427,6 +427,11 @@ app.get('/:id', (req, res, next) => {
 
 // Webhook de pagamentos Woovi (Pix / Pix Automático) — configurar em app.woovi.com → Webhooks
 app.post('/woovi-webhook', require('./src/woovi').webhookHandler(broadcast));
+// Webhook da Simplify. O endereço é mandado em cada cobrança (a Simplify não
+// tem cadastro fixo de webhook), então nada precisa ser configurado no painel
+// dela — mas ele também não é assinado, e por isso o handler confere o valor
+// antes de dar a cobrança como paga.
+app.post('/simplify-webhook', require('./src/simplify').webhookHandler(broadcast));
 
 // Eventos do adquirente de cartão (Pagar.me / Asaas): pagamento confirmado,
 // estorno e aprovação do recebedor. Autenticado + reconferido na API.

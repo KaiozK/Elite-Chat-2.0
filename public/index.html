@@ -301,12 +301,59 @@
       .split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;').split('"').join('&quot;');
   }
 
+  // -------------------------------------------------------------------------
+  // RECURSOS: a página só promete o que o app entrega
+  //
+  // A landing anunciava coisas que o Admin tinha desligado — a Nuvemshop
+  // aparecia como "integrada" com a integração desativada, o boleto era
+  // oferecido sem adquirente que o emitisse. Quem chegava pelo anúncio assinava
+  // por um recurso que não ia encontrar.
+  //
+  // Cada item que depende de configuração carrega `data-kf-req` com a chave do
+  // recurso. Aqui os desligados saem da página — junto com os links do menu que
+  // apontavam para seções removidas, que virariam âncora para o vazio.
+  //
+  // `null` = a rota ainda não respondeu: não se mexe em nada. É a mesma regra
+  // dos planos — "não sei" não é "não tem".
+  // -------------------------------------------------------------------------
+  var recursos = null;
+  function aplicarRecursos() {
+    if (!recursos) return;
+    var alvos = document.querySelectorAll('[data-kf-req]');
+    for (var i = 0; i < alvos.length; i++) {
+      var el = alvos[i], chave = el.getAttribute('data-kf-req');
+      if (recursos[chave] !== false) continue;
+      var id = el.id;
+      el.parentNode.removeChild(el);
+      if (!id) continue;
+      var links = document.querySelectorAll('a[href="#' + id + '"]');
+      for (var j = 0; j < links.length; j++) links[j].parentNode.removeChild(links[j]);
+    }
+    // A frase de abertura de Pagamentos cita os meios um a um: com o cartão
+    // desligado ela prometia parcelamento que não existe.
+    var lead = document.getElementById('kf-pay-lead');
+    if (lead && !lead.dataset.kfFeito) {
+      var meios = [];
+      if (recursos.pix !== false) meios.push('no <b>Pix na hora</b>');
+      if (recursos.cartao) meios.push('no <b>cartão de crédito</b> parcelado');
+      if (recursos.boleto) meios.push('no <b>boleto</b>');
+      if (meios.length) {
+        var lista = meios.length === 1 ? meios[0]
+          : meios.slice(0, -1).join(', ') + ' ou ' + meios[meios.length - 1];
+        lead.innerHTML = 'Gere a cobrança no meio do atendimento e o cliente paga ali mesmo, '
+          + lista + '. Nada de mandar o cliente para outro site e torcer para ele voltar.';
+      }
+      lead.dataset.kfFeito = '1';
+    }
+  }
+
   fetch('/api/public/landing').then(function (r){return r.json();}).then(function (c){
     if (!c) return;
     if (c.ctaText){ ctaTxt=c.ctaText; applyCta(); }
     // Guarda o array MESMO VAZIO: é a diferença entre "não sei" e "não há".
     if (Array.isArray(c.planos)){ planos = c.planos; aplicarPlanos(); }
     if (typeof c.trialDays === 'number'){ diasTeste = c.trialDays; ajustarTeste(); }
+    if (c.recursos){ recursos = c.recursos; aplicarRecursos(); }
   }).catch(function(){});
 
   // ---- CTAs -> app (login/cadastro) ----
@@ -408,20 +455,27 @@
 
   // .clitem é flex: sem o <span> envolvente, cada <b> viraria um item de flex
   // e o gap:12px abriria buracos no meio da frase.
-  function li(t) { return '<div class="clitem"><span class="ck">' + CKI + '</span><span>' + t + '</span></div>'; }
-  function fcard(icon, tit, txt) {
-    return '<div class="fcard"><span class="fic">' + ic(icon) + '</span>'
+  // `req` é a chave do recurso em /api/public/landing: se ele estiver
+  // desligado no Admin, `aplicarRecursos()` tira o item da página.
+  function li(t, req) {
+    return '<div class="clitem"' + (req ? ' data-kf-req="' + req + '"' : '') + '>'
+      + '<span class="ck">' + CKI + '</span><span>' + t + '</span></div>';
+  }
+  function fcard(icon, tit, txt, req) {
+    return '<div class="fcard"' + (req ? ' data-kf-req="' + req + '"' : '') + '><span class="fic">' + ic(icon) + '</span>'
       + '<h4 class="ftit">' + tit + '</h4><p class="ftxt">' + txt + '</p></div>';
   }
 
-  // ---- 1. Elite Pay: cobrar e receber dentro da conversa ----
+  // ---- 1. Pagamentos: cobrar e receber dentro da conversa ----
+  // O módulo chama-se "Pagamentos" no app; a landing ainda dizia "Elite Pay",
+  // nome que o cliente não encontra em lugar nenhum depois de entrar.
   var SEC_PAY = ''
-   + '<div class="sec ecx-sec" id="pagamentos" data-screen-label="Pagamentos"><div class="wrap"><div class="frow rv" style="margin-top:0">'
+   + '<div class="sec ecx-sec" id="pagamentos" data-screen-label="Pagamentos" data-kf-req="pagamentos"><div class="wrap"><div class="frow rv" style="margin-top:0">'
    +   '<div>'
-   +     '<span class="eyebrow"><span class="dot"></span>Elite Pay</span>'
+   +     '<span class="eyebrow"><span class="dot"></span>Pagamentos</span>'
    +     '<h3 class="h3">Cobre e receba <span class="grifo">sem tirar o cliente</span> da conversa</h3>'
-   +     '<p class="lead">Gere a cobrança no meio do atendimento e o cliente paga ali mesmo, no <b>Pix na hora</b>, no <b>cartão de crédito</b> parcelado ou no <b>boleto</b>. Nada de mandar o cliente para outro site e torcer para ele voltar.</p>'
-   +     li('<b>Pix e cartão</b> na mesma cobrança, o cliente escolhe')
+   +     '<p class="lead" id="kf-pay-lead">Gere a cobrança no meio do atendimento e o cliente paga ali mesmo, no <b>Pix na hora</b> ou no <b>cartão de crédito</b> parcelado. Nada de mandar o cliente para outro site e torcer para ele voltar.</p>'
+   +     li('<b>Pix e cartão</b> na mesma cobrança, o cliente escolhe', 'cartao')
    +     li('Confirmação <b>automática</b> no WhatsApp assim que o pagamento cai')
    +     li('O contato vira <b>“Ganho”</b> no funil sozinho, sem ninguém arrastar card')
    +     li('Cobrança sai como <b>template aprovado</b> e chega mesmo fora das 24h')
@@ -429,7 +483,7 @@
    +   '</div>'
    +   '<div class="ecx-vwrap"><div class="ecx-panel">'
    +     '<div class="ecx-phead"><span class="ecx-pic">' + ic(I.card, 22) + '</span><div><b>Cobrança gerada</b><span>Plano Premium</span></div><span class="ecx-val">R$ 149,90</span></div>'
-   +     '<div class="ecx-pm"><span class="ecx-chip on">Pix</span><span class="ecx-chip on">Crédito</span><span class="ecx-chip on">Boleto</span></div>'
+   +     '<div class="ecx-pm"><span class="ecx-chip on" data-kf-req="pix">Pix</span><span class="ecx-chip on" data-kf-req="cartao">Crédito</span><span class="ecx-chip on" data-kf-req="boleto">Boleto</span></div>'
    +     '<div class="ecx-prow"><span>' + ic(I.bolt, 17) + 'Pagamento confirmado</span><b class="ecx-ok">agora</b></div>'
    +     '<div class="ecx-prow"><span>' + ic(I.wallet, 17) + 'Comprovante enviado ao cliente</span><b class="ecx-ok">feito</b></div>'
    +     '<div class="ecx-prow"><span>' + ic(I.chart, 17) + 'Contato movido para Ganho</span><b class="ecx-ok">feito</b></div>'
@@ -459,7 +513,7 @@
 
   // ---- 4. Rastreamento: de onde vem cada venda ----
   var SEC_TRACK = ''
-   + '<div class="sec ecx-sec" id="rastreio" data-screen-label="Rastreamento"><div class="wrap"><div class="frow rv" style="margin-top:0">'
+   + '<div class="sec ecx-sec" id="rastreio" data-screen-label="Rastreamento" data-kf-req="rastreio"><div class="wrap"><div class="frow rv" style="margin-top:0">'
    +   '<div class="ecx-vwrap"><div class="ecx-panel">'
    +     '<div class="ecx-phead"><span class="ecx-pic">' + ic(I.target, 22) + '</span><div><b>Venda atribuída</b><span>koonfy.com/l/promo-julho</span></div></div>'
    +     '<div class="ecx-prow"><span>' + ic(I.target, 17) + 'Meta CAPI</span><b class="ecx-ok">enviado</b></div>'
@@ -486,18 +540,18 @@
    +   '<h2 class="h2">Não é um chat com extras.<br>É a operação inteira num lugar só.</h2>'
    +   '<p class="lead" style="max-width:580px;margin-left:auto;margin-right:auto">Cada recurso abaixo já está incluso e funcionando, sem plugin, sem integração paga e sem cobrança por fora.</p>'
    +   '<div class="fgrid" style="text-align:left">'
-   +     fcard(I.layout, 'Checkout próprio', 'Monte sua página de pagamento arrastando blocos: banner, contador, depoimento, garantia e FAQ. Mais confiança, menos carrinho abandonado.')
-   +     fcard(I.webhook, 'Webhooks de entrada', 'Qualquer sistema manda lead direto para o seu funil. Formulário, landing ou ERP: chegou, virou conversa.')
-   +     fcard(I.shop, 'Nuvemshop integrada', 'Conecte a loja em um clique: pedido feito, cliente avisado no WhatsApp. Sem exportar planilha.')
+   +     fcard(I.layout, 'Checkout Builder', 'Monte sua página de pagamento arrastando blocos: banner, contador, depoimento, garantia e FAQ. Mais confiança, menos carrinho abandonado.', 'pagamentos')
+   +     fcard(I.webhook, 'Webhooks de entrada', 'Qualquer sistema manda lead direto para o seu funil. Formulário, landing ou ERP: chegou, virou conversa.', 'webhooks')
+   +     fcard(I.shop, 'Nuvemshop integrada', 'Conecte a loja em um clique: pedido feito, cliente avisado no WhatsApp. Sem exportar planilha.', 'nuvemshop')
    +     fcard(I.shield, 'Opt-in & Opt-out (LGPD)', 'Consentimento registrado, descadastro por palavra-chave e bloqueio automático de quem pediu para sair. Sua operação em dia com a lei.')
    +     fcard(I.file, 'Modelos aprovados pela Meta', 'Crie templates com preview de celular em tempo real e acompanhe a aprovação. É o que libera falar fora da janela de 24h.')
    +     fcard(I.phone, 'Ligações no WhatsApp', 'Receba chamadas de voz pela API oficial, direto do painel. O cliente liga de graça, sem sair do app.')
    +     fcard(I.star, 'Pesquisa de satisfação', 'Ao encerrar o atendimento, o cliente avalia por botões. Você descobre qual atendente encanta e qual precisa de ajuda.')
-   +     fcard(I.key, 'Permissão por atendente', 'Defina quem vê e quem edita cada módulo. O estagiário atende sem enxergar faturamento nem base de contatos.')
-   +     fcard(I.map, 'Mapa de calor de leads', 'Veja em quais estados seus leads se concentram e decida onde investir, com o mapa do Brasil no dashboard.')
+   +     fcard(I.key, 'Permissão por atendente', 'Defina quem vê e quem edita cada módulo. O estagiário atende sem enxergar faturamento nem base de contatos.', 'equipe')
+   +     fcard(I.map, 'Mapa de calor de leads', 'Veja em quais estados seus leads se concentram e decida onde investir, com o mapa do Brasil no dashboard.', 'campanhas')
    +     fcard(I.bell, 'Notificação que chega', 'Instale como app e receba push mesmo com a aba fechada. Mensagem nova não fica esperando ninguém lembrar de olhar.')
-   +     fcard(I.users, 'Presença da equipe', 'Veja quem está online, ausente ou em atendimento, e transfira a conversa para quem pode responder agora.')
-   +     fcard(I.link, 'Domínio próprio nos links', 'Os links curtos saem com a sua marca, não com a nossa. Mais clique, mais credibilidade.')
+   +     fcard(I.users, 'Presença da equipe', 'Veja quem está online, ausente ou em atendimento, e transfira a conversa para quem pode responder agora.', 'equipe')
+   +     fcard(I.link, 'Domínio próprio nos links', 'Os links curtos saem com a sua marca, não com a nossa. Mais clique, mais credibilidade.', 'links')
    +   '</div>'
    +   '<div class="ecx-cta"><button class="btn">Testar por 7 dias</button>'
    +     '<a class="ghost" href="#planos">Ver planos</a></div>'
@@ -629,8 +683,11 @@
     }
     return ok;
   }
-  var tries = 0, iv = setInterval(function () { wireCta(); aplicarPlanos(); if (inject() || ++tries > 60) clearInterval(iv); }, 250);
-  new MutationObserver(function () { ensureCss(); ensureSeo(); inject(); applyCta(); aplicarPlanos(); ajustarTeste(); wireCta(); }).observe(document.documentElement, { childList: true, subtree: true });
+  // `aplicarRecursos` roda DEPOIS de `inject`: as seções são reinjetadas a
+  // partir das constantes a cada redesenho do runtime, e voltariam com os
+  // itens desligados se a limpeza não viesse na sequência.
+  var tries = 0, iv = setInterval(function () { wireCta(); aplicarPlanos(); var f = inject(); aplicarRecursos(); if (f || ++tries > 60) clearInterval(iv); }, 250);
+  new MutationObserver(function () { ensureCss(); ensureSeo(); inject(); applyCta(); aplicarPlanos(); ajustarTeste(); aplicarRecursos(); wireCta(); }).observe(document.documentElement, { childList: true, subtree: true });
 })();
 </script>
 

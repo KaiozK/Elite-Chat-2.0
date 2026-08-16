@@ -255,6 +255,14 @@ function renderThemeSettings() {
 // ---------- Centro de Notificações (sino no topbar) ----------
 function notifOpenFromData(data) {
   data = data || {};
+  // LIGAÇÃO: tocar na notificação é o gesto de atender, não de "abrir o app e
+  // procurar". O botão "Recusar" da notificação recusa; qualquer outro toque
+  // atende.
+  if (data.type === 'call' && data.callId) {
+    if (data.action === 'reject') { recusarChamadaPorId(data.callId); return; }
+    atenderChamadaPorId(data.callId);
+    return;
+  }
   if (data.waId) { location.hash = '#/inbox'; setTimeout(() => { try { openChat(data.waId); } catch {} }, 180); }
   else if (data.url) { const h = data.url.split('#')[1]; if (h) location.hash = h; }
 }
@@ -270,7 +278,7 @@ window.__ecOnNotifOpen = notifOpenFromData;
 
 window.__ecOnResume = function () {
   // O SO derruba a conexão SSE quando o app fica em segundo plano.
-  if (TOKEN) { try { connectSSE(); } catch {} notifResync(); }
+  if (TOKEN) { try { connectSSE(); } catch {} notifResync(); recuperarChamadaPendente(true); }
 };
 
 // Botão físico de voltar do Android. Retorna true quando já tratou o toque —
@@ -1112,7 +1120,29 @@ async function enterApp() {
   pollTimer = setInterval(refreshBadge, 30000);
   if (state.mustChangePassword) toast('Troque a senha padrão em Configurações → Segurança', 'error');
   route();
+  atenderPelaUrl();
 }
+
+// O app pode ter sido ABERTO pelo toque na notificação de chamada — o Service
+// Worker põe `?atender=<id>` na URL justamente porque, com o app fechado, não
+// há a quem mandar mensagem. A intenção é consumida uma vez e apagada da barra
+// de endereços, senão um F5 tentaria atender de novo uma chamada encerrada.
+function atenderPelaUrl() {
+  let id = '';
+  try { id = new URLSearchParams(location.search).get('atender') || ''; } catch {}
+  if (!id) return;
+  try { history.replaceState(null, '', location.pathname + location.hash); } catch {}
+  atenderChamadaPorId(id);
+}
+
+// No PWA do navegador ninguém chama `__ecOnResume`: quem avisa que o app voltou
+// à tela é o `visibilitychange`. Sem isto, quem abriu o app pelo ícone (em vez
+// da notificação) voltava para uma tela parada, sem sinal nenhum de que o
+// telefone estava tocando.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !TOKEN) return;
+  recuperarChamadaPendente(true);
+});
 
 // Card de gestão das conexões (Configurações → Conexão & API).
 // Cada linha é um número; a linha marcada é o canal que o painel está usando.
@@ -2117,10 +2147,10 @@ async function renderDashboard() {
     const sl = d.sales || { todayCount: 0, todayValue: 0, totalCount: 0, totalValue: 0 };
     $('#dash').innerHTML = `
       <div class="dash-kpis">
-        <div class="stat"><span class="stat-ico">${ico('users', 17)}</span><div class="num">${fmtN(d.contacts)}</div><div class="lbl">Contatos</div></div>
-        <a class="stat" href="#/elitepay"><span class="stat-ico">${ico('zap', 17)}</span><div class="num">${fmtBRL(sl.todayValue)}</div><div class="lbl">Vendas hoje${sl.todayCount ? ` · ${fmtN(sl.todayCount)} venda${sl.todayCount > 1 ? 's' : ''}` : ''}</div></a>
-        <a class="stat" href="#/elitepay"><span class="stat-ico">${ico('card', 17)}</span><div class="num">${fmtBRL(sl.totalValue)}</div><div class="lbl">Total em vendas</div></a>
-        <a class="stat" href="#/elitepay"><span class="stat-ico">${ico('activity', 17)}</span><div class="num">${fmtN(sl.totalCount)}</div><div class="lbl">Quantidade de vendas</div></a>
+        <div class="stat"><span class="stat-ico">${ico('users', 17)}</span>${kpiNum(fmtNk(d.contacts), fmtN(d.contacts))}<div class="lbl">Contatos</div></div>
+        <a class="stat" href="#/elitepay"><span class="stat-ico">${ico('zap', 17)}</span>${kpiNum(fmtBRLk(sl.todayValue), fmtBRL(sl.todayValue))}<div class="lbl">Vendas hoje${sl.todayCount ? ` · ${fmtN(sl.todayCount)} venda${sl.todayCount > 1 ? 's' : ''}` : ''}</div></a>
+        <a class="stat" href="#/elitepay"><span class="stat-ico">${ico('card', 17)}</span>${kpiNum(fmtBRLk(sl.totalValue), fmtBRL(sl.totalValue))}<div class="lbl">Total em vendas</div></a>
+        <a class="stat" href="#/elitepay"><span class="stat-ico">${ico('activity', 17)}</span>${kpiNum(fmtNk(sl.totalCount), fmtN(sl.totalCount))}<div class="lbl">Quantidade de vendas</div></a>
       </div>
       <div class="two-col">
         <div class="card chart-card">
@@ -5175,6 +5205,47 @@ function updateTopbar() {
 function fmtN(n) { return new Intl.NumberFormat('pt-BR').format(n || 0); }
 // centavos → "R$ 97,00"
 function fmtBRL(cents) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((cents || 0) / 100); }
+// ---------------------------------------------------------------------------
+// NÚMERO CURTO para os cartões de KPI.
+//
+// "R$ 1.284.390,00" não cabe embaixo do ícone do cartão e o valor ficava
+// tapado. Aqui ele vira "R$ 1,2M" e o valor exato fica no title (o balãozinho
+// do navegador ao passar o mouse) — ver `kpiNum()`.
+//
+// Só encurta quando precisa: até R$ 9.999,99 o valor aparece inteiro, porque
+// "R$ 1,2K" é pior de ler que "R$ 1.234,50" e o espaço dá conta.
+// ---------------------------------------------------------------------------
+function curto(n, casas) {
+  const abs = Math.abs(n);
+  const corta = (div, suf) => {
+    const v = n / div;
+    // 1 casa decimal, mas sem ",0" pendurado: 20,5K e 20K, não 20,0K.
+    const s = v.toFixed(Math.abs(v) >= 100 ? 0 : (casas === undefined ? 1 : casas));
+    // Só corta o zero DEPOIS da vírgula: "20.0"→"20", mas "250" continua 250.
+    return s.replace(/\.0+$/, '').replace('.', ',') + suf;
+  };
+  // O corte é 999,5 e não 1000: acima disso o arredondamento para inteiro dá
+  // "1000" e sairia "R$ 1000M" em vez de "R$ 1B".
+  if (abs >= 999.5e6) return corta(1e9, 'B');
+  if (abs >= 999.5e3) return corta(1e6, 'M');
+  if (abs >= 999.5) return corta(1e3, 'K');
+  return fmtN(n);
+}
+// centavos → "R$ 20,5K" (a partir de dez mil reais; abaixo disso, valor cheio)
+function fmtBRLk(cents) {
+  const reais = (cents || 0) / 100;
+  // Espaço RÍGIDO depois do "R$": em tela estreita a linha quebrava entre o
+  // símbolo e o número, e o valor virava duas linhas dentro do cartão.
+  return Math.abs(reais) < 10000 ? fmtBRL(cents) : 'R$ ' + curto(reais);
+}
+// contagem → "12.480" vira "12,5K" só quando passa de cinco dígitos
+function fmtNk(n) { return Math.abs(n || 0) < 100000 ? fmtN(n) : curto(n); }
+// O <div class="num"> do cartão, com o valor exato no balãozinho do navegador.
+// `title` só aparece quando encurtou — senão o balão repetiria o que já se lê.
+function kpiNum(curtoTxt, exato, cls) {
+  const t = curtoTxt !== exato ? ` title="${esc(exato)}"` : '';
+  return `<div class="num${cls ? ' ' + cls : ''}"${t}>${curtoTxt}</div>`;
+}
 // Crescimento líquido (opt-ins − opt-outs): mostra o sinal
 function coGrowth(n) { n = n || 0; return (n > 0 ? '+' : '') + fmtN(n); }
 
@@ -7758,6 +7829,61 @@ async function paintAdmin() {
         </div>
 
         <div class="card">
+          <h2>${ico('pix')} Adquirente do Pix</h2>
+          <p class="muted" style="margin:0 0 12px;font-size:13px">
+            Quem processa as cobranças. A troca vale para as <b>próximas</b> cobranças — as já emitidas continuam
+            sendo confirmadas pelo gateway que as criou.
+          </p>
+          <div class="gw-picker">
+            <label class="gw-opt ${(d.config.gateway || 'woovi') === 'woovi' ? 'on' : ''}">
+              <input type="radio" name="gw" value="woovi" ${(d.config.gateway || 'woovi') === 'woovi' ? 'checked' : ''}
+                     onchange="admSaveConfig({gateway:'woovi'})">
+              <b>Woovi</b>
+              <span>Subconta por cliente, Pix Automático e KYC pelo Koonfy.</span>
+              <i class="pill ${d.config.woovi.configured ? 'done' : ''}">${d.config.woovi.configured ? 'Configurado' : 'Sem credencial'}</i>
+            </label>
+            <label class="gw-opt ${d.config.gateway === 'simplify' ? 'on' : ''}">
+              <input type="radio" name="gw" value="simplify" ${d.config.gateway === 'simplify' ? 'checked' : ''}
+                     onchange="admSaveConfig({gateway:'simplify'})">
+              <b>Simplify</b>
+              <span>Mais simples: sem subconta e sem KYC. O dinheiro cai na conta da plataforma e a carteira do
+              Koonfy registra o saldo de cada cliente.</span>
+              <i class="pill ${d.config.simplify.configured ? 'done' : ''}">${d.config.simplify.configured ? 'Configurado' : 'Sem credencial'}</i>
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>${ico('shield')} Simplify. Credenciais</h2>
+          <p class="muted" style="margin:0 0 12px;font-size:13px">
+            Pegue em <b>simplifybr.com</b> → API. O webhook <b>não precisa ser cadastrado lá</b>: o Koonfy manda o
+            endereço em cada cobrança.
+          </p>
+          <div class="row">
+            <label style="flex:1">Client ID ${d.config.simplify.clientId ? `<span class="pill done" style="margin-left:6px">${esc(d.config.simplify.clientId)}</span>` : ''}
+              <input id="sp-id" type="password" placeholder="client id"></label>
+            <label style="flex:1">Client Secret
+              <input id="sp-secret" type="password" placeholder="client secret"></label>
+          </div>
+          <p class="muted" style="margin:12px 0 6px;font-size:12.5px">
+            <b>Split para a sua carteira.</b> Uma fatia de cada venda vai para outro usuário da Simplify.
+            Deixe vazio para não dividir. A Simplify aceita de 0,01% a 90%.
+          </p>
+          <div class="row">
+            <label style="flex:1.4">Usuário que recebe o split
+              <input id="sp-user" value="${esc(d.config.simplify.splitUsername || '')}" placeholder="username na Simplify"></label>
+            <label style="flex:.7">Percentual (%)
+              <input id="sp-pct" inputmode="decimal" value="${d.config.simplify.splitPercent || ''}" placeholder="0"></label>
+            <button class="btn primary no-grow" onclick="admSalvarSimplify(this)">Salvar</button>
+          </div>
+          <p class="muted" style="margin:10px 0 0;font-size:12px">
+            ${ico('help', 12)} A Simplify exige <b>nome, CPF/CNPJ, e-mail e telefone do pagador</b> para gerar o Pix.
+            Cobranças pelo checkout funcionam sempre (o cliente preenche na hora); geradas direto do chat, só se o
+            contato já tiver esses dados.
+          </p>
+        </div>
+
+        <div class="card">
           <h2>${ico('shield')} Woovi. Pix &amp; Pix Automático</h2>
           <p class="muted" style="margin:0 0 12px;font-size:13px">Gere um <b>AppID</b> em API/Plugins → Nova integração e cole abaixo. Método de pagamento: <b>apenas Pix</b> (cobrança na hora) e <b>Pix Automático</b> (recorrência), sem cartão.</p>
           <label class="chk" style="margin:0 0 12px"><input type="checkbox" ${d.config.woovi.sandbox ? 'checked' : ''} onchange="admSaveConfig({wooviSandbox:this.checked})"> Usar o <b>ambiente de testes</b> da Woovi</label>
@@ -8597,6 +8723,26 @@ async function admTestarVenda(btn) {
   finally { btn.disabled = false; btn.innerHTML = txt; }
 }
 
+// As credenciais só sobem quando preenchidas: o campo volta vazio depois de
+// salvo (nunca devolvemos o segredo), e mandar vazio apagaria o que já está lá.
+async function admSalvarSimplify(btn) {
+  const body = {
+    simplifySplitUser: $('#sp-user').value.trim(),
+    simplifySplitPct: $('#sp-pct').value.trim() || 0
+  };
+  const id = $('#sp-id').value.trim(), seg = $('#sp-secret').value.trim();
+  if (id) body.simplifyClientId = id;
+  if (seg) body.simplifyClientSecret = seg;
+  btn.disabled = true;
+  try {
+    await api('/admin/config', { method: 'PUT', body });
+    toast('Simplify salva');
+    $('#sp-id').value = ''; $('#sp-secret').value = '';
+    paintAdmin();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; }
+}
+
 async function admSaveConfig(body) {
   try {
     await api('/admin/config', { method: 'PUT', body });
@@ -8604,7 +8750,7 @@ async function admSaveConfig(body) {
     // Trocar o ambiente da Woovi muda o endereço da API e o painel onde o
     // webhook é cadastrado. Sem repintar, o cartão seguia dizendo "produção"
     // depois de marcar testes — parecia que não tinha salvado.
-    if (body && body.wooviSandbox !== undefined) paintAdmin();
+    if (body && (body.wooviSandbox !== undefined || body.gateway !== undefined)) paintAdmin();
   } catch (e) { toast(e.message, 'error'); }
 }
 async function admTestWoovi(btn) {
@@ -9153,7 +9299,7 @@ function onCallEvent(d) {
     if (window.ECNotify && ECNotify.startRing) ECNotify.startRing();
     if (window.ECNotify) {
       const who = (d.call && (d.call.name || d.call.contactName)) || (d.call && d.call.waId ? '+' + d.call.waId : 'Contato');
-      ECNotify.notify({ type: 'call', title: 'Chamada de voz', body: who + ' está te ligando…', waId: d.call && d.call.waId, url: '/app/#/inbox', tag: 'call:' + (d.call && d.call.id), requireInteraction: true });
+      ECNotify.notify({ type: 'call', title: 'Chamada de voz', body: who + ' está te ligando…', waId: d.call && d.call.waId, url: '/app/#/inbox', tag: 'call:' + (d.call && d.call.id), requireInteraction: true, callId: d.call && d.call.id });
     }
   } else if (d.kind === 'claimed') {
     // Outro aparelho (ou outro atendente) pegou a chamada. Este aqui para de
@@ -9217,8 +9363,13 @@ function paintCall() {
           <b>${esc(c.name || '+' + c.waId)}</b>
           <span>${c.phase === 'active' ? `<i id="call-timer">00:00</i>` : (CALL_PHASE_LBL[c.phase] || '')}</span>
         </div>
-        <button class="call-mini-btn" onclick="toggleMute()" title="${c.muted ? 'Ativar som' : 'Mudo'}">${callIcon('mic')}</button>
-        <button class="call-mini-btn red" onclick="hangupCall()" title="Desligar">${callIcon('down')}</button>
+        ${c.phase === 'incoming' ? `
+          <button class="call-mini-btn green" onclick="answerCall()" title="Atender">${callIcon('up')}</button>
+          <button class="call-mini-btn red" onclick="rejectCall()" title="Recusar">${callIcon('down')}</button>
+        ` : `
+          <button class="call-mini-btn" onclick="toggleMute()" title="${c.muted ? 'Ativar som' : 'Mudo'}">${callIcon('mic')}</button>
+          <button class="call-mini-btn red" onclick="hangupCall()" title="Desligar">${callIcon('down')}</button>
+        `}
         <button class="call-mini-btn ghost" onclick="restaurarChamada()" title="Abrir">${ico('maximize', 14)}</button>
       </div>`;
     if (c.phase === 'active') startCallTimer();
@@ -9423,6 +9574,48 @@ async function answerCall() {
     toast(e.message, 'error');
     endCallUI('Falha ao conectar');
   }
+}
+
+// ---------------------------------------------------------------------------
+// ATENDER VINDO DA NOTIFICAÇÃO (ou depois do app ter dormido)
+//
+// No celular a ligação quase sempre chega com o app em segundo plano. O sistema
+// operacional derruba o SSE nessa hora, então o evento "está tocando" nunca
+// chegou nesta aba: `callUI` está vazio e não há o que atender.
+//
+// Aqui a chamada é remontada a partir do servidor (/calls/pending, que devolve
+// o SDP offer) e só então atendida. Se ela já acabou ou outro aparelho pegou,
+// avisa em vez de deixar a pessoa esperando uma tela que não vem.
+// ---------------------------------------------------------------------------
+// `tocar` só na volta do segundo plano: aí a tela aparece chamando, com o botão
+// Atender, como se o evento nunca tivesse se perdido. Vindo da notificação a
+// chamada é atendida em seguida, e começar a tocar para parar meio segundo
+// depois seria só um susto.
+async function recuperarChamadaPendente(tocar) {
+  if (callUI) return callUI;
+  let r = null;
+  try { r = await api('/calls/pending'); } catch { return null; }
+  if (!r || !r.call || !r.sdpOffer) return null;
+  callUI = { ...r.call, sdpOffer: r.sdpOffer, phase: 'incoming', muted: false };
+  paintCall();
+  if (tocar && window.ECNotify && ECNotify.startRing) ECNotify.startRing();
+  return callUI;
+}
+
+async function atenderChamadaPorId(id) {
+  // Já está na tela: é a mesma chamada, atende direto.
+  if (!callUI || (id && callUI.id !== id)) {
+    if (!callUI && !(await recuperarChamadaPendente())) {
+      toast('Esta ligação já foi encerrada ou atendida em outro aparelho');
+      return;
+    }
+  }
+  if (callUI && callUI.phase === 'incoming') answerCall();
+}
+
+async function recusarChamadaPorId(id) {
+  if (callUI && (!id || callUI.id === id)) { rejectCall(); return; }
+  try { await api(`/calls/${id}/reject`, { body: {} }); } catch {}
 }
 
 async function rejectCall() {
