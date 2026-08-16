@@ -532,7 +532,40 @@ function migrateLegacy() {
 }
 
 // Garante que contas antigas ganhem os campos novos (wa do Embedded Signup etc.)
+// ---------------------------------------------------------------------------
+// TODA MENSAGEM COM HORA
+//
+// `addMessage` carimba a hora desde sempre, mas o histórico tem mensagens
+// antigas de antes disso — e elas apareciam no chat sem horário nenhum, o que
+// no meio de uma conversa parece defeito.
+//
+// A hora que falta é DEDUZIDA da vizinhança: a lista está em ordem de
+// chegada, então uma mensagem sem hora fica entre duas que têm. Usar a
+// anterior mantém a ordem e não inventa um horário no futuro. Sem vizinho
+// anterior, usa o seguinte; sem nenhum dos dois, a criação da conta.
+//
+// Roda uma vez na migração e o valor fica GRAVADO: o conserto é do dado, não
+// da tela.
+// ---------------------------------------------------------------------------
+function carimbarHorasFaltantes(acc) {
+  const msgs = acc.messages;
+  if (!Array.isArray(msgs) || !msgs.length) return 0;
+  const valida = (t) => Number.isFinite(t) && t > 0;
+  let corrigidas = 0;
+
+  for (let i = 0; i < msgs.length; i++) {
+    if (valida(msgs[i].timestamp)) continue;
+    let t = null;
+    for (let j = i - 1; j >= 0; j--) if (valida(msgs[j].timestamp)) { t = msgs[j].timestamp; break; }
+    if (t === null) for (let j = i + 1; j < msgs.length; j++) if (valida(msgs[j].timestamp)) { t = msgs[j].timestamp; break; }
+    msgs[i].timestamp = t !== null ? t : (acc.createdAt || Date.now());
+    corrigidas++;
+  }
+  return corrigidas;
+}
+
 function ensureAccountShape(acc) {
+  carimbarHorasFaltantes(acc);
   // ---- MULTI-CANAL: a conexão única (acc.wa) vira o canal padrão ----
   if (!Array.isArray(acc.channels) || !acc.channels.length) {
     const ch = emptyChannel('WhatsApp principal');

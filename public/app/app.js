@@ -636,10 +636,62 @@ function ecSelect(id, options, value, onpick, cls) {
 }
 // valor atual de um ecSelect (guardado em data-val)
 function ecVal(id) { const el = document.getElementById(id); return el ? el.dataset.val : ''; }
+// ---------------------------------------------------------------------------
+// ABRIR O SELETOR SEM SER CORTADO
+//
+// O menu é `position: absolute` dentro do próprio seletor. Isso quebra quando
+// algum ancestral tem overflow: no celular, a barra de ferramentas do chat rola
+// na horizontal (overflow:auto) e tem 42px de altura — o menu das RESPOSTAS
+// RÁPIDAS abria acima dela e era cortado inteiro. O select existia, as opções
+// existiam, e não aparecia nada.
+//
+// Quando há um ancestral que corta, o menu passa a `position: fixed` com as
+// coordenadas medidas na hora: fora de qualquer overflow, e continua colado no
+// botão. Vale para todo seletor do app, não só este.
+// ---------------------------------------------------------------------------
+function temAncestralQueCorta(el) {
+  for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) {
+    const s = getComputedStyle(n);
+    if (s.overflow !== 'visible' || s.overflowX !== 'visible' || s.overflowY !== 'visible') return true;
+  }
+  return false;
+}
+
+function ecSelSoltar(el) {
+  const menu = el.querySelector('.ecsel-menu'); if (!menu) return;
+  if (!temAncestralQueCorta(el)) return;
+  const r = el.getBoundingClientRect();
+  const alturaMenu = Math.min(menu.scrollHeight + 12, 280);
+  // Abre para CIMA quando não há espaço embaixo — a barra do chat fica no pé
+  // da tela, então esse é o caso normal aqui.
+  const cabeEmbaixo = r.bottom + alturaMenu + 8 <= window.innerHeight;
+  // `min-width: 100%` do CSS passa a valer contra a JANELA quando o menu vira
+  // fixed — ele saía com a largura da tela inteira e vazava pela direita. Some
+  // aqui, e a largura passa a ser a do botão (com um mínimo para caber o texto).
+  const largura = Math.min(Math.max(r.width, 168), window.innerWidth - 16);
+  menu.style.position = 'fixed';
+  menu.style.minWidth = '0';
+  menu.style.width = largura + 'px';
+  menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - largura - 8)) + 'px';
+  menu.style.right = 'auto';
+  if (cabeEmbaixo) { menu.style.top = (r.bottom + 5) + 'px'; menu.style.bottom = 'auto'; }
+  else { menu.style.bottom = (window.innerHeight - r.top + 5) + 'px'; menu.style.top = 'auto'; }
+  el.dataset.solto = '1';
+}
+
+function ecSelPrender(el) {
+  if (!el.dataset.solto) return;
+  const menu = el.querySelector('.ecsel-menu');
+  if (menu) menu.style.cssText = '';
+  delete el.dataset.solto;
+}
+
 function ecSelToggle(id) {
   const el = document.getElementById(id); if (!el) return;
-  document.querySelectorAll('.ecsel.open').forEach(x => { if (x !== el) x.classList.remove('open'); });
-  el.classList.toggle('open');
+  document.querySelectorAll('.ecsel.open').forEach(x => { if (x !== el) { x.classList.remove('open'); ecSelPrender(x); } });
+  const abrindo = !el.classList.contains('open');
+  el.classList.toggle('open', abrindo);
+  if (abrindo) ecSelSoltar(el); else ecSelPrender(el);
 }
 function ecSelPick(id, val, ev) {
   if (ev) ev.stopPropagation();
@@ -657,12 +709,13 @@ function ecSelPick(id, val, ev) {
     if (!on && chk) chk.remove();
   });
   el.classList.remove('open');
+  ecSelPrender(el);          // devolve o menu ao lugar quando ele foi solto
   const snip = el.dataset.onpick;
   if (snip) { try { new Function('val', 'id', snip)(val, id); } catch (e) { console.error('ecSelect onpick', e); } }
   else { const cb = el.dataset.cb; if (cb && typeof window[cb] === 'function') window[cb](); }
 }
 function ecSelVal(id) { const el = document.getElementById(id); return el ? el.dataset.val : ''; }
-document.addEventListener('click', e => { if (!e.target.closest('.ecsel')) document.querySelectorAll('.ecsel.open').forEach(x => x.classList.remove('open')); });
+document.addEventListener('click', e => { if (!e.target.closest('.ecsel')) document.querySelectorAll('.ecsel.open').forEach(x => { x.classList.remove('open'); ecSelPrender(x); }); });
 
 function fmtTime(ts) {
   if (!ts) return '';
@@ -3032,12 +3085,25 @@ async function reopenAttendance() {
 }
 
 function renderThread(messages) {
+  // Hora estimada para o que chegar sem ela: a lista está em ordem, então a
+  // mensagem anterior (ou a seguinte, no começo) é o palpite certo. Serve para
+  // o balão e para o separador de dia — sem isto, uma mensagem sem hora abria
+  // um separador "Invalid Date" no meio da conversa.
+  const valida = (t) => Number.isFinite(t) && t > 0;
+  let ultima = null;
+  for (const m of messages) if (valida(m.timestamp)) { ultima = m.timestamp; break; }
+  const quando = messages.map(m => {
+    if (valida(m.timestamp)) { ultima = m.timestamp; return m.timestamp; }
+    return ultima;
+  });
+
   let html = '', prevDay = '';
   messages.forEach((m, i) => {
-    const dl = dayLabel(m.timestamp);
+    if (!valida(m.timestamp) && quando[i]) m = { ...m, horaEstimada: quando[i] };
+    const dl = dayLabel(quando[i]);
     if (dl !== prevDay) { html += `<div class="date-sep"><span>${esc(dl)}</span></div>`; prevDay = dl; }
     const next = messages[i + 1];
-    const tail = !next || next.direction !== m.direction || dayLabel(next.timestamp) !== dl;
+    const tail = !next || next.direction !== m.direction || dayLabel(quando[i + 1]) !== dl;
     html += renderMsg(m, tail);
   });
   return html;
@@ -3137,12 +3203,14 @@ function renderMsg(m, tail = true) {
   // para respeitar as quebras que o cliente digitou, e com isso a indentação
   // do próprio template virava espaço em branco DENTRO da mensagem — a
   // primeira linha saía deslocada e sobrava uma linha vazia no fim.
-  // Mensagem antiga sem hora existe no histórico. Melhor não pintar a caixinha
-  // vazia: ela reservava a mesma altura do horário e o balão ficava com um
-  // vão em branco embaixo do texto, sem nada dentro.
-  const hora = fmtHora(m.timestamp), st = statusIcon(m);
+  // TODA mensagem mostra a hora. O banco carimba na gravação e a migração
+  // preencheu o histórico antigo (ver `carimbarHorasFaltantes`), mas aqui fica
+  // a rede: se algo chegar sem hora, `m.horaEstimada` — posta por
+  // `renderThread` a partir da mensagem vizinha — evita o balão mudo.
+  const quando = Number.isFinite(m.timestamp) && m.timestamp > 0 ? m.timestamp : m.horaEstimada;
+  const hora = fmtHora(quando), st = statusIcon(m);
   const meta = (hora || st)
-    ? `<div class="meta" title="${esc(fmtTime(m.timestamp))}"><time>${hora}</time>${st}</div>`
+    ? `<div class="meta" title="${esc(fmtTime(quando))}"><time>${hora}</time>${st}</div>`
     : '';
 
   // BOTÕES enviados ao lead aparecem como botões, e não como "[Sim] [Não]"
