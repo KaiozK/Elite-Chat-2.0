@@ -4146,9 +4146,11 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
 .call-overlay .call-top { margin-top: 46px; }
 @media (max-width: 560px) {
   .call-min { left: 12px; top: calc(12px + env(safe-area-inset-top, 0px)); }
-  /* no celular o rótulo sai e sobra o ícone, mas o alvo continua com 40px */
-  .call-min span { display: none; }
-  .call-min { padding: 0; width: 40px; justify-content: center; }
+  /* O rótulo FICA no celular. Sem ele restava um círculo com um traço dentro,
+     em cima de um fundo escuro: ninguém liga isso a "minimizar" no meio de uma
+     ligação tocando. Ele encolhe, mas continua dizendo o que faz. */
+  .call-min { padding: 0 14px 0 11px; font-size: 12px; }
+  .call-min span { display: inline; }
 }
 
 /* A pastilha fica ACIMA de tudo e some do caminho do conteúdo. `position:
@@ -4202,6 +4204,18 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
     padding-top: calc(9px + env(safe-area-inset-top, 0px));
   }
   .call-mini-tx { max-width: none; flex: 1; }
+
+  /* A barra EMPURRA o app para baixo em vez de deitar por cima dele.
+     Minimizar existe para continuar usando o Koonfy durante a ligação; com a
+     barra tapando o cabeçalho, sumiam o seletor de canal, a busca e as
+     notificações — ou seja, minimizar tirava justamente o que ela deveria
+     devolver. A altura vai numa variável porque o cabeçalho e as telas de
+     altura cheia (inbox, .page) precisam descontar o mesmo valor. */
+  body.em-chamada { --call-bar-h: calc(57px + env(safe-area-inset-top, 0px)); }
+  body.em-chamada .topbar { margin-top: var(--call-bar-h); }
+  body.em-chamada .page,
+  body.em-chamada .inbox { height: calc(100dvh - var(--topbar-h) - var(--call-bar-h)); }
+  body.em-chamada .sidebar { top: var(--call-bar-h); }
 }
 
 /* ===================== BOTÕES DENTRO DA MENSAGEM =====================

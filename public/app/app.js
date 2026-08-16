@@ -9751,7 +9751,7 @@ const CALL_PHASE_LBL = {
 function paintCall() {
   let root = $('#call-root');
   if (!root) { root = document.createElement('div'); root.id = 'call-root'; document.body.appendChild(root); }
-  if (!callUI) { root.innerHTML = ''; return; }
+  if (!callUI) { root.innerHTML = ''; marcarBarraChamada(false); return; }
   const c = callUI;
   const status = c.phase === 'active'
     ? `<span id="call-timer">00:00</span>`
@@ -9780,6 +9780,7 @@ function paintCall() {
       </div>`;
     if (c.phase === 'active') startCallTimer();
     ligarArrasto();
+    marcarBarraChamada(true);
     return;
   }
 
@@ -9811,9 +9812,16 @@ function paintCall() {
         `}
       </div>
     </div>`;
+  marcarBarraChamada(false);       // em tela cheia não há barra para caber
   if (c.phase === 'active') startCallTimer();
 }
 
+// `body.em-chamada` é o que faz o app descer para caber a barra da ligação no
+// celular (ver style.css). Sem isso a barra deitava por cima do cabeçalho e
+// minimizar tirava justamente o que ela deveria devolver: o resto do app.
+function marcarBarraChamada(ligada) {
+  document.body.classList.toggle('em-chamada', !!ligada);
+}
 function minimizarChamada() { if (callUI) { callUI.min = true; paintCall(); } }
 function restaurarChamada() { if (callUI) { callUI.min = false; paintCall(); } }
 
