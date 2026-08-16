@@ -91,31 +91,47 @@ global.fetch = async (u, o) => {
   ok(r.brCode === respostaFalsa.qrcode, 'o campo `qrcode` vira o Pix copia e cola');
   ok(r.gatewayId === 'TXN_TESTE123', 'guarda o internal_id da Simplify');
 
-  console.log('\n=== 4. O SPLIT vai em porcentagem, com teto de 90% ===');
-  p.simplify.splitUsername = 'koonfy';
-  // 250 de 10000 = 2,5%
+  console.log('\n=== 4. A TAXA DA PLATAFORMA NÃO sai como split ===');
+  // Este é o ponto mais caro do arquivo. Na Simplify o depósito INTEIRO cai na
+  // conta da plataforma e a carteira credita ao cliente o líquido (valor menos
+  // a taxa) — a taxa já está retida. Mandá-la também como split faria o
+  // dinheiro sair da conta da plataforma: ela perderia o que acabou de cobrar
+  // e o cliente continuaria recebendo o líquido. Prejuízo dos dois lados.
+  p.simplify.splitUsername = '';
+  p.simplify.splitPercent = 0;
   await elitepay.gateway().createCharge({
-    correlationID: 'ep-2', value: 10000, splits: [{ pixKey: 'x', value: 250 }],
+    correlationID: 'ep-2', value: 10000, splits: [{ pixKey: 'x', value: 250 }],   // taxa de 2,5%
     customer: { payer: { name: 'A', email: 'a@a.com', document: '11144477735', phone: '11999999999' } }
   });
-  ok(ultimaChamada.corpo.split[0].username === 'koonfy', 'manda para o usuário configurado');
-  ok(ultimaChamada.corpo.split[0].percentage === 2.5, `centavos viraram porcentagem: ${ultimaChamada.corpo.split[0].percentage}%`);
+  ok(ultimaChamada.corpo.split === undefined,
+    'a taxa de 2,5% NÃO virou split: ela já fica na conta da plataforma');
 
-  // Um split absurdo não pode ser mandado: a Simplify recusa acima de 90% e a
-  // cobrança inteira falharia.
+  console.log('\n=== 5. O split serve para mandar a OUTRO usuário da Simplify ===');
+  // Um sócio, um parceiro. Configurado à mão no Admin, e nunca deduzido da taxa.
+  p.simplify.splitUsername = 'socio';
+  p.simplify.splitPercent = 2.5;
   await elitepay.gateway().createCharge({
-    correlationID: 'ep-3', value: 10000, splits: [{ pixKey: 'x', value: 9900 }],
+    correlationID: 'ep-3', value: 10000, splits: [{ pixKey: 'x', value: 250 }],
+    customer: { payer: { name: 'A', email: 'a@a.com', document: '11144477735', phone: '11999999999' } }
+  });
+  ok(ultimaChamada.corpo.split[0].username === 'socio', 'vai para o usuário configurado');
+  ok(ultimaChamada.corpo.split[0].percentage === 2.5, `com a porcentagem do Admin: ${ultimaChamada.corpo.split[0].percentage}%`);
+
+  // A Simplify recusa acima de 90% e a cobrança inteira falharia.
+  p.simplify.splitPercent = 99;
+  await elitepay.gateway().createCharge({
+    correlationID: 'ep-4', value: 10000,
     customer: { payer: { name: 'A', email: 'a@a.com', document: '11144477735', phone: '11999999999' } }
   });
   ok(ultimaChamada.corpo.split[0].percentage === 90, `99% foi limitado a ${ultimaChamada.corpo.split[0].percentage}%`);
 
-  console.log('\n=== 5. Sem usuário de split, não manda o campo ===');
   p.simplify.splitUsername = '';
+  p.simplify.splitPercent = 0;
   await elitepay.gateway().createCharge({
-    correlationID: 'ep-4', value: 5000, splits: [{ pixKey: 'x', value: 125 }],
+    correlationID: 'ep-5', value: 5000,
     customer: { payer: { name: 'A', email: 'a@a.com', document: '11144477735', phone: '11999999999' } }
   });
-  ok(ultimaChamada.corpo.split === undefined, 'o campo `split` fica de fora');
+  ok(ultimaChamada.corpo.split === undefined, 'sem usuário configurado, o campo `split` fica de fora');
 
   console.log('\n=== 6. Erro da Simplify chega legível ===');
   devolverErro = 'CPF do pagador inválido';
@@ -211,6 +227,25 @@ global.fetch = async (u, o) => {
     'dígitos verificadores: aceita o válido, recusa o inventado');
   ok(documento.cnpjValido('11222333000181') && !documento.cnpjValido('11222333000199'),
     'o mesmo vale para CNPJ');
+
+  console.log('\n=== 11b. O CAMINHO DO DINHEIRO: onde fica a taxa ===');
+  // É daqui que sai o lucro da plataforma. Na Simplify o depósito inteiro cai
+  // na conta dela; a carteira do cliente recebe o LÍQUIDO, e a diferença é a
+  // taxa. Se esta conta estiver errada, o erro é em dinheiro de verdade.
+  elitepay.platformCfg().feeInPercent = 2.5;
+  acc2.wallet = { balance: 0, transactions: [] };
+  const vendaTaxa = await elitepay.createCharge(acc2, {
+    valueCents: 19700, comment: 'Venda', waId: '5582981440676', contactName: 'Cliente', origin: 'chat'
+  });
+  ok(vendaTaxa.feePercent === 2.5, `a cobrança guarda a taxa aplicada: ${vendaTaxa.feePercent}%`);
+  ok(vendaTaxa.platformCut === 492, `2,5% de R$ 197,00 = R$ 4,92 (${vendaTaxa.platformCut} centavos)`);
+
+  elitepay.markPaidFromGateway(acc2, vendaTaxa, () => {});
+  ok(acc2.wallet.balance === 19208,
+    `o cliente recebe o líquido na carteira: R$ ${(acc2.wallet.balance / 100).toFixed(2)}`);
+  ok(19700 - acc2.wallet.balance === vendaTaxa.platformCut,
+    'e a diferença é exatamente a taxa, que ficou na conta da plataforma');
+  elitepay.platformCfg().feeInPercent = 0;
 
   console.log('\n=== 12. AVISO de venda no celular do dono e do admin ===');
   const enviados = [];

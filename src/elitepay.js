@@ -65,12 +65,26 @@ const DRIVERS = {
       const url = webhookUrlPublica('/simplify-webhook');
       if (url) body.webhookURL = url;
 
-      // O split da PLATAFORMA. `splits` chega em centavos (mesma interface da
-      // Woovi), mas a Simplify trabalha em PORCENTAGEM — a conversão é feita
-      // aqui, respeitando o teto de 90% que a API impõe.
-      const pct = splits && splits.length && value > 0
-        ? Math.min(90, Math.round((splits[0].value / value) * 10000) / 100)
-        : Number(c.splitPercent) || 0;
+      // -------------------------------------------------------------------
+      // A TAXA DA PLATAFORMA **NÃO** SAI COMO SPLIT AQUI. Isto é importante.
+      //
+      // Na Woovi o depósito cai na SUBCONTA do cliente, então a taxa precisa
+      // ser retirada por split para chegar à plataforma. Na Simplify não há
+      // subconta: o depósito inteiro já cai na conta da PLATAFORMA, e é a
+      // carteira do Koonfy que credita ao cliente o líquido
+      // (`creditPixSale` = valor − platformCut). Ou seja, a taxa já está
+      // retida por construção.
+      //
+      // Mandar `splits` (que chega em centavos, com a taxa) como split aqui
+      // faria a taxa sair da conta da plataforma para outro usuário — a
+      // plataforma perderia o que acabou de cobrar, e o cliente continuaria
+      // recebendo o líquido. Prejuízo dos dois lados.
+      //
+      // O `split` fica para o que ele é de fato na Simplify: mandar uma fatia
+      // para OUTRO usuário da Simplify (um sócio, um parceiro), configurado à
+      // mão em Admin → Gateways. Nunca para a própria taxa.
+      // -------------------------------------------------------------------
+      const pct = Number(c.splitPercent) || 0;
       if (c.splitUsername && pct >= 0.01) {
         body.split = [{ username: c.splitUsername, percentage: Math.min(90, pct) }];
       }

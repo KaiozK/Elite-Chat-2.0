@@ -7834,6 +7834,13 @@ async function paintAdmin() {
             Quem processa as cobranças. A troca vale para as <b>próximas</b> cobranças — as já emitidas continuam
             sendo confirmadas pelo gateway que as criou.
           </p>
+          <p class="muted" style="margin:0 0 12px;font-size:12.5px;padding:10px 12px;border-radius:10px;background:var(--bg2)">
+            ${ico('help', 12)} <b>Nos dois, quem aparece como recebedor do Pix é você.</b> A subconta da Woovi é
+            uma reserva de saldo <i>dentro</i> da sua conta (o valor só sai no saque), e a Simplify não tem
+            subconta. Em ambos o dinheiro entra no seu CNPJ e a carteira do Koonfy registra o quanto é de cada
+            cliente. Para o pagador ver o nome do <b>seu cliente</b> no Pix, ele precisaria de conta própria no
+            adquirente, com CNPJ e KYC dele.
+          </p>
           <div class="gw-picker">
             <label class="gw-opt ${(d.config.gateway || 'woovi') === 'woovi' ? 'on' : ''}">
               <input type="radio" name="gw" value="woovi" ${(d.config.gateway || 'woovi') === 'woovi' ? 'checked' : ''}
@@ -7866,8 +7873,10 @@ async function paintAdmin() {
               <input id="sp-secret" type="password" placeholder="client secret"></label>
           </div>
           <p class="muted" style="margin:12px 0 6px;font-size:12.5px">
-            <b>Split para a sua carteira.</b> Uma fatia de cada venda vai para outro usuário da Simplify.
-            Deixe vazio para não dividir. A Simplify aceita de 0,01% a 90%.
+            <b>Split para outro usuário da Simplify</b> (um sócio, um parceiro). <b>Isto não é a sua taxa</b>:
+            na Simplify o dinheiro cai inteiro na sua conta e a carteira credita ao cliente o líquido, então
+            o PIX In já fica com você — configure a taxa em <b>Pagamentos, Taxas</b>. Use este campo só para
+            mandar uma fatia para fora. Vazio = não divide. A Simplify aceita de 0,01% a 90%.
           </p>
           <div class="row">
             <label style="flex:1.4">Usuário que recebe o split
