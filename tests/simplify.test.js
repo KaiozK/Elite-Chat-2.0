@@ -210,6 +210,32 @@ global.fetch = async (u, o) => {
   ok(ultimaChamada && ultimaChamada.corpo.payer.document === '84748914009',
     'e o CPF do checkout foi para a Simplify: ' + (ultimaChamada && ultimaChamada.corpo.payer.document));
 
+  console.log('\n=== 10b. Na PRÓXIMA compra, o checkout já vem preenchido ===');
+  // A primeira compra criou o contato com nome, telefone, e-mail e CPF. Pedir
+  // tudo de novo na compra seguinte é atrito puro — e atrito no checkout é
+  // carrinho abandonado.
+  const segunda = await elitepay.createCharge(acc2, {
+    valueCents: 4900, comment: 'Segundo produto', waId: '5582981440676',
+    contactName: 'João Silva', origin: 'chat'
+  });
+  const vista = elitepay.publicChargeView(segunda.id);
+  ok(!!vista, 'a página da nova cobrança abre');
+  ok(vista.needsId === true, 'ainda pede confirmação dos dados (não pula a etapa)');
+  ok(vista.prefill.name === 'João Silva', 'nome preenchido: ' + vista.prefill.name);
+  ok(vista.prefill.email === 'joao@exemplo.com', 'e-mail preenchido: ' + vista.prefill.email);
+  ok(vista.prefill.taxID === '84748914009', 'CPF preenchido: ' + vista.prefill.taxID);
+  ok(vista.prefill.phone === '5582981440676', 'telefone preenchido: ' + vista.prefill.phone);
+  ok(vista.prefill.conhecido === true, 'e a tela sabe que é cliente conhecido, para dizer de onde vieram os dados');
+
+  // Cliente NOVO não pode receber dado de ninguém.
+  const deOutro = await elitepay.createCharge(acc2, {
+    valueCents: 4900, comment: 'Outro cliente', waId: '5511900000000',
+    contactName: 'Alguém Novo', origin: 'chat'
+  });
+  const v2 = elitepay.publicChargeView(deOutro.id);
+  ok(!v2.prefill.email && !v2.prefill.taxID, 'quem nunca comprou chega com os campos vazios');
+  ok(v2.prefill.conhecido === false, 'e sem a mensagem de "te ver de novo"');
+
   console.log('\n=== 11. CPF INVENTADO é barrado antes de virar cobrança ===');
   const outraCob = await elitepay.createCharge(acc2, {
     valueCents: 5000, comment: 'Teste', waId: '5582988887777', contactName: 'Maria', origin: 'chat'

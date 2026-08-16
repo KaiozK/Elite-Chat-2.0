@@ -18,7 +18,11 @@
 <meta name="application-name" content="Koonfy">
 <link rel="apple-touch-icon" href="/assets/koonfy-180.png">
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/app/style.css?v=fn1">
+<link rel="stylesheet" href="/app/style.css?v=tema1">
+<!-- Cores da marca definidas no Admin (aba Personalização). Vem DEPOIS do
+     style.css porque só redefine variáveis; campo vazio no painel não é
+     escrito e o padrão continua valendo. -->
+<link rel="stylesheet" href="/tema.css">
 <script>/* aplica o tema salvo antes de pintar (sem flash) */
   (function () { try {
     /* O padrão é o CLARO. Antes seguia o prefers-color-scheme do sistema, e
@@ -286,7 +290,7 @@
 <script src="/app/vendor/qrcode.js"></script>
 <script src="/app/br-uf.js?v=1"></script>
 <script src="/app/voz.js?v=1"></script>
-<script src="/app/app.js?v=fn1"></script>
+<script src="/app/app.js?v=tema1"></script>
 <script>/* registra o Service Worker e a engine cedo (offline funciona antes do login) */
   if (window.ECNotify) { try { ECNotify.init(); } catch (e) {} }
 </script>

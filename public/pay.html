@@ -465,12 +465,17 @@
     return '<div class="card fade-in">' + stepsBar(1) +
       '<div class="pad">' +
         '<h2 class="sect">Seus dados</h2>' +
-        '<div class="sect-sub">Preencha para gerar o seu Pix, leva menos de um minuto.</div>' +
+        // Cliente que já comprou aqui: os campos vêm preenchidos e a frase
+        // muda, para ele entender de onde vieram os dados em vez de estranhar.
+        '<div class="sect-sub">' + (pf.conhecido
+          ? 'Confira seus dados e siga para o pagamento. Pode alterar o que quiser.'
+          : 'Preencha para gerar o seu Pix, leva menos de um minuto.') + '</div>' +
+        (pf.conhecido ? '<div class="payer-chip">' + ico('lock', 13) + ' Que bom te ver de novo! Já preenchemos com os dados da sua última compra.</div>' : '') +
         '<div class="form-err" id="ferr"></div>' +
         '<div class="fld"><label>Nome completo</label><input id="f-name" autocomplete="name" placeholder="Como no seu documento" value="' + esc(pf.name || '') + '"></div>' +
-        '<div class="fld"><label>CPF ou CNPJ</label><input id="f-doc" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00"></div>' +
+        '<div class="fld"><label>CPF ou CNPJ</label><input id="f-doc" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00" value="' + esc(pf.taxID ? maskDoc(pf.taxID) : '') + '"></div>' +
         '<div class="frow">' +
-          '<div class="fld"><label>E-mail</label><input id="f-email" type="email" autocomplete="email" placeholder="voce@email.com"></div>' +
+          '<div class="fld"><label>E-mail</label><input id="f-email" type="email" autocomplete="email" placeholder="voce@email.com" value="' + esc(pf.email || '') + '"></div>' +
           '<div class="fld"><label>Celular / WhatsApp</label><input id="f-phone" inputmode="tel" autocomplete="tel" placeholder="(11) 91234-5678" value="' + esc(pf.phone ? maskPhone(pf.phone) : '') + '"></div>' +
         '</div>' +
         '<div class="legal">' + ico('lock', 13) + '<span>Seus dados são usados apenas para emitir esta cobrança e enviar a confirmação.</span></div>' +
@@ -610,8 +615,8 @@
       '<div class="form-err" id="berr"></div>' +
       (data.payerName ? '<div class="payer-chip">' + ico('lock', 13) + ' Pagando como <b>' + esc(data.payerName) + '</b></div>' :
         '<div class="frow">' +
-          '<div class="fld"><label>Nome do pagador</label><input id="b-holder" placeholder="Nome completo"></div>' +
-          '<div class="fld"><label>CPF ou CNPJ</label><input id="b-doc" inputmode="numeric" placeholder="000.000.000-00"></div>' +
+          '<div class="fld"><label>Nome do pagador</label><input id="b-holder" placeholder="Nome completo" value="' + esc((data.prefill || {}).name || '') + '"></div>' +
+          '<div class="fld"><label>CPF ou CNPJ</label><input id="b-doc" inputmode="numeric" placeholder="000.000.000-00" value="' + esc((data.prefill || {}).taxID ? maskDoc(data.prefill.taxID) : '') + '"></div>' +
         '</div>') +
       (data.payerName ? '<div class="fld"><label>CPF ou CNPJ do pagador</label><input id="b-doc" inputmode="numeric" placeholder="000.000.000-00"></div>' : '') +
       '<button class="btn" id="b-go">Gerar boleto de ' + brl(data.value) + '</button>' +
@@ -710,8 +715,8 @@
       '</div>' + selParcelas +
       (data.payerName ? '' :
         '<div class="frow">' +
-          '<div class="fld"><label>Nome do titular</label><input id="c-holder" placeholder="Nome completo"></div>' +
-          '<div class="fld"><label>CPF do titular</label><input id="c-doc" inputmode="numeric" placeholder="000.000.000-00"></div>' +
+          '<div class="fld"><label>Nome do titular</label><input id="c-holder" placeholder="Nome completo" value="' + esc((data.prefill || {}).name || '') + '"></div>' +
+          '<div class="fld"><label>CPF do titular</label><input id="c-doc" inputmode="numeric" placeholder="000.000.000-00" value="' + esc((data.prefill || {}).taxID ? maskDoc(data.prefill.taxID) : '') + '"></div>' +
         '</div>') +
       '<button class="btn" id="c-go">Pagar ' + brl(data.value) + '</button>' +
       '<div class="sum-note">' + ico('lock', 12) + ' Não guardamos o número do seu cartão</div>';

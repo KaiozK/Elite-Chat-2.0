@@ -11,13 +11,40 @@ let falhas = 0;
 const ok = (c, m) => { console.log((c ? '  OK   ' : '  FALHA') + ' ' + m); if (!c) falhas++; };
 const brl = c => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+// BANCO DE MENTIRA — igual aos outros testes.
+//
+// Este arquivo rodava contra o banco de DESENVOLVIMENTO e dava
+// `plans.push(plano)` a cada execução: depois de algumas rodadas havia 38
+// planos "Starter" duplicados no db.json, todos sem periodDays, e eles
+// apareciam na tela de assinatura como planos de verdade. Teste não pode
+// escrever no banco de ninguém.
+const Module = require('module');
+const tabela = new Map();
+function executar(sql, params) {
+  if (/^CREATE TABLE/i.test(sql)) return [[], []];
+  if (/^SELECT chunk, data/i.test(sql)) return [[...tabela].map(([chunk, v]) => ({ chunk, data: v })), []];
+  if (/^SELECT chunk, LENGTH/i.test(sql)) return [[...tabela].map(([chunk, v]) => ({ chunk, bytes: v.length })), []];
+  if (/^INSERT INTO/i.test(sql)) { for (const [c, d] of params[0]) tabela.set(c, d); return [{}, []]; }
+  if (/WHERE chunk IN/i.test(sql)) { for (const c of params[0]) tabela.delete(c); return [{}, []]; }
+  if (/^DELETE FROM/i.test(sql)) { tabela.clear(); return [{}, []]; }
+  return [[], []];
+}
+const cx = { query: async (s, p) => executar(s, p), beginTransaction: async () => {}, commit: async () => {}, rollback: async () => {}, release: () => {} };
+const pool = { query: async (s, p) => executar(s, p), getConnection: async () => cx, end: async () => {} };
+const origLoad = Module._load;
+Module._load = function (p) { if (p === 'mysql2/promise') return { createPool: () => pool }; return origLoad.apply(this, arguments); };
+process.env.DB_DRIVER = 'mysql';
+process.env.DATABASE_URL = 'mysql://u:p@localhost/koonfy';
+
 const db = require(R + 'src/db');
 const ep = require(R + 'src/elitepay');
 const cards = require(R + 'src/cardgateways');
 
 // Conta limpa só para este teste, para não sujar a carteira de ninguém.
 function contaNova() {
-  const acc = db.get().accounts[0];
+  // Banco de mentira começa vazio: `findAdminAccount` cria a conta com o
+  // formato completo (carteira, billing, afiliação) em vez de montar à mão.
+  const acc = db.get().accounts[0] || db.findAdminAccount();
   acc.wallet.balance = 0; acc.wallet.pending = 0; acc.wallet.cardAvailable = 0;
   acc.wallet.receivables = []; acc.wallet.transactions = [];
   return acc;
@@ -33,6 +60,7 @@ function cobranca(acc, { valor, metodo, taxa }) {
 }
 
 (async () => {
+  await db.loadAsync();     // com o motor mysql (falso) a carga é assíncrona
   console.log('=== 1. Venda no Pix cai disponível na hora ===');
   let acc = contaNova();
   let pix = cobranca(acc, { valor: 10000, metodo: 'pix', taxa: 250 });

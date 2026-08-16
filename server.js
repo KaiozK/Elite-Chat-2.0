@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const crypto = require('crypto');
 const db = require('./src/db');
 const push = require('./src/push');
 const pushNative = require('./src/pushnative');
@@ -595,6 +596,44 @@ app.get('/marca/logo', (req, res) => {
   res.set('Content-Type', m.mime || 'image/png');
   res.set('Content-Length', String(buf.length));
   res.send(buf);
+});
+
+// ---------------------------------------------------------------------------
+// TEMA — as cores da marca, editáveis no Admin (aba Personalização)
+//
+// Mesma ideia da logo: sai do banco e vale para o app E para a landing, sem
+// deploy. O que vem daqui são só REDEFINIÇÕES das variáveis que o CSS já usa —
+// campo vazio simplesmente não é escrito, e o padrão do style.css continua
+// valendo. Uma instalação nova funciona sem ninguém preencher nada.
+//
+// O ETag carrega o conteúdo do tema: sem isso o navegador guardaria as cores
+// antigas e o admin trocaria a cor sem ver diferença nenhuma.
+app.get('/tema.css', (req, res) => {
+  const t = (db.get().platform && db.get().platform.tema) || {};
+  const cor = (v) => {
+    const s = String(v || '').trim();
+    // Só hex: este valor entra numa folha de estilo, e aceitar texto livre
+    // seria deixar o campo do admin escrever CSS arbitrário.
+    return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(s) ? s : '';
+  };
+  const linhas = [];
+  const por = (nome, valor) => { const c = cor(valor); if (c) linhas.push(`  ${nome}: ${c};`); };
+  por('--verde-esc', t.verde);          // marca: o "fy", ícones, destaques
+  por('--btn-verde', t.botao);          // fundo do botão principal
+  por('--btn-verde-hover', t.botaoHover);
+  por('--btn-tinta', t.tintaBotao);     // texto dentro do botão
+  por('--verde-deep', t.verdeDeep);     // verde fechado, para TEXTO sobre fundo claro
+  const funil = Array.isArray(t.funil) ? t.funil.map(cor).filter(Boolean) : [];
+  funil.forEach((c, i) => linhas.push(`  --funil-${i + 1}: ${c};`));
+  if (funil.length) linhas.push(`  --funil-n: ${funil.length};`);
+  const css = linhas.length ? `:root{\n${linhas.join('\n')}\n}\n` : '/* tema padrão */\n';
+
+  const etag = '"tema-' + crypto.createHash('sha1').update(css).digest('hex').slice(0, 16) + '"';
+  res.set('ETag', etag);
+  res.set('Content-Type', 'text/css; charset=utf-8');
+  res.set('Cache-Control', 'public, max-age=0, must-revalidate');
+  if (req.get('if-none-match') === etag) return res.status(304).end();
+  res.send(css);
 });
 
 app.get('/privacidade', (req, res) => res.sendFile(path.join(__dirname, 'public', 'privacidade.html')));

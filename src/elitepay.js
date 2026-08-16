@@ -1195,6 +1195,26 @@ function checkoutBranding(acc, opts) {
   };
 }
 
+// O que já se sabe de quem vai pagar, para o checkout nascer preenchido.
+// Ordem: o que a COBRANÇA já tem (o pagador identificado nela) manda, porque é
+// o dado mais específico; depois o CONTATO, que guarda o que ele preencheu na
+// compra anterior.
+function dadosConhecidos(acc, ch) {
+  const p = ch.payer || {};
+  const ct = ch.waId ? store.findContact(acc, ch.waId) : null;
+  const vars = (ct && ct.vars) || {};
+  return {
+    name: p.name || ch.contactName || (ct && ct.name) || '',
+    phone: p.phone || ch.waId || (ct && ct.waId) || '',
+    email: p.email || (ct && ct.email) || '',
+    taxID: p.taxID || vars.cpf_cnpj || '',
+    // A tela avisa que reconheceu o cliente em vez de mostrar os campos
+    // preenchidos sem explicação — o que faria a pessoa achar que o site
+    // sabe mais dela do que devia.
+    conhecido: !!(!ch.payer && ct && (ct.email || vars.cpf_cnpj))
+  };
+}
+
 function publicChargeView(id) {
   id = String(id || '');
   // Modo demo (preview do Checkout Builder): /pay/demo-<accountId>
@@ -1226,7 +1246,17 @@ function publicChargeView(id) {
     createdAt: ch.createdAt, paidAt: ch.paidAt, expiresAt: ch.expiresAt,
     // etapa 1 (identificação) pendente? pré-preenche o que a cobrança já sabe
     needsId: !ch.payer,
-    prefill: { name: ch.contactName || '', phone: ch.waId || '' },
+    // -----------------------------------------------------------------------
+    // CLIENTE QUE JÁ COMPROU não digita tudo de novo
+    //
+    // A primeira compra cria o CONTATO com nome, telefone, e-mail e CPF. Na
+    // compra seguinte esses dados já existem — pedir de novo é atrito puro, e
+    // atrito no checkout é carrinho abandonado.
+    //
+    // Vem preenchido, mas os campos continuam editáveis: mudar de e-mail ou
+    // comprar no CPF da empresa é normal, e travar isso seria pior que pedir.
+    // -----------------------------------------------------------------------
+    prefill: dadosConhecidos(acc, ch),
     payerName: ch.payer ? ch.payer.name : '',
     // cartão: só aparece no checkout se o admin ligou e configurou o adquirente
     card: { ...cardPublic(), installments: installmentOptions(ch.value) },

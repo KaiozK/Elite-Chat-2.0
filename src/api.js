@@ -2007,11 +2007,42 @@ module.exports = function (broadcast, clients) {
     res.json({ contact: c });
   });
 
+  // ---------------------------------------------------------------------------
+  // TETO DA EXPORTAÇÃO
+  //
+  // A planilha não pode entregar mais contatos do que o plano dá direito. A
+  // base pode passar do limite por caminhos que não são cadastro manual — uma
+  // troca para um plano menor, ou mensagens recebidas criando contato — e sem
+  // esta trava um plano de 10 mil exportava os 50 mil que estivessem lá.
+  //
+  // Exporta os MAIS RECENTES: se algo tem de ficar de fora, que seja o mais
+  // antigo. Devolve também quantos ficaram, para a tela poder avisar.
+  // ---------------------------------------------------------------------------
+  function contatosExportaveis(acc) {
+    const teto = limits.limitOf(acc, 'contacts');
+    const todos = acc.contacts || [];
+    if (teto === -1 || todos.length <= teto) return { lista: todos, cortados: 0, teto };
+    const ordenados = todos.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    return { lista: ordenados.slice(0, teto), cortados: todos.length - teto, teto };
+  }
+
+  // Quantos a exportação vai trazer (a tela avisa antes de baixar).
+  router.get('/contacts/export/info', auth, (req, res) => {
+    const { lista, cortados, teto } = contatosExportaveis(req.acc);
+    res.json({ total: (req.acc.contacts || []).length, exporta: lista.length, cortados, limite: teto });
+  });
+
   // Exporta os contatos em CSV com telefone normalizado em E.164 (+DDDDDDDDDDD)
   router.get('/contacts/export', auth, (req, res) => {
     const cell = v => { v = String(v == null ? '' : v); return /[";\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    const { lista, cortados, teto } = contatosExportaveis(req.acc);
+    if (cortados) {
+      res.set('X-Koonfy-Limite', String(teto));
+      res.set('X-Koonfy-Cortados', String(cortados));
+      elitepay.plog({ type: 'export_limitado', accountId: req.acc.id, accountName: req.acc.name, detail: `Exportou ${lista.length} de ${(req.acc.contacts || []).length} (teto do plano: ${teto})` });
+    }
     const lines = ['nome;telefone_e164;etapa;tags;criado_em;ultima_atividade'];
-    for (const c of req.acc.contacts) {
+    for (const c of lista) {
       const digits = String(c.waId || '').replace(/\D/g, '');
       if (digits.length < 8 || digits.length > 15) continue; // fora do padrão E.164
       lines.push([
@@ -3096,7 +3127,11 @@ module.exports = function (broadcast, clients) {
     const status = String(req.query.status || 'opted_out');
     const cell = v => { v = String(v == null ? '' : v); return /[";\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
     const dt = t => datas.dataHora(t, req.acc);
-    const rows = req.acc.contacts.map(c => consentRow(req.acc, c)).filter(r => status === 'all' || r.status === status);
+    // Mesmo teto de plano da exportação de contatos: esta lista sai do mesmo
+    // lugar e serviria de atalho para levar a base inteira.
+    const { lista, cortados, teto } = contatosExportaveis(req.acc);
+    if (cortados) { res.set('X-Koonfy-Limite', String(teto)); res.set('X-Koonfy-Cortados', String(cortados)); }
+    const rows = lista.map(c => consentRow(req.acc, c)).filter(r => status === 'all' || r.status === status);
     const lines = ['nome;telefone_e164;estado;cidade;origem;ultima_campanha;ultimo_atendente;etapa_funil;data_opt_out;motivo'];
     for (const r of rows) {
       lines.push([
@@ -3974,6 +4009,61 @@ module.exports = function (broadcast, clients) {
     db.get().platform.marca = { logo: '', mime: '', nome: '', bytes: 0, updatedAt: 0 };
     db.save();
     res.json({ ok: true });
+  });
+
+  // ---------------------------------------------------------------------------
+  // PERSONALIZAÇÃO — as cores da marca
+  //
+  // Só HEX é aceito. O valor vira uma folha de estilo servida em /tema.css, e
+  // aceitar texto livre daria ao campo do painel o poder de escrever CSS
+  // arbitrário. Campo vazio APAGA a personalização daquele token e devolve o
+  // padrão do style.css, que é como se desfaz um ajuste ruim sem adivinhar o
+  // valor original.
+  // ---------------------------------------------------------------------------
+  const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+  const corOuVazio = (v) => { const s = String(v == null ? '' : v).trim(); return HEX.test(s) ? s : ''; };
+
+  router.get('/admin/tema', auth, adminOnly, (req, res) => {
+    const t = db.get().platform.tema || {};
+    res.json({
+      tema: {
+        verde: t.verde || '', botao: t.botao || '', botaoHover: t.botaoHover || '',
+        tintaBotao: t.tintaBotao || '', verdeDeep: t.verdeDeep || '',
+        funil: Array.isArray(t.funil) ? t.funil : []
+      },
+      // O padrão vive no CSS; o painel mostra estes valores como referência do
+      // que aparece quando o campo fica vazio.
+      padrao: {
+        verde: '#2ed378', botao: '#19a95a', botaoHover: '#14904c',
+        tintaBotao: '#ffffff', verdeDeep: '#178048',
+        funil: ['#ec4899', '#64748b', '#f59e0b', '#0ea5e9', '#10b981', '#16a34a']
+      }
+    });
+  });
+
+  router.put('/admin/tema', auth, adminOnly, (req, res) => {
+    const b = req.body || {};
+    const p = db.get().platform;
+    if (!p.tema) p.tema = { verde: '', botao: '', botaoHover: '', tintaBotao: '', verdeDeep: '', funil: [] };
+    for (const k of ['verde', 'botao', 'botaoHover', 'tintaBotao', 'verdeDeep']) {
+      if (b[k] !== undefined) {
+        const c = corOuVazio(b[k]);
+        if (b[k] && !c) return res.status(400).json({ error: `Cor inválida em ${k}. Use hexadecimal, como #2ed378.` });
+        p.tema[k] = c;
+      }
+    }
+    if (b.funil !== undefined) {
+      if (!Array.isArray(b.funil)) return res.status(400).json({ error: 'As cores do funil devem vir em lista' });
+      const cores = b.funil.map(corOuVazio);
+      if (b.funil.some((v, i) => v && !cores[i])) {
+        return res.status(400).json({ error: 'Cor inválida no funil. Use hexadecimal, como #16a34a.' });
+      }
+      p.tema.funil = cores.filter(Boolean).slice(0, 12);
+    }
+    db.save();
+    store.logEvent({ type: 'tema_atualizado' });
+    elitepay.plog({ type: 'tema_atualizado', detail: 'Cores da marca alteradas no Admin' });
+    res.json({ ok: true, tema: p.tema });
   });
 
   // Teste da notificação de VENDA, com o valor escolhido na hora.

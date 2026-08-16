@@ -33,8 +33,16 @@
      TEXTO sobre fundo claro, e o verde da logo sozinho não alcança 4.5:1. */
   --verde: #50ea5f;
   --verde-esc: #2ed378;
-  /* um passo abaixo do verde da marca, para o hover do botão principal:
-     escurece sem virar outro verde */
+  /* O BOTÃO usa um verde mais fechado que a marca. O verde da logo é claro
+     demais para uma área grande e chapada com texto branco em cima — funciona
+     no símbolo e no "fy", não num bloco de 200px. É a mesma família de cor,
+     um par de passos abaixo. Editável em Admin → Personalização. */
+  --btn-verde: #19a95a;
+  --btn-verde-hover: #14904c;
+  /* Texto DENTRO do botão principal. Token próprio, separado do
+     --ink-on-verde (que é a tinta escura usada sobre o verde CLARO em chips e
+     selos): aqui o fundo é escuro e o texto é branco. */
+  --btn-tinta: #ffffff;
   --verde-med: #21b866;
   --verde-deep: #178048;
   --ink-on-verde: #04331a;
@@ -381,15 +389,15 @@ select {
    clareia, como fazia com a tinta escura) porque com texto branco escurecer é
    o que ganha legibilidade no momento do clique. */
 .btn.primary {
-  background: var(--verde-esc); border-color: var(--verde-esc); color: #fff;
-  box-shadow: 0 1px 2px rgba(16, 116, 82, .25), 0 4px 12px rgba(46, 211, 120, .22);
+  background: var(--btn-verde); border-color: var(--btn-verde); color: var(--btn-tinta);
+  box-shadow: 0 1px 2px rgba(16, 116, 82, .25), 0 4px 12px rgba(25, 169, 90, .22);
 }
 .btn.primary:hover {
-  background: var(--verde-med); border-color: var(--verde-med);
-  box-shadow: 0 2px 4px rgba(16, 116, 82, .3), 0 6px 16px rgba(46, 211, 120, .32);
-  color: #fff;
+  background: var(--btn-verde-hover); border-color: var(--btn-verde-hover);
+  box-shadow: 0 2px 4px rgba(16, 116, 82, .3), 0 6px 16px rgba(25, 169, 90, .32);
+  color: var(--btn-tinta);
 }
-.btn.primary:disabled { background: var(--verde-esc); border-color: var(--verde-esc); color: #fff; }
+.btn.primary:disabled { background: var(--btn-verde); border-color: var(--btn-verde); color: var(--btn-tinta); }
 .btn.primary svg { color: currentColor; }
 .btn.danger { color: var(--red-ink); }
 .btn.danger:hover { background: var(--red-bg); border-color: var(--red-border); color: var(--red-ink); }
@@ -4317,3 +4325,34 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
   background: var(--amber-bg); border: 1px solid var(--amber-border); color: var(--text2);
 }
 .ep-sem-codigo svg { flex: none; margin-top: 2px; }
+
+/* ---------- Admin → Personalização (cores da marca) ---------- */
+.tema-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px; }
+.tema-campo label { display: block; font-size: 12.5px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.tema-ajuda { display: block; font-size: 11.5px; font-weight: 500; color: var(--muted); margin-top: 2px; }
+.tema-input { display: flex; gap: 8px; align-items: center; }
+/* O seletor nativo vem com moldura própria em cada sistema; aqui ele fica do
+   tamanho de um botão e com o mesmo raio dos campos ao lado. */
+.tema-input input[type="color"] {
+  flex: none; width: 42px; height: 38px; padding: 3px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--card);
+}
+.tema-input input[type="text"], .tema-input input:not([type]) { flex: 1; min-width: 0; text-transform: uppercase; font-variant-numeric: tabular-nums; }
+.tema-input input.bad { border-color: var(--red); }
+.tema-previa {
+  margin-top: 18px; padding: 16px 18px; border-radius: 14px;
+  background: var(--bg2); border: 1px solid var(--border);
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+}
+.tema-previa-rot {
+  font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--faint); margin-right: 4px;
+}
+.tema-funil { display: flex; flex-wrap: wrap; gap: 12px; }
+.tema-fcor { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.tema-fcor input[type="color"] {
+  width: 46px; height: 40px; padding: 3px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--card);
+}
+.tema-fcor span { font-size: 10.5px; font-weight: 700; color: var(--muted); }
+.tema-funil-previa .fn-etapa { margin-bottom: 2px; }

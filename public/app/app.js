@@ -266,6 +266,37 @@ function notifOpenFromData(data) {
   if (data.waId) { location.hash = '#/inbox'; setTimeout(() => { try { openChat(data.waId); } catch {} }, 180); }
   else if (data.url) { const h = data.url.split('#')[1]; if (h) location.hash = h; }
 }
+// ---------------------------------------------------------------------------
+// EXPORTAR CONTATOS
+//
+// A planilha respeita o limite de contatos do plano. Quando a base é maior que
+// o teto, o download não pode simplesmente vir cortado sem explicação — o
+// cliente contaria as linhas e acharia que perdeu contatos. Então o aviso vem
+// ANTES, dizendo quantos saem, quantos ficam e por quê.
+// ---------------------------------------------------------------------------
+async function exportarContatos() {
+  let info = null;
+  try { info = await api('/contacts/export/info'); } catch { /* segue e baixa */ }
+  const baixar = () => openExternal(API.api('/contacts/export?token=' + TOKEN));
+  if (!info || !info.cortados) return baixar();
+  openModal(`<h2>${ico('download-circle')} Exportar contatos</h2>
+    <p class="muted" style="margin:8px 0 0;font-size:13.5px;line-height:1.6">
+      Sua base tem <b>${fmtN(info.total)}</b> contatos e o seu plano dá direito a
+      <b>${fmtN(info.limite)}</b>. A planilha sai com os <b>${fmtN(info.exporta)} mais recentes</b>;
+      ${fmtN(info.cortados)} ${info.cortados === 1 ? 'fica' : 'ficam'} de fora.
+    </p>
+    <p class="muted" style="margin:12px 0 0;font-size:12.5px">
+      ${ico('help', 12)} Para exportar a base inteira, mude para um plano com mais contatos em
+      <b>Assinatura</b>. Nenhum contato é apagado — eles continuam aqui.
+    </p>
+    <div class="row" style="margin-top:18px;justify-content:flex-end">
+      <button class="btn no-grow" onclick="closeModal()">Cancelar</button>
+      <a class="btn no-grow" href="#/billing" onclick="closeModal()">Ver planos</a>
+      <button class="btn primary no-grow" onclick="closeModal();openExternal(API.api('/contacts/export?token=' + TOKEN))">
+        ${ico('download-circle', 14)} Baixar ${fmtN(info.exporta)}</button>
+    </div>`);
+}
+
 function notifResync() {
   refreshBadge();
   if (state.view === 'inbox') loadConversations();
@@ -3197,7 +3228,7 @@ async function renderContacts() {
     <div class="page">
       <div class="page-head row">
         <div style="flex:1"><h1>Contatos</h1><p>Leads e clientes do seu WhatsApp</p></div>
-        <button class="btn no-grow" onclick="openExternal(API.api('/contacts/export?token=' + TOKEN))" title="CSV com telefones no padrão E.164 aceito pela API">${ico('download-circle', 14)} Exportar CSV</button>
+        <button class="btn no-grow" onclick="exportarContatos()" title="CSV com telefones no padrão E.164 aceito pela API">${ico('download-circle', 14)} Exportar CSV</button>
         <button class="btn primary no-grow" onclick="newContactModal()">${ico('plus', 14)} Novo contato</button>
       </div>
       <div class="card">
@@ -5425,6 +5456,26 @@ function donut(items, size = 168, thick = 22) {
 // Clicar numa etapa abre o detalhe (volume, conversão e quantos vieram da
 // etapa anterior), como no protótipo.
 // ---------------------------------------------------------------------------
+// Paleta padrão do funil — uma cor por etapa, como no desenho de referência.
+// Cada etapa com a sua cor separa as fases melhor que seis tons do mesmo verde,
+// onde as três últimas ficavam quase iguais.
+//
+// O admin troca isto em Admin → Personalização; as variáveis --funil-N chegam
+// por /tema.css e, quando existem, mandam.
+const FUNIL_PADRAO = ['#ec4899', '#64748b', '#f59e0b', '#0ea5e9', '#10b981', '#16a34a'];
+
+function funilCores(i, n) {
+  const raiz = getComputedStyle(document.documentElement);
+  const quantas = Number(raiz.getPropertyValue('--funil-n')) || 0;
+  const doTema = quantas ? (raiz.getPropertyValue(`--funil-${(i % quantas) + 1}`) || '').trim() : '';
+  const base = doTema || FUNIL_PADRAO[i % FUNIL_PADRAO.length];
+  // Com MAIS etapas que cores, a paleta repete — e as repetidas escurecem um
+  // passo, para duas etapas com a mesma cor não parecerem a mesma etapa.
+  const volta = Math.floor(i / (quantas || FUNIL_PADRAO.length));
+  const escuro = volta ? ` color-mix(in srgb, ${base} ${Math.max(40, 100 - volta * 22)}%, #000)` : ` ${base}`;
+  return [escuro.trim(), `color-mix(in srgb, ${escuro.trim()} 78%, #000)`];
+}
+
 function funnelChart(stages) {
   if (!stages || !stages.length) return '<p class="muted">Sem etapas.</p>';
   const n = stages.length;
@@ -5435,11 +5486,7 @@ function funnelChart(stages) {
     const prev = i > 0 ? stages[i - 1].count : null;
     const passo = (prev != null && prev > 0) ? Math.round(s.count / prev * 100) : null;
     const drop = (prev != null && prev > 0 && s.count < prev) ? Math.round((prev - s.count) / prev * 100) : null;
-    const t = n > 1 ? i / (n - 1) : 0;                            // 0 (topo) → 1 (base)
-    // Do verde da marca (topo) ao verde fechado (base): a mesma família de cor
-    // do resto do app, escurecendo conforme o lead avança.
-    const c1 = `hsl(150 ${(64 - t * 10).toFixed(0)}% ${(62 - t * 22).toFixed(0)}%)`;
-    const c2 = `hsl(154 ${(66 - t * 8).toFixed(0)}% ${(46 - t * 21).toFixed(0)}%)`;
+    const [c1, c2] = funilCores(i, n);
     const ultima = i === n - 1;
     return `<div class="fn-etapa" data-i="${i}" style="width:${larguras[i].toFixed(1)}%">
       <div class="fn-forma" style="background:linear-gradient(160deg,${c1},${c2});
@@ -7588,6 +7635,7 @@ async function renderAdmin() {
       <button data-tab="adm-mkt" onclick="showSettingsTab('adm-mkt');admMktLoad()">Marketing</button>
       <button data-tab="adm-sec" onclick="showSettingsTab('adm-sec');admSecLoad()">Segurança</button>
       <button data-tab="adm-seo" onclick="showSettingsTab('adm-seo')">SEO</button>
+      <button data-tab="adm-tema" onclick="showSettingsTab('adm-tema');admTemaLoad()">Personalização</button>
     </div>
     <div id="adm-box"><div class="card">${skel(6)}</div></div>
   </div>`;
@@ -8084,6 +8132,10 @@ async function paintAdmin() {
 
       <div class="tabpane ${activeTab === 'adm-seo' ? 'show' : ''}" data-pane="adm-seo">
         ${admSeoForm(d.seo || {})}
+      </div>
+
+      <div class="tabpane ${activeTab === 'adm-tema' ? 'show' : ''}" data-pane="adm-tema">
+        <div id="adm-tema-box">${skel(3)}</div>
       </div>`;
     if (activeTab === 'adm-ep') admEpPaint();
     if (activeTab === 'adm-int') admIntLoad();
@@ -8949,6 +9001,172 @@ async function admExtend(id) {
 }
 
 // ---------- Admin → SEO da página de marketing ----------
+// ===========================================================================
+// PERSONALIZAÇÃO — as cores da marca, editadas pelo Admin
+//
+// Mesma ideia da logo: muda no painel e vale para o app inteiro e para a
+// landing, sem deploy. As cores viram variáveis CSS servidas em /tema.css.
+//
+// Campo VAZIO = padrão do sistema. É assim que se desfaz um ajuste ruim sem
+// precisar lembrar qual era o valor original.
+// ===========================================================================
+let ADM_TEMA = null;
+
+async function admTemaLoad() {
+  const box = $('#adm-tema-box'); if (!box) return;
+  try { ADM_TEMA = await api('/admin/tema'); }
+  catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
+  admTemaPaint();
+}
+
+function admTemaCampo(chave, rot, ajuda) {
+  const val = (ADM_TEMA.tema[chave] || '');
+  const pad = ADM_TEMA.padrao[chave] || '#000000';
+  return `<div class="tema-campo">
+    <label>${esc(rot)}
+      <span class="tema-ajuda">${esc(ajuda)}</span>
+    </label>
+    <div class="tema-input">
+      <input type="color" id="tm-c-${chave}" value="${esc(val || pad)}"
+             oninput="$('#tm-${chave}').value=this.value.toUpperCase();admTemaPreview()">
+      <input id="tm-${chave}" value="${esc(val)}" placeholder="${esc(pad)} (padrão)" maxlength="7"
+             oninput="admTemaSync('${chave}')">
+      <button class="btn small no-grow" onclick="$('#tm-${chave}').value='';admTemaSync('${chave}')"
+              title="Voltar ao padrão do sistema">${ico('refresh', 12)}</button>
+    </div>
+  </div>`;
+}
+
+function admTemaPaint() {
+  const box = $('#adm-tema-box'); if (!box) return;
+  const funil = ADM_TEMA.tema.funil.length ? ADM_TEMA.tema.funil : ADM_TEMA.padrao.funil;
+  box.innerHTML = `
+    <div class="card">
+      <h2>${ico('sparkles')} Cores da marca</h2>
+      <p class="muted" style="margin:0 0 16px;font-size:13px">
+        Valem para o painel de todos os clientes e para a landing, na hora — como a logo.
+        Deixe em branco para voltar ao padrão do Koonfy.
+      </p>
+      <div class="tema-grid">
+        ${admTemaCampo('verde', 'Cor da marca', 'O "fy" do logotipo, ícones e destaques')}
+        ${admTemaCampo('botao', 'Botão principal', 'Fundo dos botões de ação')}
+        ${admTemaCampo('botaoHover', 'Botão ao passar o mouse', 'Um passo mais escuro que o botão')}
+        ${admTemaCampo('tintaBotao', 'Texto do botão', 'A cor da letra dentro do botão')}
+        ${admTemaCampo('verdeDeep', 'Verde de texto', 'Texto verde sobre fundo claro, onde é preciso contraste')}
+      </div>
+      <div class="tema-previa" id="tema-previa">
+        <span class="tema-previa-rot">Prévia</span>
+        <b class="brand-name">Koon<span class="gt2">fy</span></b>
+        <button class="btn primary no-grow">Botão principal</button>
+        <button class="btn no-grow">Secundário</button>
+        <span class="pill done">Selo</span>
+      </div>
+      <div class="row" style="margin-top:16px;justify-content:flex-end">
+        <button class="btn primary no-grow" onclick="admTemaSalvar(this)">${ico('check', 14)} Salvar cores</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>${ico('columns')} Cores do funil</h2>
+      <p class="muted" style="margin:0 0 14px;font-size:13px">
+        Uma cor por etapa do funil da dashboard, do topo para a base. Com mais etapas que cores,
+        a sequência se repete um tom mais escuro.
+      </p>
+      <div class="tema-funil" id="tema-funil">
+        ${funil.map((c, i) => `
+          <div class="tema-fcor">
+            <input type="color" value="${esc(c)}" data-i="${i}" oninput="admTemaPreviaFunil()">
+            <span>${i + 1}ª</span>
+          </div>`).join('')}
+      </div>
+      <div class="funil tema-funil-previa" id="tema-funil-previa" style="max-width:340px;margin:18px auto 0"></div>
+      <div class="row" style="margin-top:16px;justify-content:flex-end">
+        <button class="btn no-grow" onclick="admTemaFunilPadrao()">Voltar ao padrão</button>
+        <button class="btn primary no-grow" onclick="admTemaSalvarFunil(this)">${ico('check', 14)} Salvar funil</button>
+      </div>
+    </div>`;
+  admTemaPreview();
+  admTemaPreviaFunil();
+}
+
+// O texto e o seletor de cor andam juntos; o texto é a fonte da verdade porque
+// é ele que aceita "vazio" (= padrão), coisa que o <input type=color> não faz.
+function admTemaSync(chave) {
+  const t = $('#tm-' + chave), c = $('#tm-c-' + chave);
+  let v = (t.value || '').trim();
+  if (v && !v.startsWith('#')) { v = '#' + v; t.value = v; }
+  const ok = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v);
+  t.classList.toggle('bad', !!v && !ok);
+  if (ok) c.value = v;
+  else if (!v) c.value = ADM_TEMA.padrao[chave] || '#000000';
+  admTemaPreview();
+}
+
+// A prévia aplica as cores só no bloco, para dar para ver antes de salvar.
+function admTemaPreview() {
+  const p = $('#tema-previa'); if (!p) return;
+  const val = (k) => { const v = ($('#tm-' + k) && $('#tm-' + k).value || '').trim(); return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v) ? v : (ADM_TEMA.padrao[k] || ''); };
+  p.style.setProperty('--verde-esc', val('verde'));
+  p.style.setProperty('--btn-verde', val('botao'));
+  p.style.setProperty('--btn-verde-hover', val('botaoHover'));
+  p.style.setProperty('--btn-tinta', val('tintaBotao'));
+  p.style.setProperty('--verde-deep', val('verdeDeep'));
+}
+
+function admTemaCoresFunil() {
+  return [...document.querySelectorAll('#tema-funil input[type=color]')].map(i => i.value);
+}
+function admTemaPreviaFunil() {
+  const alvo = $('#tema-funil-previa'); if (!alvo) return;
+  const cores = admTemaCoresFunil();
+  const nomes = ['Novo', 'Em atendimento', 'Qualificado', 'Negociação', 'Ganho', 'Perdido'];
+  alvo.innerHTML = cores.map((c, i) => {
+    const l = 100 - i * (cores.length > 1 ? 46 / (cores.length - 1) : 0);
+    return `<div class="fn-etapa" style="width:${l.toFixed(1)}%;cursor:default">
+      <div class="fn-forma" style="min-height:34px;padding:4px 18px;background:linear-gradient(160deg,${c},color-mix(in srgb,${c} 78%,#000));
+           clip-path:polygon(0 0, 100% 0, 94% 100%, 6% 100%)">
+        <span class="fn-nome" style="font-size:9px">${esc(nomes[i] || 'Etapa ' + (i + 1))}</span>
+      </div></div>`;
+  }).join('');
+}
+function admTemaFunilPadrao() {
+  ADM_TEMA.tema.funil = [];
+  admTemaPaint();
+}
+
+async function admTemaSalvar(btn) {
+  const corpo = {};
+  for (const k of ['verde', 'botao', 'botaoHover', 'tintaBotao', 'verdeDeep']) {
+    corpo[k] = ($('#tm-' + k).value || '').trim();
+  }
+  btn.disabled = true;
+  try {
+    await api('/admin/tema', { method: 'PUT', body: corpo });
+    ADM_TEMA.tema = Object.assign(ADM_TEMA.tema, corpo);
+    aplicarTemaAgora();
+    toast('Cores salvas! Já valem para todo mundo.');
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; }
+}
+
+async function admTemaSalvarFunil(btn) {
+  btn.disabled = true;
+  try {
+    await api('/admin/tema', { method: 'PUT', body: { funil: admTemaCoresFunil() } });
+    ADM_TEMA.tema.funil = admTemaCoresFunil();
+    aplicarTemaAgora();
+    toast('Cores do funil salvas!');
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; }
+}
+
+// Recarrega /tema.css sem F5: sem isto o admin salva e continua vendo as cores
+// antigas na própria tela, que é o jeito mais rápido de achar que não funcionou.
+function aplicarTemaAgora() {
+  const link = document.querySelector('link[href^="/tema.css"]');
+  if (link) link.href = '/tema.css?v=' + Date.now();
+}
+
 function admSeoForm(seo) {
   const v = k => esc(seo[k] || '');
   return `

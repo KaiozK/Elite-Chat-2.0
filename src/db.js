@@ -126,7 +126,21 @@ const DEFAULTS = {
     affiliate: { percentFirst: 30, percentRenewal: 15, withdraw: { min: 2000, max: 0 } },
     // Verificação em duas etapas do login, ligada pelo admin.
     security: { twoFactor: false },
-    landing: { ctaText: '' } // copy do botão principal da landing (vazio = automático pelos dias de teste)
+    landing: { ctaText: '' }, // copy do botão principal da landing (vazio = automático pelos dias de teste)
+    // ---- PERSONALIZAÇÃO (cores da marca) ----
+    // Mesma ideia da logo: o admin muda no painel e vale para o app inteiro e
+    // para a landing, sem deploy. Vazio = usa o padrão do CSS, então uma
+    // instalação nova não depende de ninguém preencher nada.
+    //
+    // `funil` são as cores das etapas do gráfico de funil, do topo para a base.
+    tema: {
+      verde: '',        // cor da MARCA: o "fy", ícones e destaques
+      botao: '',        // fundo do botão principal (mais fechado que o da marca)
+      botaoHover: '',   // o mesmo, um passo mais escuro
+      tintaBotao: '',   // cor do texto dentro do botão
+      verdeDeep: '',    // verde fechado, para TEXTO verde sobre fundo claro
+      funil: []         // uma cor por etapa do funil, do topo para a base
+    }
   },
   // plano: { id, name, price, periodDays, limits, modules, checkoutId }
   // `checkoutId` aponta para um checkout montado pelo dono no Checkout Builder
@@ -436,7 +450,7 @@ function migrar() {
   // instalou. Sobe só quem está na v25.0, que era o padrão anterior: se o
   // administrador escolheu outra versão à mão, a escolha dele fica de pé.
   if (db.platform.graphVersion === 'v25.0') db.platform.graphVersion = 'v26.0';
-  for (const k of ['woovi', 'billing', 'affiliate', 'landing', 'metaAds', 'nuvemshop', 'security']) {
+  for (const k of ['woovi', 'billing', 'affiliate', 'landing', 'metaAds', 'nuvemshop', 'security', 'tema']) {
     for (const kk of Object.keys(DEFAULTS.platform[k])) {
       if (db.platform[k][kk] === undefined) {
         db.platform[k][kk] = JSON.parse(JSON.stringify(DEFAULTS.platform[k][kk]));
