@@ -95,6 +95,13 @@ function makeOnFinished(broadcast) {
       store.logEvent({ type: 'survey_skipped', accountId: acc.id, waId: contact.waId, reason: 'janela de 24h fechada' });
       return;
     }
+    // Já existe uma pesquisa esperando resposta: não manda outra. Mandar duas
+    // seguidas é o cliente recebendo o mesmo pedido de nota duas vezes — e
+    // qualquer caminho que finalize o atendimento de novo cairia aqui.
+    if (contact.surveyPending) {
+      store.logEvent({ type: 'survey_skipped', accountId: acc.id, waId: contact.waId, reason: 'já há uma pesquisa aguardando resposta' });
+      return;
+    }
 
     try {
       const resp = await wa.sendInteractive(acc, contact.waId, interactive);

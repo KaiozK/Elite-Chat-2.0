@@ -173,6 +173,9 @@ function reopen(acc, contact, by = null) {
     reopenedAt: Date.now(),
     reopenedBy: by || null
   };
+  // A pesquisa do ciclo anterior morre aqui. Deixá-la pendente faria a próxima
+  // resposta do cliente ser lida como a nota de um atendimento que já acabou.
+  contact.surveyPending = null;
   db.save();
   return contact.attendance;
 }
@@ -192,7 +195,17 @@ function autoCloseSweep(broadcast) {
       const att = c.attendance;
       if (!att || att.status === 'finished') continue;
       if (!c.lastInboundAt) continue;              // nunca houve atendimento de fato
-      if (now - c.lastInboundAt < limitMs) continue;
+      // O relógio da inatividade conta da última ATIVIDADE do atendimento, não
+      // só da última mensagem recebida.
+      //
+      // Sem isto, reabrir não servia para nada: o atendente reabria uma
+      // conversa cuja última mensagem do cliente era antiga, a varredura
+      // seguinte via o mesmo `lastInboundAt` vencido e finalizava de novo na
+      // hora — disparando a PESQUISA DE SATISFAÇÃO outra vez, do nada.
+      //
+      // Reabrir é um ato explícito de quem atende, e zera o relógio.
+      const desde = Math.max(c.lastInboundAt || 0, att.reopenedAt || 0, att.openedAt || 0);
+      if (now - desde < limitMs) continue;
       finish(acc, c, { type: 'auto' });
       closed++;
       if (broadcast) broadcast('attendance', { accountId: acc.id, waId: c.waId, status: 'finished', closeType: 'auto' });
