@@ -9422,6 +9422,8 @@ function admTemaPaint() {
         ${admTemaCampo('botaoHover', 'Botão ao passar o mouse', 'Um passo mais escuro que o botão')}
         ${admTemaCampo('tintaBotao', 'Texto do botão', 'A cor da letra dentro do botão')}
         ${admTemaCampo('verdeDeep', 'Verde de texto', 'Texto verde sobre fundo claro, onde é preciso contraste')}
+        ${admTemaCampo('menu', 'Menu lateral', 'Item ativo do menu e os contadores de não lidas')}
+        ${admTemaCampo('menuTinta', 'Texto do menu ativo', 'A cor da letra e do ícone dentro do item ativo')}
       </div>
       <div class="tema-previa" id="tema-previa">
         <span class="tema-previa-rot">Prévia</span>
@@ -9480,6 +9482,8 @@ function admTemaPreview() {
   p.style.setProperty('--btn-verde-hover', val('botaoHover'));
   p.style.setProperty('--btn-tinta', val('tintaBotao'));
   p.style.setProperty('--verde-deep', val('verdeDeep'));
+  p.style.setProperty('--menu-ativo', val('menu'));
+  p.style.setProperty('--menu-tinta', val('menuTinta'));
 }
 
 function admTemaCoresFunil() {
@@ -9505,7 +9509,7 @@ function admTemaFunilPadrao() {
 
 async function admTemaSalvar(btn) {
   const corpo = {};
-  for (const k of ['verde', 'botao', 'botaoHover', 'tintaBotao', 'verdeDeep']) {
+  for (const k of ['verde', 'botao', 'botaoHover', 'tintaBotao', 'verdeDeep', 'menu', 'menuTinta']) {
     corpo[k] = ($('#tm-' + k).value || '').trim();
   }
   btn.disabled = true;

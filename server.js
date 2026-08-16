@@ -623,6 +623,17 @@ app.get('/tema.css', (req, res) => {
   por('--btn-verde-hover', t.botaoHover);
   por('--btn-tinta', t.tintaBotao);     // texto dentro do botão
   por('--verde-deep', t.verdeDeep);     // verde fechado, para TEXTO sobre fundo claro
+  por('--menu-ativo', t.menu);          // item ativo do menu lateral e contadores
+  por('--menu-tinta', t.menuTinta);     // texto/ícone dentro do item ativo
+  // O brilho embaixo do item ativo acompanha a cor escolhida: com uma cor nova
+  // e a sombra antiga, o menu ficava com um halo de outra cor por baixo.
+  const menu = cor(t.menu);
+  if (menu) {
+    const rgb = menu.length === 4
+      ? menu.slice(1).split('').map(h => parseInt(h + h, 16))
+      : [menu.slice(1, 3), menu.slice(3, 5), menu.slice(5, 7)].map(h => parseInt(h, 16));
+    linhas.push(`  --menu-brilho: rgba(${rgb.join(', ')}, .35);`);
+  }
   const funil = Array.isArray(t.funil) ? t.funil.map(cor).filter(Boolean) : [];
   funil.forEach((c, i) => linhas.push(`  --funil-${i + 1}: ${c};`));
   if (funil.length) linhas.push(`  --funil-n: ${funil.length};`);

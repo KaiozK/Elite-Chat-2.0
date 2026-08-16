@@ -44,6 +44,13 @@
      mesmo cartão, "Copiar link" e "Enviar no WhatsApp" pareciam de dois
      produtos. Agora é o MESMO verde do botão principal. */
   --btn-ink: var(--btn-verde);
+  /* MENU LATERAL — tokens próprios para o item ativo e os contadores.
+     Antes isto vinha de --verde e --ink-on-verde, que também pintam chips e
+     selos pelo app inteiro: mudar o menu mexia em coisa que ninguém pediu.
+     Editáveis em Admin → Personalização. */
+  --menu-ativo: var(--verde);
+  --menu-tinta: var(--ink-on-verde);
+  --menu-brilho: rgba(46, 211, 120, .35);
   /* Texto DENTRO do botão principal. Token próprio, separado do
      --ink-on-verde (que é a tinta escura usada sobre o verde CLARO em chips e
      selos): aqui o fundo é escuro e o texto é branco. */
@@ -218,15 +225,15 @@ h2 { font-size: 15px; font-weight: 800; letter-spacing: -.015em; margin: 0 0 12p
 .nav-item:hover { background: var(--sidebar-hover); color: var(--tinta); text-decoration: none; }
 .nav-item:hover svg { opacity: 1; }
 .nav-item.active {
-  background: var(--verde); color: var(--ink-on-verde); font-weight: 800;
-  box-shadow: 0 6px 18px rgba(46, 211, 120, .35);
+  background: var(--menu-ativo); color: var(--menu-tinta); font-weight: 800;
+  box-shadow: 0 6px 18px var(--menu-brilho);
 }
-.nav-item.active svg { color: var(--ink-on-verde); opacity: 1; }
+.nav-item.active svg { color: var(--menu-tinta); opacity: 1; }
 .badge {
-  margin-left: auto; background: var(--verde); color: var(--ink-on-verde); border-radius: 20px;
+  margin-left: auto; background: var(--menu-ativo); color: var(--menu-tinta); border-radius: 20px;
   font-size: 10px; padding: 1px 7px; font-weight: 800;
 }
-.nav-item.active .badge { background: var(--ink-on-verde); color: var(--verde); }
+.nav-item.active .badge { background: var(--menu-tinta); color: var(--menu-ativo); }
 .sidebar-foot { padding: 12px 8px 4px; border-top: 1px solid var(--border); }
 .version { font-size: 10.5px; color: var(--faint); font-weight: 600; }
 
@@ -2707,12 +2714,14 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 /* ---- Ajuste fino do dark: menu ativo disfarçado + widgets internos pretos/cinza ---- */
 /* item ativo do menu lateral: sem o verde chapado — fundo sutil + acento verde */
 :root[data-theme="dark"] .nav-item.active {
-  background: rgba(46, 211, 120, .10);
+  /* color-mix tira a cor escolhida pelo admin e a dilui no fundo: o item ativo
+     continua discreto no escuro, mas seguindo a MESMA cor do claro. */
+  background: color-mix(in srgb, var(--menu-ativo) 12%, transparent);
   color: #eafdf4;
-  box-shadow: inset 3px 0 0 0 var(--verde-esc);
+  box-shadow: inset 3px 0 0 0 var(--menu-ativo);
 }
-:root[data-theme="dark"] .nav-item.active svg { color: var(--verde); opacity: 1; }
-:root[data-theme="dark"] .nav-item.active .badge { background: var(--verde-esc); color: #04341f; }
+:root[data-theme="dark"] .nav-item.active svg { color: var(--menu-ativo); opacity: 1; }
+:root[data-theme="dark"] .nav-item.active .badge { background: var(--menu-ativo); color: var(--menu-tinta); }
 /* widgets internos (KPIs de Agendamentos etc.) mais escuros = insets recuados */
 :root[data-theme="dark"] .svc-kpi {
   background: linear-gradient(150deg, #1b2021 0%, #0e1011 100%);

@@ -50,6 +50,14 @@ const url = (r) => 'http://127.0.0.1:' + porta + r;
     const por = (nome, valor) => { const c = cor(valor); if (c) linhas.push(`  ${nome}: ${c};`); };
     por('--verde-esc', t.verde); por('--btn-verde', t.botao); por('--btn-verde-hover', t.botaoHover);
     por('--btn-tinta', t.tintaBotao); por('--verde-deep', t.verdeDeep);
+    por('--menu-ativo', t.menu); por('--menu-tinta', t.menuTinta);
+    const menu = cor(t.menu);
+    if (menu) {
+      const rgb = menu.length === 4
+        ? menu.slice(1).split('').map(h => parseInt(h + h, 16))
+        : [menu.slice(1, 3), menu.slice(3, 5), menu.slice(5, 7)].map(h => parseInt(h, 16));
+      linhas.push(`  --menu-brilho: rgba(${rgb.join(', ')}, .35);`);
+    }
     const funil = Array.isArray(t.funil) ? t.funil.map(cor).filter(Boolean) : [];
     funil.forEach((c, i) => linhas.push(`  --funil-${i + 1}: ${c};`));
     if (funil.length) linhas.push(`  --funil-n: ${funil.length};`);
@@ -102,6 +110,20 @@ const url = (r) => 'http://127.0.0.1:' + porta + r;
   c = await css();
   ok(c.texto.includes('--btn-verde: #123456'), 'e nada disso encostou no valor salvo');
   ok(!/display:none|expression|javascript/i.test(c.texto), 'a folha continua limpa');
+
+  console.log('\n=== 4b. MENU LATERAL ===');
+  // O verde do item ativo tem token próprio: antes vinha de --verde, que também
+  // pinta chips e selos pelo app inteiro, e mudar o menu mexia no resto.
+  r = await salvar({ menu: '#7c3aed', menuTinta: '#ffffff' });
+  ok(r.http === 200, 'salvou a cor do menu: ' + r.http);
+  c = await css();
+  ok(c.texto.includes('--menu-ativo: #7c3aed'), 'o item ativo do menu recebe a cor');
+  ok(c.texto.includes('--menu-tinta: #ffffff'), 'e a tinta de dentro dele');
+  // O brilho embaixo do item ativo acompanha: com a cor nova e a sombra antiga,
+  // sobrava um halo verde por baixo de um menu roxo.
+  ok(c.texto.includes('--menu-brilho: rgba(124, 58, 237, .35)'),
+    'o brilho é derivado da mesma cor: ' + (c.texto.match(/--menu-brilho:[^;]*/) || [''])[0].trim());
+  ok(!c.texto.includes('--verde-esc'), 'e mudar o menu NÃO mexeu na cor da marca');
 
   console.log('\n=== 5. Cores do funil ===');
   r = await salvar({ funil: ['#ec4899', '#64748b', '#f59e0b'] });

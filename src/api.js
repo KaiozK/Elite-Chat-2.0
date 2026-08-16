@@ -4065,6 +4065,7 @@ module.exports = function (broadcast, clients) {
       tema: {
         verde: t.verde || '', botao: t.botao || '', botaoHover: t.botaoHover || '',
         tintaBotao: t.tintaBotao || '', verdeDeep: t.verdeDeep || '',
+        menu: t.menu || '', menuTinta: t.menuTinta || '',
         funil: Array.isArray(t.funil) ? t.funil : []
       },
       // O padrão vive no CSS; o painel mostra estes valores como referência do
@@ -4072,6 +4073,7 @@ module.exports = function (broadcast, clients) {
       padrao: {
         verde: '#2ed378', botao: '#19a95a', botaoHover: '#14904c',
         tintaBotao: '#ffffff', verdeDeep: '#178048',
+        menu: '#50ea5f', menuTinta: '#04331a',
         funil: ['#ec4899', '#64748b', '#f59e0b', '#0ea5e9', '#10b981', '#16a34a']
       }
     });
@@ -4080,8 +4082,8 @@ module.exports = function (broadcast, clients) {
   router.put('/admin/tema', auth, adminOnly, (req, res) => {
     const b = req.body || {};
     const p = db.get().platform;
-    if (!p.tema) p.tema = { verde: '', botao: '', botaoHover: '', tintaBotao: '', verdeDeep: '', funil: [] };
-    for (const k of ['verde', 'botao', 'botaoHover', 'tintaBotao', 'verdeDeep']) {
+    if (!p.tema) p.tema = { verde: '', botao: '', botaoHover: '', tintaBotao: '', verdeDeep: '', menu: '', menuTinta: '', funil: [] };
+    for (const k of ['verde', 'botao', 'botaoHover', 'tintaBotao', 'verdeDeep', 'menu', 'menuTinta']) {
       if (b[k] !== undefined) {
         const c = corOuVazio(b[k]);
         if (b[k] && !c) return res.status(400).json({ error: `Cor inválida em ${k}. Use hexadecimal, como #2ed378.` });

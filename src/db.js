@@ -139,6 +139,8 @@ const DEFAULTS = {
       botaoHover: '',   // o mesmo, um passo mais escuro
       tintaBotao: '',   // cor do texto dentro do botão
       verdeDeep: '',    // verde fechado, para TEXTO verde sobre fundo claro
+      menu: '',         // item ativo do menu lateral (e os contadores)
+      menuTinta: '',    // texto e ícone dentro do item ativo
       funil: []         // uma cor por etapa do funil, do topo para a base
     }
   },
