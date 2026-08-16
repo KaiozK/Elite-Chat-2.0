@@ -175,7 +175,21 @@
   +   "font-family:'Inter Tight','Segoe UI',system-ui,sans-serif!important}"
   // a palavra da marca acompanha o painel: peso 900 e o mesmo respiro
   + '.kf-marca-txt{font-weight:900!important;letter-spacing:-.015em!important}'
-  + '.kf-marca-fy{color:#178048!important}'
+  // O MESMO verde do "fy" do Loader (#2ED378, logo acima neste arquivo) e do
+  // app. Estava #178048, um verde bem mais escuro que o da logo — a palavra
+  // Koonfy mudava de cor entre o splash, a landing e o painel.
+  + '.kf-marca-fy{color:#2ED378!important}'
+  // A COR DA MARCA na landing. O bundle traz --verde:#34D399 e
+  // --verde-esc:#10B981, os verdes esmeralda de duas marcas atrás — botão,
+  // checks e destaques saíam todos nesse tom, e quem clicava em "Começar
+  // agora" via a cor mudar ao cair no painel.
+  //
+  // Sobrescrever as VARIÁVEIS (em vez de caçar cada `.btn` do bundle) acerta
+  // tudo de uma vez e continua valendo se o bundle mudar as regras: os dois
+  // tokens passam a ser o verde da logo, o mesmo #2ED378 do Loader e do app.
+  + ':root{--verde:#2ED378!important;--verde-esc:#2ED378!important}'
+  // Texto branco em botão sólido, que é como a marca se apresenta.
+  + '.btn,button.btn,a.btn{color:#fff!important}'
   ;
 
   function ensureCss() {

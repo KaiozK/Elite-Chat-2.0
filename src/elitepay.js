@@ -896,7 +896,11 @@ async function createCharge(acc, { valueCents, comment, waId, contactName, origi
   // Pix é ADIADO: a cobrança nasce sem código, o cliente abre o link, preenche
   // os dados no checkout e é aí que o Pix é gerado — em `identifyPayer`.
   // -------------------------------------------------------------------------
-  const temPagador = !!(pagador && pagador.document && pagador.email);
+  // Só conta como "tem pagador" o que o gateway consegue usar de fato: nome,
+  // e-mail e um documento que fecha a conta dos dígitos. Documento inválido
+  // aqui derrubaria a criação da cobrança inteira — melhor adiar o Pix.
+  const temPagador = !!(pagador && pagador.email && pagador.name &&
+    documento.docValido(pagador.document));
   const adiar = !!gateway().requiresPayer && !temPagador;
   const g = adiar ? { brCode: '', qrCodeImage: '', paymentLinkUrl: '', gatewayId: '', expiresAt: Date.now() + expiresIn * 1000 }
     : await gateway().createCharge({

@@ -33,6 +33,9 @@
      TEXTO sobre fundo claro, e o verde da logo sozinho não alcança 4.5:1. */
   --verde: #50ea5f;
   --verde-esc: #2ed378;
+  /* um passo abaixo do verde da marca, para o hover do botão principal:
+     escurece sem virar outro verde */
+  --verde-med: #21b866;
   --verde-deep: #178048;
   --ink-on-verde: #04331a;
   --grad: linear-gradient(135deg, #50ea5f, #05bf91);
@@ -135,9 +138,11 @@ h2 { font-size: 15px; font-weight: 800; letter-spacing: -.015em; margin: 0 0 12p
    Com -.03em as letras encostavam e o conjunto ficava mais leve que o símbolo,
    o que fazia os dois parecerem de marcas diferentes. */
 .brand-name { font-weight: 900; font-size: 20px; letter-spacing: -.015em; }
-/* o "fy" é texto e precisa de contraste: o verde claro sobre branco dava
-   2,19:1. No escuro há regra própria devolvendo o verde vivo. */
-.brand-name .gt2 { color: var(--verde-deep); }
+/* O "fy" usa o MESMO verde do Loader (#2ED378 = --verde-esc) e da logo. Já
+   esteve em --verde-deep por contraste, mas aí a palavra Koonfy aparecia com
+   três verdes diferentes entre o splash, a landing e o painel — e a marca
+   precisa ser a mesma em todo lugar. */
+.brand-name .gt2 { color: var(--verde-esc); }
 .brand-sub { font-size: 9.5px; text-transform: uppercase; letter-spacing: 1.4px; color: var(--faint); font-weight: 700; }
 
 /* ---------- login ---------- */
@@ -184,7 +189,7 @@ h2 { font-size: 15px; font-weight: 800; letter-spacing: -.015em; margin: 0 0 12p
 }
 .sidebar .brand { padding: 2px 8px 16px; border-bottom: 1px solid var(--border); }
 .sidebar .brand-name { color: var(--tinta); }
-.sidebar .brand-name .gt2 { color: var(--verde-deep); }
+.sidebar .brand-name .gt2 { color: var(--verde-esc); }
 .sidebar .brand-sub { color: #93a092; }
 .sidebar nav { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; flex: 1; overflow-y: auto; padding-bottom: 8px; }
 .nav-label {
@@ -370,17 +375,21 @@ select {
    #098443, um tom apagado que jogaria fora a cor da logo. A tinta escura sobre
    o MESMO verde dá 6,43:1: a marca fica intacta e o texto fica nítido, no
    claro e no escuro. É o botão mais usado do produto; ilegível ali é caro. */
+/* BOTÃO PRINCIPAL — verde da logo (#2ED378, o mesmo do Loader) com texto
+   BRANCO, claro e escuro. Já usou tinta escura por contraste; a decisão do
+   produto é o branco, que é como a marca se apresenta. O hover ESCURECE (e não
+   clareia, como fazia com a tinta escura) porque com texto branco escurecer é
+   o que ganha legibilidade no momento do clique. */
 .btn.primary {
-  background: var(--verde-esc); border-color: var(--verde-esc); color: var(--ink-on-verde);
+  background: var(--verde-esc); border-color: var(--verde-esc); color: #fff;
   box-shadow: 0 1px 2px rgba(16, 116, 82, .25), 0 4px 12px rgba(46, 211, 120, .22);
 }
 .btn.primary:hover {
-  /* o hover CLAREIA em vez de escurecer: escurecendo, a tinta escura perderia
-     contraste justo no estado em que a pessoa está prestes a clicar */
-  background: var(--verde); border-color: var(--verde);
-  box-shadow: 0 2px 4px rgba(16, 116, 82, .28), 0 6px 16px rgba(46, 211, 120, .3);
-  color: var(--ink-on-verde);
+  background: var(--verde-med); border-color: var(--verde-med);
+  box-shadow: 0 2px 4px rgba(16, 116, 82, .3), 0 6px 16px rgba(46, 211, 120, .32);
+  color: #fff;
 }
+.btn.primary:disabled { background: var(--verde-esc); border-color: var(--verde-esc); color: #fff; }
 .btn.primary svg { color: currentColor; }
 .btn.danger { color: var(--red-ink); }
 .btn.danger:hover { background: var(--red-bg); border-color: var(--red-border); color: var(--red-ink); }
@@ -2320,20 +2329,18 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   background: linear-gradient(150deg, #2b3032, #171b1c) !important;
   border: 1px solid #313839;
 }
-/* O "fy" da marca inverte com o tema: no claro precisa do verde FECHADO para
-   ser legível sobre branco; no escuro, do verde VIVO sobre o fundo quase preto.
-   Sem esta regra ele herdaria o verde fechado e sumiria no escuro. */
+/* O "fy" é o mesmo verde da logo nos dois temas — a regra continua aqui só
+   para vencer qualquer herança de tema no escuro. */
 :root[data-theme="dark"] .brand-name .gt2,
-:root[data-theme="dark"] .sidebar .brand-name .gt2 { color: var(--verde); }
+:root[data-theme="dark"] .sidebar .brand-name .gt2 { color: var(--verde-esc); }
 
 /* textos com destaque verde → claros */
 :root[data-theme="dark"] .hh-date { color: #d9f2ea; }
 :root[data-theme="dark"] .pill.done { color: #d9f2ea; }
-/* O botão VERMELHO segue branco: sobre #e5484d o branco dá 4,6:1, passa.
-   O VERDE saiu desta lista — ali o branco dava 2,19:1 e esta regra desfazia a
-   tinta escura definida na regra base. `.btn.primary` fica de fora. */
+/* Texto branco nos botões sólidos, nos dois temas. */
 :root[data-theme="dark"] .btn.danger,
-:root[data-theme="dark"] .btn.danger-solid { color: #ffffff; }
+:root[data-theme="dark"] .btn.danger-solid,
+:root[data-theme="dark"] .btn.primary { color: #ffffff; }
 
 /* ---- MODO ESCURO: hover dos botões reforça o VERDE (não branco) ---- */
 :root[data-theme="dark"] .btn:not(.primary):not(.danger):not(.danger-solid):hover {
@@ -3687,23 +3694,39 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
 .planos-head h1 { font-size: 27px; letter-spacing: -.03em; margin: 0 0 6px; }
 .planos-head p { color: var(--muted); margin: 0; font-size: 14px; }
 
-.planos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
+/* Os cartões seguem a linguagem do resto do app (.card / .mh-card): mesmo
+   raio, mesma borda, mesma sombra, e o destaque com o gradiente da marca —
+   antes eram três caixas soltas que não pareciam da mesma tela. */
+.planos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; align-items: stretch; }
 .plano-card {
-  display: flex; flex-direction: column;
+  position: relative; display: flex; flex-direction: column;
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 22px; box-shadow: var(--shadow-xs);
   transition: border-color .18s, box-shadow .18s, transform .18s;
 }
-.plano-card:hover { border-color: var(--verde); box-shadow: var(--shadow-sm); transform: translateY(-2px); }
-.plano-card h3 { margin: 0; font-size: 16px; font-weight: 800; letter-spacing: -.02em; }
-.plano-preco { margin: 10px 0 16px; display: flex; align-items: baseline; gap: 7px; }
-.plano-preco b { font-size: 30px; letter-spacing: -.03em; color: var(--verde-deep); }
-.plano-preco em { font-style: normal; font-size: 12.5px; color: var(--muted); }
-.plano-itens { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.plano-itens li { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text2); }
-.plano-itens .ic { color: var(--verde); flex: none; }
-.plano-mods { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 16px; }
-.plano-mods .pill { font-size: 10.5px; padding: 2px 8px; }
+.plano-card:hover { border-color: var(--verde-esc); box-shadow: var(--shadow); transform: translateY(-3px); }
+/* Destaque: mesmo tratamento do .mh-card.hi, para o cartão pertencer ao app. */
+.plano-card.hi { background: linear-gradient(150deg, var(--brand-bg), var(--card)); border-color: var(--brand-border); }
+.plano-tag {
+  position: absolute; top: -10px; left: 22px; padding: 3px 11px; border-radius: 999px;
+  background: var(--grad); color: #fff; font-size: 10.5px; font-weight: 800;
+  letter-spacing: .05em; text-transform: uppercase; box-shadow: 0 3px 10px rgba(46, 211, 120, .35);
+}
+.plano-card h3 { margin: 0; font-size: 15px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.plano-preco { margin: 8px 0 0; display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
+/* O preço usa o mesmo tratamento dos números grandes do painel (.mh-val). */
+.plano-preco b { font-size: 32px; font-weight: 800; letter-spacing: -.045em; font-variant-numeric: tabular-nums; color: var(--text); }
+.plano-preco em { font-style: normal; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.plano-equiv { margin-top: 4px; font-size: 12px; color: var(--muted); }
+.plano-equiv b { color: var(--verde-deep); font-weight: 800; }
+.plano-itens { list-style: none; margin: 18px 0 0; padding: 18px 0 0; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 9px; }
+.plano-itens li { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; color: var(--text2); line-height: 1.45; }
+.plano-itens .ic { color: var(--verde-esc); flex: none; margin-top: 3px; }
+.plano-sec { margin: 18px 0 8px; font-size: 10.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--faint); }
+.plano-mods { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 18px; }
+.plano-mods .pill { font-size: 10.5px; padding: 3px 9px; font-weight: 700; }
+/* O botão gruda no rodapé do cartão: com listas de tamanhos diferentes, os
+   botões ficavam em alturas diferentes e a grade parecia torta. */
 .plano-card .btn { margin-top: auto; }
 
 /* Esperando o pagamento cair, depois de abrir o checkout. */
@@ -4243,3 +4266,19 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 .gw-opt span { display: block; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
 .gw-opt i { display: inline-block; margin-top: 9px; font-style: normal; }
 @media (max-width: 760px) { .gw-picker { grid-template-columns: 1fr; } }
+
+/* ---------- cobrança: dados do pagador (adquirente que exige) ---------- */
+.ep-pagador { margin-top: 14px; padding: 13px 14px; border-radius: 12px; background: var(--bg2); border: 1px solid var(--border); }
+.ep-pagador-top { display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; color: var(--muted); line-height: 1.5; margin-bottom: 12px; }
+.ep-pagador-top svg { flex: none; margin-top: 2px; }
+.ep-pagador input.bad { border-color: var(--red); }
+.ep-pagador-erro { display: none; margin-top: 8px; font-size: 12.5px; font-weight: 600; color: var(--red-ink, var(--red)); }
+.ep-pagador-erro.show { display: block; }
+/* Aviso no lugar do "Pix copia e cola" quando o código ainda não existe: sem
+   ele o espaço ficava vazio e parecia falha da cobrança. */
+.ep-sem-codigo {
+  display: flex; gap: 9px; align-items: flex-start; margin-top: 10px;
+  padding: 12px 13px; border-radius: 12px; font-size: 12.5px; line-height: 1.55;
+  background: var(--amber-bg); border: 1px solid var(--amber-border); color: var(--text2);
+}
+.ep-sem-codigo svg { flex: none; margin-top: 2px; }

@@ -987,6 +987,56 @@ function mascararTelefone(input) {
   input.value = out;
 }
 
+// ---------------------------------------------------------------------------
+// CPF / CNPJ — os mesmos dígitos verificadores que o servidor confere
+// (src/documento.js) e que o checkout já usa. Aqui a conta é feita no
+// navegador para o erro sair na hora de digitar, sem ida ao servidor.
+// ---------------------------------------------------------------------------
+function mascararDoc(v) {
+  const d = String(v || '').replace(/\D/g, '').slice(0, 14);
+  if (d.length <= 11) {
+    return d.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+            .replace(/\.(\d{3})(\d{1,2})$/, '.$1-$2');
+  }
+  return d.replace(/^(\d{2})(\d)/, '$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+          .replace(/\.(\d{3})(\d)/, '.$1/$2').replace(/(\d{4})(\d{1,2})$/, '$1-$2');
+}
+function cpfValido(d) {
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+  for (let r = 0; r < 2; r++) {
+    const ate = 9 + r; let soma = 0;
+    for (let i = 0; i < ate; i++) soma += Number(d[i]) * (ate + 1 - i);
+    const resto = (soma * 10) % 11;
+    if ((resto === 10 ? 0 : resto) !== Number(d[ate])) return false;
+  }
+  return true;
+}
+function cnpjValido(d) {
+  if (d.length !== 14 || /^(\d)\1{13}$/.test(d)) return false;
+  const confere = (ate) => {
+    let soma = 0, peso = ate - 7;
+    for (let i = 0; i < ate; i++) { soma += Number(d[i]) * peso; peso = peso === 2 ? 9 : peso - 1; }
+    const resto = soma % 11;
+    return (resto < 2 ? 0 : 11 - resto) === Number(d[ate]);
+  };
+  return confere(12) && confere(13);
+}
+function docValido(v) {
+  const d = String(v || '').replace(/\D/g, '');
+  return d.length === 11 ? cpfValido(d) : d.length === 14 ? cnpjValido(d) : false;
+}
+// Mensagem que diz onde olhar: "CPF inválido", não "documento inválido".
+function erroDoc(v) {
+  const d = String(v || '').replace(/\D/g, '');
+  if (!d) return 'Informe o CPF ou CNPJ';
+  if (d.length !== 11 && d.length !== 14) {
+    return 'CPF ou CNPJ incompleto: ' + (d.length < 11 ? 'faltam dígitos' : 'dígitos a mais');
+  }
+  if (docValido(d)) return '';
+  return d.length === 11 ? 'CPF inválido. Confira os números digitados'
+                         : 'CNPJ inválido. Confira os números digitados';
+}
+
 // Mesma regra do servidor (`paises.paraE164`), para o erro aparecer na hora de
 // digitar e não depois de enviar o cadastro inteiro.
 function erroTelefone(valor, iso) {
@@ -6635,7 +6685,7 @@ async function pintarPlanos() {
     return;
   }
 
-  box.innerHTML = `<div class="planos-grid">${planos.map(p => {
+  box.innerHTML = `<div class="planos-grid">${planos.map((p, i) => {
     const lim = p.limits || {};
     const mods = p.modules || {};
     // o que o plano ENTREGA, na ordem em que a pessoa pergunta
@@ -6646,17 +6696,39 @@ async function pintarPlanos() {
       lim.campaigns === -1 ? 'Campanhas ilimitadas' : fmtN(lim.campaigns) + ' campanhas por ciclo'
     ];
     const extras = FEATURE_META.filter(f => mods[f.key] !== false).map(f => f.label);
-    return `<div class="plano-card">
+    // O ciclo vinha como "por undefined dias" em qualquer plano salvo sem
+    // periodDays — o campo é opcional no cadastro e ninguém tratava a falta.
+    const dias = Number(p.periodDays) || 30;
+    // Mais barato = o do meio da grade não serve como regra; o DESTAQUE é o
+    // plano do meio da lista, que é onde o olho cai e onde costuma estar a
+    // oferta que o dono quer vender.
+    const destaque = planos.length > 2 && i === Math.floor(planos.length / 2);
+    // Em ciclo longo, o preço mensal equivalente é a informação que a pessoa
+    // realmente usa para comparar — e é ele que mostra a vantagem do plano.
+    const porMes = dias > 31 ? Math.round(p.price / (dias / 30)) : 0;
+    return `<div class="plano-card${destaque ? ' hi' : ''}">
+      ${destaque ? '<span class="plano-tag">Mais escolhido</span>' : ''}
       <h3>${esc(p.name)}</h3>
-      <div class="plano-preco"><b>${fmtBRL(p.price)}</b><em>por ${p.periodDays === 30 ? 'mês' : p.periodDays + ' dias'}</em></div>
+      <div class="plano-preco"><b>${fmtBRL(p.price)}</b><em>${epCicloLabel(dias)}</em></div>
+      ${porMes ? `<div class="plano-equiv">equivale a <b>${fmtBRL(porMes)}</b> por mês</div>` : ''}
       <ul class="plano-itens">
-        ${itens.map(i => `<li>${ico('check', 13)} ${i}</li>`).join('')}
+        ${itens.map(i2 => `<li>${ico('check', 13)}<span>${i2}</span></li>`).join('')}
       </ul>
-      ${extras.length ? `<div class="plano-mods">${extras.map(x => `<span class="pill">${esc(x)}</span>`).join('')}</div>` : ''}
+      ${extras.length ? `
+        <div class="plano-sec">Módulos inclusos</div>
+        <div class="plano-mods">${extras.map(x => `<span class="pill">${esc(x)}</span>`).join('')}</div>` : ''}
       <button class="btn primary block" onclick="assinarPlano('${p.id}', this)">
-        Assinar ${esc(p.name)}</button>
+        ${ico('zap', 14)} Assinar ${esc(p.name)}</button>
     </div>`;
   }).join('')}</div>`;
+}
+
+// "por mês" lê melhor que "por 30 dias"; os ciclos redondos ganham nome e o
+// resto cai no genérico em vez de inventar um rótulo errado.
+function epCicloLabel(dias) {
+  const nomes = { 7: 'por semana', 15: 'por quinzena', 30: 'por mês', 60: 'a cada 2 meses',
+    90: 'por trimestre', 180: 'por semestre', 365: 'por ano' };
+  return nomes[dias] || `a cada ${fmtN(dias)} dias`;
 }
 
 // Abre a cobrança no checkout que o dono montou. Sai em outra aba: fechar o
@@ -14052,6 +14124,53 @@ const EP_MSG_PADRAO = 'Olá {nome}! Sua cobrança de {valor} está pronta.\n{des
 
 let epNC = null;   // { waId, contactName, etapa }
 
+// ---------------------------------------------------------------------------
+// DADOS DO PAGADOR na tela de cobrança
+//
+// Alguns adquirentes (a Simplify) só emitem o Pix sabendo quem vai pagar: nome,
+// CPF/CNPJ, e-mail e telefone. Sem isso a cobrança sai só com o LINK, e o
+// código copia e cola aparece depois, quando o cliente preenche no checkout.
+//
+// Como quase sempre quem cobra quer o código na mão para colar na conversa,
+// os campos entram aqui. Aparecem SÓ quando o adquirente exige — com a Woovi
+// seria pedir um dado que ninguém usa.
+// ---------------------------------------------------------------------------
+function epExigePagador() { return !!(state.epInfo && state.epInfo.exigePagador); }
+
+function epCamposPagador() {
+  if (!epExigePagador()) return '';
+  // O contato já pode ter CPF e e-mail de uma compra anterior no checkout;
+  // nesse caso os campos chegam preenchidos e é só confirmar.
+  const c = epNC && epNC.waId ? (state.contacts || []).find(x => x.waId === epNC.waId) : null;
+  const doc = (c && c.vars && c.vars.cpf_cnpj) || '';
+  const email = (c && c.email) || '';
+  return `
+    <div class="ep-pagador">
+      <div class="ep-pagador-top">
+        ${ico('help', 13)}
+        <span>O adquirente <b>${esc((state.epInfo && state.epInfo.gatewayLabel) || 'Pix')}</b> exige os dados de quem vai
+        pagar para emitir o código. Preencha e o <b>Pix copia e cola sai na hora</b>; deixe em branco e a cobrança vai
+        só com o <b>link</b>, onde o próprio cliente preenche.</span>
+      </div>
+      <div class="ep-grid">
+        <label>CPF ou CNPJ do cliente
+          <input id="ep-nc-doc" inputmode="numeric" placeholder="000.000.000-00" value="${esc(doc ? mascararDoc(doc) : '')}"
+                 oninput="this.value=mascararDoc(this.value)" onblur="epChecarDoc(this)"></label>
+        <label>E-mail do cliente
+          <input id="ep-nc-email" type="email" placeholder="cliente@email.com" value="${esc(email)}"></label>
+      </div>
+      <div class="ep-pagador-erro" id="ep-nc-doc-erro"></div>
+    </div>`;
+}
+
+// Aviso na hora, sem ir ao servidor: os dígitos verificadores são conta local.
+function epChecarDoc(el) {
+  const box = $('#ep-nc-doc-erro');
+  const e = el.value.replace(/\D/g, '') ? erroDoc(el.value) : '';
+  el.classList.toggle('bad', !!e);
+  if (box) { box.textContent = e || ''; box.classList.toggle('show', !!e); }
+}
+
 function epNewChargeModal(waId, contactName) {
   epNC = { waId: waId || null, contactName: contactName || null, etapa: 1 };
   const prods = (state.epInfo && state.epInfo.products) || [];
@@ -14080,6 +14199,7 @@ function epNewChargeModal(waId, contactName) {
            <input type="hidden" id="ep-nc-waid" value="${esc(waId)}">`
         : `<label>Vincular a um contato (opcional)<input id="ep-nc-phone" placeholder="5511999999999, deixe em branco para cobrança avulsa" inputmode="tel"></label>
            <label class="chk"><input type="checkbox" id="ep-nc-send"> Enviar no WhatsApp do contato</label>`}
+      ${epCamposPagador()}
     </div>
 
     <div class="ep-etapa hidden" data-etapa="2">
@@ -14172,7 +14292,12 @@ async function epCreateCharge() {
       message: ($('#ep-nc-msg') && $('#ep-nc-msg').value.trim()) || '',
       saveAsDefault: !!($('#ep-nc-def') && $('#ep-nc-def').checked),
       waId, send: !!($('#ep-nc-send') && $('#ep-nc-send').checked),
-      origin: state.view === 'inbox' ? 'chat' : 'manual'
+      origin: state.view === 'inbox' ? 'chat' : 'manual',
+      // Só vai quando o adquirente precisa; com a Woovi o campo nem existe.
+      pagador: epExigePagador() ? {
+        document: ($('#ep-nc-doc') && $('#ep-nc-doc').value) || '',
+        email: ($('#ep-nc-email') && $('#ep-nc-email').value.trim()) || ''
+      } : undefined
     } });
     closeModal();
     if (r.sent) toast('Cobrança gerada e enviada na conversa! 💸');
@@ -14209,7 +14334,16 @@ function epShowCharge(ch, warn) {
         ${ch.brCode ? `
           <span class="fb-sub" style="margin-top:10px">Pix copia e cola</span>
           <div class="ep-copy"><input readonly value="${esc(ch.brCode)}" onclick="this.select()">
-            <button class="btn small" onclick="epCopy(this.previousElementSibling.value)">${ico('copy', 13)}</button></div>` : ''}
+            <button class="btn small" onclick="epCopy(this.previousElementSibling.value)">${ico('copy', 13)}</button></div>`
+        : ch.status === 'active' ? `
+          <div class="ep-sem-codigo">
+            ${ico('help', 14)}
+            <div><b>O código Pix vem depois.</b> O adquirente
+            ${esc((state.epInfo && state.epInfo.gatewayLabel) || 'atual')} só emite o Pix sabendo quem vai pagar
+            (nome, CPF/CNPJ, e-mail e telefone). <b>Mande o link acima</b>: o cliente preenche na página e o código
+            aparece para ele na hora.<br>
+            Para já sair com o código na mão, preencha o CPF e o e-mail do cliente ao gerar a cobrança.</div>
+          </div>` : ''}
         ${ch.payer ? `
           <span class="fb-sub" style="margin-top:10px">Dados do pagador (checkout)</span>
           <div class="wa-status" style="margin-top:4px">

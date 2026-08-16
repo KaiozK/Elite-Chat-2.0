@@ -9,6 +9,7 @@ const ia = require('./ia');
 const wa = require('./whatsapp');
 const meta = require('./meta');
 const store = require('./store');
+const documento = require('./documento');
 const session = require('./session');
 const survey = require('./survey');
 const consent = require('./consent');
@@ -4544,6 +4545,11 @@ module.exports = function (broadcast, clients) {
     const cfg = elitepay.platformCfg();
     res.json({
       configured: elitepay.configured(),
+      // O adquirente ativo exige os dados do pagador para emitir o Pix?
+      // A tela de cobrança usa isto para pedir CPF e e-mail e já sair com o
+      // código na mão, em vez de só com o link.
+      exigePagador: !!elitepay.gateway().requiresPayer,
+      gatewayLabel: elitepay.gateway().label || '',
       subaccount: ep.subaccount,
       // O Koonfy já sabe nome, e-mail e telefone de quem cadastrou. Mandar o
       // dono digitar tudo de novo no formulário do Pagamentos é pedir o mesmo
@@ -4642,13 +4648,32 @@ module.exports = function (broadcast, clients) {
   router.post('/elitepay/charges', auth, feat('elitepay'), can('elitepay', 'create'), h(async (req, res) => {
     const b = req.body || {};
     const contact = b.waId ? store.findContact(req.wctx, store.normalizeWaId(b.waId)) : null;
+    // DADOS DO PAGADOR — só fazem falta em gateway que os exige (Simplify).
+    // O que o operador digitar manda; faltando, aproveita o que o CONTATO já
+    // tem (de uma compra anterior no checkout). Com os quatro campos o Pix sai
+    // na hora; sem eles a cobrança nasce só com o link e o código vem quando o
+    // cliente se identificar.
+    const pg = b.pagador || {};
+    // Documento DIGITADO e errado é erro na cara: quem preencheu precisa saber.
+    // Já um documento herdado do contato que não fecha a conta é só ignorado —
+    // a cobrança nasce assim mesmo e o cliente corrige no checkout.
+    if (pg.document && !documento.docValido(pg.document)) {
+      return res.status(400).json({ error: documento.erroDoc(pg.document) });
+    }
+    const pagador = {
+      name: String(pg.name || (contact && contact.name) || b.contactName || '').trim(),
+      document: String(pg.document || (contact && contact.vars && contact.vars.cpf_cnpj) || '').replace(/\D/g, ''),
+      email: String(pg.email || (contact && contact.email) || '').trim(),
+      phone: String(pg.phone || (contact && contact.waId) || b.waId || '').replace(/\D/g, '')
+    };
     const ch = await elitepay.createCharge(req.acc, {
       valueCents: b.valueCents, comment: b.comment,
       waId: contact ? contact.waId : (b.waId || null),
       contactName: contact ? contact.name : (b.contactName || null),
       origin: b.origin || 'manual', byName: req.who.name, expiresMin: b.expiresMin,
       productId: b.productId, checkoutId: b.checkoutId,    // produto + layout escolhidos
-      message: b.message                                   // texto montado na hora, com as variáveis
+      message: b.message,                                  // texto montado na hora, com as variáveis
+      pagador
     });
     // "Usar como padrão nas próximas": grava o texto no modelo da conta.
     if (b.saveAsDefault && b.message) {

@@ -228,6 +228,29 @@ global.fetch = async (u, o) => {
   ok(documento.cnpjValido('11222333000181') && !documento.cnpjValido('11222333000199'),
     'o mesmo vale para CNPJ');
 
+  console.log('\n=== 11a. Com o CPF na mão, o Pix sai NA HORA ===');
+  // O caso da seção 9 (nascer sem código) é o de quem não tem os dados. Quando
+  // quem cobra preenche CPF e e-mail — ou o contato já os tem de uma compra
+  // anterior —, não há motivo para adiar: o código sai junto com a cobrança.
+  respostaFalsa = { internal_id: 'TXN_NA_HORA', status: 'pending', qrcode: '00020126...PIX-NA-HORA' };
+  ultimaChamada = null;
+  const jaComDados = await elitepay.createCharge(acc2, {
+    valueCents: 8800, comment: 'Mentoria', waId: '5582981440676', contactName: 'João Silva', origin: 'manual',
+    pagador: { name: 'João Silva', document: '84748914009', email: 'joao@exemplo.com', phone: '5582981440676' }
+  });
+  ok(jaComDados.brCode === '00020126...PIX-NA-HORA', 'o Pix veio junto com a cobrança');
+  ok(ultimaChamada && ultimaChamada.corpo.payer.document === '84748914009', 'com o CPF que foi digitado');
+
+  // Documento que não fecha a conta NÃO pode ir para o gateway: melhor adiar o
+  // Pix do que derrubar a criação da cobrança inteira.
+  ultimaChamada = null;
+  const docRuim = await elitepay.createCharge(acc2, {
+    valueCents: 8800, comment: 'Mentoria', waId: '5582981440676', contactName: 'João', origin: 'manual',
+    pagador: { name: 'João', document: '12345678901', email: 'joao@exemplo.com', phone: '5582981440676' }
+  });
+  ok(docRuim.brCode === '', 'com CPF inválido a cobrança nasce sem código, em vez de falhar');
+  ok(ultimaChamada === null, 'e o documento falso não chegou a ser enviado à Simplify');
+
   console.log('\n=== 11b. O CAMINHO DO DINHEIRO: onde fica a taxa ===');
   // É daqui que sai o lucro da plataforma. Na Simplify o depósito inteiro cai
   // na conta dela; a carteira do cliente recebe o LÍQUIDO, e a diferença é a
