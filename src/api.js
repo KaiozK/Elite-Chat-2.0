@@ -2455,13 +2455,44 @@ module.exports = function (broadcast, clients) {
 
   // ============ RELATÓRIOS ============
 
+  // ---------------------------------------------------------------------------
+  // PERÍODO DOS RELATÓRIOS
+  //
+  // Antes só existia `days=7|14|30|90`: dava para ver "os últimos 30 dias", mas
+  // não "março", nem "2025", nem "de 12 a 19". Quem fecha o mês precisa
+  // exatamente disso.
+  //
+  // `de` e `ate` vêm como AAAA-MM-DD e são interpretados no fuso de quem
+  // pediu — um dia começa à meia-noite DELE. Sem isso, "hoje" no Brasil
+  // começaria às 21h do dia anterior.
+  //
+  // `days` continua funcionando: links e telas antigas não podem quebrar.
+  // ---------------------------------------------------------------------------
+  function periodoDaQuery(q) {
+    const diaMs = 86400000;
+    const meiaNoite = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return +x; };
+    const dataValida = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+    const doTexto = (s) => { const [a, m, d] = s.split('-').map(Number); return +new Date(a, m - 1, d); };
+
+    if (dataValida(q.de) && dataValida(q.ate)) {
+      let ini = doTexto(q.de), fim = doTexto(q.ate);
+      if (fim < ini) { const t = ini; ini = fim; fim = t; }
+      // Teto de 2 anos: a série é diária e um intervalo aberto viraria um
+      // gráfico de milhares de colunas que ninguém lê e o navegador sofre.
+      const dias = Math.min(731, Math.round((fim - ini) / diaMs) + 1);
+      return { ini, fim: ini + dias * diaMs, dias };
+    }
+    const n = Math.min(731, Math.max(1, parseInt(q.days, 10) || 14));
+    const hoje = meiaNoite(new Date());
+    return { ini: hoje - (n - 1) * diaMs, fim: hoje + diaMs, dias: n };
+  }
+
   router.get('/reports', auth, (req, res) => {
     const acc = req.acc;
-    const daysN = Math.min(90, Math.max(7, parseInt(req.query.days, 10) || 14));
-    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const { ini, fim, dias: daysN } = periodoDaQuery(req.query);
     const days = [];
-    for (let i = daysN - 1; i >= 0; i--) {
-      const t0 = +today - i * 86400000, t1 = t0 + 86400000;
+    for (let i = 0; i < daysN; i++) {
+      const t0 = ini + i * 86400000, t1 = t0 + 86400000;
       const slice = acc.messages.filter(m => m.timestamp >= t0 && m.timestamp < t1);
       days.push({
         date: new Date(t0).toISOString().slice(0, 10),
@@ -2470,8 +2501,7 @@ module.exports = function (broadcast, clients) {
         failed: slice.filter(m => m.status === 'failed').length
       });
     }
-    const t0p = +today - (daysN - 1) * 86400000;
-    const period = acc.messages.filter(m => m.timestamp >= t0p);
+    const period = acc.messages.filter(m => m.timestamp >= ini && m.timestamp < fim);
     const outMsgs = period.filter(m => m.direction === 'out');
     const delivered = outMsgs.filter(m => ['delivered', 'read'].includes(m.status)).length;
     const read = outMsgs.filter(m => m.status === 'read').length;
@@ -2505,14 +2535,14 @@ module.exports = function (broadcast, clients) {
     }
     const avgResponseMin = respN ? Math.round(respSum / respN / 60000) : 0;
     const activeContacts = Object.keys(byContact).length;
-    const newContacts = acc.contacts.filter(c => (c.createdAt || 0) >= t0p).length;
+    const newContacts = acc.contacts.filter(c => (c.createdAt || 0) >= ini && (c.createdAt || 0) < fim).length;
     const sentByTypeMap = {};
     for (const m of outMsgs) sentByTypeMap[m.type || 'text'] = (sentByTypeMap[m.type || 'text'] || 0) + 1;
     const sentByType = Object.entries(sentByTypeMap).map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count);
-    const automationRuns = db.get().webhookLog.filter(e => e.type === 'flow_run' && e.accountId === acc.id && e.ts >= t0p).length;
+    const automationRuns = db.get().webhookLog.filter(e => e.type === 'flow_run' && e.accountId === acc.id && e.ts >= ini && e.ts < fim).length;
     const wonStage = acc.stages.find(s => /ganho|fechad|conclu/i.test(s));
     const leadsWon = wonStage ? acc.contacts.filter(c => c.stage === wonStage).length : 0;
-    const linkClicks = (acc.links || []).reduce((a, l) => a + l.clicks.filter(c => c.ts >= t0p).length, 0);
+    const linkClicks = (acc.links || []).reduce((a, l) => a + l.clicks.filter(c => c.ts >= ini && c.ts < fim).length, 0);
 
     // ---- sugestões de melhoria (calculadas dos dados reais) ----
     const suggestions = [];
@@ -3346,9 +3376,10 @@ module.exports = function (broadcast, clients) {
   // Mapa de leads consolidado: junta TODAS as campanhas do período, para
   // responder "onde estão meus leads quentes" sem abrir uma a uma.
   router.get('/campaigns/mapa', auth, can('campaigns'), (req, res) => {
-    const dias = Math.min(365, Math.max(1, Number(req.query.dias) || 90));
-    const desde = Date.now() - dias * 86400000;
-    const campanhas = (req.acc.campaigns || []).filter(c => (c.createdAt || 0) >= desde);
+    // Mesmo seletor de período do resto do painel: aceita `de`/`ate` além do
+    // `dias`, para dar conta de "março" e "2025" e não só "últimos 90 dias".
+    const { ini, fim } = periodoDaQuery({ de: req.query.de, ate: req.query.ate, days: req.query.dias || req.query.days || 90 });
+    const campanhas = (req.acc.campaigns || []).filter(c => (c.createdAt || 0) >= ini && (c.createdAt || 0) < fim);
     const acc = req.acc;
     const soma = {};
     for (const camp of campanhas) {
@@ -3365,7 +3396,7 @@ module.exports = function (broadcast, clients) {
       taxaClique: taxa(s.cliques, s.enviadas),
       ctrSobreLidas: taxa(s.cliques, s.lidas)
     })).sort((a, b) => b.total - a.total);
-    res.json({ dias, campanhas: campanhas.length, estados });
+    res.json({ campanhas: campanhas.length, estados });
   });
 
   // Variáveis dinâmicas nos valores das campanhas — resolvidas POR DESTINATÁRIO:

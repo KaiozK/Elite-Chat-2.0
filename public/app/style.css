@@ -4528,40 +4528,47 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 .tema-fcor span { font-size: 10.5px; font-weight: 700; color: var(--muted); }
 .tema-funil-previa .fn-etapa { margin-bottom: 2px; }
 
-/* ---------- MISSÕES (trilha de configuração no topo da dashboard) ---------- */
-.mis-card { margin-bottom: 16px; padding: 0; overflow: hidden; }
-.mis-topo { display: flex; align-items: center; gap: 15px; padding: 16px 18px; cursor: pointer; }
-.mis-tit { flex: 1; min-width: 0; }
-.mis-tit h2 { margin: 0; font-size: 16px; }
-.mis-tit p { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
+/* ---------- PRIMEIROS PASSOS (tela própria, em etapas) ---------- */
+.mis-resumo { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; }
+.mis-resumo-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.mis-resumo-tx b { font-size: 15px; font-weight: 800; color: var(--text); }
+.mis-resumo-tx span { font-size: 13px; color: var(--muted); }
+.mis-resumo-tx span b { font-weight: 700; color: var(--text2); font-size: 13px; }
 /* Anel de progresso em conic-gradient: uma variável (--p) e nenhum SVG. */
 .mis-anel {
   flex: none; width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center;
   background: conic-gradient(var(--verde-esc) calc(var(--p) * 1%), var(--border) 0);
 }
-/* Um bloco de texto SÓ no miolo: o número de etapas concluídas.
-   Antes eram dois ("64" grande + "%" pequeno), e por mais que o CSS
-   centralizasse, o peso visual pendia para o número e o conjunto parecia
-   torto. Com um glifo só, centralizar é centralizar. O progresso é o anel; o
-   total está escrito ao lado. */
+/* Um bloco de texto SÓ no miolo: o número de etapas concluídas. Com dois
+   ("64" grande + "%" pequeno), o peso visual pendia para o número e o conjunto
+   parecia torto por mais que o CSS centralizasse. */
 .mis-anel span {
   width: 43px; height: 43px; border-radius: 50%; background: var(--card);
   display: grid; place-items: center;
   font-size: 17px; font-weight: 800; color: var(--verde-deep); line-height: 1;
   font-variant-numeric: tabular-nums; letter-spacing: -.03em;
 }
-/* Recolhido por padrão em quem já conhece: o corpo colapsa com grid 0fr→1fr,
-   e o conteúdo vai num wrapper único (senão só a primeira linha zera). */
-.mis-corpo { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .26s var(--ease); }
-.mis-card.aberta .mis-corpo { grid-template-rows: 1fr; }
-.mis-corpo > .mis-corpo-in { min-height: 0; overflow: hidden; }
-.mis-grupo { padding: 0 18px; }
-.mis-grupo:last-child { padding-bottom: 16px; }
-.mis-grupo-tit {
-  display: flex; align-items: center; gap: 8px; margin: 14px 0 8px;
-  font-size: 10.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--faint);
+
+/* Trilha das etapas: mostra onde se está e quanto falta em cada uma. */
+.mis-trilha { display: flex; gap: 8px; margin-bottom: 14px; overflow-x: auto; padding-bottom: 4px; }
+.mis-passo {
+  display: flex; align-items: center; gap: 9px; flex: 1 1 0; min-width: 150px;
+  padding: 11px 13px; border-radius: 13px; cursor: pointer; text-align: left;
+  background: var(--card); border: 1px solid var(--border); color: var(--text2);
+  font: inherit; transition: border-color .16s, background .16s;
 }
-.mis-grupo-tit i { font-style: normal; font-weight: 700; letter-spacing: 0; color: var(--muted); }
+.mis-passo:hover { border-color: var(--border2); }
+.mis-passo.on { background: var(--brand-bg); border-color: var(--brand-border); }
+.mis-passo-n {
+  flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--bg2); color: var(--muted); font-size: 11.5px; font-weight: 800;
+}
+.mis-passo.on .mis-passo-n { background: var(--verde-esc); color: #fff; }
+.mis-passo.ok .mis-passo-n { background: var(--verde-esc); color: #fff; }
+.mis-passo-tx { display: flex; flex-direction: column; min-width: 0; }
+.mis-passo-tx b { font-size: 12.5px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mis-passo-tx i { font-style: normal; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.mis-lista { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; }
 .mis-item {
   display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px;
   border: 1px solid var(--border); background: var(--bg2); margin-bottom: 7px;
@@ -4581,22 +4588,44 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
   font-style: normal; font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
   color: var(--faint); border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; margin-left: 7px;
 }
-.mis-pronto {
-  display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
-  padding: 11px 15px; border-radius: 12px; font-size: 13px; color: var(--verde-deep);
-  background: var(--brand-bg); border: 1px solid var(--brand-border);
-}
-.mis-pronto span { flex: 1; }
-@media (max-width: 560px) {
-  .mis-topo { gap: 11px; padding: 13px 14px; }
-  .mis-grupo { padding: 0 14px; }
+@media (max-width: 700px) {
+  /* No celular a trilha rola na horizontal em vez de espremer cinco etapas
+     numa linha só — cada uma fica legível e a atual continua visível. */
+  .mis-passo { flex: 0 0 auto; min-width: 128px; }
+  .mis-resumo { flex-wrap: wrap; }
+  .mis-resumo .btn { width: 100%; }
   .mis-item { flex-wrap: wrap; }
   .mis-item .btn { width: 100%; }
-  /* Fechado, o cartão tem de ser UMA linha. No celular o "próximo passo"
-     empurrava o texto para três linhas e o cartão recolhido ficava com quase a
-     altura de um aberto — o oposto do que recolher serve. O passo seguinte
-     continua lá dentro, a um toque. */
-  .mis-prox { display: none; }
-  .mis-tit h2 { font-size: 15px; }
-  .mis-topo .btn { padding: 6px 10px; font-size: 12px; }
+}
+
+/* ---------- SELETOR DE PERÍODO (gráficos) ----------
+   Os atalhos de dias continuam à mão porque são o uso de todo dia; mês, ano e
+   intervalo livre ficam atrás de um botão, a um clique. */
+.per { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.per-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 34px; padding: 0 12px; border-radius: 10px; cursor: pointer;
+  background: var(--card); border: 1px solid var(--border); color: var(--text2);
+  font: inherit; font-size: 12.5px; font-weight: 700;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.per-btn:hover { border-color: var(--border2); }
+.per-btn.on { background: var(--brand-bg); border-color: var(--brand-border); color: var(--verde-deep); }
+.per-btn svg { flex: none; opacity: .8; }
+.per-sec {
+  margin: 18px 0 8px; font-size: 10.5px; font-weight: 800;
+  letter-spacing: .07em; text-transform: uppercase; color: var(--faint);
+}
+.per-meses { display: flex; flex-wrap: wrap; gap: 6px; }
+.per-chip {
+  padding: 6px 13px; border-radius: 999px; cursor: pointer;
+  background: var(--bg2); border: 1px solid var(--border); color: var(--text2);
+  font: inherit; font-size: 12.5px; font-weight: 700; text-transform: capitalize;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.per-chip:hover { background: var(--brand-bg); border-color: var(--brand-border); color: var(--verde-deep); }
+@media (max-width: 560px) {
+  .per { width: 100%; }
+  .per .seg { flex: 1; }
+  .per-btn { flex: 1; justify-content: center; }
 }

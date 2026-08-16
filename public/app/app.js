@@ -1683,7 +1683,7 @@ const views = {
   funnel: renderFunnel, campaigns: renderCampaigns, templates: renderTemplates, quick: renderQuick,
   logs: renderLogs, settings: renderSettings, team: renderTeam, flows: renderFlows, links: renderLinks,
   pixels: renderPixels, billing: renderBilling, admin: renderAdmin, sms: renderSms,
-  afiliacao: renderAfiliacao,
+  afiliacao: renderAfiliacao, missoes: renderMissoes,
   integrations: renderIntegrations, webhooks: renderIntegrations, // #/webhooks continua funcionando
   elitepay: renderElitePay, tracking: renderTracking,
   consent: renderConsent, agents: renderAgents, 'agents/perf': renderAgentPerf,
@@ -1757,7 +1757,7 @@ function moduleOfView(v) {
 // trabalhos de tela grande; ficam no navegador do computador.
 const MOBILE_VIEWS = new Set([
   'dashboard', 'inbox', 'team', 'schedule', 'contacts',
-  'funnel', 'quick', 'billing', 'afiliacao', 'settings',
+  'funnel', 'quick', 'billing', 'afiliacao', 'missoes', 'settings',
   // Pagamentos no celular é uma tela PRÓPRIA, enxuta: cobrar na frente do
   // cliente e mandar o Pix. O módulo completo (produtos, checkout, relatórios,
   // saque) continua só no computador — ali é trabalho de mesa.
@@ -1808,7 +1808,7 @@ const TABBAR_LABEL = {
   dashboard: 'Início', inbox: 'Conversas', contacts: 'Contatos', elitepay: 'Cobrar',
   schedule: 'Agenda',
   team: 'Chat interno', funnel: 'Funil', quick: 'Respostas', billing: 'Assinatura',
-  afiliacao: 'Afiliação', settings: 'Ajustes'
+  afiliacao: 'Afiliação', missoes: 'Primeiros passos', settings: 'Ajustes'
 };
 
 function navItemVisivel(v) {
@@ -2173,12 +2173,138 @@ function greeting() {
   return h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
 }
 
-function setDashDays(n) { state.dashDays = n; renderDashboard(); }
+// Mantido para links antigos que chamavam com um número de dias.
+function setDashDays(n) { periodoSalvar({ dias: n }); renderDashboard(); }
 function setChartKind(k) { localStorage.setItem('ec_chartkind', k); renderDashboard(); }
+
+// ===========================================================================
+// PERÍODO DOS GRÁFICOS
+//
+// Antes eram quatro botões fixos (7/14/30/90 dias). Dava para ver "os últimos
+// 30 dias", mas não "março", nem "2025", nem "de 12 a 19" — que é exatamente o
+// que se pede na hora de fechar o mês.
+//
+// O seletor guarda o período escolhido em `state.periodo` e sobrevive ao
+// recarregar. Os atalhos continuam ali porque são o uso de todo dia; o mês, o
+// ano e o intervalo livre ficam a um clique.
+// ===========================================================================
+const MESES_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+function periodoAtual() {
+  if (!state.periodo) {
+    let salvo = null;
+    try { salvo = JSON.parse(localStorage.getItem('ec_periodo') || 'null'); } catch {}
+    state.periodo = salvo && (salvo.dias || (salvo.de && salvo.ate)) ? salvo : { dias: 14 };
+  }
+  return state.periodo;
+}
+
+function periodoSalvar(p) {
+  state.periodo = p;
+  try { localStorage.setItem('ec_periodo', JSON.stringify(p)); } catch {}
+}
+
+// Vira query string para a API. É o mesmo formato que `periodoDaQuery` lê no
+// servidor: `de`/`ate` quando há intervalo, `days` quando é atalho.
+function periodoQuery() {
+  const p = periodoAtual();
+  return p.de && p.ate ? `de=${p.de}&ate=${p.ate}` : `days=${p.dias || 14}`;
+}
+
+function periodoRotulo() {
+  const p = periodoAtual();
+  if (p.dias) return p.dias === 1 ? 'Hoje' : `${p.dias} dias`;
+  const [a1, m1, d1] = p.de.split('-').map(Number);
+  const [a2, m2, d2] = p.ate.split('-').map(Number);
+  // Mês inteiro e ano inteiro ganham nome — "março de 2025" lê melhor que
+  // "01/03/2025 a 31/03/2025".
+  const ultimoDia = new Date(a1, m1, 0).getDate();
+  if (a1 === a2 && m1 === m2 && d1 === 1 && d2 === ultimoDia) return `${MESES_PT[m1 - 1]} de ${a1}`;
+  if (a1 === a2 && m1 === 1 && d1 === 1 && m2 === 12 && d2 === 31) return String(a1);
+  const f = (d, m) => String(d).padStart(2, '0') + '/' + String(m).padStart(2, '0');
+  return `${f(d1, m1)} a ${f(d2, m2)}`;
+}
+
+// O controle: atalhos + um botão que abre o calendário/mês/ano.
+function periodoSeletor() {
+  const p = periodoAtual();
+  const atalhos = [7, 14, 30, 90];
+  return `<div class="per">
+    <div class="seg">${atalhos.map(n => `<button class="${p.dias === n ? 'on' : ''}" onclick="periodoDias(${n})">${n}d</button>`).join('')}</div>
+    <button class="per-btn ${p.dias ? '' : 'on'}" onclick="periodoModal()" title="Escolher mês, ano ou um intervalo">
+      ${ico('calendar', 13)}<span>${esc(periodoRotulo())}</span>${ico('chevron-down', 12)}</button>
+  </div>`;
+}
+
+function periodoDias(n) { periodoSalvar({ dias: n }); periodoAplicar(); }
+
+// Quem estiver na tela decide o que repintar. Sem isto, o seletor teria de
+// saber de cada tela que usa gráfico.
+function periodoAplicar() {
+  if (state.view === 'dashboard') renderDashboard();
+  else if (state.view === 'reports') renderReports();
+  else if (state.view === 'campaigns') paintCampaigns();
+  else route();
+}
+
+function periodoModal() {
+  const p = periodoAtual();
+  const hoje = new Date();
+  const anoAtual = hoje.getFullYear();
+  const anos = [];
+  for (let a = anoAtual; a >= anoAtual - 4; a--) anos.push(a);
+  const dd = (n) => String(n).padStart(2, '0');
+  const hojeTxt = `${anoAtual}-${dd(hoje.getMonth() + 1)}-${dd(hoje.getDate())}`;
+
+  openModal(`<h2>${ico('calendar')} Período dos gráficos</h2>
+    <p class="muted" style="margin:6px 0 0;font-size:13px">Escolha um mês, um ano ou um intervalo de datas.</p>
+
+    <div class="per-sec">Mês</div>
+    <div class="per-meses">
+      ${MESES_PT.map((nome, i) => `<button class="per-chip" onclick="periodoMes(${i}, ${anoAtual})">${nome.slice(0, 3)}</button>`).join('')}
+    </div>
+    <label style="max-width:150px;margin-top:10px">Ano do mês${ecSelect('per-ano-mes', anos.map(a => ({ value: String(a), label: String(a) })), String(anoAtual))}</label>
+
+    <div class="per-sec">Ano inteiro</div>
+    <div class="per-meses">
+      ${anos.map(a => `<button class="per-chip" onclick="periodoAno(${a})">${a}</button>`).join('')}
+    </div>
+
+    <div class="per-sec">Intervalo</div>
+    <div class="row">
+      <label style="flex:1">De<input type="date" id="per-de" max="${hojeTxt}" value="${esc(p.de || hojeTxt)}"></label>
+      <label style="flex:1">Até<input type="date" id="per-ate" max="${hojeTxt}" value="${esc(p.ate || hojeTxt)}"></label>
+    </div>
+
+    <div class="row" style="margin-top:18px;justify-content:flex-end">
+      <button class="btn no-grow" onclick="closeModal()">Cancelar</button>
+      <button class="btn primary no-grow" onclick="periodoIntervalo()">${ico('check', 14)} Aplicar intervalo</button>
+    </div>`);
+}
+
+function periodoMes(mes, anoPadrao) {
+  const ano = Number(ecSelVal('per-ano-mes')) || anoPadrao;
+  const dd = (n) => String(n).padStart(2, '0');
+  const ultimo = new Date(ano, mes + 1, 0).getDate();
+  periodoSalvar({ de: `${ano}-${dd(mes + 1)}-01`, ate: `${ano}-${dd(mes + 1)}-${dd(ultimo)}` });
+  closeModal(); periodoAplicar();
+}
+
+function periodoAno(ano) {
+  periodoSalvar({ de: ano + '-01-01', ate: ano + '-12-31' });
+  closeModal(); periodoAplicar();
+}
+
+function periodoIntervalo() {
+  const de = $('#per-de').value, ate = $('#per-ate').value;
+  if (!de || !ate) return toast('Escolha as duas datas', 'error');
+  periodoSalvar({ de, ate });
+  closeModal(); periodoAplicar();
+}
 
 async function renderDashboard() {
   const hoje = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
-  const dd = state.dashDays || 14;
   const kind = localStorage.getItem('ec_chartkind') || 'bars';
   const segKind = [['bars', 'Barras'], ['line', 'Linhas'], ['area', 'Área']];
   $('#view').innerHTML = `<div class="page">
@@ -2189,7 +2315,7 @@ async function renderDashboard() {
         <p>Veja o que está acontecendo no seu atendimento agora.</p>
       </div>
       <div class="hh-actions">
-        <div class="seg">${[7, 14, 30, 90].map(p => `<button class="${p === dd ? 'on' : ''}" onclick="setDashDays(${p})">${p}d</button>`).join('')}</div>
+        ${periodoSeletor()}
         <div class="seg">${segKind.map(([k, l]) => `<button class="${k === kind ? 'on' : ''}" title="${l}" onclick="setChartKind('${k}')">${l}</button>`).join('')}</div>
       </div>
     </div>
@@ -2222,7 +2348,7 @@ async function renderDashboard() {
     <div id="dash"><div class="card">${skel(6)}</div></div>
   </div>`;
   try {
-    const [d, rep] = await Promise.all([api('/dashboard'), api('/reports?days=' + dd)]);
+    const [d, rep] = await Promise.all([api('/dashboard'), api('/reports?' + periodoQuery())]);
     const cfg = d.configured;
     const check = (ok, label) => `<li>${ok ? '<span class="ok-dot">●</span>' : '<span class="bad-dot">●</span>'} ${label}</li>`;
     const t = rep.totals;
@@ -2231,7 +2357,6 @@ async function renderDashboard() {
     const topFlows = rep.topFlows || [], topLinks = rep.topLinks || [];
     const sl = d.sales || { todayCount: 0, todayValue: 0, totalCount: 0, totalValue: 0 };
     $('#dash').innerHTML = `
-      <div id="missoes-box"></div>
       <div class="dash-kpis">
         <div class="stat"><span class="stat-ico">${ico('users', 17)}</span>${kpiNum(fmtNk(d.contacts), fmtN(d.contacts))}<div class="lbl">Contatos</div></div>
         <a class="stat" href="#/elitepay"><span class="stat-ico">${ico('zap', 17)}</span>${kpiNum(fmtBRLk(sl.todayValue), fmtBRL(sl.todayValue))}<div class="lbl">Vendas hoje${sl.todayCount ? ` · ${fmtN(sl.todayCount)} venda${sl.todayCount > 1 ? 's' : ''}` : ''}</div></a>
@@ -2339,95 +2464,98 @@ async function renderDashboard() {
       ${dashScheduleCard(d.schedule)}
       ${d.agents ? dashAgentsCard(d.agents) : ''}`;
     loadGeo();
-    carregarMissoes();
   } catch (e) {
     $('#dash').innerHTML = `<div class="card err">${esc(e.message)}</div>`;
   }
 }
 
 // ===========================================================================
-// MISSÕES — a trilha de quem chegou agora
+// PRIMEIROS PASSOS — tela própria, dividida em etapas
 //
-// A dashboard de uma conta nova é um painel vazio: nada indica por onde
-// começar nem o que o produto faz. Aqui a trilha fica no topo, com o que falta
-// configurar, POR QUE aquilo importa e o botão que leva direto lá.
+// Isto morava no topo da dashboard e ocupava metade dela. Agora é uma tela: as
+// etapas ficam lado a lado numa trilha, e só a etapa aberta mostra os passos —
+// que é o que "passo a passo" quer dizer. A etapa aberta começa na primeira
+// que ainda tem algo pendente, e não na primeira da lista.
 //
-// Cada missão é verificada no servidor a partir do estado real da conta
-// (src/missoes.js) — não é uma lista que se marca à mão. Quando tudo essencial
-// está feito, o cartão vira uma linha discreta e sai da frente.
+// Cada passo é verificado no servidor a partir do estado real da conta
+// (src/missoes.js): a trilha não mente sobre o que já foi feito.
 // ===========================================================================
 let MISSOES = null;
+let MIS_ETAPA = null;   // índice do grupo aberto
 
-async function carregarMissoes() {
-  const box = $('#missoes-box'); if (!box) return;
-  try { MISSOES = await api('/missoes'); } catch { return; }
-  // Concluída E já fechada uma vez: não volta a ocupar o topo todo dia.
-  const escondida = localStorage.getItem('ec_missoes_off') === '1';
-  if (MISSOES.completo && escondida) { box.innerHTML = ''; return; }
+async function renderMissoes() {
+  $('#view').innerHTML = `<div class="page"><div class="card">${skel(5)}</div></div>`;
+  try { MISSOES = await api('/missoes'); }
+  catch (e) { $('#view').innerHTML = `<div class="page"><div class="card err">${esc(e.message)}</div></div>`; return; }
+  if (MIS_ETAPA === null) {
+    const i = MISSOES.grupos.findIndex(g => g.itens.some(x => !x.feita));
+    MIS_ETAPA = i < 0 ? 0 : i;
+  }
   pintarMissoes();
 }
 
+function misEtapa(i) { MIS_ETAPA = i; pintarMissoes(); }
+
 function pintarMissoes() {
-  const box = $('#missoes-box'); if (!box || !MISSOES) return;
   const m = MISSOES;
-  const aberta = localStorage.getItem('ec_missoes_open') === '1';
+  const g = m.grupos[MIS_ETAPA] || m.grupos[0];
+  const feitosDaEtapa = g.itens.filter(x => x.feita).length;
 
-  if (m.completo) {
-    box.innerHTML = `<div class="mis-pronto">
-      ${ico('check-circle', 16)}
-      <span><b>Configuração completa.</b> Você já está usando o Koonfy de ponta a ponta.</span>
-      <button class="btn small no-grow" onclick="missoesEsconder()">Ocultar</button>
-    </div>`;
-    return;
-  }
+  $('#view').innerHTML = `<div class="page mis-page">
+    <div class="page-head">
+      <h1>Primeiros passos</h1>
+      <p>Configure o Koonfy na ordem certa. Cada passo é conferido sozinho — você não precisa marcar nada.</p>
+    </div>
 
-  box.innerHTML = `<div class="card mis-card ${aberta ? 'aberta' : ''}">
-    <div class="mis-topo" onclick="missoesAlternar()">
-      <!-- No miolo vai só o NÚMERO de etapas concluídas, um bloco de texto só.
-           Com "64" grande e "%" pequeno ao lado, o conjunto ficava opticamente
-           torto por mais que o CSS centralizasse: o peso visual pendia para o
-           número. O progresso quem mostra é o anel, e o total está escrito
-           logo ao lado — o símbolo não fazia falta. -->
+    <div class="card mis-resumo">
       <div class="mis-anel" style="--p:${m.percent}" title="${m.feitas} de ${m.total} passos concluídos">
         <span>${m.feitas}</span>
       </div>
-      <div class="mis-tit">
-        <h2>Comece por aqui</h2>
-        <p>${m.feitas} de ${m.total} passos concluídos${m.proxima ? `<span class="mis-prox"> · próximo: <b>${esc(m.proxima.titulo)}</b></span>` : ''}</p>
+      <div class="mis-resumo-tx">
+        <b>${m.completo ? 'Tudo pronto!' : `${m.feitas} de ${m.total} passos concluídos`}</b>
+        <span>${m.completo
+          ? 'Você já está usando o Koonfy de ponta a ponta.'
+          : (m.proxima ? `Próximo: <b>${esc(m.proxima.titulo)}</b>` : '')}</span>
       </div>
-      <button class="btn small no-grow" onclick="event.stopPropagation();missoesAlternar()">
-        ${aberta ? 'Recolher' : 'Ver os passos'} ${ico(aberta ? 'chevron-up' : 'chevron-down', 13)}</button>
+      ${m.proxima ? `<a class="btn primary no-grow" href="${m.proxima.rota}">${esc(m.proxima.acao)}</a>` : ''}
     </div>
-    <!-- O conteúdo vai dentro de UM wrapper: o \`grid-template-rows: 0fr\` que
-         recolhe o cartão zera só a PRIMEIRA linha, e com um grupo por filho
-         direto o corpo continuava com quase 1000px de altura mesmo fechado. -->
-    <div class="mis-corpo"><div class="mis-corpo-in">
-      ${m.grupos.map(g => `
-        <div class="mis-grupo">
-          <div class="mis-grupo-tit">${esc(g.nome)}
-            <i>${g.itens.filter(x => x.feita).length}/${g.itens.length}</i></div>
-          ${g.itens.map(it => `
-            <div class="mis-item ${it.feita ? 'ok' : ''}">
-              <span class="mis-check">${it.feita ? ico('check', 13) : ''}</span>
-              <div class="mis-txt">
-                <b>${esc(it.titulo)}${it.opcional ? '<em class="mis-opc">opcional</em>' : ''}</b>
-                <span>${esc(it.porque)}</span>
-              </div>
-              ${it.feita ? '' : `<a class="btn small no-grow" href="${it.rota}">${esc(it.acao)}</a>`}
-            </div>`).join('')}
-        </div>`).join('')}
-    </div></div>
-  </div>`;
-}
 
-function missoesAlternar() {
-  const aberta = localStorage.getItem('ec_missoes_open') === '1';
-  localStorage.setItem('ec_missoes_open', aberta ? '0' : '1');
-  pintarMissoes();
-}
-function missoesEsconder() {
-  localStorage.setItem('ec_missoes_off', '1');
-  const box = $('#missoes-box'); if (box) box.innerHTML = '';
+    <!-- Trilha das etapas: mostra ONDE se está e quanto falta em cada uma. -->
+    <div class="mis-trilha">
+      ${m.grupos.map((x, i) => {
+        const ok = x.itens.filter(y => y.feita).length;
+        const completo = ok === x.itens.length;
+        return `<button class="mis-passo ${i === MIS_ETAPA ? 'on' : ''} ${completo ? 'ok' : ''}" onclick="misEtapa(${i})">
+          <span class="mis-passo-n">${completo ? ico('check', 13) : i + 1}</span>
+          <span class="mis-passo-tx"><b>${esc(x.nome)}</b><i>${ok}/${x.itens.length}</i></span>
+        </button>`;
+      }).join('')}
+    </div>
+
+    <div class="card">
+      <div class="row" style="align-items:center;margin-bottom:4px">
+        <h2 style="margin:0;flex:1">${esc(g.nome)}</h2>
+        <span class="pill no-grow ${feitosDaEtapa === g.itens.length ? 'done' : ''}" style="flex:none">${feitosDaEtapa} de ${g.itens.length}</span>
+      </div>
+      <div class="mis-lista">
+        ${g.itens.map(it => `
+          <div class="mis-item ${it.feita ? 'ok' : ''}">
+            <span class="mis-check">${it.feita ? ico('check', 13) : ''}</span>
+            <div class="mis-txt">
+              <b>${esc(it.titulo)}${it.opcional ? '<em class="mis-opc">opcional</em>' : ''}</b>
+              <span>${esc(it.porque)}</span>
+            </div>
+            ${it.feita ? '' : `<a class="btn small no-grow" href="${it.rota}">${esc(it.acao)}</a>`}
+          </div>`).join('')}
+      </div>
+      <div class="row" style="margin-top:16px;justify-content:space-between">
+        <button class="btn no-grow" ${MIS_ETAPA === 0 ? 'disabled' : ''} onclick="misEtapa(${MIS_ETAPA - 1})">
+          ${ico('arrowleft', 13)} Etapa anterior</button>
+        <button class="btn no-grow" ${MIS_ETAPA >= m.grupos.length - 1 ? 'disabled' : ''} onclick="misEtapa(${MIS_ETAPA + 1})">
+          Próxima etapa ${ico('arrowright', 13)}</button>
+      </div>
+    </div>
+  </div>`;
 }
 
 async function loadGeo() {
@@ -5804,17 +5932,18 @@ function deltaChip(cur, prev) {
 
 // ==================== RELATÓRIOS ====================
 async function renderReports(daysOverride) {
-  if (typeof daysOverride === 'number') state.reportDays = daysOverride;
-  const dd = state.reportDays || 14;
+  // O período é global agora (state.periodo). O parâmetro fica por
+  // compatibilidade: chamadas antigas passavam um número de dias.
+  if (typeof daysOverride === 'number') periodoSalvar({ dias: daysOverride });
   $('#view').innerHTML = `<div class="page">
     <div class="page-head row">
       <div style="flex:1"><h1>Relatórios</h1><p>Desempenho de envios, entregas e atendimento</p></div>
-      ${[7, 14, 30].map(p => `<button class="btn small no-grow ${p === dd ? 'primary' : ''}" onclick="renderReports(${p})">${p} dias</button>`).join('')}
+      ${periodoSeletor()}
     </div>
     <div id="rep"><div class="card">${skel(6)}</div></div>
   </div>`;
   try {
-    const r = await api('/reports?days=' + dd);
+    const r = await api('/reports?' + periodoQuery());
     const outArr = r.days.map(x => x.out), inArr = r.days.map(x => x.in);
     const half = Math.floor(r.days.length / 2);
     const sum = a => a.reduce((x, y) => x + y, 0);
