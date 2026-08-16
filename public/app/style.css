@@ -39,6 +39,11 @@
      um par de passos abaixo. Editável em Admin → Personalização. */
   --btn-verde: #19a95a;
   --btn-verde-hover: #14904c;
+  /* Cor do TEXTO dos botões secundários (os vazados). Era --verde-deep
+     (#178048), um verde mais fechado que o do botão cheio: lado a lado no
+     mesmo cartão, "Copiar link" e "Enviar no WhatsApp" pareciam de dois
+     produtos. Agora é o MESMO verde do botão principal. */
+  --btn-ink: var(--btn-verde);
   /* Texto DENTRO do botão principal. Token próprio, separado do
      --ink-on-verde (que é a tinta escura usada sobre o verde CLARO em chips e
      selos): aqui o fundo é escuro e o texto é branco. */
@@ -370,13 +375,13 @@ select {
 /* ---------- botões (pill, como a landing) ---------- */
 /* Botões: pill, peso moderado, sombra discreta — sóbrio e profissional */
 .btn {
-  background: var(--card); color: var(--verde-deep); border: 1px solid var(--border2);
+  background: var(--card); color: var(--btn-ink); border: 1px solid var(--border2);
   border-radius: 10px; padding: 9px 18px; font: inherit; font-weight: 650; font-size: 13px;
   letter-spacing: .005em;
   cursor: pointer; white-space: nowrap; transition: background .18s var(--ease), border-color .18s var(--ease), color .18s var(--ease), box-shadow .18s var(--ease);
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
 }
-.btn:hover { border-color: var(--verde-esc); color: var(--verde-deep); background: var(--brand-bg); }
+.btn:hover { border-color: var(--btn-verde); color: var(--btn-ink); background: var(--brand-bg); }
 /* TINTA ESCURA no botão verde, e não branco.
    Branco sobre o verde da marca dá contraste de 2,19:1 — menos da metade do
    mínimo legível (4,5:1). Para o branco funcionar, o verde teria que ir até
@@ -4043,20 +4048,20 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
 .aff-oferta {
   position: relative; overflow: hidden;
   border-radius: var(--radius); padding: 22px 24px;
-  background: radial-gradient(120% 130% at 0% 0%, #146b4d 0%, #0e4c39 48%, #0a3428 100%);
-  color: #eaf6f0;
+  background: linear-gradient(145deg, #17b06a 0%, #0f8a58 42%, #0a6144 100%);
+  color: #eefbf4;
   display: flex; flex-direction: column; justify-content: center; gap: 14px;
 }
 /* brilho discreto no canto, para o bloco não ficar chapado */
 .aff-oferta::after {
   content: ''; position: absolute; right: -60px; top: -60px; width: 200px; height: 200px;
-  border-radius: 50%; background: rgba(80, 234, 95, .16); filter: blur(28px); pointer-events: none;
+  border-radius: 50%; background: rgba(80, 234, 95, .3); filter: blur(30px); pointer-events: none;
 }
 .aff-tag {
   display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
   padding: 4px 11px; border-radius: 999px; font-size: 10.5px; font-weight: 800;
   letter-spacing: .07em; text-transform: uppercase;
-  background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .18); color: #d6f5e5;
+  background: rgba(255, 255, 255, .16); border: 1px solid rgba(255, 255, 255, .24); color: #eafaf1;
 }
 .aff-nums { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
 .aff-num { display: flex; flex-direction: column; gap: 2px; }
@@ -4067,15 +4072,15 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
   font-variant-numeric: tabular-nums;
 }
 .aff-num b i { font-style: normal; font-size: 20px; font-weight: 700; opacity: .85; }
-.aff-num span { font-size: 12.5px; color: #b7dccb; }
-.aff-num span b { font-weight: 800; color: #eaf6f0; font-size: 12.5px; display: inline; }
+.aff-num span { font-size: 12.5px; color: #cdeedd; }
+.aff-num span b { font-weight: 800; color: #fff; font-size: 12.5px; display: inline; }
 .aff-mais { font-size: 22px; font-weight: 300; color: rgba(255, 255, 255, .38); }
 .aff-recorrente {
   display: flex; align-items: flex-start; gap: 9px; margin: 0;
-  font-size: 12.5px; line-height: 1.5; color: #c9e6d8;
-  padding-top: 13px; border-top: 1px solid rgba(255, 255, 255, .12);
+  font-size: 12.5px; line-height: 1.5; color: #d8f3e6;
+  padding-top: 13px; border-top: 1px solid rgba(255, 255, 255, .16);
 }
-.aff-recorrente svg { flex: none; margin-top: 1px; color: var(--verde); }
+.aff-recorrente svg { flex: none; margin-top: 1px; color: #9dfbb4; }
 .aff-recorrente b { color: #fff; font-weight: 700; }
 
 .aff-link-box {
