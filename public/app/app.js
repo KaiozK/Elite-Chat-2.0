@@ -527,6 +527,7 @@ async function api(path, opts = {}) {
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   'chevron-down': '<path d="m6 9 6 6 6-6"/>',
+  'chevron-up': '<path d="m6 15 6-6 6 6"/>',
   message: '<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-3-.4-4.2-1L3 20l1.1-4.3A8.5 8.5 0 1 1 21 11.5z"/>',
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.2 3.4-5 6.5-5s5.7 1.8 6.5 5"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 15.2c2.4.3 4.2 1.9 4.9 4.3"/>',
   bell: '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
@@ -2227,6 +2228,7 @@ async function renderDashboard() {
     const topFlows = rep.topFlows || [], topLinks = rep.topLinks || [];
     const sl = d.sales || { todayCount: 0, todayValue: 0, totalCount: 0, totalValue: 0 };
     $('#dash').innerHTML = `
+      <div id="missoes-box"></div>
       <div class="dash-kpis">
         <div class="stat"><span class="stat-ico">${ico('users', 17)}</span>${kpiNum(fmtNk(d.contacts), fmtN(d.contacts))}<div class="lbl">Contatos</div></div>
         <a class="stat" href="#/elitepay"><span class="stat-ico">${ico('zap', 17)}</span>${kpiNum(fmtBRLk(sl.todayValue), fmtBRL(sl.todayValue))}<div class="lbl">Vendas hoje${sl.todayCount ? ` · ${fmtN(sl.todayCount)} venda${sl.todayCount > 1 ? 's' : ''}` : ''}</div></a>
@@ -2334,9 +2336,87 @@ async function renderDashboard() {
       ${dashScheduleCard(d.schedule)}
       ${d.agents ? dashAgentsCard(d.agents) : ''}`;
     loadGeo();
+    carregarMissoes();
   } catch (e) {
     $('#dash').innerHTML = `<div class="card err">${esc(e.message)}</div>`;
   }
+}
+
+// ===========================================================================
+// MISSÕES — a trilha de quem chegou agora
+//
+// A dashboard de uma conta nova é um painel vazio: nada indica por onde
+// começar nem o que o produto faz. Aqui a trilha fica no topo, com o que falta
+// configurar, POR QUE aquilo importa e o botão que leva direto lá.
+//
+// Cada missão é verificada no servidor a partir do estado real da conta
+// (src/missoes.js) — não é uma lista que se marca à mão. Quando tudo essencial
+// está feito, o cartão vira uma linha discreta e sai da frente.
+// ===========================================================================
+let MISSOES = null;
+
+async function carregarMissoes() {
+  const box = $('#missoes-box'); if (!box) return;
+  try { MISSOES = await api('/missoes'); } catch { return; }
+  // Concluída E já fechada uma vez: não volta a ocupar o topo todo dia.
+  const escondida = localStorage.getItem('ec_missoes_off') === '1';
+  if (MISSOES.completo && escondida) { box.innerHTML = ''; return; }
+  pintarMissoes();
+}
+
+function pintarMissoes() {
+  const box = $('#missoes-box'); if (!box || !MISSOES) return;
+  const m = MISSOES;
+  const aberta = localStorage.getItem('ec_missoes_open') !== '0';
+
+  if (m.completo) {
+    box.innerHTML = `<div class="mis-pronto">
+      ${ico('check-circle', 16)}
+      <span><b>Configuração completa.</b> Você já está usando o Koonfy de ponta a ponta.</span>
+      <button class="btn small no-grow" onclick="missoesEsconder()">Ocultar</button>
+    </div>`;
+    return;
+  }
+
+  box.innerHTML = `<div class="card mis-card ${aberta ? 'aberta' : ''}">
+    <div class="mis-topo" onclick="missoesAlternar()">
+      <div class="mis-anel" style="--p:${m.percent}">
+        <span>${m.percent}<i>%</i></span>
+      </div>
+      <div class="mis-tit">
+        <h2>Comece por aqui</h2>
+        <p>${m.feitas} de ${m.total} passos concluídos${m.proxima ? ` · próximo: <b>${esc(m.proxima.titulo)}</b>` : ''}</p>
+      </div>
+      <button class="btn small no-grow" onclick="event.stopPropagation();missoesAlternar()">
+        ${aberta ? 'Recolher' : 'Ver os passos'} ${ico(aberta ? 'chevron-up' : 'chevron-down', 13)}</button>
+    </div>
+    <div class="mis-corpo">
+      ${m.grupos.map(g => `
+        <div class="mis-grupo">
+          <div class="mis-grupo-tit">${esc(g.nome)}
+            <i>${g.itens.filter(x => x.feita).length}/${g.itens.length}</i></div>
+          ${g.itens.map(it => `
+            <div class="mis-item ${it.feita ? 'ok' : ''}">
+              <span class="mis-check">${it.feita ? ico('check', 13) : ''}</span>
+              <div class="mis-txt">
+                <b>${esc(it.titulo)}${it.opcional ? '<em class="mis-opc">opcional</em>' : ''}</b>
+                <span>${esc(it.porque)}</span>
+              </div>
+              ${it.feita ? '' : `<a class="btn small no-grow" href="${it.rota}">${esc(it.acao)}</a>`}
+            </div>`).join('')}
+        </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function missoesAlternar() {
+  const aberta = localStorage.getItem('ec_missoes_open') !== '0';
+  localStorage.setItem('ec_missoes_open', aberta ? '0' : '1');
+  pintarMissoes();
+}
+function missoesEsconder() {
+  localStorage.setItem('ec_missoes_off', '1');
+  const box = $('#missoes-box'); if (box) box.innerHTML = '';
 }
 
 async function loadGeo() {
@@ -10606,12 +10686,23 @@ let SMS_CACHE = null;
 // na conta: um interruptor para algo que não existe só confundiria.
 // `iaOff` é por CONVERSA — desligar aqui não mexe nas outras.
 function iaBotaoChat() {
-  if (!state.iaLigada) return '';
+  // Sem o agente ligado na CONTA não há o que alternar aqui: um interruptor
+  // para algo que não existe só faria o atendente procurar o problema no
+  // lugar errado. O aviso diz onde ligar.
+  if (!state.iaLigada) {
+    return `<a class="ia-switch off" href="#/ia" title="O Agente de IA ainda não está configurado nesta conta. Clique para configurar">
+      ${ico('zap', 13)}<i class="blbl">IA desativada</i></a>`;
+  }
   const c = state.currentContact || {};
   const ligada = !c.iaOff;
-  return `<button class="btn small ${ligada ? 'ia-on' : ''}" onclick="alternarIAConversa(${!ligada})"
-    title="${ligada ? 'IA respondendo nesta conversa. Clique para assumir' : 'IA desligada nesta conversa. Clique para devolver a ela'}">
-    ${ico('zap', 13)}<i class="blbl">IA ${ligada ? 'ligada' : 'desligada'}</i></button>`;
+  // Interruptor de verdade, e não um botão que "parece" um: o atendente
+  // precisa ver o ESTADO de relance no meio do atendimento, sem ler o rótulo.
+  return `<button class="ia-switch ${ligada ? 'on' : ''}" onclick="alternarIAConversa(${!ligada})"
+    aria-pressed="${ligada}"
+    title="${ligada
+      ? 'A IA está respondendo esta conversa. Clique para assumir você'
+      : 'Você está atendendo. Clique para devolver esta conversa à IA'}">
+    ${ico('zap', 13)}<i class="blbl">IA</i><span class="ia-track"><span class="ia-knob"></span></span></button>`;
 }
 async function alternarIAConversa(ligar) {
   if (!state.currentWaId) return;
@@ -13470,6 +13561,17 @@ async function epPaintCfg(box) {
         ], String(s.expiresMin || 1440))}</label>
         <label class="chk" style="padding-bottom:8px"><input type="checkbox" id="ep-cfg-notify" ${s.notifyPaid ? 'checked' : ''}> Confirmar pagamento no WhatsApp automaticamente</label>
       </div>
+      <p class="muted" style="margin:16px 0 8px;font-size:12.5px">
+        ${ico('help', 12)} Quando o pagamento é confirmado, o contato <b>anda no funil sozinho</b>. Escolha para onde,
+        e qual etiqueta ele recebe. Quem já era contato <b>não vira ficha nova</b>: a compra entra na ficha que já existe.
+      </p>
+      <div class="row" style="align-items:flex-end">
+        <label style="max-width:280px">Mover para a etapa${ecSelect('ep-cfg-stage',
+          [{ value: '', label: 'Automático (etapa de fechamento)' }].concat(((state.settings && state.settings.stages) || []).map(x => ({ value: x, label: x }))),
+          s.paidStage || '')}</label>
+        <label style="max-width:220px">Etiqueta na compra
+          <input id="ep-cfg-tag" value="${esc(s.paidTag === undefined ? 'Cliente' : s.paidTag)}" maxlength="40" placeholder="deixe vazio para nenhuma"></label>
+      </div>
       <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn primary no-grow" onclick="epSaveCfg()">${ico('save', 14)} Salvar</button></div>
     </div>
     <div class="card">
@@ -13559,7 +13661,12 @@ function epMsgPreview() {
 }
 async function epSaveCfg() {
   try {
-    const body = { expiresMin: Number(ecVal('ep-cfg-exp') || 1440), notifyPaid: $('#ep-cfg-notify').checked };
+    const body = {
+      expiresMin: Number(ecVal('ep-cfg-exp') || 1440),
+      notifyPaid: $('#ep-cfg-notify').checked,
+      paidStage: ecVal('ep-cfg-stage') || '',
+      paidTag: ($('#ep-cfg-tag') && $('#ep-cfg-tag').value) || ''
+    };
     if ($('#ep-cfg-msg')) body.autoMessage = $('#ep-cfg-msg').value;   // só se o editor estiver presente
     const r = await api('/elitepay/settings', { method: 'PUT', body });
     state.epInfo.settings = r.settings;

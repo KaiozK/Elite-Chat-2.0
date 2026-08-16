@@ -1532,6 +1532,11 @@ module.exports = function (broadcast, clients) {
 
   // ============ DASHBOARD ============
 
+  // MISSÕES — a trilha de configuração, verificada no estado real da conta.
+  router.get('/missoes', auth, (req, res) => {
+    res.json(require('./missoes').relatorio(req.acc));
+  });
+
   router.get('/dashboard', auth, can('dashboard', 'view'), (req, res) => {
     const acc = req.acc;
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -4814,6 +4819,17 @@ module.exports = function (broadcast, clients) {
     if (b.expiresMin !== undefined) ep.settings.expiresMin = Math.max(5, Math.min(43200, Number(b.expiresMin) || 1440));
     if (typeof b.notifyPaid === 'boolean') ep.settings.notifyPaid = b.notifyPaid;
     if (typeof b.chargeTemplateEnabled === 'boolean') ep.settings.chargeTemplateEnabled = b.chargeTemplateEnabled;
+    // Para onde o contato vai quando a compra é confirmada. Vazio = o Koonfy
+    // procura a etapa que pareça de fechamento; uma etapa que não existe no
+    // funil é recusada, senão o contato ficaria preso numa etapa fantasma.
+    if (typeof b.paidStage === 'string') {
+      const alvo = b.paidStage.trim();
+      if (alvo && !(req.acc.stages || []).includes(alvo)) {
+        return res.status(400).json({ error: `"${alvo}" não é uma etapa do seu funil` });
+      }
+      ep.settings.paidStage = alvo;
+    }
+    if (typeof b.paidTag === 'string') ep.settings.paidTag = b.paidTag.trim().slice(0, 40);
     // Escolha do modelo enviado em cada papel (só aceita modelo com aquele papel).
     for (const [campo, role] of [['chargeTemplateName', 'cobranca'], ['confirmTemplateName', 'confirmacao']]) {
       if (typeof b[campo] !== 'string') continue;

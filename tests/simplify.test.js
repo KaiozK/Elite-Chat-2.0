@@ -236,6 +236,57 @@ global.fetch = async (u, o) => {
   ok(!v2.prefill.email && !v2.prefill.taxID, 'quem nunca comprou chega com os campos vazios');
   ok(v2.prefill.conhecido === false, 'e sem a mensagem de "te ver de novo"');
 
+  console.log('\n=== 10c. Comprar "por fora" NÃO cria um segundo contato ===');
+  // Quem já conversou no WhatsApp e depois compra pelo checkout costuma digitar
+  // o celular de outro jeito. Só pelo telefone nascia uma SEGUNDA ficha: a
+  // compra ia para a nova e o histórico ficava na antiga.
+  const antesDeTudo = acc2.contacts.length;
+  const cobrancaAvulsa = await elitepay.createCharge(acc2, {
+    valueCents: 3300, comment: 'Compra por fora', origin: 'manual'
+  });
+  // MESMA pessoa: mesmo CPF, e o telefone digitado sem o 9 e sem o DDI.
+  await elitepay.identifyPayer(cobrancaAvulsa.id, {
+    name: 'João S.', taxID: '84748914009', email: 'joao@exemplo.com', phone: '8281440676'
+  }, () => {});
+  ok(acc2.contacts.length === antesDeTudo, `nenhum contato novo: ${antesDeTudo} → ${acc2.contacts.length}`);
+  const joao = acc2.contacts.find(c => (c.vars || {}).cpf_cnpj === '84748914009');
+  ok(!!joao && joao.waId === '5582981440676', 'a compra entrou na ficha que já existia: ' + (joao && joao.waId));
+  ok(joao.tags.includes('Checkout'), 'e a ficha recebeu a etiqueta do checkout');
+
+  console.log('\n=== 10d. A ETAPA de destino é escolhida pelo cliente ===');
+  acc2.stages = ['Novo', 'Conversando', 'Proposta', 'Comprou', 'Sumiu'];
+  joao.stage = 'Novo';
+  const ep2 = elitepay.ensure(acc2);
+  // Sem configurar, o Koonfy procura a etapa que PARECE de fechamento.
+  ep2.settings.paidStage = '';
+  elitepay.markPaidFromGateway(acc2, cobrancaAvulsa, () => {});
+  ok(joao.stage === 'Comprou', `sem configurar, achou a etapa de fechamento: ${joao.stage}`);
+
+  // Configurada, manda ela — mesmo que não pareça de fechamento.
+  const outraCobranca = await elitepay.createCharge(acc2, {
+    valueCents: 3300, comment: 'Outra', waId: '5582981440676', contactName: 'João Silva', origin: 'chat',
+    pagador: { name: 'João Silva', document: '84748914009', email: 'joao@exemplo.com', phone: '5582981440676' }
+  });
+  ep2.settings.paidStage = 'Proposta';
+  ep2.settings.paidTag = 'VIP';
+  joao.stage = 'Novo';
+  elitepay.markPaidFromGateway(acc2, outraCobranca, () => {});
+  ok(joao.stage === 'Proposta', `foi para a etapa configurada: ${joao.stage}`);
+  ok(joao.tags.includes('VIP'), 'com a etiqueta configurada');
+
+  // Funil sem nenhuma etapa de fechamento: não move e não inventa.
+  acc2.stages = ['Um', 'Dois', 'Três'];
+  ep2.settings.paidStage = '';
+  joao.stage = 'Um';
+  const terceira = await elitepay.createCharge(acc2, {
+    valueCents: 3300, comment: '3ª', waId: '5582981440676', contactName: 'João Silva', origin: 'chat',
+    pagador: { name: 'João Silva', document: '84748914009', email: 'joao@exemplo.com', phone: '5582981440676' }
+  });
+  elitepay.markPaidFromGateway(acc2, terceira, () => {});
+  ok(joao.stage === 'Um', `sem etapa de fechamento no funil, o contato fica onde está: ${joao.stage}`);
+  acc2.stages = ['Novo', 'Em atendimento', 'Qualificado', 'Negociação', 'Ganho', 'Perdido'];
+  ep2.settings.paidStage = ''; ep2.settings.paidTag = 'Cliente';
+
   console.log('\n=== 11. CPF INVENTADO é barrado antes de virar cobrança ===');
   const outraCob = await elitepay.createCharge(acc2, {
     valueCents: 5000, comment: 'Teste', waId: '5582988887777', contactName: 'Maria', origin: 'chat'

@@ -3346,7 +3346,31 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 
 /* IA ligada na conversa: o botão fica verde para dizer, de relance, quem está
    respondendo — a pessoa ou o agente. */
-.btn.ia-on { background: var(--brand-bg); border-color: var(--brand-border); color: var(--verde-deep); }
+/* INTERRUPTOR DA IA no cabeçalho da conversa.
+   Era um botão pequeno que só mudava de rótulo; no meio do atendimento é o
+   ESTADO que precisa ser lido de relance, não o texto. Vira um switch com
+   trilho e bolinha, verde quando a IA está respondendo. */
+.ia-switch {
+  display: inline-flex; align-items: center; gap: 7px; flex: none;
+  padding: 5.5px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--card); color: var(--muted);
+  font-size: 12px; font-weight: 700; text-decoration: none;
+  transition: background .18s, border-color .18s, color .18s;
+}
+.ia-switch:hover { border-color: var(--border2); }
+.ia-switch.on { background: var(--brand-bg); border-color: var(--brand-border); color: var(--verde-deep); }
+.ia-switch.off { opacity: .75; }
+.ia-track {
+  width: 30px; height: 17px; border-radius: 999px; flex: none; position: relative;
+  background: var(--border2); transition: background .18s;
+}
+.ia-switch.on .ia-track { background: var(--verde-esc); }
+.ia-knob {
+  position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .28); transition: transform .18s var(--ease);
+}
+.ia-switch.on .ia-knob { transform: translateX(13px); }
+.ia-switch.off .ia-track { display: none; }
 .ia-canais { display: grid; gap: 10px; }
 .ia-canais .chk span { display: flex; flex-direction: column; }
 .ia-canais .chk em { font-style: normal; font-size: 11.5px; color: var(--muted); }
@@ -4356,3 +4380,64 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 }
 .tema-fcor span { font-size: 10.5px; font-weight: 700; color: var(--muted); }
 .tema-funil-previa .fn-etapa { margin-bottom: 2px; }
+
+/* ---------- MISSÕES (trilha de configuração no topo da dashboard) ---------- */
+.mis-card { margin-bottom: 16px; padding: 0; overflow: hidden; }
+.mis-topo { display: flex; align-items: center; gap: 15px; padding: 16px 18px; cursor: pointer; }
+.mis-tit { flex: 1; min-width: 0; }
+.mis-tit h2 { margin: 0; font-size: 16px; }
+.mis-tit p { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
+/* Anel de progresso em conic-gradient: uma variável (--p) e nenhum SVG. */
+.mis-anel {
+  flex: none; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center;
+  background: conic-gradient(var(--verde-esc) calc(var(--p) * 1%), var(--border) 0);
+}
+.mis-anel span {
+  width: 36px; height: 36px; border-radius: 50%; background: var(--card);
+  display: grid; place-items: center; font-size: 12px; font-weight: 800; color: var(--verde-deep);
+  font-variant-numeric: tabular-nums;
+}
+.mis-anel i { font-style: normal; font-size: 8.5px; margin-left: 1px; }
+/* Recolhido por padrão em quem já conhece: o corpo colapsa com grid 0fr→1fr,
+   e o conteúdo vai num wrapper único (senão só a primeira linha zera). */
+.mis-corpo { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .26s var(--ease); }
+.mis-card.aberta .mis-corpo { grid-template-rows: 1fr; }
+.mis-corpo > * { min-height: 0; overflow: hidden; }
+.mis-grupo { padding: 0 18px; }
+.mis-grupo:last-child { padding-bottom: 16px; }
+.mis-grupo-tit {
+  display: flex; align-items: center; gap: 8px; margin: 14px 0 8px;
+  font-size: 10.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--faint);
+}
+.mis-grupo-tit i { font-style: normal; font-weight: 700; letter-spacing: 0; color: var(--muted); }
+.mis-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px;
+  border: 1px solid var(--border); background: var(--bg2); margin-bottom: 7px;
+}
+.mis-item.ok { background: transparent; border-color: transparent; }
+.mis-item.ok .mis-txt b { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--border2); }
+.mis-item.ok .mis-txt span { display: none; }
+.mis-check {
+  flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  border: 2px solid var(--border2); color: #fff;
+}
+.mis-item.ok .mis-check { background: var(--verde-esc); border-color: var(--verde-esc); }
+.mis-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mis-txt b { font-size: 13px; font-weight: 700; color: var(--text); }
+.mis-txt span { font-size: 12px; color: var(--muted); line-height: 1.45; }
+.mis-opc {
+  font-style: normal; font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--faint); border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; margin-left: 7px;
+}
+.mis-pronto {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+  padding: 11px 15px; border-radius: 12px; font-size: 13px; color: var(--verde-deep);
+  background: var(--brand-bg); border: 1px solid var(--brand-border);
+}
+.mis-pronto span { flex: 1; }
+@media (max-width: 560px) {
+  .mis-topo { gap: 11px; padding: 13px 14px; }
+  .mis-grupo { padding: 0 14px; }
+  .mis-item { flex-wrap: wrap; }
+  .mis-item .btn { width: 100%; }
+}

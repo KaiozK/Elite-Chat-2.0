@@ -401,7 +401,14 @@ function ensure(acc) {
         chargeTemplateEnabled: true,   // usa o Template de Cobrança (senão, mensagem padrão)
         autoMessage: 'Olá {nome}! 💳 Aqui está sua cobrança de {valor}.\n{descricao}\nPague pelo link: {link}\n\nOu use o Pix copia e cola:\n{codigo}',
         expiresMin: 1440,       // 24h
-        notifyPaid: true        // envia confirmação no WhatsApp quando pago
+        notifyPaid: true,       // envia confirmação no WhatsApp quando pago
+        // Para onde o contato vai quando a compra é confirmada. Era fixo em
+        // "Ganho"; cada operação nomeia o funil do seu jeito, e num funil sem
+        // "Ganho" o contato simplesmente não se movia.
+        // Vazio = a etapa que PARECE de fechamento (ganho/fechado/cliente…);
+        // sem nenhuma, não move e não inventa.
+        paidStage: '',
+        paidTag: 'Cliente'      // etiqueta aplicada na compra ('' = nenhuma)
       },
       templateRoles: {},        // nome do modelo -> 'cobranca' | 'confirmacao'
       chargeTemplateName: '', chargeTemplateLang: 'pt_BR',
@@ -420,6 +427,10 @@ function ensure(acc) {
 
   // ---- PRODUTOS + CHECKOUTS (múltiplos templates) ----
   const ep = acc.elitepay;
+  // Contas antigas ganham os ajustes novos sem perder o que já tinham.
+  if (!ep.settings) ep.settings = {};
+  if (ep.settings.paidStage === undefined) ep.settings.paidStage = '';
+  if (ep.settings.paidTag === undefined) ep.settings.paidTag = 'Cliente';
   // ---- Papéis dos modelos (contas antigas ganham os campos novos) ----
   if (!ep.templateRoles || typeof ep.templateRoles !== 'object') ep.templateRoles = {};
   for (const k of ['chargeTemplateName', 'confirmTemplateName']) if (typeof ep[k] !== 'string') ep[k] = '';
@@ -1099,15 +1110,33 @@ async function identifyPayer(chargeId, fields, broadcast) {
     try { require('./tracking').upsertSession(acc, { ...ch.trk, waId: phone, email, doc }); } catch {}
   }
 
-  // 1) CONTATO no Koonfy — telefone é o identificador; nunca duplica.
-  //    Novo → entra na etapa padrão do funil; existente → só preenche vazios.
-  const contact = store.upsertContact(acc, phone, name, {
-    email,
-    source: { type: 'checkout', id: ch.id, headline: 'Checkout Elite Pay', body: ch.comment || '', ts: Date.now() }
-  });
+  // -------------------------------------------------------------------------
+  // 1) CONTATO no Koonfy — NUNCA duas fichas para a mesma pessoa
+  //
+  // Quem já conversou no WhatsApp e depois compra pelo checkout costuma digitar
+  // o celular de outro jeito (sem o 9, com DDI, com o fixo). Só pelo telefone,
+  // isso criava um segundo contato: a compra ia para a ficha nova e todo o
+  // histórico de conversa ficava na antiga.
+  //
+  // Então procura primeiro por CPF/CNPJ, e-mail ou final do telefone (ver
+  // `contatoDaCobranca`); só cria ficha nova quando é gente nova mesmo.
+  // -------------------------------------------------------------------------
+  const origem = { type: 'checkout', id: ch.id, headline: 'Checkout Koonfy', body: ch.comment || '', ts: Date.now() };
+  let contact = contatoDaCobranca(acc, { waId: phone, payer: { taxID: doc, email, phone } });
+  if (contact) {
+    // Reaproveita a ficha e completa só o que falta — o que o cliente já tinha
+    // preenchido vale mais que o que ele digitou com pressa no checkout.
+    if (!contact.email) contact.email = email;
+    if (!contact.name || contact.name === contact.waId) contact.name = name;
+    if (!contact.source) contact.source = origem;
+    log(acc, { type: 'contato_reaproveitado', chargeId: ch.id, detail: `${contact.name} já era contato (${contact.waId}); a compra entrou na ficha existente` });
+  } else {
+    contact = store.upsertContact(acc, phone, name, { email, source: origem });
+  }
   if (!contact.email) contact.email = email;
   contact.vars = contact.vars || {};
   if (!contact.vars.cpf_cnpj) contact.vars.cpf_cnpj = doc;
+  contact.tags = contact.tags || [];
   if (!contact.tags.includes('Checkout')) contact.tags.push('Checkout');
   if (!ch.waId) ch.waId = contact.waId;
 
@@ -1141,19 +1170,81 @@ function fmtCpfCnpj(d) {
 }
 
 // Pipeline pós-pagamento: contato vira "Ganho" no funil + tag Cliente.
-function advancePipelineOnPaid(acc, ch) {
-  const waId = ch.waId || (ch.payer && ch.payer.phone);
-  if (!waId) return;
-  const contact = store.findContact(acc, waId);
-  if (!contact) return;
+// ---------------------------------------------------------------------------
+// COMPRA CONFIRMADA → o contato anda no funil
+//
+// A etapa de destino é ESCOLHIDA pelo cliente (Pagamentos → Ajustes). Antes
+// era "Ganho" no código: quem renomeou a etapa ou montou outro funil ficava com
+// o contato parado onde estava, sem erro nenhum aparecendo.
+//
+// Sem etapa configurada, procura uma que pareça de fechamento. Não achando,
+// não move — inventar uma etapa é pior que deixar quieto.
+// ---------------------------------------------------------------------------
+function etapaDeCompra(acc) {
   const stages = acc.stages || [];
-  if (stages.includes('Ganho') && contact.stage !== 'Ganho') {
+  const escolhida = (ensure(acc).settings || {}).paidStage;
+  if (escolhida && stages.includes(escolhida)) return escolhida;
+  // Os nomes que uma etapa de fechamento costuma ter. Não é adivinhação
+  // elegante — é o que evita o contato ficar parado em quem nunca abriu os
+  // Ajustes. Quem usa outro nome escolhe na mão, ali do lado.
+  return stages.find(s => /ganho|fechad|conclu|client|vend|compr|pago/i.test(s)) || '';
+}
+
+function advancePipelineOnPaid(acc, ch) {
+  const contact = contatoDaCobranca(acc, ch);
+  if (!contact) return;
+  const alvo = etapaDeCompra(acc);
+  if (alvo && contact.stage !== alvo) {
     const from = contact.stage;
-    contact.stage = 'Ganho';
-    log(acc, { type: 'pipeline_moved', chargeId: ch.id, detail: `${contact.name}: ${from} → Ganho (pagamento confirmado)` });
+    contact.stage = alvo;
+    log(acc, { type: 'pipeline_moved', chargeId: ch.id, detail: `${contact.name}: ${from} → ${alvo} (pagamento confirmado)` });
   }
-  contact.tags = contact.tags || [];
-  if (!contact.tags.includes('Cliente')) contact.tags.push('Cliente');
+  const tag = (ensure(acc).settings || {}).paidTag;
+  if (tag) {
+    contact.tags = contact.tags || [];
+    if (!contact.tags.includes(tag)) contact.tags.push(tag);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// QUEM É O CONTATO DESTA COBRANÇA
+//
+// O telefone sozinho não basta. Quem já é contato pode comprar "por fora" — no
+// checkout, digitando o celular com outro formato, sem o 9, ou o fixo — e aí
+// nascia um SEGUNDO contato para a mesma pessoa: a compra ficava no contato
+// novo e o histórico de conversa no antigo.
+//
+// Aqui a busca é por CPF/CNPJ e e-mail além do telefone, e em TODOS os canais.
+// Documento e e-mail são únicos por pessoa de um jeito que o telefone digitado
+// à mão não é.
+// ---------------------------------------------------------------------------
+function contatoDaCobranca(acc, ch) {
+  const p = ch.payer || {};
+  const doc = String(p.taxID || '').replace(/\D/g, '');
+  const email = String(p.email || '').trim().toLowerCase();
+  const waId = ch.waId || p.phone;
+
+  if (waId) {
+    const porFone = store.findContact(acc, store.normalizeWaId(waId));
+    if (porFone) return porFone;
+  }
+  const lista = acc.contacts || [];
+  if (doc) {
+    const porDoc = lista.find(c => String((c.vars || {}).cpf_cnpj || '').replace(/\D/g, '') === doc);
+    if (porDoc) return porDoc;
+  }
+  if (email) {
+    const porEmail = lista.find(c => String(c.email || '').trim().toLowerCase() === email);
+    if (porEmail) return porEmail;
+  }
+  // Telefone digitado diferente (com/sem o 9, com/sem DDI): compara só os 8
+  // últimos dígitos, que é a parte que não muda.
+  const fim = String(waId || '').replace(/\D/g, '').slice(-8);
+  if (fim.length === 8) {
+    const porFim = lista.find(c => String(c.waId || '').replace(/\D/g, '').slice(-8) === fim);
+    if (porFim) return porFim;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
