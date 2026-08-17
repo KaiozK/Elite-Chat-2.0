@@ -10,6 +10,7 @@ const Module = require('module');
 const R = 'C:/Users/amand/Desktop/Elite Projects/whatsapp-crm/';
 let falhas = 0;
 const ok = (c, m) => { console.log((c ? '  OK   ' : '  FALHA') + ' ' + m); if (!c) falhas++; };
+const encerrar = require('./_fim');
 
 const tabela = new Map();
 function executar(sql, params) {
@@ -125,7 +126,5 @@ const cadastro = (email, receb) => ({
   ok(acc3 && !acc3.profile.document, 'e sem documento guardado, como esperado');
 
   await new Promise(res => servidor.close(res));
-  await db.close();
-  console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTODOS OS TESTES PASSARAM');
-  process.exit(falhas ? 1 : 0);
+  await encerrar(servidor, falhas);
 })().catch(e => { console.error(e); process.exit(1); });

@@ -7,6 +7,7 @@
 const R = 'C:/Users/amand/Desktop/Elite Projects/whatsapp-crm/';
 let falhas = 0;
 const ok = (c, m) => { console.log((c ? '  OK   ' : '  FALHA') + ' ' + m); if (!c) falhas++; };
+const encerrar = require('./_fim');
 
 // Banco de mentira, igual aos outros testes: este teste NÃO pode escrever no
 // banco de desenvolvimento — ele zera mensagens e campanhas para montar o
@@ -139,12 +140,5 @@ const GENTE = [
   const spm = mapa.estados.find(e => e.uf === 'SP');
   ok(mapa.campanhas === 1, `somou 1 campanha do período: ${mapa.campanhas}`);
   ok(spm && spm.cliques === 2, `SP consolidado com 2 cliques: ${spm && spm.cliques}`);
-
-  // Nada de db.close() aqui: o pool é o falso, não há conexão real para
-  // encerrar, e fechá-lo junto com o process.exit derrubava o Node com uma
-  // asserção do libuv (exit 127) — o que travava a cadeia do `npm test`.
-  srv.close();
-  console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTODOS OS TESTES PASSARAM');
-  process.exitCode = falhas ? 1 : 0;
-  setTimeout(() => process.exit(falhas ? 1 : 0), 50).unref();
+  await encerrar(srv, falhas);
 })().catch(e => { console.error(e); process.exit(1); });

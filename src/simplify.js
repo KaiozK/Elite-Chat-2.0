@@ -147,6 +147,23 @@ function webhookHandler(broadcast) {
       const pago = /paid/i.test(evento) || status === 'approved' || status === 'paid';
       if (!pago || !externo) return;
 
+      const centavosPagos = Math.round(Number(String(b.amount || '0').replace(',', '.')) * 100);
+
+      // COBRANÇA DO PRÓPRIO KOONFY (assinatura, recarga da carteira, conexão
+      // extra, link rastreável). Elas não são venda de cliente e não vivem em
+      // `elitepay.charges` — são reconhecidas pelo prefixo do external_id e
+      // liquidadas pela mesma regra de faturamento de sempre.
+      //
+      // Sem isto, com a Simplify como adquirente o cliente pagava a recarga e o
+      // saldo nunca entrava: o webhook chegava, não achava a cobrança e ia
+      // embora como "não identificada".
+      const saaspix = require('./saaspix');
+      if (saaspix.ehCobrancaSaaS(externo)) {
+        const r = saaspix.confirmar(externo, centavosPagos, broadcast);
+        store.logEvent({ type: 'simplify_saas_paid', external_id: externo, valor: centavosPagos, ok: !!(r && r.ok) });
+        return;
+      }
+
       const elitepay = require('./elitepay');
       const achado = elitepay.findChargeAnywhere(externo);
       if (!achado) {
@@ -157,7 +174,7 @@ function webhookHandler(broadcast) {
 
       // O valor da notificação tem que bater com o da cobrança. Divergiu, não
       // confirma: registra e deixa para conferência manual.
-      const centavos = Math.round(Number(String(b.amount || '0').replace(',', '.')) * 100);
+      const centavos = centavosPagos;
       if (centavos && Math.abs(centavos - charge.value) > 1) {
         store.logEvent({
           type: 'simplify_valor_divergente', external_id: externo,

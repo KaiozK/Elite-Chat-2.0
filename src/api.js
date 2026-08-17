@@ -3690,8 +3690,13 @@ module.exports = function (broadcast, clients) {
     // cobrados — o cartão sempre usou este mesmo total.
     const total = limits.chargeTotal(acc, plan);
 
-    // Pix Automático (assinatura recorrente na Woovi) — a 1ª cobrança vem junto
-    if (db.get().platform.woovi.pixAutomatic) {
+    // Pix Automático (assinatura recorrente na Woovi) — a 1ª cobrança vem junto.
+    //
+    // Só quando a WOOVI é o adquirente ativo: com a Simplify selecionada, criar
+    // a recorrência na Woovi deixaria a assinatura de um lado e as cobranças do
+    // outro. A Simplify não tem produto recorrente; ali a renovação segue pelo
+    // débito da carteira, que já existe (ver saasbilling.runRenewals).
+    if (elitepay.gateway().id === 'woovi' && db.get().platform.woovi.pixAutomatic) {
       try {
         const sub = await woovi.createSubscription({
           correlationID: cid, value: total, customer,
@@ -3706,8 +3711,8 @@ module.exports = function (broadcast, clients) {
       }
     }
 
-    const charge = await woovi.createCharge({
-      correlationID: cid, value: total, customer,
+    const charge = await require('./saaspix').criarCobranca(acc, {
+      correlationID: cid, valueCents: total,
       comment: `Koonfy: assinatura ${plan.name}`
     });
     acc.billing.pendingCharge = {
@@ -3737,10 +3742,10 @@ module.exports = function (broadcast, clients) {
       return res.status(400).json({ error: `Depósito máximo: ${elitepay.fmtBRL(dep.max)}` });
     }
     const cid = `topup-${req.acc.id}-${Date.now().toString(36)}`;
-    const charge = await woovi.createCharge({
-      correlationID: cid, value: amount,
-      customer: { name: req.acc.name, email: req.acc.email },
-      comment: 'Koonfy: recarga de saldo'
+    // Pelo adquirente ATIVO (Admin → Gateways), e não fixo na Woovi: com a
+    // Simplify selecionada, a recarga precisa passar por ela.
+    const charge = await require('./saaspix').criarCobranca(req.acc, {
+      correlationID: cid, valueCents: amount, comment: 'Koonfy: recarga de saldo'
     });
     req.acc.billing.pendingCharge = {
       correlationID: cid, kind: 'topup', planId: '', amount,

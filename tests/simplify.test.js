@@ -8,6 +8,7 @@ const Module = require('module');
 const R = 'C:/Users/amand/Desktop/Elite Projects/whatsapp-crm/';
 let falhas = 0;
 const ok = (c, m) => { console.log((c ? '  OK   ' : '  FALHA') + ' ' + m); if (!c) falhas++; };
+const encerrar = require('./_fim');
 
 // MySQL falso: o teste não pode encostar no banco de desenvolvimento.
 const tabela = new Map();
@@ -437,9 +438,5 @@ global.fetch = async (u, o) => {
 
   await post('/admin/config', { gateway: 'woovi' });
   ok((await saas()).config.gateway === 'woovi', 'dá para voltar para a Woovi');
-  srv.close();
-
-  console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTODOS OS TESTES PASSARAM');
-  process.exitCode = falhas ? 1 : 0;
-  setTimeout(() => process.exit(falhas ? 1 : 0), 50).unref();
+  await encerrar(srv, falhas);
 })().catch(e => { console.error(e); process.exit(1); });

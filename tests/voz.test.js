@@ -8,6 +8,7 @@
 const R = 'C:/Users/amand/Desktop/Elite Projects/whatsapp-crm/';
 let falhas = 0;
 const ok = (c, m) => { console.log((c ? '  OK   ' : '  FALHA') + ' ' + m); if (!c) falhas++; };
+const encerrar = require('./_fim');
 
 global.window = undefined;
 const voz = require(R + 'public/app/voz.js');
@@ -101,7 +102,5 @@ const webm = new Uint8Array(elem(0x18538067, cluster));
 
   console.log('\n=== 7. Entrada sem áudio não vira arquivo quebrado ===');
   ok(voz.webmParaOgg(new Uint8Array([1, 2, 3]).buffer) === null, 'lixo devolve null, não um Ogg vazio');
-
-  console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTODOS OS TESTES PASSARAM');
-  process.exit(falhas ? 1 : 0);
+  await encerrar(null, falhas);
 })().catch(e => { console.error(e); process.exit(1); });

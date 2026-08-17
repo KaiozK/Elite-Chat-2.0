@@ -10,6 +10,7 @@
 const R = 'C:/Users/amand/Desktop/Elite Projects/whatsapp-crm/';
 let falhas = 0;
 const ok = (c, m) => { console.log((c ? '  OK   ' : '  FALHA') + ' ' + m); if (!c) falhas++; };
+const encerrar = require('./_fim');
 
 // Banco de mentira: o teste não pode escrever no banco de desenvolvimento.
 const Module = require('module');
@@ -185,9 +186,5 @@ const chamar = async (metodo, rota, corpo, token) => {
   c5.startedAt = Date.now() - 5 * 60 * 1000;   // 5 minutos atrás
   pend = await chamar('GET', '/api/calls/pending', null, tok);
   ok(!pend.call, 'uma ligação de 5 minutos atrás também não — a Meta já desistiu');
-
-  await new Promise(r => servidor.close(r));
-  await db.close();
-  console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTODOS OS TESTES PASSARAM');
-  process.exit(falhas ? 1 : 0);
+  await encerrar(servidor, falhas);
 })().catch(e => { console.error(e); process.exit(1); });

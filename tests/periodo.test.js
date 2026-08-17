@@ -10,6 +10,7 @@ const Module = require('module');
 const R = 'C:/Users/amand/Desktop/Elite Projects/whatsapp-crm/';
 let falhas = 0;
 const ok = (c, m) => { console.log((c ? '  OK   ' : '  FALHA') + ' ' + m); if (!c) falhas++; };
+const encerrar = require('./_fim');
 
 const tabela = new Map();
 function executar(sql, params) {
@@ -105,9 +106,5 @@ const dia = (ano, mes, d, hora = 12) => +new Date(ano, mes - 1, d, hora);
   ok(gigante.days.length === 731, `limitado a 731 dias: ${gigante.days.length}`);
   const lixo = await rel('de=abacaxi&ate=2026-03-31');
   ok(lixo.days.length === 14, `data inválida cai no padrão em vez de quebrar: ${lixo.days.length}`);
-
-  srv.close();
-  console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTODOS OS TESTES PASSARAM');
-  process.exitCode = falhas ? 1 : 0;
-  setTimeout(() => process.exit(falhas ? 1 : 0), 50).unref();
+  await encerrar(srv, falhas);
 })().catch(e => { console.error(e); process.exit(1); });

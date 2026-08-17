@@ -9,6 +9,7 @@
 const R = 'C:/Users/amand/Desktop/Elite Projects/whatsapp-crm/';
 let falhas = 0;
 const ok = (c, m) => { console.log((c ? '  OK   ' : '  FALHA') + ' ' + m); if (!c) falhas++; };
+const encerrar = require('./_fim');
 const brl = c => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 // BANCO DE MENTIRA — igual aos outros testes.
@@ -171,7 +172,5 @@ function cobranca(acc, { valor, metodo, taxa }) {
   acc.wallet.balance = 50000;
   await billing.runRenewals(null);
   ok(acc.wallet.balance === 50000, 'a recorrência da Woovi cobra, a carteira fica quieta');
-
-  console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTODOS OS TESTES PASSARAM');
-  process.exit(falhas ? 1 : 0);
+  await encerrar(null, falhas);
 })().catch(e => { console.error(e); process.exit(1); });

@@ -259,12 +259,11 @@ async function buyExtra(acc, key, qty, body, broadcast) {
 
   // ---- Pix: assíncrono. Devolve o QR e só libera quando o pagamento cai. ----
   if (body.pay === 'pix') {
-    const woovi = require('./woovi');
-    if (!woovi.configured()) throw erro('Pix indisponível no momento');
+    // Conexão extra e link rastreável são cobrança do KOONFY, e passam pelo
+    // adquirente escolhido em Admin → Gateways — não mais fixo na Woovi.
     const cid = `xtr-${acc.id}-${key}-${n}-${Date.now().toString(36)}`;
-    const charge = await woovi.createCharge({
-      correlationID: cid, value: total,
-      customer: { name: acc.name, email: acc.email },
+    const charge = await require('./saaspix').criarCobranca(acc, {
+      correlationID: cid, valueCents: total,
       comment: `Koonfy: ${n}x ${limits.LABEL[key]}`
     });
     acc.billing.pendingCharge = {

@@ -8,6 +8,7 @@ const Module = require('module');
 const R = 'C:/Users/amand/Desktop/Elite Projects/whatsapp-crm/';
 let falhas = 0;
 const ok = (c, m) => { console.log((c ? '  OK   ' : '  FALHA') + ' ' + m); if (!c) falhas++; };
+const encerrar = require('./_fim');
 
 const tabela = new Map();
 function executar(sql, params) {
@@ -84,8 +85,5 @@ const store = require(R + 'src/store');
   await db.save();
   const bruto = JSON.stringify(db.get().accounts.find(a => a.id === acc.id).messages);
   ok(!/"timestamp":(null|0|undefined)/.test(bruto), 'nada de timestamp nulo/zero no que foi salvo');
-
-  console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTODOS OS TESTES PASSARAM');
-  process.exitCode = falhas ? 1 : 0;
-  setTimeout(() => process.exit(falhas ? 1 : 0), 50).unref();
+  await encerrar(null, falhas);
 })().catch(e => { console.error(e); process.exit(1); });

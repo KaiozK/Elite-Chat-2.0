@@ -9,6 +9,7 @@ const Module = require('module');
 const R = 'C:/Users/amand/Desktop/Elite Projects/whatsapp-crm/';
 let falhas = 0;
 const ok = (c, m) => { console.log((c ? '  OK   ' : '  FALHA') + ' ' + m); if (!c) falhas++; };
+const encerrar = require('./_fim');
 
 // Banco de mentira: o teste não pode escrever no banco de desenvolvimento.
 const tabela = new Map();
@@ -97,9 +98,5 @@ const baixar = async (rota, tok) => {
   db.get().plans[0].limits.contacts = 100;
   info = await (await fetch('http://127.0.0.1:' + porta + '/api/contacts/export/info', { headers: { Authorization: 'Bearer ' + tok } })).json();
   ok(info.exporta === 50 && info.cortados === 0, `exporta os 50 que existem: ${info.exporta}`);
-
-  srv.close();
-  console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTODOS OS TESTES PASSARAM');
-  process.exitCode = falhas ? 1 : 0;
-  setTimeout(() => process.exit(falhas ? 1 : 0), 50).unref();
+  await encerrar(srv, falhas);
 })().catch(e => { console.error(e); process.exit(1); });
