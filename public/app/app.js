@@ -3755,9 +3755,18 @@ async function renderFunnel() {
 // ---------------------------------------------------------------------------
 let pipeCfg = null;   // { open, orig: [...], list: [{ id, nome, de }] }
 
-function togglePipeCfg() {
+async function togglePipeCfg() {
   if (pipeCfg && pipeCfg.open) { pipeCfg.open = false; paintPipeCfg(); return; }
+  // As etapas vêm de `state.settings`, que é carregado na entrada do app. Se
+  // alguém abre o Pipeline direto pelo endereço (ou recarrega em cima dele),
+  // isso pode ainda não ter chegado — e o editor abria VAZIO, sem nenhuma
+  // etapa para editar. Pior: salvar assim apagaria o funil inteiro.
+  if (!(state.settings && Array.isArray(state.settings.stages) && state.settings.stages.length)) {
+    try { const st = await api('/settings'); state.settings = st.settings; }
+    catch (e) { return toast('Não consegui carregar as etapas: ' + e.message, 'error'); }
+  }
   const stages = (state.settings && state.settings.stages) || [];
+  if (!stages.length) return toast('Nenhuma etapa encontrada. Recarregue a página.', 'error');
   pipeCfg = {
     open: true,
     orig: stages.slice(),
@@ -3830,14 +3839,23 @@ function pipeMove(id, dir) {
   paintPipeCfg();
 }
 
-function pipeDel(id) {
+async function pipeDel(id) {
   if (pipeCfg.list.length <= 1) return;   // o pipeline não pode ficar sem coluna
   const s = pipeFind(id);
   const usados = pipeContagem(s && s.de);
-  const aviso = usados
-    ? `Remover "${s.de}"? Os ${usados} contato(s) dessa etapa vão para a primeira da lista.`
-    : 'Remover esta etapa?';
-  if (s && s.de && !confirm(aviso)) return;
+  // `confirm()` do navegador é suprimido no app instalado (PWA/WebView): ele
+  // devolve false calado, e o botão de remover simplesmente não fazia nada.
+  // O resto do app já usa a caixa própria; esta era a exceção.
+  if (s && s.de) {
+    const ok = await confirmModal({
+      title: 'Remover etapa',
+      text: usados
+        ? `Remover "${s.de}"? Os ${usados} contato(s) dessa etapa vão para a primeira da lista.`
+        : `Remover a etapa "${s.de}"?`,
+      ok: 'Remover', danger: true
+    });
+    if (!ok) return;
+  }
   pipeCfg.list = pipeCfg.list.filter(x => x.id !== id);
   paintPipeCfg();
 }

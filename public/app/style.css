@@ -943,7 +943,7 @@ details.adv[open] summary::after { content: '–'; }
   position: relative; padding: 0; transition: background .2s; flex-shrink: 0;
 }
 .toggle span { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--card); box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .2s; }
-.toggle.on { background: var(--verde-esc); }
+.toggle.on { background: var(--btn-verde); }
 .toggle.on span { transform: translateX(18px); }
 /* Rótulo de botão que vira só-ícone no celular. É um <i> por ser inline e
    curto no HTML; o itálico não é intencional. */
@@ -1589,8 +1589,8 @@ h1, h2 { letter-spacing: -.03em; }
 }
 .pay-method > span:not(.pay-ic) { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .pay-method:hover { border-color: var(--brand-border); }
-.pay-method:has(input:checked) { border-color: var(--verde); background: var(--brand-bg); }
-.pay-method input { margin: 0; flex: none; accent-color: var(--verde); }
+.pay-method:has(input:checked) { border-color: var(--btn-verde); background: var(--brand-bg); }
+.pay-method input { margin: 0; flex: none; accent-color: var(--btn-verde); }
 .pay-method b { display: block; font-size: 13.5px; }
 /* aviso de conexão cancelada, na lista de conexões */
 .ch-cancel-note {
@@ -3613,8 +3613,8 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
   width: 26px; height: 26px; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
   border: 0; border-radius: 7px; cursor: pointer; color: #fff;
-  background: linear-gradient(135deg, var(--verde) 0%, var(--verde-esc) 55%, var(--verde-deep) 100%);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--verde-esc) 45%, transparent);
+  background: var(--btn-verde); color: var(--btn-tinta);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--btn-verde) 45%, transparent);
   -webkit-tap-highlight-color: transparent;
   transition: transform .14s var(--ease, ease), box-shadow .14s;
 }
@@ -3671,9 +3671,9 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
   font: inherit; font-size: 12.5px; font-weight: 700; white-space: nowrap;
   transition: border-color .12s, background .12s, transform .1s;
 }
-.dep-chip:hover { border-color: var(--verde); background: var(--bg); }
+.dep-chip:hover { border-color: var(--btn-verde); background: var(--bg); }
 .dep-chip:active { transform: scale(.96); }
-.dep-chip.on { border-color: var(--verde); background: var(--verde); color: #fff; }
+.dep-chip.on { border-color: var(--btn-verde); background: var(--btn-verde); color: var(--btn-tinta); }
 
 /* Numa tela estreita cinco colunas espremem o valor: viram duas fileiras de… */
 @media (max-width: 460px) {
