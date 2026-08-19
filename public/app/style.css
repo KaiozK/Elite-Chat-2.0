@@ -483,7 +483,6 @@ details.log summary .ic { color: var(--muted); }
   padding: 5px 14px; border-radius: 99px; box-shadow: 0 4px 14px rgba(20, 60, 20, .06);
 }
 .hh-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.gt { background: linear-gradient(180deg, transparent 62%, var(--verde) 62%); padding: 0 4px; border-radius: 4px; }
 
 /* KPIs */
 .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: 15px; margin-bottom: 16px; }
@@ -2365,7 +2364,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   background: linear-gradient(180deg, #fcfef9 0%, #ecfdf5 100%);
   color: var(--text);
 }
-:root[data-theme="dark"] .mh-card.hi { background: linear-gradient(150deg, #2b3032 0%, #171b1c 58%, #0c0e0e 100%); border-color: #313839; }
+:root[data-theme="dark"] .mh-card.hi { background: linear-gradient(150deg, #202527 0%, #131617 58%, #0a0b0c 100%); border-color: #262c2d; }
 :root[data-theme="dark"] .mh-card.hi .mh-ic { background: rgba(255, 255, 255, .1) !important; color: #eef3f1; border-color: rgba(255, 255, 255, .12); }
 :root[data-theme="dark"] .fb-n.trig { background: linear-gradient(160deg, #241f10, #191610); }
 :root[data-theme="dark"] .tabs button.active { box-shadow: 0 2px 10px rgba(0, 0, 0, .5); }
@@ -2408,7 +2407,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 :root[data-theme="dark"] .lc-ic,
 :root[data-theme="dark"] .mh-ic,
 :root[data-theme="dark"] .notif-ic.type-message {
-  background: linear-gradient(150deg, #2b3032, #171b1c) !important;
+  background: linear-gradient(150deg, #202527, #131617) !important;
   border: 1px solid #313839;
 }
 /* textos com destaque verde → claros */
@@ -2701,7 +2700,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
    cards com o mesmo gradiente do card destacado (.mh-card.hi).
    ============================================================ */
 :root[data-theme="dark"] {
-  --card-grad: linear-gradient(160deg, #1c2123 0%, #16191b 62%, #111415 100%);
+  --card-grad: linear-gradient(160deg, #151a1b 0%, #121516 62%, #0e1112 100%);
 }
 /* fundo do aplicativo (preto com gradiente para cinza, fixo ao rolar) */
 :root[data-theme="dark"] body {
@@ -2746,7 +2745,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 :root[data-theme="dark"] .nav-item.active .badge { background: var(--menu-ativo); color: var(--menu-tinta); }
 /* widgets internos (KPIs de Agendamentos etc.) mais escuros = insets recuados */
 :root[data-theme="dark"] .svc-kpi {
-  background: linear-gradient(150deg, #1b2021 0%, #0e1011 100%);
+  background: linear-gradient(150deg, #141819 0%, #0b0d0e 100%);
   border-color: #262c2d;
 }
 :root[data-theme="dark"] .svc-kpi:hover { border-color: var(--verde-esc); }
@@ -2761,7 +2760,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 }
 /* Carteira: o gradiente terminava em BRANCO e escondia o valor — agora escuro */
 :root[data-theme="dark"] .wallet-bal {
-  background: linear-gradient(150deg, #1f2527, #141819) !important;
+  background: linear-gradient(150deg, #171c1e, #101314) !important;
   border-color: #2a3132;
 }
 :root[data-theme="dark"] .wallet-bal b { color: var(--verde-deep); }

@@ -605,7 +605,10 @@ app.get('/marca/logo', (req, res) => {
 // ---------------------------------------------------------------------------
 // TEMA — as cores da marca, editáveis no Admin (aba Personalização)
 //
-// Mesma ideia da logo: sai do banco e vale para o app E para a landing, sem
+// Mesma ideia da logo: sai do banco e vale para o PAINEL, sem deploy. A
+// vitrine e o checkout NÃO leem esta folha: eles têm sistema de cores
+// próprio (carbono + o verde da logo), e uma cor escolhida para a tela de
+// trabalho repintando a página de vendas era efeito colateral, não recurso.
 // deploy. O que vem daqui são só REDEFINIÇÕES das variáveis que o CSS já usa —
 // campo vazio simplesmente não é escrito, e o padrão do style.css continua
 // valendo. Uma instalação nova funciona sem ninguém preencher nada.
@@ -643,7 +646,18 @@ app.get('/tema.css', (req, res) => {
   const funil = Array.isArray(t.funil) ? t.funil.map(cor).filter(Boolean) : [];
   funil.forEach((c, i) => linhas.push(`  --funil-${i + 1}: ${c};`));
   if (funil.length) linhas.push(`  --funil-n: ${funil.length};`);
-  const css = linhas.length ? `:root{\n${linhas.join('\n')}\n}\n` : '/* tema padrão */\n';
+  // O modo escuro reescreve alguns destes tokens no próprio style.css, com
+  // seletor mais específico que `:root` — a cor do admin perdia a disputa e
+  // o campo parecia morto no escuro. Repetimos os afetados no mesmo seletor;
+  // campo vazio não entra e o ajuste de legibilidade do escuro segue valendo.
+  const noEscuro = [];
+  const deep = cor(t.verdeDeep);
+  if (deep) noEscuro.push(`  --verde-deep: ${deep};`, `  --brand-dark: ${deep};`);
+
+  const blocos = [];
+  if (linhas.length) blocos.push(`:root{\n${linhas.join('\n')}\n}`);
+  if (noEscuro.length) blocos.push(`:root[data-theme="dark"]{\n${noEscuro.join('\n')}\n}`);
+  const css = blocos.length ? blocos.join('\n') + '\n' : '/* tema padrão */\n';
 
   const etag = '"tema-' + crypto.createHash('sha1').update(css).digest('hex').slice(0, 16) + '"';
   res.set('ETag', etag);

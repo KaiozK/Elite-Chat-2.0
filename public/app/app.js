@@ -2364,7 +2364,7 @@ async function renderDashboard() {
     <div class="hero-head">
       <div>
         <span class="hh-date">${esc(hoje.charAt(0).toUpperCase() + hoje.slice(1))}</span>
-        <h1>${greeting()}, <span class="gt">${esc(state.user || 'admin')}</span></h1>
+        <h1>${greeting()}, ${esc(state.user || 'admin')}</h1>
         <p>Veja o que está acontecendo no seu atendimento agora.</p>
       </div>
       <div class="hh-actions">
@@ -9526,7 +9526,7 @@ function admTemaPaint() {
     <div class="card">
       <h2>${ico('sparkles')} Cores da marca</h2>
       <p class="muted" style="margin:0 0 16px;font-size:13px">
-        Valem para o painel de todos os clientes e para a landing, na hora — como a logo.
+        Valem para o painel de todos os clientes, na hora. A página pública tem sistema de cores próprio e não muda por aqui.
         Deixe em branco para voltar ao padrão do Koonfy.
       </p>
       <div class="tema-grid">
@@ -9589,7 +9589,6 @@ function admTemaSync(chave) {
 function admTemaPreview() {
   const p = $('#tema-previa'); if (!p) return;
   const val = (k) => { const v = ($('#tm-' + k) && $('#tm-' + k).value || '').trim(); return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v) ? v : (ADM_TEMA.padrao[k] || ''); };
-  p.style.setProperty('--verde-esc', val('verde'));
   p.style.setProperty('--btn-verde', val('botao'));
   p.style.setProperty('--btn-verde-hover', val('botaoHover'));
   p.style.setProperty('--btn-tinta', val('tintaBotao'));
@@ -9621,7 +9620,10 @@ function admTemaFunilPadrao() {
 
 async function admTemaSalvar(btn) {
   const corpo = {};
-  for (const k of ['verde', 'botao', 'botaoHover', 'tintaBotao', 'verdeDeep', 'menu', 'menuTinta']) {
+  // 'verde' NÃO entra aqui: o campo saiu da tela quando a marca virou
+  // imagem, e procurá-lo quebrava o laço na primeira volta — o Salvar
+  // morria antes de chamar a API, sem erro visível.
+  for (const k of ['botao', 'botaoHover', 'tintaBotao', 'verdeDeep', 'menu', 'menuTinta']) {
     corpo[k] = ($('#tm-' + k).value || '').trim();
   }
   btn.disabled = true;
