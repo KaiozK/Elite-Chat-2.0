@@ -395,6 +395,19 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
   /* O rotulo da acao nao quebra: partido em duas linhas ele engorda a barra
      e desalinha tudo. Menor e sem quebra, cabe na fileira. */
   .nav .btn{padding:11px 13px;font-size:12px;white-space:nowrap}
+  /* A FAIXA DE INVERSAO NO CELULAR.
+
+     A joia pousa APOIADA no topo do titulo, e o calculo poe o centro dela em
+     (topo do h2 - metade do tamanho + 18). Com 170px de peca, isso pede 152px
+     livres acima do texto; a faixa dava 112, e a joia estourava para dentro da
+     secao escura de cima. O respiro sobe para 190px e ela cabe inteira.
+
+     E o titulo passa a caber em DUAS linhas exatas. A segunda delas ocupa 721px
+     em 40px de corpo, contra 343px de largura util num aparelho de 375: nao ha
+     tamanho grande que resolva, entao o corpo passa a ser medido em vw. A 4.8vw
+     a linha mais longa fecha com folga em qualquer telefone da faixa. */
+  .inversao{padding:190px 16px 72px}
+  .inversao .display{font-size:4.8vw;line-height:1.06;letter-spacing:-.01em}
   .nav .linha{margin-left:auto;gap:14px}
   /* No celular o "Entrar" vira TEXTO. Com dois blocos e a marca, a barra
      quebrava em duas linhas; sem moldura, o link ocupa o que a palavra
