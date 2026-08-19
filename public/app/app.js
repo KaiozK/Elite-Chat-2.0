@@ -8550,16 +8550,15 @@ async function paintAdmin() {
         <div class="card">
           <h2>${ico('gear')} Regras de cobrança</h2>
           <div class="row">
-            <label>Dias de teste grátis<input id="bl-trial" value="${d.config.billing.trialDays}" inputmode="numeric"></label>
-            <button class="btn primary no-grow" onclick="admSaveConfig({trialDays:$('#bl-trial').value})">${ico('save', 14)} Salvar</button>
+            <p class="muted" style="font-size:13px;margin:0">A conta do cliente nasce quando o pagamento é confirmado, no checkout. Não há período de teste para configurar.</p>
           </div>
           <label class="chk" style="margin-top:12px"><input type="checkbox" ${d.config.billing.requirePlan !== false ? 'checked' : ''} onchange="admSaveConfig({requirePlan:this.checked})"> <span><b>Exigir plano para usar</b><em>Sem assinatura ativa, a conta só enxerga a tela de Assinatura. Desligado, o cadastro libera o app inteiro.</em></span></label>
           <label class="chk" style="margin-top:12px"><input type="checkbox" id="bl-enforce" ${d.config.billing.enforce ? 'checked' : ''} onchange="admSaveConfig({enforce:this.checked})"> Bloquear envios quando a assinatura expirar (senão, apenas avisa)</label>
           <div class="row" style="margin-top:16px;align-items:flex-end">
-            <label style="flex:2">Texto do botão da landing (opcional)<input id="bl-cta" value="${esc(d.config.landing && d.config.landing.ctaText || '')}" placeholder="${(d.config.billing.trialDays > 0 ? 'Testar por ' + d.config.billing.trialDays + ' dias' : 'Começar agora')} (automático se vazio)"></label>
+            <label style="flex:2">Texto do botão da landing (opcional)<input id="bl-cta" value="${esc(d.config.landing && d.config.landing.ctaText || '')}" placeholder="Começar agora (automático se vazio)"></label>
             <button class="btn primary no-grow" onclick="admSaveConfig({ctaText:$('#bl-cta').value})">${ico('save', 14)} Salvar copy</button>
           </div>
-          <p class="muted" style="font-size:11.5px;margin:8px 0 0">Vazio = automático: <b>“Testar por N dias”</b> quando há teste grátis, ou <b>“Começar agora”</b> quando são 0 dias.</p>
+          <p class="muted" style="font-size:11.5px;margin:8px 0 0">Vazio = <b>“Começar agora”</b>.</p>
         </div>
 
         <div class="card">
@@ -14202,6 +14201,9 @@ async function renderCheckoutBuilder() {
     // Botão brilhante ou chapado. Nasce brilhante, que é como o checkout já
     // vinha; quem preferir o bloco liso desliga aqui.
     botao: Object.assign({ brilhante: true, angulo: 45, cores: [] }, ck.botao || {}),
+    // Claro ou escuro. A página de pagamento precisa parecer a marca de quem
+    // vende: o escuro é bonito num infoproduto e péssimo numa loja infantil.
+    tema: ck.tema === 'claro' ? 'claro' : 'escuro',
     blocks: (ck.blocks && ck.blocks.length) ? ck.blocks.slice() : EPK_BLOCK_KEYS.slice(),
     timer: Object.assign({ on: false, minutes: 15, text: 'Oferta por tempo limitado!' }, ck.timer || {}),
     benefits: Object.assign({ on: false, title: 'O que você recebe', items: [] }, ck.benefits || {}),
@@ -14448,6 +14450,15 @@ function epkPaintForm() {
       </div>
       <p class="hint" style="margin-top:14px">${ico('shield', 12)} O contraste do texto do botão é ajustado sozinho conforme a cor escolhida.</p>
 
+      <span class="fb-sub" style="margin-top:22px;display:block">Modo da página</span>
+      <p class="muted" style="font-size:13px;margin:0 0 10px">O fundo do checkout inteiro. A cor de destaque acima vale nos dois.</p>
+      <div class="epk-btnkind">
+        <button class="epk-bk${ck.tema === 'claro' ? '' : ' on'}" onclick="epkSetTema('escuro')">
+          <span class="epk-bk-demo" style="background:#131816;border:1px solid #2b3330"></span> Escuro</button>
+        <button class="epk-bk${ck.tema === 'claro' ? ' on' : ''}" onclick="epkSetTema('claro')">
+          <span class="epk-bk-demo" style="background:#ffffff;border:1px solid #d8ded9"></span> Claro</button>
+      </div>
+
       <span class="fb-sub" style="margin-top:22px;display:block">Botão de pagar</span>
       <p class="muted" style="font-size:13px;margin:0 0 10px">No brilhante, uma faixa de luz atravessa o botão em diagonal. No chapado, ele é a cor de destaque, sem movimento.</p>
       <div class="epk-btnkind">
@@ -14646,6 +14657,11 @@ function epkResetOrder() { epkState.blocks = EPK_BLOCK_KEYS.slice(); epkPaintFor
 
 // A escolha do botão. Repinta o painel para o exemplo ao lado de cada opção
 // sair na cor certa, e atualiza a prévia da página.
+function epkSetTema(t) {
+  epkState.tema = t === 'claro' ? 'claro' : 'escuro';
+  epkPaintSide(); epkPrev();
+}
+
 function epkSetBotao(brilhante) {
   epkState.botao = Object.assign({ angulo: 45, cores: [] }, epkState.botao, { brilhante: !!brilhante });
   epkPaintSide(); epkPrev();

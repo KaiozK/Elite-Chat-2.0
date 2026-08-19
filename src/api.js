@@ -547,7 +547,7 @@ module.exports = function (broadcast, clients) {
       trialDays,
       afiliacao: { primeira: Number(aff.percentFirst) || 0, renovacao: Number(aff.percentRenewal) || 0 },
       brilho,
-      ctaText: ctaText || (trialDays > 0 ? `Testar por ${trialDays} dias` : 'Começar agora'),
+      ctaText: ctaText || 'Começar agora',
       planos, recursos
     });
   });
@@ -5054,6 +5054,9 @@ module.exports = function (broadcast, clients) {
     // O BOTÃO: brilhante (uma faixa de luz atravessa) ou chapado. Sem cores
     // próprias a faixa é derivada do acento do checkout, então quem não
     // quiser configurar nada continua com o botão na cor da própria marca.
+    // Claro ou escuro. A página de pagamento é a última tela antes do dinheiro
+    // sair, e precisa parecer a marca de quem vende.
+    if (b.tema !== undefined) ck.tema = b.tema === 'claro' ? 'claro' : 'escuro';
     if (b.botao && typeof b.botao === 'object') {
       const cores = (Array.isArray(b.botao.cores) ? b.botao.cores : [])
         .filter(c => /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(String(c || '').trim())).slice(0, 6);

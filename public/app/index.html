@@ -107,7 +107,9 @@
       <button class="btn primary block" type="submit" id="auth-btn">Entrar</button>
     </div>
     <p class="hint hidden" id="reg-pular"><a href="#" onclick="pularRecebimento(event)">Pular e criar a conta</a></p>
-    <p class="hint" id="auth-toggle">Não tem conta? <a href="#" onclick="toggleRegister(event)">Criar conta grátis</a></p>
+    <!-- A conta nasce no pagamento, em /assinar. Abrir cadastro aqui criaria
+         conta sem plano e sem pagamento, que é o que o fluxo novo resolveu. -->
+    <p class="hint" id="auth-toggle">Ainda não é cliente? <a href="/assinar">Ver os planos</a></p>
     <!-- O aceite precisa estar VISÍVEL no momento de criar a conta: as duas
          páginas existiam mas não eram linkadas de lugar nenhum, então ninguém
          as encontrava — nem o cliente, nem a revisão do app da Meta, que exige

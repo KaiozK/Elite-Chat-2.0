@@ -1348,6 +1348,8 @@ function checkoutBranding(acc, opts) {
     // ---- layout do CHECKOUT ----
     color: /^#[0-9a-fA-F]{3,8}$/.test(ck.color || '') ? ck.color : '#10b981',
     successMsg: ck.successMsg || '', supportText: ck.supportText || '',
+    // Claro ou escuro. Nasce escuro, que é como o checkout já vinha.
+    tema: ck.tema === 'claro' ? 'claro' : 'escuro',
     // O botão: brilhante (faixa atravessando) ou chapado. Quem escolhe é o
     // dono do checkout. Sem cores próprias, a faixa é derivada do acento
     // dele, para o checkout de quem escolheu roxo continuar roxo.

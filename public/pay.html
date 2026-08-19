@@ -47,6 +47,17 @@
     --r: 4px;                     /* interativo */
     --rc: 12px;                   /* cartão */
   }
+  /* MODO CLARO. Só os seis papéis mudam: a folha inteira fala por eles, e é
+     por isso que os dois modos não divergem com o tempo. O acento não entra
+     aqui porque é do lojista e vale nos dois. */
+  :root[data-tema="claro"] {
+    --carbono: #f4f6f5;
+    --painel: #ffffff;
+    --fundo-campo: #fbfcfc;
+    --osso: #131816;
+    --pedra: #5f6b66;
+    --fio: #e2e7e4;
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: var(--fonte); font-size: 16px; line-height: 1.5; font-weight: 400;
@@ -149,6 +160,10 @@
   }
   /* CHAPADO: o dono do checkout pode desligar a faixa. Aí o botão é o acento
      puro, e o texto passa a ser calculado contra ele em vez de branco fixo. */
+  /* No claro a sombra volta a existir: sem ela, cartão branco sobre fundo
+     quase branco vira uma mancha só. No escuro é a borda que separa. */
+  :root[data-tema="claro"] .card { box-shadow: 0 1px 3px rgba(20,30,25,.06); }
+  :root[data-tema="claro"] .toast { background: #131816; color: #f9f9f9; }
   :root[data-botao="chapado"] .btn {
     background: var(--ac); background-size: auto; animation: none;
     color: color-mix(in srgb, var(--ac) 22%, #000);
@@ -886,6 +901,9 @@
   function render() {
     var ck = data.checkout || {};
     document.documentElement.style.setProperty('--ac', ck.color || '#2ed378');
+    // Claro ou escuro, escolhido no Checkout Builder.
+    if (ck.tema === 'claro') document.documentElement.setAttribute('data-tema', 'claro');
+    else document.documentElement.removeAttribute('data-tema');
     // O BOTÃO. Brilhante quer dizer uma faixa de luz atravessando; chapado é
     // o acento puro. Sem cores próprias, a faixa é derivada do acento, então
     // o checkout de quem escolheu roxo continua roxo sem configurar nada.

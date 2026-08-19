@@ -131,6 +131,17 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 .btn-sinal:hover{opacity:1}
 /* Na barra o rotulo vem menor e em caixa alta: ali ele e uma marca de
    utilidade ao lado dos links, e nao a chamada da secao. */
+/* O "Entrar" é o vizinho discreto da ação: mesma altura e mesmo rótulo em
+   caixa alta, sem preenchimento, para não disputar o clique com ela. */
+/* Nenhum item do menu quebra em duas linhas: a barra e uma fileira, e uma
+   palavra partida ali le como erro. */
+.navlinks a{white-space:nowrap}
+/* As acoes ficam sempre na direita. O empurrao vinha do margin-left:auto dos
+   LINKS; escondendo os links no intermediario, os botoes escorregavam para o
+   lado da marca. Agora o empurrao e da propria fileira de botoes. */
+.nav .linha{flex-wrap:nowrap;margin-left:auto}
+.nav .nav-entrar{padding:12px 18px;font-size:var(--t-caption);line-height:1;
+                 letter-spacing:.032em;text-transform:uppercase}
 .nav .btn-sinal{
   padding:12px 22px;font-size:var(--t-caption);line-height:1;
   letter-spacing:.032em;text-transform:uppercase;
@@ -360,6 +371,10 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 .tema button[aria-pressed="true"]{background:var(--sinal);color:var(--tinta-acao)}
 
 /* ---------- responsivo ---------- */
+/* Entre o desktop e o celular a barra nao cabe mais: cinco itens de menu,
+   Entrar e a acao. Os LINKS saem primeiro, porque as secoes continuam
+   alcancaveis rolando; as duas acoes e que nao podem sumir. */
+@media (max-width:1040px){ .navlinks{display:none} }
 @media (max-width:1080px){
   :root{--t-display:56px;--t-titulo:38px}
   .split,.split.invertido{grid-template-columns:1fr;gap:var(--e48)}
@@ -402,12 +417,15 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
       <a href="#produto">Produto</a>
       <a href="#canais">Canais</a>
       <a href="#recursos">Recursos</a>
-      <a href="#afiliacao">Indique e ganhe</a>
+      <a href="#afiliacao">Afiliação</a>
       <a href="#planos">Planos</a>
     </nav>
     <div class="linha" style="gap:12px">
 
-      <a class="btn btn-sinal" data-cta="signup" data-cta-txt href="/app?novo=1">Começar agora</a>
+      <!-- Quem já é cliente precisa de porta na primeira tela: o único
+           "Entrar" estava no rodapé, no fim de uma página longa. -->
+      <a class="btn btn-fantasma nav-entrar" data-cta="login" href="/app">Entrar</a>
+      <a class="btn btn-sinal" data-cta="signup" data-cta-txt href="#planos">Começar agora</a>
     </div>
   </div>
 </header>
@@ -430,7 +448,7 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
     <p class="corpo mudo">Conversas, funil, campanhas, automação com IA e pagamentos no mesmo número. Sem plugin, sem integração paga, sem risco de banimento.</p>
 
     <div class="linha" style="justify-content:center">
-      <a class="btn btn-sinal" data-cta="signup" data-cta-txt href="/app?novo=1">Testar 7 dias grátis</a>
+      <a class="btn btn-sinal" data-cta="signup" data-cta-txt href="#planos">Começar agora</a>
       <a class="btn btn-fantasma" href="#produto">Ver como funciona</a>
     </div>
   </div>
@@ -875,7 +893,9 @@ var LOGOS_KOONFY = [
   }
 
   fetch('/api/public/landing').then(function (r) { return r.json(); }).then(function (c) {
-    var txt = (c.ctaText || '').trim() || (c.trialDays ? 'Testar ' + c.trialDays + ' dias grátis' : 'Começar agora');
+    // Sem período grátis: o texto do botão é o do Admin ou "Começar agora".
+    // A conta nasce no pagamento, então não há teste para anunciar.
+    var txt = (c.ctaText || '').trim() || 'Começar agora';
     // OS CARTOES DOS PLANOS. Nome, preco, ciclo e itens vem do Admin; o cartao
     // recomendado tambem. Sem plano publicado a secao inteira sai do ar — uma
     // vitrine com a grade de precos vazia e pior do que sem grade nenhuma.
