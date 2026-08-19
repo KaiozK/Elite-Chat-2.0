@@ -109,6 +109,22 @@ a{color:inherit;text-decoration:none}
   cursor:pointer;transition:opacity .15s linear;
 }
 .btn:hover{opacity:.86}
+
+/* A AÇÃO DA BARRA: compacta, em caixa alta, com um halo que a separa do
+   carbono sem precisar de tamanho. A seta anda 3px no hover. */
+.nav .btn-sinal{
+  padding:11px 18px;font-size:var(--t-caption);letter-spacing:.032em;text-transform:uppercase;
+  box-shadow:0 6px 22px -8px rgba(46,211,120,.65), inset 0 1px 0 rgba(255,255,255,.28);
+  transition:box-shadow .2s var(--ease,ease), transform .2s ease, opacity .15s linear;
+}
+.nav .btn-sinal:hover{
+  opacity:1;transform:translateY(-1px);
+  box-shadow:0 10px 28px -8px rgba(46,211,120,.85), inset 0 1px 0 rgba(255,255,255,.35);
+}
+.nav .btn-sinal .seta{transition:transform .2s ease}
+.nav .btn-sinal:hover .seta{transform:translateX(3px)}
+/* A seta fica DEPOIS do texto na barra: ali ela é direção, não enfeite. */
+.nav .btn-sinal{flex-direction:row-reverse}
 .btn .seta{width:16px;height:16px;flex:0 0 16px;stroke:currentColor;fill:none;
            stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .btn-sinal{background:var(--btn-verde,var(--sinal));color:var(--btn-tinta,#fff)}
@@ -159,12 +175,18 @@ a{color:inherit;text-decoration:none}
 @media (prefers-reduced-motion:reduce){.joia{transition:none}}
 
 /* ---------- anel de nó: círculo 40px com ícone ---------- */
-/* CADA NÓ É UMA PLACA de vidro verde com o ícone do app em branco — a mesma
-   matéria da joia, em miniatura, e o mesmo desenho do menu lateral. */
-.no{width:44px;height:44px;border-radius:13px;display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(150deg,#5fe49b,#0f7a41);color:#fff;
-    box-shadow:0 8px 18px rgba(46,211,120,.30),inset 0 1px 0 rgba(255,255,255,.45)}
+/* PLACA VAZADA: contorno e ícone na mesma cor, fundo nenhum. A cor sai do
+   grupo a que o recurso pertence — a mesma divisão do menu do painel. */
+.no{width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+    border:1.5px solid currentColor;color:var(--cor-no,var(--sinal));background:transparent;
+    box-shadow:0 0 18px -6px currentColor;transition:transform .2s ease,box-shadow .2s ease}
+.no:hover{transform:scale(1.08);box-shadow:0 0 26px -4px currentColor}
 .no svg{width:22px;height:22px}
+/* Grupos: atendimento, automação, vendas e administração. */
+.no.g-atendimento{--cor-no:#2ED378}
+.no.g-automacao{--cor-no:#5FE0FF}
+.no.g-vendas{--cor-no:#FFD75F}
+.no.g-equipe{--cor-no:#F9F9F9}
 
 /* ---------- herói ---------- */
 .heroi{padding:var(--e96) var(--e24) var(--e128);text-align:center;position:relative;overflow:hidden}
@@ -186,7 +208,7 @@ a{color:inherit;text-decoration:none}
 /* ---------- constelação ---------- */
 .constelacao{position:relative;aspect-ratio:1/.82;display:flex;align-items:center;justify-content:center}
 .constelacao svg.linhas{position:absolute;inset:0;width:100%;height:100%}
-.constelacao svg.linhas line{stroke:var(--fumaca);stroke-width:1;stroke-dasharray:3 5;
+.constelacao svg.linhas line{stroke:#3a4642;stroke-width:1;stroke-dasharray:3 5;
                              transition:stroke .5s ease}
 /* Com a joia no centro, a rede acende e a carga corre para dentro. */
 .constelacao.ligada svg.linhas line{stroke:var(--sinal);animation:correr 1.1s linear infinite}
@@ -328,7 +350,7 @@ a{color:inherit;text-decoration:none}
 </section>
 
 <!-- ===================== SPLIT + CONSTELAÇÃO ===================== -->
-<section class="faixa clara" id="canais">
+<section class="faixa escura" id="canais">
   <div class="wrap split">
     <div class="pilha">
       <span class="rotulo sinal">Um número, a operação inteira</span>
@@ -639,6 +661,16 @@ var NOMES_KOONFY = {"inbox":"Conversas","team":"Chat interno","schedule":"Agenda
   // =========================================================================
   var ICONES = ICONES_KOONFY;
   var NOS = Object.keys(ICONES_KOONFY);
+  // A mesma divisão da barra lateral do painel: quem atende, quem automatiza,
+  // quem vende e quem administra.
+  var GRUPO = {
+    inbox: 'atendimento', team: 'atendimento', schedule: 'atendimento',
+    contacts: 'atendimento', funnel: 'atendimento', consent: 'atendimento',
+    flows: 'automacao', ia: 'automacao', integrations: 'automacao',
+    campaigns: 'automacao', sms: 'automacao', templates: 'automacao', quick: 'automacao',
+    elitepay: 'vendas', checkouts: 'vendas', links: 'vendas', tracking: 'vendas', pixels: 'vendas',
+    agents: 'equipe', billing: 'equipe', afiliacao: 'equipe'
+  };
   var caixa = document.getElementById('constelacao');
   if (caixa) {
     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -657,7 +689,7 @@ var NOMES_KOONFY = {"inbox":"Conversas","team":"Chat interno","schedule":"Agenda
       l.setAttribute('x2', cx + '%'); l.setAttribute('y2', cy + '%');
       svg.appendChild(l);
       var d = document.createElement('div');
-      d.className = 'no';
+      d.className = 'no g-' + (GRUPO[nome] || 'atendimento');
       d.title = NOMES_KOONFY[nome] || '';
       d.style.left = cx + '%'; d.style.top = cy + '%';
       // O Pix (e qualquer ícone de preenchimento) não leva traço: com traço
