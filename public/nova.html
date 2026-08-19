@@ -167,14 +167,15 @@ a{color:inherit;text-decoration:none}
 @media (prefers-reduced-motion:reduce){.joia{transition:none}}
 
 /* ---------- anel de nó: círculo 40px com ícone ---------- */
-/* PLACA VAZADA: so contorno e icone, fundo nenhum. A borda e sempre o verde
-   da joia — e o fio que liga cada recurso ao centro — e o desenho por dentro
-   e branco, para o icone ser lido antes da cor. */
-.no{width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;
-    border:1.5px solid var(--sinal);color:var(--osso);background:transparent;
+/* LADRILHO DA LOGO. A moldura verde e sempre a mesma — e o fio que liga cada
+   parceiro ao centro. O que muda por dentro e o recuo: quem tem placa
+   propria preenche, quem e desenho solto respira. */
+.no{width:54px;height:54px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+    border:1.5px solid var(--sinal);background:transparent;overflow:hidden;
     box-shadow:0 0 18px -8px var(--sinal);transition:transform .2s ease,box-shadow .2s ease}
 .no:hover{transform:scale(1.08);box-shadow:0 0 26px -6px var(--sinal)}
-.no svg{width:22px;height:22px}
+.no img{width:68%;height:68%;object-fit:contain;display:block}
+.no.cheia img{width:100%;height:100%;object-fit:cover}
 
 /* ---------- herói ---------- */
 .heroi{padding:var(--e96) var(--e24) var(--e128);text-align:center;position:relative;overflow:hidden}
@@ -270,12 +271,10 @@ a{color:inherit;text-decoration:none}
   /* A roda fica mais aberta e as peças menores: no estreito elas estavam
      quase encostando umas nas outras. */
   .constelacao{aspect-ratio:1/1}
-  .no{width:38px;height:38px;border-radius:11px}
-  .no svg{width:19px;height:19px}
+  .no{width:46px;height:46px;border-radius:11px}
 }
 @media (max-width:680px){
-  .no{width:32px;height:32px;border-radius:9px}
-  .no svg{width:16px;height:16px}
+  .no{width:40px;height:40px;border-radius:10px}
   :root{--t-display:40px;--t-titulo:30px;--e80:56px;--e96:64px;--e128:72px}
   .nav .wrap{flex-wrap:wrap;gap:12px;padding:16px}
   .marca{font-size:16px}.marca img{width:24px;height:24px}
@@ -476,31 +475,24 @@ a{color:inherit;text-decoration:none}
 // OS ÍCONES SÃO OS DO APP: o mesmo desenho que está na barra lateral do
 // painel, um por funcionalidade. Quem vê a vitrine e depois entra encontra
 // os mesmos símbolos — é a mesma casa, não duas.
-var ICONES_KOONFY = {
-  inbox:'<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-3-.4-4.2-1L3 20l1.1-4.3A8.5 8.5 0 1 1 21 11.5z"/>',
-  team:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><circle cx="9" cy="10" r="1"/><circle cx="13" cy="10" r="1"/><circle cx="17" cy="10" r="1"/>',
-  schedule:'<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/><path d="M7.5 13h3M13.5 13h3M7.5 16.5h3"/>',
-  contacts:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.2 3.4-5 6.5-5s5.7 1.8 6.5 5"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 15.2c2.4.3 4.2 1.9 4.9 4.3"/>',
-  funnel:'<rect x="3" y="4" width="5.5" height="16" rx="1.5"/><rect x="9.8" y="4" width="5.5" height="10" rx="1.5"/><rect x="16.5" y="4" width="4.5" height="13" rx="1.5"/>',
-  consent:'<path d="M12 3l7 3.5v5c0 4.3-2.9 8-7 9.2-4.1-1.2-7-4.9-7-9.2v-5L12 3z"/><path d="m9.2 12.2 1.9 1.9 3.7-4"/>',
-  flows:'<rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="15" y="15" width="6" height="6" rx="1.5"/><path d="M9 6h5a4 4 0 0 1 4 4v5"/>',
-  ia:'<rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 7V4M9 12.5h.01M15 12.5h.01M9.5 16h5"/><path d="M2 12h1.5M20.5 12H22"/>',
-  integrations:'<path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2"/><path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06"/><path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8"/>',
-  campaigns:'<path d="M3 10v4l4 .8V9.2L3 10z"/><path d="M7 9l11-5v16L7 15z"/><path d="M9.5 15.6V19a2 2 0 0 0 4 0v-2.4"/>',
-  sms:'<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/>',
-  templates:'<path d="M6 2h8l4 4v16H6z"/><path d="M14 2v4h4M9 12h6M9 16h6"/>',
-  quick:'<path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/>',
-  elitepay:'<g fill="currentColor" transform="scale(1.5)"><path d="M11.917 11.71a2.046 2.046 0 0 1-1.454-.602l-2.1-2.1a.4.4 0 0 0-.551 0l-2.108 2.108a2.044 2.044 0 0 1-1.454.602h-.414l2.66 2.66c.83.83 2.177.83 3.007 0l2.667-2.668h-.253zM4.25 4.282c.55 0 1.066.214 1.454.602l2.108 2.108a.39.39 0 0 0 .552 0l2.1-2.1a2.044 2.044 0 0 1 1.453-.602h.253L9.503 1.623a2.127 2.127 0 0 0-3.007 0l-2.66 2.66h.414z"/><path d="m14.377 6.496-1.612-1.612a.307.307 0 0 1-.114.023h-.733c-.379 0-.75.154-1.017.422l-2.1 2.1a1.005 1.005 0 0 1-1.425 0L5.268 5.32a1.448 1.448 0 0 0-1.018-.422h-.9a.306.306 0 0 1-.109-.021L1.623 6.496c-.83.83-.83 2.177 0 3.008l1.618 1.618a.305.305 0 0 1 .108-.022h.901c.38 0 .75-.153 1.018-.421L7.375 8.57a1.034 1.034 0 0 1 1.426 0l2.1 2.1c.267.268.638.421 1.017.421h.733c.04 0 .079.01.114.024l1.612-1.612c.83-.83.83-2.178 0-3.008z"/></g>',
-  checkouts:'<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6.5 14.5h4"/>',
-  links:'<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
-  tracking:'<path d="M3 17l5-5 4 4 6.5-7"/><path d="M14.5 9H19v4.5"/><path d="M3 21h18"/>',
-  pixels:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
-  agents:'<circle cx="9" cy="8" r="3.2"/><path d="M2.8 20c.7-3 3.2-4.8 6.2-4.8s5.5 1.8 6.2 4.8"/><path d="M16 4.2a3.2 3.2 0 0 1 0 6.1M18.5 20c-.3-1.6-1-3-2-4"/>',
-  billing:'<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/><path d="M6.5 15h4"/>',
-  afiliacao:'<path d="M12 3.2l2.1 4.5 4.9.6-3.6 3.4.9 4.9-4.3-2.4-4.3 2.4.9-4.9L5 8.3l4.9-.6z"/><path d="M8.5 20.5h7"/>'
-};
-// O nome de cada um, para o alt e para quem for mexer aqui depois.
-var NOMES_KOONFY = {"inbox":"Conversas","team":"Chat interno","schedule":"Agendamentos","contacts":"Contatos","funnel":"Pipeline","consent":"Opt-in & Opt-out","flows":"Flow Builder","ia":"Agente de IA","integrations":"Integrações","campaigns":"Campanhas","sms":"SMS","templates":"Modelos","quick":"Respostas rápidas","elitepay":"Pagamentos","checkouts":"Checkout Builder","links":"Links rastreáveis","tracking":"Tracking","pixels":"Pixels","agents":"Atendentes","billing":"Assinatura","afiliacao":"Afiliação"};
+// COM QUEM A KOONFY FALA. `fundo:true` marca a logo que ja traz a propria
+// placa colorida — essa preenche o ladrilho; o resto fica recuado dentro da
+// moldura verde.
+var LOGOS_KOONFY = [
+  { arq: 'hotmart',   nome: 'Hotmart',            fundo: true  },
+  { arq: 'kirvano',   nome: 'Kirvano',            fundo: true  },
+  { arq: 'braip',     nome: 'Braip',              fundo: true  },
+  { arq: 'cakto',     nome: 'Cakto',              fundo: true  },
+  { arq: 'greenn',    nome: 'Greenn',             fundo: false },
+  { arq: 'rifei',     nome: 'Rifei',              fundo: true  },
+  { arq: 'nuvemshop', nome: 'Nuvemshop',          fundo: true  },
+  { arq: 'whatsapp',  nome: 'WhatsApp Cloud API', fundo: false },
+  { arq: 'openai',    nome: 'OpenAI',             fundo: false },
+  { arq: 'metaads',   nome: 'Meta Ads',           fundo: false },
+  { arq: 'googleads', nome: 'Google Ads',         fundo: false },
+  { arq: 'tiktokads', nome: 'TikTok Ads',         fundo: false },
+  { arq: 'webhook',   nome: 'Webhooks',           fundo: false }
+];
 (function () {
   // =========================================================================
   // A JOIA QUE DESCE COM A PÁGINA
@@ -657,27 +649,19 @@ var NOMES_KOONFY = {"inbox":"Conversas","team":"Chat interno","schedule":"Agenda
   // conteúdo. As linhas PARAM antes do centro: a joia passa por ali, e uma
   // linha cruzando por baixo dela ficava suja.
   // =========================================================================
-  var ICONES = ICONES_KOONFY;
-  var NOS = Object.keys(ICONES_KOONFY);
   var caixa = document.getElementById('constelacao');
   if (caixa) {
     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('class', 'linhas');
     caixa.appendChild(svg);
 
-    var anel = NOS.map(function (nome, i) {
+    var anel = LOGOS_KOONFY.map(function (logo, i) {
       var l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
       svg.appendChild(l);
       var d = document.createElement('div');
-      d.className = 'no';
-      d.title = NOMES_KOONFY[nome] || '';
-      // O Pix (e qualquer ícone de preenchimento) não leva traço: com traço
-      // por cima, o desenho engorda e vira mancha.
-      var cheio = /fill="currentColor"/.test(ICONES_KOONFY[nome]);
-      d.innerHTML = cheio
-        ? '<svg viewBox="0 0 24 24" aria-hidden="true">' + ICONES_KOONFY[nome] + '</svg>'
-        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"'
-          + ' stroke-linecap="round" stroke-linejoin="round">' + ICONES_KOONFY[nome] + '</svg>';
+      d.className = 'no' + (logo.fundo ? ' cheia' : '');
+      d.title = logo.nome;
+      d.innerHTML = '<img src="/assets/logos/' + logo.arq + '.webp" alt="' + logo.nome + '" loading="lazy" decoding="async">';
       caixa.appendChild(d);
       return { i: i, linha: l, placa: d };
     });
