@@ -22,6 +22,8 @@
   /* --- cor --- */
   --sinal:#2ED378;            /* o acento: verde da logo, no papel do citrino */
   --sinal-glow:rgba(46,211,120,.15);
+  --sinal-menta:#7BEBAE;         /* o alto da joia: a faixa que atravessa o botao */
+  --sinal-fundo:#1C834A;         /* o fundo da joia: a espessura embaixo do botao */
   --carbono:#111111;
   --osso:#f9f9f9;
   --grafite:#2b2b2b;
@@ -108,17 +110,41 @@ a{color:inherit;text-decoration:none}
 }
 .btn:hover{opacity:.86}
 
-/* A ACAO DA BARRA. Sem halo, sem seta, sem levantar no hover: numa barra
-   fixa quem manda e o contraste do bloco. O rotulo e uma marca de
-   utilidade — caixa alta, 12px, o mesmo tracking dos outros rotulos da
-   pagina — e no hover o bloco INVERTE para osso sobre carbono, o mesmo
-   gesto das faixas que trocam de cor enquanto a pagina desce. */
+/* A ACAO DA BARRA. Botao de relevo, no modelo que o Kaio trouxe, com o verde
+   da joia no lugar do azul.
+
+   O canto usa raio ELIPTICO — 20px na horizontal, metade da altura na
+   vertical: abre no meio e fecha nas pontas, virando pastilha em vez de
+   capsula. A espessura vem da segunda sombra, que nao tem desfoque: e uma
+   faixa solida colada embaixo, a lateral de um bloco de 5px. E a faixa de
+   menta atravessa porque o fundo e o dobro do botao — o que anda e a
+   POSICAO do gradiente, nao o gradiente. */
 .nav .btn-sinal{
-  padding:12px 22px;font-size:var(--t-caption);line-height:1;
-  letter-spacing:.032em;text-transform:uppercase;
-  transition:background .2s ease, color .2s ease;
+  padding:13px 26px;font-size:var(--t-caption);line-height:1;
+  letter-spacing:.032em;text-transform:uppercase;border:0;
+  border-radius:20px / 100%;
+  box-shadow:inset 0 0 5px 5px rgba(255,255,255,.16), 0 5px 0 0 var(--sinal-fundo);
+  background:linear-gradient(45deg, var(--sinal), var(--sinal), var(--sinal),
+                             var(--sinal-menta), var(--sinal), var(--sinal));
+  background-size:200% 200%;
+  animation:passar 5s ease-in-out infinite;
+  transform-origin:center;
+  transition:transform .18s ease, box-shadow .18s ease;
 }
-.nav .btn-sinal:hover{opacity:1;background:var(--osso);color:var(--carbono)}
+.nav .btn-sinal:hover{opacity:1;transform:scale(1.05)}
+/* No clique o botao AFUNDA: desce 3px e a faixa de baixo encurta na mesma
+   medida, entao a soma altura+faixa nao muda e o bloco parece pressionado
+   contra a barra em vez de escorregar. */
+.nav .btn-sinal:active{
+  transform:scale(1) translateY(3px);
+  box-shadow:inset 0 0 5px 5px rgba(255,255,255,.16), 0 2px 0 0 var(--sinal-fundo);
+  transition:all .1s ease-in;
+}
+@keyframes passar{
+  0%{background-position:0% 50%}
+  50%{background-position:100% 50%}
+  100%{background-position:0% 50%}
+}
 .btn-sinal{background:var(--sinal);color:#fff}
 .btn-sinal:hover{background:var(--sinal)}
 .btn-escuro{background:var(--inversa-texto);color:var(--inversa)}
@@ -287,6 +313,7 @@ a{color:inherit;text-decoration:none}
 }
 @media (prefers-reduced-motion:reduce){
   .not{animation:none;opacity:1}
+  .nav .btn-sinal{animation:none;background-position:0 50%}
   .joia{transition:none}
 }
 </style>
