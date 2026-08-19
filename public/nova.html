@@ -392,8 +392,17 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
   :root{--t-display:40px;--t-titulo:30px;--e80:56px;--e96:64px;--e128:72px}
   .nav .wrap{flex-wrap:wrap;gap:12px;padding:16px}
   .marca{font-size:16px}.marca img{width:24px;height:24px}
-  .nav .btn{padding:10px 14px;font-size:14px}
-  .nav .linha{margin-left:auto;gap:8px}
+  /* O rotulo da acao nao quebra: partido em duas linhas ele engorda a barra
+     e desalinha tudo. Menor e sem quebra, cabe na fileira. */
+  .nav .btn{padding:11px 13px;font-size:12px;white-space:nowrap}
+  .nav .linha{margin-left:auto;gap:14px}
+  /* No celular o "Entrar" vira TEXTO. Com dois blocos e a marca, a barra
+     quebrava em duas linhas; sem moldura, o link ocupa o que a palavra
+     ocupa e a fileira inteira cabe numa linha só. */
+  .nav .nav-entrar{border:0;padding:0;background:transparent;color:var(--texto)}
+  .nav .nav-entrar:hover{opacity:1;color:var(--sinal)}
+  .nav .wrap{flex-wrap:nowrap;gap:12px}
+  .marca{flex:0 0 auto}
   .heroi{padding-top:var(--e48)}
   .navlinks{display:none}
   .fone{--kf-w:290px}
@@ -572,8 +581,8 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 <section class="faixa clara inversao">
 
   <div class="wrap">
-    <h2 class="display">Seu WhatsApp<br>já vende. Falta ele<br>cobrar e anotar</h2>
-    <p class="corpo">Ligue a Koonfy no número que você já usa. Nada de migrar conversa, avisar cliente nem trocar de chip.</p>
+    <h2 class="display">Transforme seu WhatsApp<br>em uma operação automatizada</h2>
+    <p class="corpo">Tenha mais controle sobre seus atendimentos, clientes e processos sem depender de tarefas manuais.</p>
     <div class="linha" style="justify-content:center">
       <a class="btn btn-escuro" data-cta="signup" href="/app?novo=1">Criar minha conta</a>
       <a class="btn btn-fantasma" href="#planos" style="color:var(--inversa-texto);border-color:var(--inversa-texto)">Ver planos</a>

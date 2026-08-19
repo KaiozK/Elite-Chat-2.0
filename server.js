@@ -643,6 +643,17 @@ app.get('/tema.css', (req, res) => {
       : [menu.slice(1, 3), menu.slice(3, 5), menu.slice(5, 7)].map(h => parseInt(h, 16));
     linhas.push(`  --menu-brilho: rgba(${rgb.join(', ')}, .35);`);
   }
+  // O BOTÃO BRILHANTE também vale no painel: a tela de entrar é a emenda
+  // entre a vitrine e o produto, e ali os dois botões precisam ser o mesmo.
+  const br = t.brilho || {};
+  const coresBr = (Array.isArray(br.cores) ? br.cores.map(cor).filter(Boolean) : []);
+  const paleta = coresBr.length >= 2 ? coresBr : ['#1c834a', '#2ed378'];
+  if (br.ligado !== false) {
+    const paradas = [paleta[0], paleta[0]].concat(paleta.slice(1)).concat([paleta[0], paleta[0]]);
+    linhas.push('  --btn-grad: linear-gradient(' + ((Number(br.angulo) || 45) + 'deg') + ', ' + paradas.join(', ') + ');');
+  }
+  linhas.push('  --btn-base: ' + paleta[0] + ';');
+
   const funil = Array.isArray(t.funil) ? t.funil.map(cor).filter(Boolean) : [];
   funil.forEach((c, i) => linhas.push(`  --funil-${i + 1}: ${c};`));
   if (funil.length) linhas.push(`  --funil-n: ${funil.length};`);

@@ -815,6 +815,9 @@ async function init() {
       state.agent = me.agent || null;
       state.permissions = me.permissions || null;   // null = acesso total (dono/admin)
       state.planFeatures = me.planFeatures || null; // null = admin da plataforma (tudo liberado)
+      // O SMS só aparece se o provedor estiver ligado na plataforma: o
+      // módulo do plano sozinho abria uma tela que não envia nada.
+      state.smsPlataforma = me.smsPlataforma !== false;
       state.allowedViews = me.allowedViews || null;
       return enterApp();
     } catch {}
@@ -1788,6 +1791,9 @@ const VIEWS_SEM_PLANO = ['billing', 'settings'];
 function precisaAssinar() { return !!state.planRequired; }
 
 function planHas(view) {
+  // O SMS tem DUAS chaves: o módulo no plano e o provedor ligado na
+  // plataforma. Sem a segunda, a tela existe mas não envia.
+  if (view === 'sms' && state.smsPlataforma === false) return false;
   const f = state.planFeatures;
   if (!f) return true;
   const key = VIEW_FEATURE[view] || view;

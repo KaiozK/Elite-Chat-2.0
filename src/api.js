@@ -583,7 +583,11 @@ module.exports = function (broadcast, clients) {
       wa: waPublic(req.wctx),
       // toggles do plano: o menu esconde o que o plano nao inclui (o backend
       // tambem recusa com 402, o front e so conforto)
-      planFeatures: req.session.kind === 'admin' ? null : limits.featuresOf(req.acc)
+      planFeatures: req.session.kind === 'admin' ? null : limits.featuresOf(req.acc),
+      // O SMS depende de DUAS chaves: o módulo no plano do cliente e o
+      // provedor ligado na plataforma. Faltava a segunda aqui, e o menu
+      // mostrava a aba de quem não tinha como enviar nada.
+      smsPlataforma: require('./sms').configured()
     });
   });
 

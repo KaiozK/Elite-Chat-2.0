@@ -4757,3 +4757,19 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
   background-size: 200% 200%; animation: brilhoPassar 5s ease-in-out infinite;
 }
 @media (prefers-reduced-motion: reduce) { .epk-bk-demo.brilha { animation: none } }
+
+
+/* ---------- a porta de entrada usa o botão da vitrine ---------- */
+/* A tela de login é a emenda entre a página de vendas e o produto: o botão
+   ali é o mesmo "Começar agora", montado no Admin (Personalização → Botão
+   brilhante) e servido em /tema.css. Dentro do app os botões continuam
+   chapados: animação em cada salvar viraria ruído numa tela de trabalho. */
+#login .btn.primary {
+  background: var(--btn-grad, var(--btn-verde));
+  background-size: 200% 200%;
+  border-color: transparent;
+  box-shadow: none;
+  animation: brilhoPassar 5s ease-in-out infinite;
+}
+#login .btn.primary:hover { background: var(--btn-grad, var(--btn-verde-hover)); opacity: .93; }
+@media (prefers-reduced-motion: reduce) { #login .btn.primary { animation: none } }
