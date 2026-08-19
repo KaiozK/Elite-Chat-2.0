@@ -2283,13 +2283,23 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
    ============================================================ */
 :root[data-theme="dark"] {
   color-scheme: dark;
+  /* O FUNDO É UM GRADIENTE, não uma cor: um halo verde bem fraco no alto e
+     à esquerda, escurecendo até o preto embaixo. É o que dá o mesmo ar da
+     vitrine e da referência — sem isso a tela fica de um preto plano que
+     achata os cards. */
+  --fundo-halo: radial-gradient(1200px 620px at 12% -6%, rgba(46,211,120,.10), transparent 62%),
+                radial-gradient(900px 520px at 88% 4%, rgba(46,211,120,.05), transparent 60%),
+                linear-gradient(180deg, #0c100e 0%, #070908 46%, #050706 100%);
   /* Superfícies na MATIZ DA MARCA (h~165), não em oliva (h110-120).
      O oliva é o que lia como "musgo" no escuro: mesma dessaturação, mas o
      matiz puxava para amarelo. Luminâncias preservadas — só o matiz girou. */
-  --bg: #080a09;
-  --bg2: #0f1312;
-  --card: #161d1b;
-  --glass: rgba(14, 18, 17, .82);
+  /* Carbono, o mesmo da vitrine: a tela é quase preta e cada superfície sobe
+     um degrau. O brilho verde do fundo mora no gradiente do corpo, logo
+     abaixo — chapar tudo aqui deixaria a tela sem profundidade. */
+  --bg: #070908;
+  --bg2: #0e1211;
+  --card: #141a18;
+  --glass: rgba(12, 16, 15, .82);
   --border: #222a28;
   --border2: #283431;
 
@@ -4699,3 +4709,13 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
    texto. Com a marca virando imagem, ele precisa do seu próprio estilo. */
 .ckb-titulo { font-weight: 500; font-size: 20px; letter-spacing: -.015em; }
 .ckb-titulo i { color: var(--verde-esc); font-style: normal; }
+
+
+/* O halo do escuro fica no corpo e não rola com a página: a impressão é de
+   uma sala iluminada por trás da interface, e não de um papel pintado. */
+:root[data-theme="dark"] body {
+  background: var(--fundo-halo) fixed;
+}
+:root[data-theme="dark"] .page, :root[data-theme="dark"] .inbox {
+  background: transparent;
+}

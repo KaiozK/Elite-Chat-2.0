@@ -454,7 +454,11 @@ app.use('/api', require('./src/api')(broadcast, clients));
 // Injeta as meta tags no <head> do HTML inicial (o que os buscadores leem),
 // usando o que o admin salvou em platform.seo.
 const fs = require('fs');
-const LANDING_FILE = path.join(__dirname, 'public', 'index.html');
+// A VITRINE PRINCIPAL é a nova (nova.html). A antiga continua no arquivo
+// index.html e acessível por /antiga — trocar é mudar esta linha, e manter a
+// anterior de pé é o que permite voltar atrás sem deploy de emergência.
+const LANDING_FILE = path.join(__dirname, 'public', 'nova.html');
+const LANDING_ANTIGA = path.join(__dirname, 'public', 'index.html');
 let _landingHtml = null;
 function landingHtml() {
   if (_landingHtml == null) { try { _landingHtml = fs.readFileSync(LANDING_FILE, 'utf8'); } catch { _landingHtml = ''; } }
@@ -660,7 +664,10 @@ app.get('/termos.html', (req, res) => res.redirect(301, '/termos'));
 // VITRINE NOVA (sistema visual de carbono + verde da logo). Fica aqui, em
 // endereço próprio, enquanto a landing atual segue na raiz — trocar é mudar
 // o arquivo que `serveLanding` lê.
-app.get('/nova', (req, res) => res.sendFile(path.join(__dirname, 'public', 'nova.html')));
+// /nova continua respondendo (links já enviados) e /antiga guarda a vitrine
+// anterior enquanto ela for útil para comparar.
+app.get('/nova', (req, res) => res.redirect(301, '/'));
+app.get('/antiga', (req, res) => res.sendFile(LANDING_ANTIGA));
 
 // CHECKOUT DA ASSINATURA: quem compra antes de ter conta entra por aqui.
 app.get('/assinar', (req, res) => res.sendFile(path.join(__dirname, 'public', 'assinar.html')));
