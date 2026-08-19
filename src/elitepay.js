@@ -1348,6 +1348,14 @@ function checkoutBranding(acc, opts) {
     // ---- layout do CHECKOUT ----
     color: /^#[0-9a-fA-F]{3,8}$/.test(ck.color || '') ? ck.color : '#10b981',
     successMsg: ck.successMsg || '', supportText: ck.supportText || '',
+    // O botão: brilhante (faixa atravessando) ou chapado. Quem escolhe é o
+    // dono do checkout. Sem cores próprias, a faixa é derivada do acento
+    // dele, para o checkout de quem escolheu roxo continuar roxo.
+    botao: {
+      brilhante: (ck.botao && ck.botao.brilhante !== undefined) ? !!ck.botao.brilhante : true,
+      angulo: (ck.botao && Number(ck.botao.angulo)) || 45,
+      cores: (ck.botao && Array.isArray(ck.botao.cores)) ? ck.botao.cores.filter(c => /^#[0-9a-fA-F]{3,8}$/.test(c)) : []
+    },
     merchant: sub.name || acc.name || '',
     blocks: Array.isArray(ck.blocks) && ck.blocks.length ? ck.blocks : defaultBlocks(),
     timer: ck.timer || {}, benefits: ck.benefits || {}, testimonial: ck.testimonial || {},

@@ -116,11 +116,18 @@ a{color:inherit;text-decoration:none}
    dele, nao o gradiente. */
 .btn-sinal{
   color:#fff;
-  background:linear-gradient(45deg, var(--sinal-fundo), var(--sinal-fundo), var(--sinal-fundo),
-                             var(--sinal), var(--sinal-fundo), var(--sinal-fundo));
+  /* O gradiente vem do Admin (Personalização → Botão brilhante) por
+     --btn-grad. O valor abaixo é o padrão de fábrica e o que aparece
+     enquanto a API não respondeu. */
+  background:var(--btn-grad, linear-gradient(45deg,
+             var(--sinal-fundo), var(--sinal-fundo), var(--sinal),
+             var(--sinal-fundo), var(--sinal-fundo)));
   background-size:200% 200%;
   animation:passar 5s ease-in-out infinite;
 }
+/* Desligado no Admin, o botão fica chapado na primeira cor. */
+html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fundo));
+                                      background-size:auto;animation:none}
 .btn-sinal:hover{opacity:1}
 /* Na barra o rotulo vem menor e em caixa alta: ali ele e uma marca de
    utilidade ao lado dos links, e nao a chamada da secao. */
@@ -475,7 +482,7 @@ a{color:inherit;text-decoration:none}
       <h2 class="titulo-sec">Venda aprovada, automação rodando, cliente novo chegando</h2>
       <p class="corpo mudo">Instale como aplicativo e receba a notificação com o navegador fechado. Toque nela e cai direto na conversa. Funciona no Android e no iPhone, sem passar por loja nenhuma.</p>
       <p class="corpo mudo">E quando o cliente <b>liga</b>, a chamada toca aqui: você atende pelo painel ou pelo celular, passa para outro atendente e a gravação fica guardada junto da conversa.</p>
-      <div class="linha"><a class="btn btn-fantasma" data-cta="login" href="/app">Abrir o painel</a></div>
+      <div class="linha"><a class="btn btn-fantasma" href="#planos">Ver planos</a></div>
     </div>
   </div>
 </section>
@@ -489,7 +496,7 @@ a{color:inherit;text-decoration:none}
     <div class="pilha" style="gap:var(--e16);max-width:760px">
       <span class="rotulo sinal">O que vem junto</span>
       <h2 class="titulo">Não é um chat com<br>extras. É a operação inteira</h2>
-      <p class="corpo mudo">Cada bloco abaixo é um módulo que já está no painel — não é planejamento nem
+      <p class="corpo mudo">Cada bloco abaixo é um módulo que já está no painel. Não é planejamento nem
         recurso vendido à parte. Todos dividem o mesmo contato, a mesma conversa e o mesmo relatório.</p>
     </div>
 
@@ -507,7 +514,7 @@ a{color:inherit;text-decoration:none}
       <article class="cartao">
         <span class="rotulo sinal">Automação</span>
         <h3 class="titulo-sec">Fluxo visual e um agente de IA por conversa</h3>
-        <p class="corpo-sm mudo">Monte o atendimento arrastando blocos, e ligue a IA só onde ela ajuda — o botão é por conversa, então o robô sai de cena no segundo em que alguém precisa assumir.</p>
+        <p class="corpo-sm mudo">Monte o atendimento arrastando blocos, e ligue a IA só onde ela ajuda. O botão é por conversa, então o robô sai de cena no segundo em que alguém precisa assumir.</p>
       </article>
       <article class="cartao">
         <span class="rotulo sinal">Campanhas</span>
@@ -581,7 +588,7 @@ a{color:inherit;text-decoration:none}
       <span class="rotulo sinal">Indique e ganhe</span>
       <h2 class="titulo-sec">Quem indica a Koonfy recebe todo mês, e não uma vez só</h2>
       <p class="corpo mudo">Toda conta nasce com um link de indicação. Quando alguém assina por ele, a comissão
-        cai na sua carteira <b>automaticamente</b>, no instante em que o pagamento é confirmado — e continua caindo
+        cai na sua carteira <b>automaticamente</b>, no instante em que o pagamento é confirmado, e continua caindo
         a cada renovação, enquanto essa pessoa for cliente.</p>
       <p class="corpo mudo">O saque sai por Pix, direto do painel. Sem formulário, sem aprovação manual e sem
         planilha no meio do caminho.</p>
@@ -591,12 +598,12 @@ a{color:inherit;text-decoration:none}
     <div class="pilha" style="gap:var(--e16)">
       <div class="cartao">
         <span class="rotulo">Primeira assinatura</span>
-        <div class="preco"><span id="aff-primeira">—</span><span class="ciclo"> do valor pago</span></div>
+        <div class="preco"><span id="aff-primeira">…</span><span class="ciclo"> do valor pago</span></div>
         <p class="corpo-sm mudo">Comissão sobre a primeira mensalidade de cada indicado.</p>
       </div>
       <div class="cartao">
         <span class="rotulo">Toda renovação</span>
-        <div class="preco"><span id="aff-renovacao">—</span><span class="ciclo"> todo mês</span></div>
+        <div class="preco"><span id="aff-renovacao">…</span><span class="ciclo"> todo mês</span></div>
         <p class="corpo-sm mudo">Enquanto o indicado continuar pagando, você continua recebendo.</p>
       </div>
     </div>
@@ -897,9 +904,12 @@ var LOGOS_KOONFY = [
         }).join('');
       }
     }
+    // A CHAMADA LEVA AOS PLANOS, e não direto ao checkout: quem clicava caía
+    // num formulário de pagamento sem ter visto preço nenhum. Da grade a
+    // pessoa escolhe o plano, e é o botão do cartão que abre o checkout.
     document.querySelectorAll('[data-cta]').forEach(function (b) {
       var alvo = b.getAttribute('data-cta');
-      b.setAttribute('href', alvo === 'login' ? '/app' : '/assinar');
+      b.setAttribute('href', alvo === 'login' ? '/app' : '#planos');
       if (alvo === 'signup' && b.hasAttribute('data-cta-txt')) {
         var n = [].slice.call(b.childNodes).filter(function (x) { return x.nodeType === 3 && x.textContent.trim(); })[0];
         if (n) n.textContent = ' ' + txt;
@@ -908,6 +918,13 @@ var LOGOS_KOONFY = [
     // A COMISSÃO DA INDICAÇÃO. Sai do Admin, como os planos. Se o admin
     // zerar a comissão, a faixa inteira sai do ar: prometer indicação que
     // não paga nada é pior do que não falar de indicação.
+    // O BOTÃO BRILHANTE, montado no servidor a partir do que o Admin salvou.
+    var br = c.brilho || {};
+    if (br.gradiente) document.documentElement.style.setProperty('--btn-grad', br.gradiente);
+    if (br.base) document.documentElement.style.setProperty('--btn-base', br.base);
+    document.documentElement.toggleAttribute('data-botao', false);
+    if (br.ligado === false) document.documentElement.setAttribute('data-botao', 'chapado');
+
     var aff = c.afiliacao || {};
     var faixaAff = document.getElementById('afiliacao');
     if (faixaAff) {

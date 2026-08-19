@@ -4718,3 +4718,42 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 :root[data-theme="dark"] .page, :root[data-theme="dark"] .inbox {
   background: transparent;
 }
+
+
+/* ---------- botão brilhante (Admin SaaS → Personalização) ---------- */
+/* A prévia do botão que a página pública usa. A faixa de luz atravessa porque
+   o gradiente é o dobro do botão: o que anda é a POSIÇÃO dele. */
+.btn-brilho {
+  border: 0; cursor: pointer; font: 500 15px/1.2 var(--font); color: #fff;
+  padding: 13px 26px; border-radius: 4px;
+  background: linear-gradient(45deg, #1c834a, #1c834a, #2ed378, #1c834a, #1c834a);
+  background-size: 200% 200%; animation: brilhoPassar 5s ease-in-out infinite;
+}
+@keyframes brilhoPassar {
+  0% { background-position: 0% 50% } 50% { background-position: 100% 50% } 100% { background-position: 0% 50% }
+}
+/* Linha de interruptor: caixa + rótulo, alinhados pelo texto. */
+.sw-row { display: flex; align-items: center; gap: 10px; font-size: 13.5px; cursor: pointer; }
+.sw-row input { accent-color: var(--verde-esc); width: 16px; height: 16px; flex: none; }
+.sw-row i { font-style: normal; font-size: 12.5px; }
+@media (prefers-reduced-motion: reduce) { .btn-brilho { animation: none } }
+
+
+/* ---------- escolha do botão, no Checkout Builder ---------- */
+.epk-btnkind { display: flex; gap: 10px; }
+.epk-bk {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 9px;
+  padding: 11px; border: 1.5px solid var(--border); border-radius: 11px;
+  background: var(--bg2); font: 500 13px/1 var(--font); color: var(--text2); cursor: pointer;
+  transition: border-color .15s, color .15s;
+}
+.epk-bk.on { border-color: var(--verde-esc); color: var(--text); }
+.epk-bk-demo { width: 26px; height: 14px; border-radius: 4px; flex: none; background: var(--c, #2ed378); }
+/* O exemplo brilhante roda a mesma animação do botão real, para a escolha ser
+   feita vendo o efeito e não lendo a palavra "brilhante". */
+.epk-bk-demo.brilha {
+  background: linear-gradient(45deg, color-mix(in srgb, var(--c) 55%, #000), color-mix(in srgb, var(--c) 55%, #000),
+              var(--c), color-mix(in srgb, var(--c) 55%, #000), color-mix(in srgb, var(--c) 55%, #000));
+  background-size: 200% 200%; animation: brilhoPassar 5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) { .epk-bk-demo.brilha { animation: none } }

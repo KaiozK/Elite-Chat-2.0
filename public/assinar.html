@@ -38,16 +38,29 @@ input,select{background:var(--painel);border:1px solid var(--fio);border-radius:
 input:focus,select:focus{outline:none;border-color:var(--sinal)}
 input[readonly]{color:var(--mudo);background:#131817}
 .dupla{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;border:1px solid transparent;
-  border-radius:4px;padding:14px 24px;font:500 16px/1.2 var(--fonte);cursor:pointer;
-  background:#19a95a;color:#fff}
-.btn:hover{opacity:.88}
+/* O MESMO BOTÃO DA VITRINE: a faixa de luz atravessa em diagonal porque o
+   gradiente é o dobro do botão — o que anda é a POSIÇÃO dele. As cores vêm
+   do Admin por --btn-grad; o valor abaixo é o padrão de fábrica. */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;border:0;
+  border-radius:4px;padding:14px 24px;font:500 16px/1.2 var(--fonte);cursor:pointer;color:#fff;
+  background:var(--btn-grad, linear-gradient(45deg,#1c834a,#1c834a,#2ED378,#1c834a,#1c834a));
+  background-size:200% 200%;animation:passar 5s ease-in-out infinite}
+.btn:hover{opacity:.92}
+html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-size:auto;animation:none}
+@keyframes passar{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+@media (prefers-reduced-motion:reduce){.btn{animation:none;background-position:0 50%}}
 .btn[disabled]{opacity:.5;cursor:default}
 .cartao{background:var(--painel);border:1px solid var(--fio);border-radius:12px;padding:24px}
 .preco{font-size:40px;line-height:1;letter-spacing:-.02em;font-weight:400;margin:6px 0 2px}
 .itens{list-style:none;margin:16px 0 0;padding:0;display:grid;gap:9px;font-size:14px;color:var(--mudo)}
 .itens li{display:flex;gap:9px;align-items:flex-start}
-.itens li::before{content:"";width:6px;height:6px;margin-top:8px;background:var(--sinal);flex:0 0 6px}
+/* O item incluso é marcado com um CERTO, não com um quadrado: o quadrado só
+   diz "item de lista"; o certo diz "isto está incluso", que é a pergunta de
+   quem lê a coluna. Duas linhas em L, giradas 45 graus. */
+.itens li{position:relative}
+.itens li::before{content:"";flex:0 0 16px;width:16px;height:16px;margin-top:1px}
+.itens li::after{content:"";position:absolute;left:4px;top:5px;width:5px;height:9px;
+                 border:solid var(--sinal);border-width:0 1.8px 1.8px 0;transform:rotate(45deg)}
 .erro{color:#ff8080;font-size:14px;min-height:20px}
 .pix{display:grid;gap:14px;justify-items:center;text-align:center}
 .pix img{width:230px;height:230px;background:#fff;border-radius:8px;padding:8px}
@@ -75,7 +88,7 @@ input[readonly]{color:var(--mudo);background:#131817}
     <section id="etapa-dados">
       <span class="rotulo">Checkout</span>
       <h1>Comece pela<br>assinatura</h1>
-      <p class="mudo" style="max-width:520px">Estes são os dados que abrem a sua conta de recebimento — os mesmos que o
+      <p class="mudo" style="max-width:520px">Estes são os dados que abrem a sua conta de recebimento, os mesmos que o
         adquirente exige para emitir o Pix. Por isso todos são obrigatórios, e por isso eles voltam
         travados no cadastro: quem paga e quem recebe têm que ser a mesma pessoa.</p>
 
@@ -137,7 +150,7 @@ input[readonly]{color:var(--mudo);background:#131817}
     <!-- resumo do plano -->
     <aside class="cartao" id="resumo">
       <span class="rotulo" id="r-nome">Plano</span>
-      <div class="preco" id="r-preco">—</div>
+      <div class="preco" id="r-preco">…</div>
       <div class="mudo" style="font-size:13px" id="r-ciclo"></div>
       <ul class="itens" id="r-itens"></ul>
     </aside>
@@ -145,6 +158,14 @@ input[readonly]{color:var(--mudo);background:#131817}
 </div>
 
 <script>
+// O BOTÃO BRILHANTE vem do Admin, pela mesma rota pública que a vitrine usa.
+// Falhou a busca, fica o padrão de fábrica que já está na folha de estilo.
+fetch('/api/public/landing').then(function (r) { return r.json(); }).then(function (c) {
+  var b = c.brilho || {};
+  if (b.gradiente) document.documentElement.style.setProperty('--btn-grad', b.gradiente);
+  if (b.base) document.documentElement.style.setProperty('--btn-base', b.base);
+  if (b.ligado === false) document.documentElement.setAttribute('data-botao', 'chapado');
+}).catch(function () {});
 (function () {
   var qs = new URLSearchParams(location.search);
   var planId = qs.get('plano') || '';

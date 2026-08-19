@@ -141,10 +141,17 @@
   .btn {
     border: 0; cursor: pointer; font-family: inherit; font-weight: 500; font-size: 16px;
     border-radius: var(--r); padding: 15px 18px; width: 100%; color: #fff;
-    background: linear-gradient(45deg, var(--ac-fundo), var(--ac-fundo), var(--ac-fundo),
-                                var(--ac), var(--ac-fundo), var(--ac-fundo));
+    background: var(--btn-grad, linear-gradient(var(--btn-ang, 45deg),
+                var(--ac-fundo), var(--ac-fundo), var(--ac),
+                var(--ac-fundo), var(--ac-fundo)));
     background-size: 200% 200%;
     animation: passar 5s ease-in-out infinite;
+  }
+  /* CHAPADO: o dono do checkout pode desligar a faixa. Aí o botão é o acento
+     puro, e o texto passa a ser calculado contra ele em vez de branco fixo. */
+  :root[data-botao="chapado"] .btn {
+    background: var(--ac); background-size: auto; animation: none;
+    color: color-mix(in srgb, var(--ac) 22%, #000);
   }
   .btn:hover { opacity: .92; }
   .btn:disabled { opacity: .5; cursor: wait; animation: none; }
@@ -879,6 +886,26 @@
   function render() {
     var ck = data.checkout || {};
     document.documentElement.style.setProperty('--ac', ck.color || '#2ed378');
+    // O BOTÃO. Brilhante quer dizer uma faixa de luz atravessando; chapado é
+    // o acento puro. Sem cores próprias, a faixa é derivada do acento, então
+    // o checkout de quem escolheu roxo continua roxo sem configurar nada.
+    var bt = ck.botao || {};
+    var raiz = document.documentElement;
+    if (bt.brilhante === false) { raiz.setAttribute('data-botao', 'chapado'); }
+    else {
+      raiz.removeAttribute('data-botao');
+      if (bt.cores && bt.cores.length >= 2) {
+        // A primeira cor se repete nas pontas: é isso que faz as do meio
+        // virarem faixa em vez de degradê de ponta a ponta.
+        var pal = bt.cores.slice(0, 6);
+        var par = [pal[0], pal[0]].concat(pal.slice(1)).concat([pal[0], pal[0]]);
+        raiz.style.setProperty('--btn-grad',
+          'linear-gradient(' + ((+bt.angulo || 45) + 'deg') + ', ' + par.join(', ') + ')');
+      } else {
+        raiz.style.removeProperty('--btn-grad');
+      }
+      if (bt.angulo) raiz.style.setProperty('--btn-ang', (+bt.angulo || 45) + 'deg');
+    }
     document.title = (ck.title || ck.merchant || 'Pagamento') + '. Pix';
 
     if (data.demo && !document.querySelector('.demo-tag')) {

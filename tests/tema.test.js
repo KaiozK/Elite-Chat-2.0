@@ -154,6 +154,43 @@ const url = (r) => 'http://127.0.0.1:' + porta + r;
   const revalida = await fetch(url('/tema.css'), { headers: { 'If-None-Match': depois.etag } });
   ok(revalida.status === 304, 'e continua valendo 304 quando nada mudou');
 
+  console.log(String.fromCharCode(10) + '=== 7. O BOTAO BRILHANTE sai do Admin e chega montado na vitrine ===');
+  // A vitrine não lê mais /tema.css: o que ela recebe é o gradiente pronto,
+  // junto dos planos, em /api/public/landing.
+  const vitrine = () => fetch(url('/api/public/landing')).then(r => r.json());
+
+  let b = await salvar({ brilho: { ligado: true, angulo: 90, cores: ['#0e5c33', '#2ed378', '#7bebae'] } });
+  ok(b.http !== 400, 'três cores e um ângulo são aceitos');
+  let v = await vitrine();
+  ok(v.brilho.base === '#0e5c33', 'a primeira cor é o fundo: ' + v.brilho.base);
+  ok(v.brilho.gradiente.startsWith('linear-gradient(90deg'), 'o ângulo entra: ' + v.brilho.gradiente.slice(0, 26));
+  // O desenho da faixa: a primeira cor se repete nas PONTAS, e é isso que faz
+  // as do meio atravessarem em vez de virarem um degradê de canto a canto.
+  // Sem regex: corta o que está entre os parênteses e joga fora o ângulo, que
+  // é a primeira parada. O que sobra são as cores, na ordem em que serão pintadas.
+  const dentro = v.brilho.gradiente.slice(v.brilho.gradiente.indexOf('(') + 1, v.brilho.gradiente.lastIndexOf(')'));
+  const paradas = dentro.split(',').map(x => x.trim()).slice(1);
+  ok(paradas.length === 6, 'seis paradas para três cores (2 do fundo + 2 da faixa + 2 do fundo): ' + paradas.length);
+  ok(paradas[0] === '#0e5c33' && paradas[1] === '#0e5c33', 'começa com o fundo repetido');
+  ok(paradas[4] === '#0e5c33' && paradas[5] === '#0e5c33', 'e termina com ele também');
+  ok(paradas[2] === '#2ed378' && paradas[3] === '#7bebae', 'as demais formam a faixa, na ordem');
+
+  const uma = await salvar({ brilho: { cores: ['#2ed378'] } });
+  ok(uma.http === 400, 'uma cor só é recusada: não há gradiente com uma cor (' + uma.http + ')');
+  const ruim = await salvar({ brilho: { cores: ['#2ed378', 'verde'] } });
+  ok(ruim.http === 400, 'cor inválida recusa a lista inteira: ' + ruim.http);
+  const torto = await salvar({ brilho: { angulo: 900 } });
+  ok(torto.http === 400, 'ângulo fora de 0 a 360 é recusado: ' + torto.http);
+
+  await salvar({ brilho: { ligado: false } });
+  v = await vitrine();
+  ok(v.brilho.ligado === false, 'desligado, a vitrine recebe o aviso e usa o botão chapado');
+
+  await salvar({ brilho: { ligado: true, angulo: 45, cores: [] } });
+  v = await vitrine();
+  ok(v.brilho.gradiente.includes('#1c834a') && v.brilho.gradiente.includes('#2ed378'),
+     'sem cores salvas, volta o padrão de fábrica: ' + v.brilho.gradiente);
+
   await salvar({ verde: '', botao: '', botaoHover: '', tintaBotao: '', verdeDeep: '', funil: [] });
   await encerrar(srv, falhas);
 })().catch(e => { console.error(e); process.exit(1); });

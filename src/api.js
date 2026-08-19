@@ -468,6 +468,21 @@ module.exports = function (broadcast, clients) {
     // faixa própria, e um número fixo no HTML seria promessa que o painel
     // não cumpre quando o admin mudar a porcentagem.
     const aff = p.affiliate || {};
+    // O BOTÃO BRILHANTE, montado aqui e não na página: a vitrine não lê mais
+    // /tema.css (o tema vale só no painel), então o que ela recebe é apenas
+    // este gradiente, junto dos planos que ela já busca.
+    const br = (p.tema && p.tema.brilho) || {};
+    const hex = v => /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(v || '').trim()) ? String(v).trim() : '';
+    const coresBrilho = (Array.isArray(br.cores) ? br.cores.map(hex).filter(Boolean) : []);
+    const paleta = coresBrilho.length >= 2 ? coresBrilho : ['#1c834a', '#2ed378'];
+    // A primeira cor se repete nas PONTAS: é o que transforma as cores do
+    // meio numa faixa que atravessa, em vez de um degradê de ponta a ponta.
+    const paradas = [paleta[0], paleta[0]].concat(paleta.slice(1)).concat([paleta[0], paleta[0]]);
+    const brilho = {
+      ligado: br.ligado === undefined ? true : !!br.ligado,
+      base: paleta[0],
+      gradiente: 'linear-gradient(' + ((Number(br.angulo) || 45) + 'deg') + ', ' + paradas.join(', ') + ')'
+    };
     const ctaText = (p.landing && p.landing.ctaText || '').trim();
     // Os planos da landing eram escritos à mão no HTML e viviam desencontrados
     // dos que o cliente encontra ao assinar. Aqui saem os MESMOS que o painel
@@ -531,6 +546,7 @@ module.exports = function (broadcast, clients) {
     res.json({
       trialDays,
       afiliacao: { primeira: Number(aff.percentFirst) || 0, renovacao: Number(aff.percentRenewal) || 0 },
+      brilho,
       ctaText: ctaText || (trialDays > 0 ? `Testar por ${trialDays} dias` : 'Começar agora'),
       planos, recursos
     });
@@ -4125,6 +4141,12 @@ module.exports = function (broadcast, clients) {
         verde: t.verde || '', botao: t.botao || '', botaoHover: t.botaoHover || '',
         tintaBotao: t.tintaBotao || '', verdeDeep: t.verdeDeep || '',
         menu: t.menu || '', menuTinta: t.menuTinta || '',
+        // O botão brilhante: as cores do gradiente, na ordem, e o ângulo.
+        brilho: {
+          ligado: t.brilho && t.brilho.ligado !== undefined ? !!t.brilho.ligado : true,
+          angulo: (t.brilho && Number(t.brilho.angulo)) || 45,
+          cores: (t.brilho && Array.isArray(t.brilho.cores) && t.brilho.cores.length) ? t.brilho.cores : []
+        },
         funil: Array.isArray(t.funil) ? t.funil : []
       },
       // O padrão vive no CSS; o painel mostra estes valores como referência do
@@ -4133,6 +4155,7 @@ module.exports = function (broadcast, clients) {
         verde: '#2ed378', botao: '#19a95a', botaoHover: '#14904c',
         tintaBotao: '#ffffff', verdeDeep: '#178048',
         menu: '#50ea5f', menuTinta: '#04331a',
+        brilho: { ligado: true, angulo: 45, cores: ['#1c834a', '#2ed378'] },
         funil: ['#ec4899', '#64748b', '#f59e0b', '#0ea5e9', '#10b981', '#16a34a']
       }
     });
@@ -4149,6 +4172,27 @@ module.exports = function (broadcast, clients) {
         const c = corOuVazio(b[k]);
         if (b[k] && !c) return res.status(400).json({ error: `Cor inválida em ${k}. Use hexadecimal, como #2ed378.` });
         p.tema[k] = c;
+      }
+    }
+    // O BOTÃO BRILHANTE. Duas cores no mínimo (uma cor não faz gradiente) e
+    // seis no máximo: acima disso a faixa vira arco-íris e some o gesto.
+    if (b.brilho !== undefined) {
+      const br = b.brilho || {};
+      if (!p.tema.brilho) p.tema.brilho = {};
+      if (br.ligado !== undefined) p.tema.brilho.ligado = !!br.ligado;
+      if (br.angulo !== undefined) {
+        const a = Math.round(Number(br.angulo));
+        if (!Number.isFinite(a) || a < 0 || a > 360) return res.status(400).json({ error: 'Ângulo do gradiente entre 0 e 360 graus' });
+        p.tema.brilho.angulo = a;
+      }
+      if (br.cores !== undefined) {
+        if (!Array.isArray(br.cores)) return res.status(400).json({ error: 'As cores do botão devem vir em lista' });
+        const cores = br.cores.map(corOuVazio).filter(Boolean);
+        if (br.cores.length && cores.length !== br.cores.length) {
+          return res.status(400).json({ error: 'Cor inválida no botão. Use hexadecimal, como #2ed378.' });
+        }
+        if (cores.length === 1) return res.status(400).json({ error: 'O botão brilhante precisa de pelo menos duas cores' });
+        p.tema.brilho.cores = cores.slice(0, 6);
       }
     }
     if (b.funil !== undefined) {
@@ -5007,6 +5051,18 @@ module.exports = function (broadcast, clients) {
     }
     if (b.notice && typeof b.notice === 'object') ck.notice = { on: !!b.notice.on, text: str(b.notice.text, 200) || '' };
     if (b.badges && typeof b.badges === 'object') ck.badges = { on: !!b.badges.on };
+    // O BOTÃO: brilhante (uma faixa de luz atravessa) ou chapado. Sem cores
+    // próprias a faixa é derivada do acento do checkout, então quem não
+    // quiser configurar nada continua com o botão na cor da própria marca.
+    if (b.botao && typeof b.botao === 'object') {
+      const cores = (Array.isArray(b.botao.cores) ? b.botao.cores : [])
+        .filter(c => /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(String(c || '').trim())).slice(0, 6);
+      ck.botao = {
+        brilhante: !!b.botao.brilhante,
+        angulo: Math.max(0, Math.min(360, Math.round(+b.botao.angulo || 45))),
+        cores: cores.length >= 2 ? cores : []
+      };
+    }
     // formas de pagamento aceitas neste checkout. Garante ao menos uma ativa:
     // se o lojista desligar tudo, o Pix permanece (não dá para vender sem meio).
     if (b.methods && typeof b.methods === 'object') {

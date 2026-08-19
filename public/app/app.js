@@ -287,7 +287,7 @@ async function exportarContatos() {
     </p>
     <p class="muted" style="margin:12px 0 0;font-size:12.5px">
       ${ico('help', 12)} Para exportar a base inteira, mude para um plano com mais contatos em
-      <b>Assinatura</b>. Nenhum contato é apagado — eles continuam aqui.
+      <b>Assinatura</b>. Nenhum contato é apagado, eles continuam aqui.
     </p>
     <div class="row" style="margin-top:18px;justify-content:flex-end">
       <button class="btn no-grow" onclick="closeModal()">Cancelar</button>
@@ -2585,7 +2585,7 @@ function pintarMissoes() {
   $('#view').innerHTML = `<div class="page mis-page">
     <div class="page-head">
       <h1>Primeiros passos</h1>
-      <p>Configure o Koonfy na ordem certa. Cada passo é conferido sozinho — você não precisa marcar nada.</p>
+      <p>Configure o Koonfy na ordem certa. Cada passo é conferido sozinho, você não precisa marcar nada.</p>
     </div>
 
     <div class="card mis-resumo">
@@ -3423,7 +3423,7 @@ function newChatModal() {
     <label>CPF ou CNPJ (opcional)<input id="nc-doc" inputmode="numeric" placeholder="000.000.000-00"
       oninput="this.value=mascararDoc(this.value)"></label>
     <p class="hint">O e-mail e o documento não são obrigatórios agora, mas são o que o checkout pede
-      na hora da compra — guardados aqui, a cobrança sai sem pedir nada de novo.</p>
+      na hora da compra. Guardados aqui, a cobrança sai sem pedir nada de novo.</p>
     <p class="hint">Fora da janela de 24h, a primeira mensagem precisa ser um <b>template aprovado</b>.</p>
     <div class="row"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" onclick="createChat()">Abrir conversa</button></div>`);
   $('#nc-phone').focus();
@@ -6507,13 +6507,13 @@ function pintarRelatorio() {
     ${r.leituraParcial ? `<div class="card" style="border-color:var(--amber-border);background:var(--amber-bg)">
       <b>${ico('help', 14)} Nenhuma leitura confirmada</b>
       <p class="muted" style="margin:5px 0 0;font-size:13px">As mensagens foram entregues, mas ninguém apareceu como "lida".
-      A Meta só informa a leitura quando o cliente mantém a <b>confirmação de leitura ligada</b> no WhatsApp dele — quem desliga
+      A Meta só informa a leitura quando o cliente mantém a <b>confirmação de leitura ligada</b> no WhatsApp dele. Quem desliga
       conta apenas como entregue. O número aqui é o piso real, não o total de quem leu.</p></div>` : ''}
 
     <div class="card">
       <h2>${ico('buttons')} Botões</h2>
       ${r.botoes.length ? `
-        <p class="muted" style="margin:0 0 10px;font-size:12.5px">Quantas pessoas tocaram em cada botão. Conta uma vez por pessoa —
+        <p class="muted" style="margin:0 0 10px;font-size:12.5px">Quantas pessoas tocaram em cada botão. Conta uma vez por pessoa,
         quem clica duas vezes continua sendo um lead.</p>
         <table><thead><tr><th>Botão</th><th style="text-align:right">Cliques</th><th style="text-align:right">Sobre enviadas</th><th style="text-align:right">Sobre quem leu</th><th>Onde mais clicaram</th></tr></thead><tbody>
         ${r.botoes.map(b => {
@@ -6523,11 +6523,11 @@ function pintarRelatorio() {
             <td style="text-align:right"><b>${fmtN(b.cliques)}</b></td>
             <td style="text-align:right">${g.enviadas ? (Math.round(b.cliques / g.enviadas * 1000) / 10) : 0}%</td>
             <td style="text-align:right">${g.lidas ? (Math.round(b.cliques / g.lidas * 1000) / 10) : 0}%</td>
-            <td class="muted">${topo.length ? topo.map(([uf, n]) => `${uf} (${n})`).join(', ') : '—'}</td>
+            <td class="muted">${topo.length ? topo.map(([uf, n]) => `${uf} (${n})`).join(', ') : '-'}</td>
           </tr>`;
         }).join('')}</tbody></table>`
         : `<p class="muted" style="margin:0;font-size:13px">Este modelo não tem botões, ou ninguém tocou ainda.
-           Botões de <b>resposta rápida</b> são contados aqui; botões de <b>link</b> saem do WhatsApp e a Meta não avisa o toque —
+           Botões de <b>resposta rápida</b> são contados aqui; botões de <b>link</b> saem do WhatsApp e a Meta não avisa o toque,
            para medir link, use um link rastreável do Koonfy dentro do template.</p>`}
     </div>
 
@@ -7290,7 +7290,7 @@ async function paintBilling() {
       <div class="card">
         <h2>${ico('sparkles')} Indique e ganhe</h2>
         <p class="muted" style="margin:0;font-size:13px">O seu link de indicação, os indicados e o saque das comissões
-        agora ficam na aba <b>Afiliação</b>, no menu — aqui dentro de Assinatura quase ninguém achava.</p>
+        agora ficam na aba <b>Afiliação</b>, no menu. Aqui dentro de Assinatura quase ninguém achava.</p>
         <div class="row" style="margin-top:12px"><a class="btn primary no-grow" href="#/afiliacao">${ico('sparkles', 14)} Abrir Afiliação</a></div>
       </div>`;
     if (pc) startPayPoll();
@@ -7377,7 +7377,7 @@ function pintarAfiliacao() {
           <a class="btn" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(zap)}">
             ${waLogo(14, 'currentColor')} Enviar no WhatsApp</a>
         </div>
-        <p class="aff-cod">Código <b>${esc(a.code)}</b> — quem entrar por ele fica marcado como seu indicado <b>para sempre</b>.</p>
+        <p class="aff-cod">Código <b>${esc(a.code)}</b>. Quem entrar por ele fica marcado como seu indicado <b>para sempre</b>.</p>
       </div>
     </div>
 
@@ -8200,7 +8200,7 @@ function armazenamentoAviso(a) {
   return `<div class="danger-box" style="margin-bottom:16px">
     <b>${ico('alert', 14)} Os dados se perdem a cada restart.</b>
     Este servidor recria o disco a cada deploy e a cada reinício, e o banco está
-    gravando em arquivo (<code>data/db.json</code>) — tudo que foi cadastrado
+    gravando em arquivo (<code>data/db.json</code>). Tudo que foi cadastrado
     volta ao zero, inclusive a senha do administrador.
     Ligue o MySQL definindo as variáveis de ambiente
     <code>DB_DRIVER=mysql</code> e <code>DATABASE_URL=mysql://usuario:senha@host:3306/koonfy</code>,
@@ -8425,7 +8425,7 @@ async function paintAdmin() {
           <h2>${ico('image')} Logo do Koonfy</h2>
           <p class="muted" style="margin:0 0 12px;font-size:13px">
             Aparece no painel, na landing, no checkout, nas páginas de Termos e Privacidade, na aba do navegador e no
-            splash. Trocar aqui muda tudo de uma vez. Aceita <b>PNG, WEBP, SVG, JPG e ICO</b>, até 2 MB —
+            splash. Trocar aqui muda tudo de uma vez. Aceita <b>PNG, WEBP, SVG, JPG e ICO</b>, até 2 MB.
             de preferência quadrada e com <b>fundo transparente</b>.
           </p>
           <div class="marca-linha">
@@ -8449,7 +8449,7 @@ async function paintAdmin() {
           <h2>${ico('zap')} Testar notificação de venda</h2>
           <p class="muted" style="margin:0 0 12px;font-size:13px">
             Dispara a notificação de <b>venda aprovada</b> nos aparelhos inscritos nesta conta, com o som de caixa
-            registradora. É o mesmo caminho de uma venda de verdade — só o valor é seu. Nenhuma cobrança é criada
+            registradora. É o mesmo caminho de uma venda de verdade, só o valor é seu. Nenhuma cobrança é criada
             e nada entra na carteira.
           </p>
           <div class="row" style="align-items:flex-end">
@@ -8462,7 +8462,7 @@ async function paintAdmin() {
         <div class="card">
           <h2>${ico('pix')} Adquirente do Pix</h2>
           <p class="muted" style="margin:0 0 12px;font-size:13px">
-            Quem processa as cobranças. A troca vale para as <b>próximas</b> cobranças — as já emitidas continuam
+            Quem processa as cobranças. A troca vale para as <b>próximas</b> cobranças. As já emitidas continuam
             sendo confirmadas pelo gateway que as criou.
           </p>
           <p class="muted" style="margin:0 0 12px;font-size:12.5px;padding:10px 12px;border-radius:10px;background:var(--bg2)">
@@ -8506,7 +8506,7 @@ async function paintAdmin() {
           <p class="muted" style="margin:12px 0 6px;font-size:12.5px">
             <b>Split para outro usuário da Simplify</b> (um sócio, um parceiro). <b>Isto não é a sua taxa</b>:
             na Simplify o dinheiro cai inteiro na sua conta e a carteira credita ao cliente o líquido, então
-            o PIX In já fica com você — configure a taxa em <b>Pagamentos, Taxas</b>. Use este campo só para
+            o PIX In já fica com você. Configure a taxa em <b>Pagamentos, Taxas</b>. Use este campo só para
             mandar uma fatia para fora. Vazio = não divide. A Simplify aceita de 0,01% a 90%.
           </p>
           <div class="row">
@@ -9533,6 +9533,15 @@ function admTemaCampo(chave, rot, ajuda) {
 
 function admTemaPaint() {
   const box = $('#adm-tema-box'); if (!box) return;
+  // Sem cores salvas, o padrão é o desenho de hoje: verde fechado no fundo,
+  // verde da logo na faixa.
+  const brP = ADM_TEMA.padrao.brilho || { ligado: true, angulo: 45, cores: [] };
+  const brS = ADM_TEMA.tema.brilho || {};
+  const brilho = {
+    ligado: brS.ligado === undefined ? brP.ligado : brS.ligado,
+    angulo: brS.angulo || brP.angulo || 45,
+    cores: (brS.cores && brS.cores.length) ? brS.cores : brP.cores
+  };
   const funil = ADM_TEMA.tema.funil.length ? ADM_TEMA.tema.funil : ADM_TEMA.padrao.funil;
   box.innerHTML = `
     <div class="card">
@@ -9558,6 +9567,40 @@ function admTemaPaint() {
       </div>
       <div class="row" style="margin-top:16px;justify-content:flex-end">
         <button class="btn primary no-grow" onclick="admTemaSalvar(this)">${ico('check', 14)} Salvar cores</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>${ico('sparkles')} Botão brilhante</h2>
+      <p class="muted" style="margin:0 0 14px;font-size:13px">
+        O botão de ação da página pública e do checkout da assinatura. A faixa de luz atravessa em diagonal:
+        a <b>primeira cor</b> é o fundo e as seguintes formam a faixa que passa. Duas cores bastam.
+      </p>
+      <label class="sw-row" style="margin-bottom:14px">
+        <input type="checkbox" id="tm-brilho-on" ${brilho.ligado ? 'checked' : ''} onchange="admBrilhoPreview()">
+        <span>Botão brilhante ligado <i class="muted">desligado, ele fica chapado na primeira cor</i></span>
+      </label>
+      <div class="tema-funil" id="tema-brilho">
+        ${brilho.cores.map((c, i) => `
+          <div class="tema-fcor">
+            <input type="color" value="${esc(c)}" data-i="${i}" oninput="admBrilhoPreview()">
+            <span>${i === 0 ? 'fundo' : i + 'ª'}</span>
+          </div>`).join('')}
+      </div>
+      <div class="row" style="margin-top:12px;align-items:flex-end;gap:10px">
+        <button class="btn small no-grow" onclick="admBrilhoMais()">${ico('plus', 12)} Mais uma cor</button>
+        <button class="btn small no-grow" onclick="admBrilhoMenos()">${ico('trash', 12)} Tirar a última</button>
+        <label style="max-width:150px">Ângulo do gradiente
+          <input id="tm-brilho-ang" value="${brilho.angulo}" inputmode="numeric" placeholder="45"
+                 oninput="admBrilhoPreview()"></label>
+      </div>
+      <div class="tema-previa" id="brilho-previa" style="margin-top:16px">
+        <span class="tema-previa-rot">Prévia</span>
+        <button class="btn-brilho" id="brilho-btn" type="button">Começar agora</button>
+      </div>
+      <div class="row" style="margin-top:16px;justify-content:flex-end">
+        <button class="btn no-grow" onclick="admBrilhoPadrao()">Voltar ao padrão</button>
+        <button class="btn primary no-grow" onclick="admBrilhoSalvar(this)">${ico('check', 14)} Salvar botão</button>
       </div>
     </div>
 
@@ -9628,6 +9671,59 @@ function admTemaPreviaFunil() {
 function admTemaFunilPadrao() {
   ADM_TEMA.tema.funil = [];
   admTemaPaint();
+}
+
+// ---- botão brilhante ----
+// A primeira cor é o FUNDO e as seguintes formam a faixa. Repetir a
+// primeira nas pontas é o que faz as do meio atravessarem em vez de
+// virarem um degradê chapado de canto a canto.
+function admBrilhoCores() {
+  return [...document.querySelectorAll('#tema-brilho input[type=color]')].map(i => i.value);
+}
+function admBrilhoGradiente() {
+  const c = admBrilhoCores();
+  if (c.length < 2) return c[0] || '#1c834a';
+  const ang = (parseInt($('#tm-brilho-ang').value, 10) || 45) + 'deg';
+  const par = [c[0], c[0]].concat(c.slice(1)).concat([c[0], c[0]]);
+  return 'linear-gradient(' + ang + ', ' + par.join(', ') + ')';
+}
+function admBrilhoPreview() {
+  const b = $('#brilho-btn'); if (!b) return;
+  const on = $('#tm-brilho-on').checked;
+  const c = admBrilhoCores();
+  b.style.background = on ? admBrilhoGradiente() : (c[0] || '#1c834a');
+  b.style.backgroundSize = on ? '200% 200%' : 'auto';
+  b.style.animation = on ? 'brilhoPassar 5s ease-in-out infinite' : 'none';
+}
+function admBrilhoMais() {
+  const c = admBrilhoCores();
+  if (c.length >= 6) return toast('Seis cores é o limite: acima disso a faixa vira arco-íris', 'error');
+  ADM_TEMA.tema.brilho = Object.assign({}, ADM_TEMA.tema.brilho, { cores: c.concat([c[c.length - 1] || '#2ed378']) });
+  admTemaPaint();
+}
+function admBrilhoMenos() {
+  const c = admBrilhoCores();
+  if (c.length <= 2) return toast('O botão brilhante precisa de pelo menos duas cores', 'error');
+  ADM_TEMA.tema.brilho = Object.assign({}, ADM_TEMA.tema.brilho, { cores: c.slice(0, -1) });
+  admTemaPaint();
+}
+function admBrilhoPadrao() {
+  ADM_TEMA.tema.brilho = { ligado: true, angulo: 45, cores: [] };
+  admTemaPaint();
+}
+async function admBrilhoSalvar(btn) {
+  btn.disabled = true;
+  const corpo = {
+    ligado: $('#tm-brilho-on').checked,
+    angulo: parseInt($('#tm-brilho-ang').value, 10) || 45,
+    cores: admBrilhoCores()
+  };
+  try {
+    await api('/admin/tema', { method: 'PUT', body: { brilho: corpo } });
+    ADM_TEMA.tema.brilho = corpo;
+    toast('Botão salvo! Já vale na página pública.');
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; }
 }
 
 async function admTemaSalvar(btn) {
@@ -11219,7 +11315,7 @@ async function paintIA() {
         <label style="flex:1">Tamanho máximo da resposta<input id="ia-max" inputmode="numeric" value="${esc(String(c.maxSaida))}"></label>
       </div>
       <label style="margin-top:12px">Assinatura no fim da mensagem (opcional)
-        <input id="ia-assin" value="${esc(c.assinatura || '')}" placeholder="— atendimento automático"></label>
+        <input id="ia-assin" value="${esc(c.assinatura || '')}" placeholder="atendimento automático"></label>
       <button class="btn primary no-grow" style="margin-top:12px" onclick="salvarIA({historico:$('#ia-hist').value,maxSaida:$('#ia-max').value,assinatura:$('#ia-assin').value})">${ico('save', 14)} Salvar ajustes</button>
     </div>
 
@@ -13438,7 +13534,7 @@ async function epCelCompartilhar() {
   try {
     await navigator.share({
       title: 'Cobrança ' + fmtBRL(ch.value),
-      text: `Segue o link para pagamento de ${fmtBRL(ch.value)}${ch.comment ? ' — ' + ch.comment : ''}:`,
+      text: `Segue o link para pagamento de ${fmtBRL(ch.value)}${ch.comment ? ', ' + ch.comment : ''}:`,
       url: link
     });
   } catch { /* cancelado pelo usuário: não é erro */ }
@@ -13657,8 +13753,8 @@ async function epPaintSaque(box) {
         <p class="muted" style="margin:0 0 10px;font-size:12.5px">Vendas estornadas ou contestadas pelo comprador. O valor sai da carteira automaticamente.</p>
         <table><thead><tr><th>Quando</th><th>Cliente</th><th>Tipo</th><th style="text-align:right">Valor</th></tr></thead><tbody>
         ${d.contestadas.map(c => `<tr>
-          <td>${c.quando ? fmtDataCurta(c.quando) : '—'}</td>
-          <td>${esc(c.contato || '—')}${c.descricao ? `<br><span class="muted" style="font-size:11.5px">${esc(c.descricao)}</span>` : ''}</td>
+          <td>${c.quando ? fmtDataCurta(c.quando) : '-'}</td>
+          <td>${esc(c.contato || '-')}${c.descricao ? `<br><span class="muted" style="font-size:11.5px">${esc(c.descricao)}</span>` : ''}</td>
           <td><span class="pill ${c.status === 'chargeback' ? 'err' : ''}">${c.status === 'chargeback' ? 'Chargeback' : 'Estorno'}</span> <span class="muted" style="font-size:11.5px">${esc(c.metodo)}</span></td>
           <td style="text-align:right"><b style="color:var(--red)">-${fmtBRL(c.valor)}</b></td></tr>`).join('')}
         </tbody></table>`
@@ -14103,6 +14199,9 @@ async function renderCheckoutBuilder() {
     logo: ck.logo || '', logoMobile: ck.logoMobile || '',
     title: ck.title || '', description: ck.description || '',
     color: ck.color || '#2ed378', successMsg: ck.successMsg || '', supportText: ck.supportText || '',
+    // Botão brilhante ou chapado. Nasce brilhante, que é como o checkout já
+    // vinha; quem preferir o bloco liso desliga aqui.
+    botao: Object.assign({ brilhante: true, angulo: 45, cores: [] }, ck.botao || {}),
     blocks: (ck.blocks && ck.blocks.length) ? ck.blocks.slice() : EPK_BLOCK_KEYS.slice(),
     timer: Object.assign({ on: false, minutes: 15, text: 'Oferta por tempo limitado!' }, ck.timer || {}),
     benefits: Object.assign({ on: false, title: 'O que você recebe', items: [] }, ck.benefits || {}),
@@ -14347,7 +14446,16 @@ function epkPaintForm() {
         ${EPK_COLORS.map(c => `<button class="epk-swatch${c === ck.color ? ' on' : ''}" data-c="${c}" style="background:${c}" onclick="epkSetColor('${c}')"></button>`).join('')}
         <input type="color" id="epk-colorpick" value="${esc(ck.color)}" title="Cor personalizada" oninput="epkSetColor(this.value)">
       </div>
-      <p class="hint" style="margin-top:14px">${ico('shield', 12)} O contraste do texto do botão é ajustado sozinho conforme a cor escolhida.</p>`;
+      <p class="hint" style="margin-top:14px">${ico('shield', 12)} O contraste do texto do botão é ajustado sozinho conforme a cor escolhida.</p>
+
+      <span class="fb-sub" style="margin-top:22px;display:block">Botão de pagar</span>
+      <p class="muted" style="font-size:13px;margin:0 0 10px">No brilhante, uma faixa de luz atravessa o botão em diagonal. No chapado, ele é a cor de destaque, sem movimento.</p>
+      <div class="epk-btnkind">
+        <button class="epk-bk${ck.botao.brilhante ? ' on' : ''}" onclick="epkSetBotao(true)">
+          <span class="epk-bk-demo brilha" style="--c:${esc(ck.color)}"></span> Brilhante</button>
+        <button class="epk-bk${ck.botao.brilhante ? '' : ' on'}" onclick="epkSetBotao(false)">
+          <span class="epk-bk-demo" style="background:${esc(ck.color)}"></span> Chapado</button>
+      </div>`;
   } else if (epkSection === 'mensagens') {
     body = `
       <label style="display:block">Mensagem após o pagamento <span class="muted">(opcional)</span>
@@ -14535,6 +14643,13 @@ function epkDragEnd() {
   $$('.ckb-orow').forEach(r => r.classList.remove('dragging', 'drop-before', 'drop-after'));
 }
 function epkResetOrder() { epkState.blocks = EPK_BLOCK_KEYS.slice(); epkPaintForm(); epkPrev(); }
+
+// A escolha do botão. Repinta o painel para o exemplo ao lado de cada opção
+// sair na cor certa, e atualiza a prévia da página.
+function epkSetBotao(brilhante) {
+  epkState.botao = Object.assign({ angulo: 45, cores: [] }, epkState.botao, { brilhante: !!brilhante });
+  epkPaintSide(); epkPrev();
+}
 
 function epkSetColor(c) {
   epkState.color = c;
