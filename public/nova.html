@@ -666,22 +666,13 @@ var NOMES_KOONFY = {"inbox":"Conversas","team":"Chat interno","schedule":"Agenda
     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('class', 'linhas');
     caixa.appendChild(svg);
-    NOS.forEach(function (nome, i) {
-      var ang = (i / NOS.length) * Math.PI * 2 - Math.PI / 2;
-      // Raio maior nas telas estreitas: com 21 peças, o anel apertado
-      // amontoava tudo.
-      var estreito = document.documentElement.clientWidth < 900;
-      var rx = estreito ? 41 : 40, ry = estreito ? 41 : 38;
-      var cx = 50 + Math.cos(ang) * rx, cy = 50 + Math.sin(ang) * ry;      // o nó
-      var ix = 50 + Math.cos(ang) * 10.5, iy = 50 + Math.sin(ang) * 11.5;  // encosta na joia
+
+    var anel = NOS.map(function (nome, i) {
       var l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      l.setAttribute('x1', ix + '%'); l.setAttribute('y1', iy + '%');
-      l.setAttribute('x2', cx + '%'); l.setAttribute('y2', cy + '%');
       svg.appendChild(l);
       var d = document.createElement('div');
       d.className = 'no';
       d.title = NOMES_KOONFY[nome] || '';
-      d.style.left = cx + '%'; d.style.top = cy + '%';
       // O Pix (e qualquer ícone de preenchimento) não leva traço: com traço
       // por cima, o desenho engorda e vira mancha.
       var cheio = /fill="currentColor"/.test(ICONES_KOONFY[nome]);
@@ -690,7 +681,39 @@ var NOMES_KOONFY = {"inbox":"Conversas","team":"Chat interno","schedule":"Agenda
         : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"'
           + ' stroke-linecap="round" stroke-linejoin="round">' + ICONES_KOONFY[nome] + '</svg>';
       caixa.appendChild(d);
+      return { i: i, linha: l, placa: d };
     });
+
+    // O anel é ARMADO a cada medida nova da caixa. Raio maior nas telas
+    // estreitas: com 21 peças, o anel apertado amontoava tudo.
+    function armarAnel() {
+      var L = caixa.clientWidth, A = caixa.clientHeight;
+      if (!L || !A) return;
+      var estreito = document.documentElement.clientWidth < 900;
+      var rx = estreito ? 41 : 40, ry = estreito ? 41 : 38;
+      anel.forEach(function (n) {
+        var ang = (n.i / anel.length) * Math.PI * 2 - Math.PI / 2;
+        var cx = 50 + Math.cos(ang) * rx, cy = 50 + Math.sin(ang) * ry;      // o nó
+        var ix = 50 + Math.cos(ang) * 10.5, iy = 50 + Math.sin(ang) * 11.5;  // encosta na joia
+        n.placa.style.left = cx + '%'; n.placa.style.top = cy + '%';
+
+        // A ponta externa recua até a MOLDURA da placa. A caixa não é
+        // quadrada, então a direção da linha se calcula em pixels; e o
+        // recuo até a borda de um quadrado, na direção de um vetor
+        // unitário, é a meia-placa dividida pela maior das componentes.
+        var ax = ix / 100 * L, ay = iy / 100 * A;
+        var bx = cx / 100 * L, by = cy / 100 * A;
+        var dx = bx - ax, dy = by - ay, dist = Math.hypot(dx, dy) || 1;
+        var ux = dx / dist, uy = dy / dist;
+        var recuo = (n.placa.offsetWidth / 2) / Math.max(Math.abs(ux), Math.abs(uy));
+        n.linha.setAttribute('x1', ix + '%'); n.linha.setAttribute('y1', iy + '%');
+        n.linha.setAttribute('x2', ((bx - ux * recuo) / L * 100) + '%');
+        n.linha.setAttribute('y2', ((by - uy * recuo) / A * 100) + '%');
+      });
+    }
+    armarAnel();
+    addEventListener('resize', armarAnel);
+    if (window.ResizeObserver) new ResizeObserver(armarAnel).observe(caixa);
   }
 
   // =========================================================================
