@@ -292,6 +292,26 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 /* Dentro do cartão o corpo vem um degrau menor: são nove blocos lado a lado,
    e no tamanho do texto corrido a grade viraria um muro de letra. */
 .corpo-sm{font-size:var(--t-corpo-sm);line-height:1.55;margin:0}
+/* O ícone do cartão é o MESMO do menu do painel: quem chega no produto
+   depois reconhece o lugar pelo desenho, e não só pela palavra. */
+.ic-recurso{display:flex;align-items:center;justify-content:center;
+            width:40px;height:40px;border-radius:10px;
+            border:1px solid var(--fio);color:var(--sinal)}
+.ic-recurso svg{width:20px;height:20px}
+
+/* ---------- perguntas ---------- */
+.faq{display:flex;flex-direction:column}
+.faq details{border-bottom:1px solid var(--fio)}
+.faq details:first-child{border-top:1px solid var(--fio)}
+.faq summary{cursor:pointer;list-style:none;display:flex;gap:16px;align-items:flex-start;
+             justify-content:space-between;padding:20px 0;font-size:var(--t-corpo);line-height:1.4}
+.faq summary::-webkit-details-marker{display:none}
+/* O sinal é um mais que vira menos: a seta girando pede transição e estado,
+   e o glifo já diz a mesma coisa com uma linha de CSS. */
+.faq summary::after{content:"+";color:var(--sinal);font-size:22px;line-height:1;flex:0 0 auto}
+.faq details[open] summary::after{content:"\2212"}
+.faq details p{padding:0 0 22px;max-width:62ch}
+.faq details p a{color:var(--sinal);text-decoration:underline}
 .cartao .titulo-sec{font-size:var(--t-subtitulo);line-height:var(--lh-subtitulo);
                     letter-spacing:-.01em;font-weight:400;margin:0}
 /* O CARTAO RECOMENDADO. Quem escolhe qual e o Admin, e a marca precisa ser
@@ -439,6 +459,7 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
       <a href="#produto">Produto</a>
       <a href="#canais">Canais</a>
       <a href="#recursos">Recursos</a>
+      <a href="#faq">Perguntas</a>
       <a href="#afiliacao">Afiliação</a>
       <a href="#planos">Planos</a>
     </nav>
@@ -467,7 +488,7 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
     <div class="joia-espaco" aria-hidden="true"></div>
     <h1 class="display">Todo o seu atendimento<br>no WhatsApp em<br>um lugar só</h1>
 
-    <p class="corpo mudo">Conversas, funil, campanhas, automação com IA e pagamentos no mesmo número. Sem plugin, sem integração paga, sem risco de banimento.</p>
+    <p class="corpo mudo">Conversas, funil, campanhas, automação com IA e pagamentos no mesmo número. Na API oficial da Meta, sem plugin e sem integração paga.</p>
 
     <div class="linha" style="justify-content:center">
       <a class="btn btn-sinal" data-cta="signup" data-cta-txt href="#planos">Começar agora</a>
@@ -542,49 +563,67 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 
     <div class="cartoes">
       <article class="cartao">
+        <i class="ic-recurso" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-3-.4-4.2-1L3 20l1.1-4.3A8.5 8.5 0 1 1 21 11.5z"/></svg></i>
         <span class="rotulo sinal">Atendimento</span>
         <h3 class="titulo-sec">Vários atendentes no mesmo número</h3>
         <p class="corpo-sm mudo">Fila de conversas, transferência entre pessoas, chat interno da equipe, respostas rápidas e modelos aprovados. Cada atendente com a sua permissão, e o histórico fica na conversa.</p>
       </article>
       <article class="cartao">
+        <i class="ic-recurso" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h18l-7.2 8.4V20l-3.6 1.6v-8.7L3 4.5Z" stroke-linejoin="round"/></svg></i>
         <span class="rotulo sinal">Funil</span>
         <h3 class="titulo-sec">O card anda sozinho quando o dinheiro entra</h3>
         <p class="corpo-sm mudo">A conversa vira lead, o lead percorre as etapas que você desenhar e o pagamento confirmado move o card sem ninguém arrastar. As cores das etapas saem do seu painel.</p>
       </article>
       <article class="cartao">
+        <i class="ic-recurso" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg></i>
         <span class="rotulo sinal">Automação</span>
         <h3 class="titulo-sec">Fluxo visual e um agente de IA por conversa</h3>
         <p class="corpo-sm mudo">Monte o atendimento arrastando blocos, e ligue a IA só onde ela ajuda. O botão é por conversa, então o robô sai de cena no segundo em que alguém precisa assumir.</p>
       </article>
       <article class="cartao">
+        <i class="ic-recurso" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10v4l4 .8V9.2L3 10z"/><path d="M7 9l11-5v16L7 15z"/><path d="M9.5 15.6V19a2 2 0 0 0 4 0v-2.4"/></svg></i>
         <span class="rotulo sinal">Campanhas</span>
         <h3 class="titulo-sec">Disparo com opt-in e opt-out de verdade</h3>
-        <p class="corpo-sm mudo">Campanhas por WhatsApp e SMS, com quem pediu para sair saindo de todas as listas de uma vez. É o que mantém o número vivo: lista suja é o caminho mais curto para o banimento.</p>
+        <p class="corpo-sm mudo">Disparos com quem pediu para sair saindo de todas as listas de uma vez. É o que mantém o número saudável: lista suja é o caminho mais curto para uma denúncia, e denúncia é o que derruba número.</p>
       </article>
       <article class="cartao">
+        <i class="ic-recurso" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/></svg></i>
         <span class="rotulo sinal">Pagamentos</span>
         <h3 class="titulo-sec">Cobrança na conversa, checkout com a sua cara</h3>
         <p class="corpo-sm mudo">Pix, cartão e boleto pelo seu próprio checkout, montado no Checkout Builder. A cobrança sai como botão dentro do WhatsApp, e o dinheiro cai na carteira dentro do painel.</p>
       </article>
       <article class="cartao">
+        <i class="ic-recurso" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg></i>
         <span class="rotulo sinal">Rastreamento</span>
         <h3 class="titulo-sec">Saber de onde veio a venda, e não achar</h3>
         <p class="corpo-sm mudo">Links rastreáveis, pixels do Meta, Google e TikTok, e envio de eventos pelo servidor. O anúncio que trouxe a conversa continua colado nela até o pagamento confirmar.</p>
       </article>
       <article class="cartao">
+        <i class="ic-recurso" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.7A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.8a2 2 0 0 1-.4 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.9.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg></i>
         <span class="rotulo sinal">Agenda e ligações</span>
         <h3 class="titulo-sec">O compromisso e a chamada no mesmo lugar</h3>
         <p class="corpo-sm mudo">Agendamentos presos ao contato e chamadas de voz que tocam no painel ou no celular. Você passa a chamada para outro atendente, e a gravação fica guardada na conversa.</p>
       </article>
       <article class="cartao">
+        <i class="ic-recurso" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2"/><path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06"/><path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8"/></svg></i>
         <span class="rotulo sinal">Integrações</span>
         <h3 class="titulo-sec">Webhook para o que já roda na sua operação</h3>
         <p class="corpo-sm mudo">Nuvemshop, plataformas de checkout e qualquer sistema que saiba mandar um POST. Os campos do webhook são mapeados na tela, sem precisar de programador do outro lado.</p>
       </article>
       <article class="cartao">
+        <i class="ic-recurso" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3z"/></svg></i>
         <span class="rotulo sinal">Instalação</span>
-        <h3 class="titulo-sec">API oficial da Meta, sem risco de banimento</h3>
-        <p class="corpo-sm mudo">O número roda na WhatsApp Cloud API, com a Koonfy como Tech Provider da Meta. Nada de aparelho ligado num canto da sala nem de plugin que o WhatsApp derruba.</p>
+        <h3 class="titulo-sec">API oficial da Meta, com as regras às claras</h3>
+        <p class="corpo-sm mudo">O número roda na WhatsApp Cloud API, com a Koonfy como Tech Provider da Meta. Nada de aparelho ligado num canto da sala nem de plugin que o WhatsApp derruba. Quem decide sobre o número é a Meta, e as regras dela valem aqui como valem em qualquer lugar.</p>
       </article>
     </div>
   </div>
@@ -614,6 +653,46 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
     <!-- Os cartoes sao montados a partir de /api/public/landing. O que fica
          aqui e so o esqueleto: sem planos publicados, a secao nao aparece. -->
     <div class="cartoes" id="cartoes-plano"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== PERGUNTAS ===================== -->
+<!-- A primeira pergunta é a do banimento, e ela responde "pode". Vender
+     imunidade cria um cliente que descobre a verdade do pior jeito. -->
+<section class="faixa escura" id="faq">
+  <div class="wrap split">
+    <div class="pilha">
+      <span class="rotulo sinal">Perguntas</span>
+      <h2 class="titulo-sec">O que perguntam antes de assinar</h2>
+      <p class="corpo mudo">Se a sua dúvida não estiver aqui, chame no WhatsApp: a gente responde antes de você pagar, não depois.</p>
+    </div>
+
+    <div class="faq">
+      <details>
+        <summary>O meu número pode ser banido ou desconectado?</summary>
+        <p class="corpo-sm mudo">Pode. Quem decide sobre o número é a <b>Meta</b>, e ela restringe, desconecta ou bane números que desrespeitam as <a href="https://business.whatsapp.com/policy" target="_blank" rel="noopener">políticas do WhatsApp Business</a>. A Cloud API tira o risco de derrubada por aparelho e por plugin não oficial, mas não é passe livre: disparo para quem não pediu, lista comprada, conteúdo proibido e denúncia de usuário continuam derrubando número na API oficial do mesmo jeito. A Koonfy ajuda com o que está ao alcance dela (opt-in, opt-out em todas as listas, modelos aprovados e limite de envio), mas a decisão final é da Meta.</p>
+      </details>
+      <details>
+        <summary>O que aumenta o risco de a Meta agir contra o meu número?</summary>
+        <p class="corpo-sm mudo">Mandar mensagem para quem nunca falou com você, comprar lista, insistir com quem pediu para sair, prometer o que o produto não faz e assuntos que a política proíbe. O sinal mais forte é a <b>denúncia</b>: quando muita gente marca as suas mensagens como spam, a qualidade do número cai e os limites de envio caem junto, até a conta ser restringida.</p>
+      </details>
+      <details>
+        <summary>Preciso trocar de número para usar a Koonfy?</summary>
+        <p class="corpo-sm mudo">Não, se o número ainda não está em outra plataforma de API. Ele passa a funcionar pela Cloud API da Meta, e o aparelho deixa de ser usado para atender: as conversas passam a viver no painel.</p>
+      </details>
+      <details>
+        <summary>A conta é criada antes ou depois do pagamento?</summary>
+        <p class="corpo-sm mudo">Depois. Você preenche o checkout, paga, e a conta nasce já com o plano ativo e com a conta de recebimento aberta com os mesmos dados. Não existe cadastro solto nem período de teste.</p>
+      </details>
+      <details>
+        <summary>Como funciona a cobrança dentro da conversa?</summary>
+        <p class="corpo-sm mudo">Você gera a cobrança no painel e ela sai como botão no WhatsApp do cliente. O botão abre o seu checkout, com a sua marca, onde ele escolhe Pix, cartão ou boleto. Pagamento confirmado, o card anda no funil sozinho e o dinheiro cai na sua carteira.</p>
+      </details>
+      <details>
+        <summary>Posso cancelar quando quiser?</summary>
+        <p class="corpo-sm mudo">Pode, pelo próprio painel. A assinatura vale até o fim do ciclo já pago e não renova. Nenhum contato, conversa ou relatório é apagado no cancelamento.</p>
+      </details>
     </div>
   </div>
 </section>

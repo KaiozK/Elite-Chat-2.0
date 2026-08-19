@@ -1845,7 +1845,10 @@ module.exports = function (broadcast, clients) {
     const to = store.normalizeWaId((req.body || {}).to);
     if (!to) return res.status(400).json({ error: 'Informe "to"' });
     const r = await wa.sendCallPermission(req.wctx, to, (req.body || {}).text);
-    storeOutbound(req.wctx, to, { type: 'interactive', text: '📞 Pedido de permissão para ligar' }, r);
+    storeOutbound(req.wctx, to, {
+      type: 'interactive', text: 'Pedido de permissão para ligar',
+      buttons: [{ id: 'call_permission', title: '📞 Permitir ligação' }]
+    }, r);
     res.json({ ok: true });
   }));
 
@@ -2315,12 +2318,37 @@ module.exports = function (broadcast, clients) {
     });
   }));
 
+  // O PAYLOAD INTERATIVO DA META tem três formatos que interessam à conversa:
+  // `button` (respostas rápidas), `cta_url` (um botão que abre link) e `list`
+  // (menu). Os dois primeiros viram botões desenhados no chat; a lista vira o
+  // rótulo do menu, porque desenhar dez opções no balão não ajudaria ninguém.
+  function botoesDoInterativo(it) {
+    const a = (it && it.action) || {};
+    if (Array.isArray(a.buttons)) {
+      return a.buttons.map((b, i) => ({
+        id: (b.reply && b.reply.id) || 'btn_' + (i + 1),
+        title: String((b.reply && b.reply.title) || '').slice(0, 24)
+      })).filter(b => b.title);
+    }
+    if (a.name === 'cta_url' && a.parameters && a.parameters.display_text) {
+      return [{ id: 'cta_url', title: String(a.parameters.display_text).slice(0, 24) }];
+    }
+    if (a.button) return [{ id: 'list', title: String(a.button).slice(0, 24) }];
+    return [];
+  }
+  function textoDoInterativo(it) {
+    const b = it && it.body && it.body.text;
+    return String(b || '').trim() || '[mensagem interativa]';
+  }
+
   // Payload interactive completo (listas, CTA URL etc.) — passa direto para a Graph API
   router.post('/send/interactive', auth, can('inbox', 'create'), requireActive, requireConsent, requireWindow('interactive'), markAgent, h(async (req, res) => {
     const { to, interactive } = req.body;
     if (!to || !interactive) return res.status(400).json({ error: 'Informe "to" e "interactive"' });
     const r = await wa.sendInteractive(req.wctx, store.normalizeWaId(to), interactive);
-    res.json({ ok: true, message: storeOutbound(req.wctx, to, { type: 'interactive', text: '[mensagem interativa]' }, r) });
+    res.json({ ok: true, message: storeOutbound(req.wctx, to, {
+      type: 'interactive', text: textoDoInterativo(interactive), buttons: botoesDoInterativo(interactive)
+    }, r) });
   }));
 
   router.post('/send/location', auth, can('inbox', 'create'), requireActive, requireConsent, requireWindow('location'), h(async (req, res) => {
@@ -4788,7 +4816,10 @@ module.exports = function (broadcast, clients) {
     let r, msg;
     try {
       r = await wa.sendInteractive(acc, to, btn.interactive);
-      msg = { type: 'interactive', text: btn.body + '\n[🔗 ' + btn.displayText + ']' };
+      // O botão vai ESTRUTURADO: assim a conversa desenha o botão de verdade,
+      // como na pré-visualização dos modelos, em vez de mostrar o rótulo
+      // grudado no fim do texto.
+      msg = { type: 'interactive', text: btn.body, buttons: [{ id: 'checkout', title: btn.displayText }] };
     } catch (e) {
       elitepay.log(acc, { type: 'charge_button_fallback', chargeId: ch.id, detail: 'Botão recusado, indo por texto: ' + e.message });
       const text = elitepay.chargeMessage(acc, ch, { semCodigo: true });
