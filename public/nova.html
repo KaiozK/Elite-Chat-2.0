@@ -22,8 +22,7 @@
   /* --- cor --- */
   --sinal:#2ED378;            /* o acento: verde da logo, no papel do citrino */
   --sinal-glow:rgba(46,211,120,.15);
-  --sinal-menta:#7BEBAE;         /* o alto da joia: a faixa que atravessa o botao */
-  --sinal-fundo:#1C834A;         /* o fundo da joia: a espessura embaixo do botao */
+  --sinal-fundo:#1C834A;         /* o verde fechado da joia: base do botao do plano */
   --carbono:#111111;
   --osso:#f9f9f9;
   --grafite:#2b2b2b;
@@ -110,34 +109,42 @@ a{color:inherit;text-decoration:none}
 }
 .btn:hover{opacity:.86}
 
-/* O BOTAO DE ACAO. Vale para os tres lugares em que ele aparece — barra,
-   heroi e cartao do plano —, porque sao a MESMA acao e nao havia razao para
-   tres desenhos.
+/* A ACAO, chapada: e assim em toda a pagina. O rotulo da barra vem menor e
+   em caixa alta, porque ali ele e uma marca de utilidade ao lado dos links,
+   e no hover o bloco inverte para osso sobre carbono — o mesmo gesto das
+   faixas que trocam de cor enquanto a pagina desce. */
+.btn-sinal{background:var(--sinal);color:#fff}
+.btn-sinal:hover{background:var(--sinal)}
+.nav .btn-sinal{
+  padding:12px 22px;font-size:var(--t-caption);line-height:1;
+  letter-spacing:.032em;text-transform:uppercase;
+  transition:background .2s ease, color .2s ease;
+}
+.nav .btn-sinal:hover{opacity:1;background:var(--osso);color:var(--carbono)}
+
+/* O BOTAO DO PLANO RECOMENDADO, e so ele. Espalhado pela pagina inteira o
+   efeito deixava de destacar coisa nenhuma; aqui ele tem trabalho: puxar o
+   olho para o cartao que o Admin marcou.
 
    O canto usa raio ELIPTICO (26px na horizontal, metade da altura na
-   vertical): abre no meio e fecha nas pontas, virando pastilha em vez de
-   capsula. A aresta de menta e o brilho interno separam o botao do fundo;
-   e a faixa clara atravessa porque o gradiente e o dobro do botao — o que
-   anda e a POSICAO dele, nao o gradiente. */
-.btn-sinal{
-  color:#fff;border:1px solid var(--sinal-menta);
+   vertical): abre no meio e fecha nas pontas, virando pastilha. A base e o
+   verde FECHADO da joia, que da 4,86:1 com o texto branco — com o verde da
+   logo por baixo o rotulo ficava em 1,96:1. Quem atravessa e o verde da
+   logo, e ele atravessa porque o gradiente e o dobro do botao: o que anda e
+   a POSICAO dele, nao o gradiente. */
+.cartao.escolhido .btn-sinal{
+  color:#fff;border:1px solid var(--sinal);
   border-radius:26px / 100%;
-  box-shadow:inset 0 0 5px 5px rgba(255,255,255,.16);
-  background:linear-gradient(45deg, var(--sinal), var(--sinal), var(--sinal),
-                             var(--sinal-menta), var(--sinal), var(--sinal));
+  box-shadow:inset 0 0 5px 5px rgba(255,255,255,.14);
+  background:linear-gradient(45deg, var(--sinal-fundo), var(--sinal-fundo), var(--sinal-fundo),
+                             var(--sinal), var(--sinal-fundo), var(--sinal-fundo));
   background-size:200% 200%;
   animation:passar 5s ease-in-out infinite;
   transform-origin:center;
-  transition:transform .18s ease, box-shadow .18s ease;
+  transition:transform .18s ease;
 }
-.btn-sinal:hover{opacity:1;transform:scale(1.05)}
-.btn-sinal:active{transform:scale(1);transition:all .1s ease-in}
-/* Na barra o mesmo botao vem menor e em caixa alta: ali ele e uma marca de
-   utilidade ao lado dos links, e nao a chamada da secao. */
-.nav .btn-sinal{
-  padding:12px 24px;font-size:var(--t-caption);line-height:1;
-  letter-spacing:.032em;text-transform:uppercase;
-}
+.cartao.escolhido .btn-sinal:hover{opacity:1;transform:scale(1.05)}
+.cartao.escolhido .btn-sinal:active{transform:scale(1);transition:all .1s ease-in}
 @keyframes passar{
   0%{background-position:0% 50%}
   50%{background-position:100% 50%}
@@ -336,7 +343,7 @@ a{color:inherit;text-decoration:none}
 }
 @media (prefers-reduced-motion:reduce){
   .not{animation:none;opacity:1}
-  .btn-sinal{animation:none;background-position:0 50%}
+  .cartao.escolhido .btn-sinal{animation:none;background-position:0 50%}
   .joia{transition:none}
 }
 </style>
