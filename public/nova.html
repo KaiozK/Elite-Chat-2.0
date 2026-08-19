@@ -271,6 +271,11 @@ a{color:inherit;text-decoration:none}
 }
 .cartao li{position:relative}
 .cartao .btn{align-self:flex-start;margin-top:auto}
+/* Dentro do cartão o corpo vem um degrau menor: são nove blocos lado a lado,
+   e no tamanho do texto corrido a grade viraria um muro de letra. */
+.corpo-sm{font-size:var(--t-corpo-sm);line-height:1.55;margin:0}
+.cartao .titulo-sec{font-size:var(--t-subtitulo);line-height:var(--lh-subtitulo);
+                    letter-spacing:-.01em;font-weight:400;margin:0}
 /* O CARTAO RECOMENDADO. Quem escolhe qual e o Admin, e a marca precisa ser
    visivel sem gritar: a borda passa a ser o verde da marca e o cartao sobe
    um degrau de fundo. O selo diz o motivo em vez de so brilhar. */
@@ -289,17 +294,20 @@ a{color:inherit;text-decoration:none}
    logo e o verde fechado da base. */
 @property --giro{ syntax:"<angle>"; initial-value:132deg; inherits:false; }
 .cartao.escolhido{--brilho-1:#7BEBAE; --brilho-2:#2ED378; --brilho-3:#0E7A5A}
+/* SEMPRE ACESO. No hover ele so existia no computador — no celular, onde
+   metade das visitas acontece, o cartao recomendado ficava igual aos outros.
+   Aceso o tempo todo, a marca funciona nos dois. */
 .cartao.escolhido::before, .cartao.escolhido::after{
-  content:"";opacity:0;transition:opacity .5s ease-in-out;pointer-events:none;
-}
-.cartao.escolhido:hover::before, .cartao.escolhido:hover::after{
-  position:absolute;z-index:-1;opacity:1;border-radius:inherit;
+  content:"";position:absolute;z-index:-1;border-radius:inherit;pointer-events:none;
   background-image:linear-gradient(var(--giro), var(--brilho-1), var(--brilho-2) 43%, var(--brilho-3));
   animation:girar 2.5s linear infinite;
 }
-.cartao.escolhido:hover::before{width:104%;height:104%;top:-2%;left:-2%}
-.cartao.escolhido:hover::after{top:0;left:0;right:0;width:100%;height:100%;
-                               transform:scale(.9);filter:blur(70px)}
+.cartao.escolhido::before{width:104%;height:104%;top:-2%;left:-2%}
+.cartao.escolhido::after{top:0;left:0;right:0;width:100%;height:100%;
+                         transform:scale(.9);filter:blur(70px);opacity:.85;
+                         transition:opacity .5s ease-in-out}
+/* O mouse em cima abre mais o halo: o efeito continua respondendo. */
+.cartao.escolhido:hover::after{opacity:1}
 @keyframes girar{ 0%{--giro:0deg} 100%{--giro:360deg} }
 /* O selo monta na BORDA DE CIMA, fora do fluxo. Empilhado com o resto ele
    empurrava o nome e o preco do cartao recomendado para baixo, e as tres
@@ -372,7 +380,7 @@ a{color:inherit;text-decoration:none}
 @media (prefers-reduced-motion:reduce){
   .not{animation:none;opacity:1}
   .btn-sinal{animation:none;background-position:0 50%}
-  .cartao.escolhido:hover::before, .cartao.escolhido:hover::after{animation:none}
+  .cartao.escolhido::before, .cartao.escolhido::after{animation:none}
   .joia{transition:none}
 }
 </style>
@@ -386,7 +394,8 @@ a{color:inherit;text-decoration:none}
     <nav class="navlinks">
       <a href="#produto">Produto</a>
       <a href="#canais">Canais</a>
-      <a href="#celular">Notificações</a>
+      <a href="#recursos">Recursos</a>
+      <a href="#afiliacao">Indique e ganhe</a>
       <a href="#planos">Planos</a>
     </nav>
     <div class="linha" style="gap:12px">
@@ -471,6 +480,69 @@ a{color:inherit;text-decoration:none}
   </div>
 </section>
 
+<!-- ===================== RECURSOS ===================== -->
+<!-- O que a Koonfy faz, em blocos. A página falava de um número só e de
+     preço, e calava sobre o produto: quem chega não tinha como saber que
+     ali dentro tem funil, fluxo, IA, campanha, cobrança e rastreamento. -->
+<section class="faixa escura" id="recursos">
+  <div class="wrap pilha" style="gap:var(--e48)">
+    <div class="pilha" style="gap:var(--e16);max-width:760px">
+      <span class="rotulo sinal">O que vem junto</span>
+      <h2 class="titulo">Não é um chat com<br>extras. É a operação inteira</h2>
+      <p class="corpo mudo">Cada bloco abaixo é um módulo que já está no painel — não é planejamento nem
+        recurso vendido à parte. Todos dividem o mesmo contato, a mesma conversa e o mesmo relatório.</p>
+    </div>
+
+    <div class="cartoes">
+      <article class="cartao">
+        <span class="rotulo sinal">Atendimento</span>
+        <h3 class="titulo-sec">Vários atendentes no mesmo número</h3>
+        <p class="corpo-sm mudo">Fila de conversas, transferência entre pessoas, chat interno da equipe, respostas rápidas e modelos aprovados. Cada atendente com a sua permissão, e o histórico fica na conversa.</p>
+      </article>
+      <article class="cartao">
+        <span class="rotulo sinal">Funil</span>
+        <h3 class="titulo-sec">O card anda sozinho quando o dinheiro entra</h3>
+        <p class="corpo-sm mudo">A conversa vira lead, o lead percorre as etapas que você desenhar e o pagamento confirmado move o card sem ninguém arrastar. As cores das etapas saem do seu painel.</p>
+      </article>
+      <article class="cartao">
+        <span class="rotulo sinal">Automação</span>
+        <h3 class="titulo-sec">Fluxo visual e um agente de IA por conversa</h3>
+        <p class="corpo-sm mudo">Monte o atendimento arrastando blocos, e ligue a IA só onde ela ajuda — o botão é por conversa, então o robô sai de cena no segundo em que alguém precisa assumir.</p>
+      </article>
+      <article class="cartao">
+        <span class="rotulo sinal">Campanhas</span>
+        <h3 class="titulo-sec">Disparo com opt-in e opt-out de verdade</h3>
+        <p class="corpo-sm mudo">Campanhas por WhatsApp e SMS, com quem pediu para sair saindo de todas as listas de uma vez. É o que mantém o número vivo: lista suja é o caminho mais curto para o banimento.</p>
+      </article>
+      <article class="cartao">
+        <span class="rotulo sinal">Pagamentos</span>
+        <h3 class="titulo-sec">Cobrança na conversa, checkout com a sua cara</h3>
+        <p class="corpo-sm mudo">Pix, cartão e boleto pelo seu próprio checkout, montado no Checkout Builder. A cobrança sai como botão dentro do WhatsApp, e o dinheiro cai na carteira dentro do painel.</p>
+      </article>
+      <article class="cartao">
+        <span class="rotulo sinal">Rastreamento</span>
+        <h3 class="titulo-sec">Saber de onde veio a venda, e não achar</h3>
+        <p class="corpo-sm mudo">Links rastreáveis, pixels do Meta, Google e TikTok, e envio de eventos pelo servidor. O anúncio que trouxe a conversa continua colado nela até o pagamento confirmar.</p>
+      </article>
+      <article class="cartao">
+        <span class="rotulo sinal">Agenda e ligações</span>
+        <h3 class="titulo-sec">O compromisso e a chamada no mesmo lugar</h3>
+        <p class="corpo-sm mudo">Agendamentos presos ao contato e chamadas de voz que tocam no painel ou no celular. Você passa a chamada para outro atendente, e a gravação fica guardada na conversa.</p>
+      </article>
+      <article class="cartao">
+        <span class="rotulo sinal">Integrações</span>
+        <h3 class="titulo-sec">Webhook para o que já roda na sua operação</h3>
+        <p class="corpo-sm mudo">Nuvemshop, plataformas de checkout e qualquer sistema que saiba mandar um POST. Os campos do webhook são mapeados na tela, sem precisar de programador do outro lado.</p>
+      </article>
+      <article class="cartao">
+        <span class="rotulo sinal">Instalação</span>
+        <h3 class="titulo-sec">API oficial da Meta, sem risco de banimento</h3>
+        <p class="corpo-sm mudo">O número roda na WhatsApp Cloud API, com a Koonfy como Tech Provider da Meta. Nada de aparelho ligado num canto da sala nem de plugin que o WhatsApp derruba.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
 <!-- ===================== BANDA DE INVERSÃO (a única faixa clara) ===================== -->
 <section class="faixa clara inversao">
 
@@ -495,6 +567,38 @@ a{color:inherit;text-decoration:none}
     <!-- Os cartoes sao montados a partir de /api/public/landing. O que fica
          aqui e so o esqueleto: sem planos publicados, a secao nao aparece. -->
     <div class="cartoes" id="cartoes-plano"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== INDIQUE E GANHE ===================== -->
+<!-- O programa existe desde sempre no painel e a vitrine nunca falou dele.
+     As porcentagens vêm do Admin, como os planos: número escrito à mão aqui
+     viraria promessa que o painel não cumpre. -->
+<section class="faixa clara" id="afiliacao">
+  <div class="wrap split">
+    <div class="pilha">
+      <span class="rotulo sinal">Indique e ganhe</span>
+      <h2 class="titulo-sec">Quem indica a Koonfy recebe todo mês, e não uma vez só</h2>
+      <p class="corpo mudo">Toda conta nasce com um link de indicação. Quando alguém assina por ele, a comissão
+        cai na sua carteira <b>automaticamente</b>, no instante em que o pagamento é confirmado — e continua caindo
+        a cada renovação, enquanto essa pessoa for cliente.</p>
+      <p class="corpo mudo">O saque sai por Pix, direto do painel. Sem formulário, sem aprovação manual e sem
+        planilha no meio do caminho.</p>
+      <div class="linha"><a class="btn btn-sinal" data-cta="signup" href="/assinar">Começar a indicar</a></div>
+    </div>
+
+    <div class="pilha" style="gap:var(--e16)">
+      <div class="cartao">
+        <span class="rotulo">Primeira assinatura</span>
+        <div class="preco"><span id="aff-primeira">—</span><span class="ciclo"> do valor pago</span></div>
+        <p class="corpo-sm mudo">Comissão sobre a primeira mensalidade de cada indicado.</p>
+      </div>
+      <div class="cartao">
+        <span class="rotulo">Toda renovação</span>
+        <div class="preco"><span id="aff-renovacao">—</span><span class="ciclo"> todo mês</span></div>
+        <p class="corpo-sm mudo">Enquanto o indicado continuar pagando, você continua recebendo.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -801,6 +905,19 @@ var LOGOS_KOONFY = [
         if (n) n.textContent = ' ' + txt;
       }
     });
+    // A COMISSÃO DA INDICAÇÃO. Sai do Admin, como os planos. Se o admin
+    // zerar a comissão, a faixa inteira sai do ar: prometer indicação que
+    // não paga nada é pior do que não falar de indicação.
+    var aff = c.afiliacao || {};
+    var faixaAff = document.getElementById('afiliacao');
+    if (faixaAff) {
+      if (!aff.primeira && !aff.renovacao) faixaAff.hidden = true;
+      else {
+        document.getElementById('aff-primeira').textContent = aff.primeira + '%';
+        document.getElementById('aff-renovacao').textContent = aff.renovacao + '%';
+      }
+    }
+
     medir(); calcular(); agendar();
   }).catch(function () {});
 })();

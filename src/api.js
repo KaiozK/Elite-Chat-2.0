@@ -464,6 +464,10 @@ module.exports = function (broadcast, clients) {
   router.get('/public/landing', (req, res) => {
     const p = db.get().platform;
     const trialDays = p.billing.trialDays || 0;
+    // A comissão de indicação também sai daqui: a vitrine fala dela numa
+    // faixa própria, e um número fixo no HTML seria promessa que o painel
+    // não cumpre quando o admin mudar a porcentagem.
+    const aff = p.affiliate || {};
     const ctaText = (p.landing && p.landing.ctaText || '').trim();
     // Os planos da landing eram escritos à mão no HTML e viviam desencontrados
     // dos que o cliente encontra ao assinar. Aqui saem os MESMOS que o painel
@@ -526,6 +530,7 @@ module.exports = function (broadcast, clients) {
     };
     res.json({
       trialDays,
+      afiliacao: { primeira: Number(aff.percentFirst) || 0, renovacao: Number(aff.percentRenewal) || 0 },
       ctaText: ctaText || (trialDays > 0 ? `Testar por ${trialDays} dias` : 'Começar agora'),
       planos, recursos
     });
