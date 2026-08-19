@@ -1758,7 +1758,9 @@ const NAV_OF = {
   'links/new': 'links', 'links/edit': 'links', 'links/stats': 'links',
   'agents/perf': 'agents', 'agents/logs': 'agents',
   'campaigns/report': 'campaigns', 'campaigns/mapa': 'campaigns',
-  'elitepay/checkout': 'checkouts'
+  'elitepay/checkout': 'checkouts',
+  // Pixels virou aba de Tracking: a rota continua, o menu é o mesmo.
+  pixels: 'tracking'
 };
 
 // ---------- permissões (front) ----------
@@ -5176,8 +5178,19 @@ async function renderPixels() {
   try { cfg = await api('/settings'); } catch {}
   $('#view').innerHTML = `<div class="page">
     <div class="page-head row">
-      <div style="flex:1"><h1>Pixels &amp; rastreamento</h1><p>Configure os pixels que disparam nos seus links rastreáveis, no navegador e no servidor (Conversions API)</p></div>
+      <div style="flex:1"><h1>Tracking</h1><p>Configure os pixels que disparam nos seus links rastreáveis, no navegador e no servidor (Conversions API)</p></div>
       <button class="btn primary no-grow" onclick="openPixelForm(null)">${ico('plus', 14)} Adicionar pixel</button>
+    </div>
+    <!-- A MESMA barra do Tracking, com Pixels aceso: as duas telas são a
+         mesma seção, e a pessoa troca entre elas sem voltar ao menu. -->
+    <div class="tabs">
+      <button onclick="location.hash='#/tracking'">Visão geral</button>
+      <button onclick="location.hash='#/tracking'">Conexões</button>
+      <button onclick="location.hash='#/tracking'">Campanhas</button>
+      <button onclick="location.hash='#/tracking'">Funil</button>
+      <button onclick="location.hash='#/tracking'">Eventos</button>
+      <button onclick="location.hash='#/tracking'">Alertas</button>
+      <button class="active" data-tab="px-pixels">Pixels</button>
     </div>
     <div id="px-form"></div>
     <div class="card">
@@ -5638,7 +5651,7 @@ const TITLES = {
   team: 'Chat interno', flows: 'Flow Builder', links: 'Links rastreáveis',
   integrations: 'Integrações', webhooks: 'Integrações',
   elitepay: 'Pagamentos', 'elitepay/checkout': 'Checkout Builder', checkouts: 'Checkout Builder', tracking: 'Tracking',
-  schedule: 'Agendamentos', consent: 'Opt-in & Opt-out', pixels: 'Pixels & rastreamento',
+  schedule: 'Agendamentos', consent: 'Opt-in & Opt-out', pixels: 'Tracking',
   agents: 'Atendentes', billing: 'Assinatura & Carteira', admin: 'Admin SaaS', sms: 'Disparos de SMS',
   'templates/new': 'Criar modelo', 'campaigns/new': 'Nova campanha'
 };
@@ -15395,6 +15408,7 @@ async function renderTracking() {
       <button class="${trkState.tab === 'funnel' ? 'active' : ''}" data-tab="trk-funnel" onclick="trkTab('funnel')">Funil</button>
       <button class="${trkState.tab === 'events' ? 'active' : ''}" data-tab="trk-events" onclick="trkTab('events')">Eventos</button>
       <button class="${trkState.tab === 'alerts' ? 'active' : ''}" data-tab="trk-alerts" onclick="trkTab('alerts')">Alertas</button>
+      <button data-tab="trk-pixels" onclick="location.hash='#/pixels'">Pixels</button>
     </div>
     <div id="trk-box">${skel(5)}</div>
   </div>`;
