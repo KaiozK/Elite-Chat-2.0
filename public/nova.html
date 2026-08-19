@@ -110,20 +110,19 @@ a{color:inherit;text-decoration:none}
 }
 .btn:hover{opacity:.86}
 
-/* A ACAO DA BARRA. Botao de relevo, no modelo que o Kaio trouxe, com o verde
-   da joia no lugar do azul.
+/* O BOTAO DE ACAO. Vale para os tres lugares em que ele aparece — barra,
+   heroi e cartao do plano —, porque sao a MESMA acao e nao havia razao para
+   tres desenhos.
 
-   O canto usa raio ELIPTICO — 20px na horizontal, metade da altura na
-   vertical: abre no meio e fecha nas pontas, virando pastilha em vez de
-   capsula. A espessura vem da segunda sombra, que nao tem desfoque: e uma
-   faixa solida colada embaixo, a lateral de um bloco de 5px. E a faixa de
-   menta atravessa porque o fundo e o dobro do botao — o que anda e a
-   POSICAO do gradiente, nao o gradiente. */
-.nav .btn-sinal{
-  padding:13px 26px;font-size:var(--t-caption);line-height:1;
-  letter-spacing:.032em;text-transform:uppercase;border:0;
-  border-radius:20px / 100%;
-  box-shadow:inset 0 0 5px 5px rgba(255,255,255,.16), 0 5px 0 0 var(--sinal-fundo);
+   O canto usa raio ELIPTICO (26px na horizontal, metade da altura na
+   vertical): abre no meio e fecha nas pontas, virando pastilha em vez de
+   capsula. A aresta de menta e o brilho interno separam o botao do fundo;
+   e a faixa clara atravessa porque o gradiente e o dobro do botao — o que
+   anda e a POSICAO dele, nao o gradiente. */
+.btn-sinal{
+  color:#fff;border:1px solid var(--sinal-menta);
+  border-radius:26px / 100%;
+  box-shadow:inset 0 0 5px 5px rgba(255,255,255,.16);
   background:linear-gradient(45deg, var(--sinal), var(--sinal), var(--sinal),
                              var(--sinal-menta), var(--sinal), var(--sinal));
   background-size:200% 200%;
@@ -131,22 +130,19 @@ a{color:inherit;text-decoration:none}
   transform-origin:center;
   transition:transform .18s ease, box-shadow .18s ease;
 }
-.nav .btn-sinal:hover{opacity:1;transform:scale(1.05)}
-/* No clique o botao AFUNDA: desce 3px e a faixa de baixo encurta na mesma
-   medida, entao a soma altura+faixa nao muda e o bloco parece pressionado
-   contra a barra em vez de escorregar. */
-.nav .btn-sinal:active{
-  transform:scale(1) translateY(3px);
-  box-shadow:inset 0 0 5px 5px rgba(255,255,255,.16), 0 2px 0 0 var(--sinal-fundo);
-  transition:all .1s ease-in;
+.btn-sinal:hover{opacity:1;transform:scale(1.05)}
+.btn-sinal:active{transform:scale(1);transition:all .1s ease-in}
+/* Na barra o mesmo botao vem menor e em caixa alta: ali ele e uma marca de
+   utilidade ao lado dos links, e nao a chamada da secao. */
+.nav .btn-sinal{
+  padding:12px 24px;font-size:var(--t-caption);line-height:1;
+  letter-spacing:.032em;text-transform:uppercase;
 }
 @keyframes passar{
   0%{background-position:0% 50%}
   50%{background-position:100% 50%}
   100%{background-position:0% 50%}
 }
-.btn-sinal{background:var(--sinal);color:#fff}
-.btn-sinal:hover{background:var(--sinal)}
 .btn-escuro{background:var(--inversa-texto);color:var(--inversa)}
 .btn-fantasma{
   background:transparent;color:var(--texto);border-color:var(--texto);
@@ -253,8 +249,35 @@ a{color:inherit;text-decoration:none}
 .cartao .preco{font-size:var(--t-titulo);line-height:1;letter-spacing:var(--ls-titulo);font-weight:400}
 .cartao ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;color:var(--mudo);font-size:var(--t-corpo-sm)}
 .cartao li{display:flex;gap:10px;align-items:flex-start}
-.cartao li::before{content:"";width:6px;height:6px;margin-top:8px;background:var(--sinal);flex:0 0 6px}
+/* O item do plano e marcado com um CERTO, nao com um quadrado. O quadrado
+   so dizia "item de lista"; o certo diz "isto esta incluso", que e a
+   pergunta que a pessoa faz ao ler a coluna. Desenhado em CSS: duas linhas
+   em L, giradas 45 graus — nao vale carregar um SVG por marcador. */
+.cartao li::before{
+  content:"";flex:0 0 16px;width:16px;height:16px;margin-top:2px;position:relative;
+}
+.cartao li::after{
+  content:"";position:absolute;left:4px;top:6px;width:5px;height:9px;
+  border:solid var(--sinal);border-width:0 1.8px 1.8px 0;transform:rotate(45deg);
+}
+.cartao li{position:relative}
 .cartao .btn{align-self:flex-start;margin-top:auto}
+/* O CARTAO RECOMENDADO. Quem escolhe qual e o Admin, e a marca precisa ser
+   visivel sem gritar: a borda passa a ser o verde da marca e o cartao sobe
+   um degrau de fundo. O selo diz o motivo em vez de so brilhar. */
+.cartao.escolhido{border-color:var(--sinal);background:linear-gradient(160deg,rgba(46,211,120,.07),transparent 62%),var(--painel)}
+/* O selo monta na BORDA DE CIMA, fora do fluxo. Empilhado com o resto ele
+   empurrava o nome e o preco do cartao recomendado para baixo, e as tres
+   colunas deixavam de se alinhar justamente na que devia chamar atencao. */
+.cartao{position:relative}
+.selo-escolhido{
+  position:absolute;top:-10px;left:var(--e32);
+  display:inline-flex;align-items:center;gap:6px;
+  padding:5px 11px;border-radius:99px;background:var(--sinal);color:#06301b;
+  font-size:var(--t-rotulo);line-height:1;font-weight:500;
+  letter-spacing:var(--ls-rotulo);text-transform:uppercase;
+}
+.cartao .ciclo{font-size:16px;color:var(--mudo)}
 
 /* ---------- celular do Figma ---------- */
 .fone{--kf-w:360px;position:relative;z-index:3;width:var(--kf-w);height:calc(var(--kf-w) * 2.0444);margin:0 auto}
@@ -313,7 +336,7 @@ a{color:inherit;text-decoration:none}
 }
 @media (prefers-reduced-motion:reduce){
   .not{animation:none;opacity:1}
-  .nav .btn-sinal{animation:none;background-position:0 50%}
+  .btn-sinal{animation:none;background-position:0 50%}
   .joia{transition:none}
 }
 </style>
@@ -433,45 +456,9 @@ a{color:inherit;text-decoration:none}
       <h2 class="titulo">Escolha pelo tamanho<br>da sua operação</h2>
     </div>
 
-    <div class="cartoes">
-      <article class="cartao">
-        <span class="rotulo">Starter</span>
-        <div class="preco">R$ 97<span style="font-size:16px;color:var(--mudo)">/mês</span></div>
-        <ul>
-          <li>1 número de WhatsApp</li>
-          <li>10.000 contatos</li>
-          <li>10.000 envios por mês</li>
-          <li>Campanhas ilimitadas</li>
-          <li>1 automação</li>
-        </ul>
-        <a class="btn btn-fantasma" data-cta="plano" data-plano="starter" href="/assinar">Assinar</a>
-      </article>
-
-      <article class="cartao">
-        <span class="rotulo sinal">Premium · mais escolhido</span>
-        <div class="preco">R$ 197<span style="font-size:16px;color:var(--mudo)">/mês</span></div>
-        <ul>
-          <li>3 números de WhatsApp</li>
-          <li>50.000 contatos</li>
-          <li>Agente de IA incluso</li>
-          <li>Pagamentos e checkout</li>
-          <li>Links rastreáveis</li>
-        </ul>
-        <a class="btn btn-sinal" data-cta="plano" data-plano="premium" href="/assinar">Assinar</a>
-      </article>
-
-      <article class="cartao">
-        <span class="rotulo">Business</span>
-        <div class="preco">R$ 397<span style="font-size:16px;color:var(--mudo)">/mês</span></div>
-        <ul>
-          <li>Números ilimitados</li>
-          <li>Contatos ilimitados</li>
-          <li>Equipe com permissões</li>
-          <li>API e webhooks</li>
-          <li>Domínio próprio nos links</li>
-        </ul>
-        <a class="btn btn-fantasma" href="/app/">Falar com vendas</a>
-      </article>
+    <!-- Os cartoes sao montados a partir de /api/public/landing. O que fica
+         aqui e so o esqueleto: sem planos publicados, a secao nao aparece. -->
+    <div class="cartoes" id="cartoes-plano"></div>
     </div>
   </div>
 </section>
@@ -734,17 +721,42 @@ var LOGOS_KOONFY = [
   // prazo — foi por isso que "Testar 7 dias grátis" e "Começar agora" estavam
   // desencontrados.
   // =========================================================================
+  // Nome e itens do plano sao texto digitado no Admin e entram por innerHTML:
+  // sem escapar, um '<' no nome de um plano quebraria a grade.
+  function escapar(t) {
+    return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
   fetch('/api/public/landing').then(function (r) { return r.json(); }).then(function (c) {
     var txt = (c.ctaText || '').trim() || (c.trialDays ? 'Testar ' + c.trialDays + ' dias grátis' : 'Começar agora');
-    // Assinar leva ao checkout do plano; o id real vem da API.
-    var porNome = {};
-    (c.planos || []).forEach(function (p, i) { porNome[i] = p.id; });
-    var ordem = ['starter', 'premium', 'business'];
-    document.querySelectorAll('[data-cta="plano"]').forEach(function (b) {
-      var i = ordem.indexOf(b.getAttribute('data-plano'));
-      var id = porNome[i < 0 ? 0 : i];
-      b.setAttribute('href', '/assinar' + (id ? '?plano=' + encodeURIComponent(id) : ''));
-    });
+    // OS CARTOES DOS PLANOS. Nome, preco, ciclo e itens vem do Admin; o cartao
+    // recomendado tambem. Sem plano publicado a secao inteira sai do ar — uma
+    // vitrine com a grade de precos vazia e pior do que sem grade nenhuma.
+    var caixaPlanos = document.getElementById('cartoes-plano');
+    var secaoPlanos = document.getElementById('planos');
+    var planos = c.planos || [];
+    if (caixaPlanos && secaoPlanos) {
+      if (!planos.length) { secaoPlanos.hidden = true; }
+      else {
+        caixaPlanos.innerHTML = planos.map(function (pl) {
+          var reais = (pl.preco / 100);
+          // Centavos so aparecem quando existem: 'R$ 97' le melhor que
+          // 'R$ 97,00' numa grade de precos.
+          var preco = reais.toLocaleString('pt-BR', {
+            minimumFractionDigits: reais % 1 ? 2 : 0, maximumFractionDigits: 2
+          });
+          var ciclo = pl.dias === 30 ? '/mês' : '/' + pl.dias + ' dias';
+          var itens = (pl.itens || []).map(function (t) { return '<li>' + escapar(t) + '</li>'; }).join('');
+          return '<article class="cartao' + (pl.destaque ? ' escolhido' : '') + '">'
+            + (pl.destaque ? '<span class="selo-escolhido">Mais escolhido</span>' : '')
+            + '<span class="rotulo">' + escapar(pl.nome) + '</span>'
+            + '<div class="preco">R$ ' + preco + '<span class="ciclo">' + ciclo + '</span></div>'
+            + '<ul>' + itens + '</ul>'
+            + '<a class="btn btn-sinal" href="/assinar?plano=' + encodeURIComponent(pl.id) + '">Assinar</a>'
+            + '</article>';
+        }).join('');
+      }
+    }
     document.querySelectorAll('[data-cta]').forEach(function (b) {
       var alvo = b.getAttribute('data-cta');
       b.setAttribute('href', alvo === 'login' ? '/app' : '/assinar');

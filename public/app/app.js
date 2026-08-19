@@ -8362,6 +8362,8 @@ async function paintAdmin() {
                   <b style="font-size:15px">${esc(p.name)}</b>
                   <div class="muted" style="font-size:11.5px;margin-top:2px">${fmtBRL(p.price)} / ${p.periodDays}d · ${fmtN(subs)} assinante(s)</div>
                 </div>
+                <button class="btn small no-grow" title="Recomendar este plano na página pública"
+                        onclick="admDestacarPlano('${p.id}', ${p.destaque ? 'false' : 'true'})">${ico(p.destaque ? 'star' : 'star', 13)} ${p.destaque ? 'Mais escolhido' : 'Destacar'}</button>
                 <button class="btn small no-grow" onclick="admTogglePlan('${p.id}')">${ico('edit', 13)} Limites</button>
                 <button class="icon-btn danger" title="Arquivar" onclick="admDelPlan('${p.id}')">${ico('trash', 14)}</button>
               </div>
@@ -8723,6 +8725,16 @@ function readLimitFields(scope) {
 function admTogglePlan(id) {
   const el = $('#pl-ed-' + id);
   if (el) el.classList.toggle('hidden');
+}
+
+// O plano recomendado na vitrine. Um so por vez: a API apaga a marca dos
+// outros, e aqui a tela repinta para mostrar de quem ela saiu.
+async function admDestacarPlano(id, ligar) {
+  try {
+    await api('/admin/plans/' + id, { method: 'PUT', body: { destaque: ligar } });
+    toast(ligar ? 'Este plano passa a ser o mais escolhido na página' : 'Destaque removido');
+    paintAdmin(); setTimeout(() => showSettingsTab('adm-pl'), 60);
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function admSavePlanLimits(id) {

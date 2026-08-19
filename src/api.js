@@ -472,6 +472,7 @@ module.exports = function (broadcast, clients) {
       .filter(pl => !pl.archived)
       .map(pl => ({
         id: pl.id, nome: pl.name, preco: pl.price, dias: pl.periodDays || 30,
+        destaque: !!pl.destaque,
         // Quando o plano não tem descrição escrita, os limites configurados
         // dizem o suficiente — e são dado de verdade, não texto de vitrine.
         itens: (pl.features && pl.features.length) ? pl.features : limitesEmTexto(pl)
@@ -4193,6 +4194,8 @@ module.exports = function (broadcast, clients) {
       limits: db.normLimits((req.body || {}).limits),
       modules: db.normFeatures((req.body || {}).modules),
       checkoutId: String((req.body || {}).checkoutId || '').trim(),
+      // Recomendado na vitrine. Exclusivo: quem liga aqui desliga nos outros.
+      destaque: false,
       createdAt: Date.now(), archived: false
     };
     db.get().plans.push(plan);
@@ -4215,6 +4218,13 @@ module.exports = function (broadcast, clients) {
     if (b.modules !== undefined) plan.modules = db.normFeatures(b.modules, plan.modules);
     if (b.checkoutId !== undefined) plan.checkoutId = String(b.checkoutId || '').trim();
     if (b.archived !== undefined) plan.archived = !!b.archived;
+    // O destaque e de um so: ligar aqui apaga a marca dos demais. Dois
+    // planos 'mais escolhidos' fariam a vitrine desempatar por ordem de
+    // cadastro, em silencio.
+    if (b.destaque !== undefined) {
+      plan.destaque = !!b.destaque;
+      if (plan.destaque) db.get().plans.forEach(o => { if (o !== plan) o.destaque = false; });
+    }
     db.save();
     res.json({ plan });
   });
