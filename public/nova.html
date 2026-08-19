@@ -110,23 +110,17 @@ a{color:inherit;text-decoration:none}
 }
 .btn:hover{opacity:.86}
 
-/* A AÇÃO DA BARRA: compacta, em caixa alta, com um halo que a separa do
-   carbono sem precisar de tamanho. A seta anda 3px no hover. */
+/* A ACAO DA BARRA. Sem halo, sem seta, sem levantar no hover: numa barra
+   fixa quem manda e o contraste do bloco. O rotulo e uma marca de
+   utilidade — caixa alta, 12px, o mesmo tracking dos outros rotulos da
+   pagina — e no hover o bloco INVERTE para osso sobre carbono, o mesmo
+   gesto das faixas que trocam de cor enquanto a pagina desce. */
 .nav .btn-sinal{
-  padding:11px 18px;font-size:var(--t-caption);letter-spacing:.032em;text-transform:uppercase;
-  box-shadow:0 6px 22px -8px rgba(46,211,120,.65), inset 0 1px 0 rgba(255,255,255,.28);
-  transition:box-shadow .2s var(--ease,ease), transform .2s ease, opacity .15s linear;
+  padding:12px 22px;font-size:var(--t-caption);line-height:1;
+  letter-spacing:.032em;text-transform:uppercase;
+  transition:background .2s ease, color .2s ease;
 }
-.nav .btn-sinal:hover{
-  opacity:1;transform:translateY(-1px);
-  box-shadow:0 10px 28px -8px rgba(46,211,120,.85), inset 0 1px 0 rgba(255,255,255,.35);
-}
-.nav .btn-sinal .seta{transition:transform .2s ease}
-.nav .btn-sinal:hover .seta{transform:translateX(3px)}
-/* A seta fica DEPOIS do texto na barra: ali ela é direção, não enfeite. */
-.nav .btn-sinal{flex-direction:row-reverse}
-.btn .seta{width:16px;height:16px;flex:0 0 16px;stroke:currentColor;fill:none;
-           stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.nav .btn-sinal:hover{opacity:1;background:var(--osso);color:var(--carbono)}
 .btn-sinal{background:var(--btn-verde,var(--sinal));color:var(--btn-tinta,#fff)}
 .btn-sinal:hover{background:var(--btn-verde-hover,var(--btn-verde,var(--sinal)))}
 .btn-escuro{background:var(--inversa-texto);color:var(--inversa)}
@@ -175,18 +169,14 @@ a{color:inherit;text-decoration:none}
 @media (prefers-reduced-motion:reduce){.joia{transition:none}}
 
 /* ---------- anel de nó: círculo 40px com ícone ---------- */
-/* PLACA VAZADA: contorno e ícone na mesma cor, fundo nenhum. A cor sai do
-   grupo a que o recurso pertence — a mesma divisão do menu do painel. */
+/* PLACA VAZADA: so contorno e icone, fundo nenhum. A borda e sempre o verde
+   da joia — e o fio que liga cada recurso ao centro — e o desenho por dentro
+   e branco, para o icone ser lido antes da cor. */
 .no{width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;
-    border:1.5px solid currentColor;color:var(--cor-no,var(--sinal));background:transparent;
-    box-shadow:0 0 18px -6px currentColor;transition:transform .2s ease,box-shadow .2s ease}
-.no:hover{transform:scale(1.08);box-shadow:0 0 26px -4px currentColor}
+    border:1.5px solid var(--sinal);color:var(--osso);background:transparent;
+    box-shadow:0 0 18px -8px var(--sinal);transition:transform .2s ease,box-shadow .2s ease}
+.no:hover{transform:scale(1.08);box-shadow:0 0 26px -6px var(--sinal)}
 .no svg{width:22px;height:22px}
-/* Grupos: atendimento, automação, vendas e administração. */
-.no.g-atendimento{--cor-no:#2ED378}
-.no.g-automacao{--cor-no:#5FE0FF}
-.no.g-vendas{--cor-no:#FFD75F}
-.no.g-equipe{--cor-no:#F9F9F9}
 
 /* ---------- herói ---------- */
 .heroi{padding:var(--e96) var(--e24) var(--e128);text-align:center;position:relative;overflow:hidden}
@@ -200,13 +190,23 @@ a{color:inherit;text-decoration:none}
 .selo-meta{width:min(420px,80vw);height:auto;opacity:.92;
            filter:brightness(0) invert(1)}
 .clara .selo-meta{filter:none;opacity:.86}
+/* O acento da marca nao le em 10px sobre o creme: no claro o rotulo usa
+   um verde fechado, mesma familia, contraste de texto. */
+.clara .rotulo.sinal{color:#127a45}
 
 /* ---------- fileira de logos: flutuam na tela, sem cartão ---------- */
 .logos{display:flex;justify-content:center;gap:var(--e48);flex-wrap:wrap;opacity:.6}
 .logos span{font-size:var(--t-caption);font-weight:500;letter-spacing:.032em;text-transform:uppercase}
 
 /* ---------- constelação ---------- */
-.constelacao{position:relative;aspect-ratio:1/.82;display:flex;align-items:center;justify-content:center}
+/* O PAINEL DA RODA. Escuro dentro da faixa clara, com o mesmo gradiente do
+   aplicativo: um halo verde no alto e o carbono descendo ate quase preto.
+   O canto e MEIO arredondado — 18px num painel de ~600px arredonda o
+   bastante para nao parecer uma caixa, sem virar pastilha. */
+.constelacao{position:relative;aspect-ratio:1/.82;display:flex;align-items:center;justify-content:center;
+  border-radius:18px;border:1px solid rgba(46,211,120,.20);
+  background:radial-gradient(680px 420px at 50% 6%, rgba(46,211,120,.12), transparent 62%),
+             linear-gradient(180deg,#0e1211 0%,#070908 54%,#050706 100%)}
 .constelacao svg.linhas{position:absolute;inset:0;width:100%;height:100%}
 .constelacao svg.linhas line{stroke:#3a4642;stroke-width:1;stroke-dasharray:3 5;
                              transition:stroke .5s ease}
@@ -276,8 +276,8 @@ a{color:inherit;text-decoration:none}
   .no svg{width:19px;height:19px}
 }
 @media (max-width:680px){
-  .no{width:34px;height:34px;border-radius:10px}
-  .no svg{width:17px;height:17px}
+  .no{width:32px;height:32px;border-radius:9px}
+  .no svg{width:16px;height:16px}
   :root{--t-display:40px;--t-titulo:30px;--e80:56px;--e96:64px;--e128:72px}
   .nav .wrap{flex-wrap:wrap;gap:12px;padding:16px}
   .marca{font-size:16px}.marca img{width:24px;height:24px}
@@ -308,7 +308,7 @@ a{color:inherit;text-decoration:none}
     </nav>
     <div class="linha" style="gap:12px">
 
-      <a class="btn btn-sinal" data-cta="signup" data-cta-txt href="/app?novo=1"><svg class="seta" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg> Começar agora</a>
+      <a class="btn btn-sinal" data-cta="signup" data-cta-txt href="/app?novo=1">Começar agora</a>
     </div>
   </div>
 </header>
@@ -331,7 +331,7 @@ a{color:inherit;text-decoration:none}
     <p class="corpo mudo">Conversas, funil, campanhas, automação com IA e pagamentos no mesmo número. Sem plugin, sem integração paga, sem risco de banimento.</p>
 
     <div class="linha" style="justify-content:center">
-      <a class="btn btn-sinal" data-cta="signup" data-cta-txt href="/app?novo=1"><svg class="seta" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg> Testar 7 dias grátis</a>
+      <a class="btn btn-sinal" data-cta="signup" data-cta-txt href="/app?novo=1">Testar 7 dias grátis</a>
       <a class="btn btn-fantasma" href="#produto">Ver como funciona</a>
     </div>
   </div>
@@ -350,7 +350,7 @@ a{color:inherit;text-decoration:none}
 </section>
 
 <!-- ===================== SPLIT + CONSTELAÇÃO ===================== -->
-<section class="faixa escura" id="canais">
+<section class="faixa clara" id="canais">
   <div class="wrap split">
     <div class="pilha">
       <span class="rotulo sinal">Um número, a operação inteira</span>
@@ -395,7 +395,7 @@ a{color:inherit;text-decoration:none}
     <h2 class="display">Seu WhatsApp<br>já vende. Falta ele<br>cobrar e anotar</h2>
     <p class="corpo">Ligue a Koonfy no número que você já usa. Nada de migrar conversa, avisar cliente nem trocar de chip.</p>
     <div class="linha" style="justify-content:center">
-      <a class="btn btn-escuro" data-cta="signup" href="/app?novo=1"><svg class="seta" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg> Criar minha conta</a>
+      <a class="btn btn-escuro" data-cta="signup" href="/app?novo=1">Criar minha conta</a>
       <a class="btn btn-fantasma" href="#planos" style="color:var(--inversa-texto);border-color:var(--inversa-texto)">Ver planos</a>
     </div>
   </div>
@@ -433,7 +433,7 @@ a{color:inherit;text-decoration:none}
           <li>Pagamentos e checkout</li>
           <li>Links rastreáveis</li>
         </ul>
-        <a class="btn btn-sinal" data-cta="plano" data-plano="premium" href="/assinar"><svg class="seta" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg> Assinar</a>
+        <a class="btn btn-sinal" data-cta="plano" data-plano="premium" href="/assinar">Assinar</a>
       </article>
 
       <article class="cartao">
@@ -661,16 +661,6 @@ var NOMES_KOONFY = {"inbox":"Conversas","team":"Chat interno","schedule":"Agenda
   // =========================================================================
   var ICONES = ICONES_KOONFY;
   var NOS = Object.keys(ICONES_KOONFY);
-  // A mesma divisão da barra lateral do painel: quem atende, quem automatiza,
-  // quem vende e quem administra.
-  var GRUPO = {
-    inbox: 'atendimento', team: 'atendimento', schedule: 'atendimento',
-    contacts: 'atendimento', funnel: 'atendimento', consent: 'atendimento',
-    flows: 'automacao', ia: 'automacao', integrations: 'automacao',
-    campaigns: 'automacao', sms: 'automacao', templates: 'automacao', quick: 'automacao',
-    elitepay: 'vendas', checkouts: 'vendas', links: 'vendas', tracking: 'vendas', pixels: 'vendas',
-    agents: 'equipe', billing: 'equipe', afiliacao: 'equipe'
-  };
   var caixa = document.getElementById('constelacao');
   if (caixa) {
     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -681,7 +671,7 @@ var NOMES_KOONFY = {"inbox":"Conversas","team":"Chat interno","schedule":"Agenda
       // Raio maior nas telas estreitas: com 21 peças, o anel apertado
       // amontoava tudo.
       var estreito = document.documentElement.clientWidth < 900;
-      var rx = estreito ? 44 : 40, ry = estreito ? 45 : 42;
+      var rx = estreito ? 41 : 40, ry = estreito ? 41 : 38;
       var cx = 50 + Math.cos(ang) * rx, cy = 50 + Math.sin(ang) * ry;      // o nó
       var ix = 50 + Math.cos(ang) * 10.5, iy = 50 + Math.sin(ang) * 11.5;  // encosta na joia
       var l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -689,7 +679,7 @@ var NOMES_KOONFY = {"inbox":"Conversas","team":"Chat interno","schedule":"Agenda
       l.setAttribute('x2', cx + '%'); l.setAttribute('y2', cy + '%');
       svg.appendChild(l);
       var d = document.createElement('div');
-      d.className = 'no g-' + (GRUPO[nome] || 'atendimento');
+      d.className = 'no';
       d.title = NOMES_KOONFY[nome] || '';
       d.style.left = cx + '%'; d.style.top = cy + '%';
       // O Pix (e qualquer ícone de preenchimento) não leva traço: com traço
