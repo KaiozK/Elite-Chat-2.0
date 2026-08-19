@@ -3419,6 +3419,11 @@ function newChatModal() {
     <h2>Nova conversa</h2>
     <label>Telefone (formato internacional)<input id="nc-phone" placeholder="5511999998888"></label>
     <label>Nome (opcional)<input id="nc-name" placeholder="Maria Silva"></label>
+    <label>E-mail (opcional)<input id="nc-email" type="email" placeholder="cliente@email.com"></label>
+    <label>CPF ou CNPJ (opcional)<input id="nc-doc" inputmode="numeric" placeholder="000.000.000-00"
+      oninput="this.value=mascararDoc(this.value)"></label>
+    <p class="hint">O e-mail e o documento não são obrigatórios agora, mas são o que o checkout pede
+      na hora da compra — guardados aqui, a cobrança sai sem pedir nada de novo.</p>
     <p class="hint">Fora da janela de 24h, a primeira mensagem precisa ser um <b>template aprovado</b>.</p>
     <div class="row"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" onclick="createChat()">Abrir conversa</button></div>`);
   $('#nc-phone').focus();
@@ -3426,7 +3431,12 @@ function newChatModal() {
 
 async function createChat() {
   try {
-    const r = await api('/contacts', { body: { phone: $('#nc-phone').value, name: $('#nc-name').value.trim() } });
+    const doc = ($('#nc-doc') && $('#nc-doc').value || '').replace(/D/g, '');
+    if (doc && erroDoc(doc)) return toast(erroDoc(doc), 'error');
+    const r = await api('/contacts', { body: {
+      phone: $('#nc-phone').value, name: $('#nc-name').value.trim(),
+      email: ($('#nc-email') && $('#nc-email').value || '').trim(), document: doc
+    } });
     closeModal();
     await loadConversations();
     openChat(r.contact.waId);
@@ -3638,12 +3648,22 @@ function newContactModal() {
     <h2>Novo contato</h2>
     <label>Telefone (formato internacional)<input id="nct-phone" placeholder="5511999998888"></label>
     <label>Nome<input id="nct-name" placeholder="Maria Silva"></label>
+    <label>E-mail<input id="nct-email" type="email" placeholder="cliente@email.com"></label>
+    <label>CPF ou CNPJ<input id="nct-doc" inputmode="numeric" placeholder="000.000.000-00"
+      oninput="this.value=mascararDoc(this.value)"></label>
+    <p class="hint">E-mail e documento são o que o checkout pede na hora da compra.
+      Preenchidos aqui, a cobrança seguinte não pergunta de novo.</p>
     <div class="row"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" onclick="saveNewContact()">Salvar</button></div>`);
 }
 
 async function saveNewContact() {
+  const doc = ($('#nct-doc')?.value || '').replace(/D/g, '');
+  if (doc && erroDoc(doc)) return toast(erroDoc(doc), 'error');
   try {
-    await api('/contacts', { body: { phone: $('#nct-phone').value, name: $('#nct-name').value.trim() } });
+    await api('/contacts', { body: {
+      phone: $('#nct-phone').value, name: $('#nct-name').value.trim(),
+      email: ($('#nct-email')?.value || '').trim(), document: doc
+    } });
     closeModal();
     toast('Contato criado');
     loadContactsTable();
@@ -3668,6 +3688,8 @@ async function editContactModal(waId) {
       <h2>${ico('edit')} ${esc(c.name)}</h2>
       <label>Nome<input id="ec-name" value="${esc(c.name)}"></label>
       <label>E-mail<input id="ec-email" type="email" value="${esc(c.email || '')}" placeholder="cliente@email.com"></label>
+      <label>CPF ou CNPJ<input id="ec-doc" inputmode="numeric" value="${esc(mascararDoc((c.vars && c.vars.cpf_cnpj) || ''))}"
+        placeholder="000.000.000-00" oninput="this.value=mascararDoc(this.value)"></label>
       <label>Etapa do funil${ecSelect('ec-stage', stages.map(s => ({ value: s, label: s })), c.stage)}</label>
       <label>Tags (separadas por vírgula)<input id="ec-tags" value="${esc((c.tags || []).join(', '))}"></label>
       <label>Anotações<textarea id="ec-notes">${esc(c.notes || '')}</textarea></label>
@@ -3677,12 +3699,17 @@ async function editContactModal(waId) {
 }
 
 async function saveContact(waId) {
+  // O documento é conferido aqui (dígito verificador) para o erro aparecer no
+  // formulário, e não como resposta seca do servidor.
+  const doc = ($('#ec-doc')?.value || '').replace(/D/g, '');
+  if (doc && erroDoc(doc)) return toast(erroDoc(doc), 'error');
   try {
     await api('/contacts/' + waId, {
       method: 'PUT',
       body: {
         name: $('#ec-name').value,
         email: $('#ec-email')?.value || '',
+        document: ($('#ec-doc')?.value || '').replace(/D/g, ''),
         stage: ecSelVal('ec-stage'),
         tags: $('#ec-tags').value.split(',').map(t => t.trim()).filter(Boolean),
         notes: $('#ec-notes').value
@@ -7208,7 +7235,7 @@ async function paintBilling() {
     const cardOn = !!(d.card && d.card.credit);
     BILL_CACHE = d;
     box.innerHTML = `
-      ${d.wooviReady ? '' : `<div class="card warn-card">${ico('alert', 16)} <b>Pagamentos ainda não configurados.</b> ${state.kind === 'admin' ? 'Informe o AppID da Woovi em <a href="#/admin">Admin SaaS → Pagamentos</a>.' : 'A plataforma ainda não ativou os pagamentos, fale com o suporte.'}</div>`}
+      ${d.wooviReady ? '' : `<div class="card warn-card">${ico('alert', 16)} <b>Pagamentos ainda não configurados.</b> ${state.kind === 'admin' ? 'Configure o adquirente em <a href="#/admin">Admin SaaS → Pagamentos</a>.' : 'A plataforma ainda não ativou os pagamentos, fale com o suporte.'}</div>`}
 
       <div class="card bill-status">
         <div class="bs-main">
@@ -8072,7 +8099,7 @@ async function withdrawWallet() {
 async function renderAdmin() {
   if (state.kind !== 'admin') { location.hash = '#/dashboard'; return; }
   $('#view').innerHTML = `<div class="page">
-    <div class="page-head"><h1>Admin SaaS</h1><p>Receita, contas, planos, afiliados e pagamentos Woovi</p></div>
+    <div class="page-head"><h1>Admin SaaS</h1><p>Receita, contas, planos, afiliados e pagamentos</p></div>
     <div class="tabs">
       <button class="active" data-tab="adm-vis" onclick="showSettingsTab('adm-vis')">Visão geral</button>
       <button data-tab="adm-acc" onclick="showSettingsTab('adm-acc')">Contas</button>
@@ -9503,7 +9530,6 @@ function admTemaPaint() {
         Deixe em branco para voltar ao padrão do Koonfy.
       </p>
       <div class="tema-grid">
-        ${admTemaCampo('verde', 'Cor da marca', 'O "fy" do logotipo, ícones e destaques')}
         ${admTemaCampo('botao', 'Botão principal', 'Fundo dos botões de ação')}
         ${admTemaCampo('botaoHover', 'Botão ao passar o mouse', 'Um passo mais escuro que o botão')}
         ${admTemaCampo('tintaBotao', 'Texto do botão', 'A cor da letra dentro do botão')}
@@ -9513,7 +9539,7 @@ function admTemaPaint() {
       </div>
       <div class="tema-previa" id="tema-previa">
         <span class="tema-previa-rot">Prévia</span>
-        <b class="brand-name">Koon<span class="gt2">fy</span></b>
+        <i class="brand-name" role="img" aria-label="Koonfy"></i>
         <button class="btn primary no-grow">Botão principal</button>
         <button class="btn no-grow">Secundário</button>
         <span class="pill done">Selo</span>
@@ -13328,17 +13354,6 @@ function epRenderCobrarNoCelular(d) {
 
     <div id="cel-result"></div>
 
-    <div class="card">
-      <h2>${ico('bell')} Testar notificação de venda</h2>
-      <p class="muted" style="margin:0 0 10px;font-size:13px">
-        Dispara o aviso de <b>venda aprovada</b> neste aparelho, com o som. Serve para conferir se a notificação chega
-        antes de depender dela. Não cria cobrança nem mexe na carteira.
-      </p>
-      <div class="row" style="align-items:flex-end">
-        <label style="flex:1">Valor (R$)<input id="cel-ts" inputmode="decimal" placeholder="97,00"></label>
-        <button class="btn no-grow" id="cel-ts-btn" onclick="epCelTestarVenda(this)">${ico('zap', 14)} Disparar</button>
-      </div>
-    </div>
   </div>`;
 }
 
@@ -13421,18 +13436,6 @@ function epCelNova() {
   $('#cel-val').value = ''; $('#cel-desc').value = '';
   $$('.cel-prod').forEach(b => b.classList.remove('on'));
   $('#cel-val').focus();
-}
-
-async function epCelTestarVenda(btn) {
-  const cents = epParseReais($('#cel-ts').value);
-  if (!cents) return toast('Informe o valor da venda', 'error');
-  const txt = btn.innerHTML; btn.disabled = true; btn.textContent = 'Disparando…';
-  try {
-    if (window.ECNotify && ECNotify.subscribePush) { try { await ECNotify.subscribePush(); } catch {} }
-    const r = await api('/push/test-sale', { body: { amount: cents } });
-    toast(r.sent ? `Enviado para ${r.sent} aparelho(s)` : 'Ative as notificações em Ajustes e tente de novo', r.sent ? 'ok' : 'error');
-  } catch (e) { toast(e.message, 'error'); }
-  finally { btn.disabled = false; btn.innerHTML = txt; }
 }
 
 async function renderElitePay() {
@@ -14107,7 +14110,7 @@ async function renderCheckoutBuilder() {
       <button class="icon-btn" title="Voltar ao Pagamentos" onclick="location.hash='#/elitepay'">${ico('arrowleft', 17)}</button>
       <div class="brand ckb-brand">
         <span class="brand-mark"><img src="/marca/logo" alt="Checkout Builder"></span>
-        <div><b class="brand-name">Checkout<span class="gt2"> Builder</span></b>
+        <div><b class="ckb-titulo">Checkout<i> Builder</i></b>
           <input class="ckb-cname" id="epk-name" value="${esc(epkCheckoutName)}" maxlength="60"
             title="Nome deste checkout" oninput="epkCheckoutName=this.value"></div>
       </div>

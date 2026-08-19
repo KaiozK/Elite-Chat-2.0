@@ -151,6 +151,10 @@ function applyPayment(charge, broadcast) {
   const paid = Number(charge.value) || 0;
   if (data.revenue.some(r => r.chargeId === cid && r.chargeId)) return { ok: true, duplicate: true };
 
+  // COMPRA SEM CONTA: quem paga antes de se cadastrar não tem conta para
+  // achar aqui — a conta nasce da confirmação, no módulo da pré-assinatura.
+  if (cid.startsWith('nov-')) return require('./preassinatura').confirmar(cid, paid, broadcast);
+
   let acc = null, kind = '', planId = '', extraKey = '', extraQty = 0;
   // Cartão, saldo e boleto pagam com prefixo próprio. Sem tratar esses
   // prefixos, a cobrança era aprovada mas a assinatura nunca ativava.
@@ -212,6 +216,10 @@ function applyPayment(charge, broadcast) {
     if (!acc.billing.startedAt) acc.billing.startedAt = Date.now();
     acc.billing.pendingCharge = null;
     if (kind === 'first' && acc.billing.subCorrelationID) kind = 'first'; // 1ª cobrança da recorrência
+
+    // Assinou: a conta de Pagamentos é criada com os dados do cadastro, sem
+    // formulário nenhum. Não trava a ativação se o gateway estiver fora.
+    try { require('./elitepay').garantirPagamentos(acc).catch(() => {}); } catch {}
 
     // ---- comissão de afiliado (assinatura E renovação) ----
     const refCode = acc.affiliate && acc.affiliate.refBy;

@@ -1,0 +1,715 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Koonfy · CRM de WhatsApp com IA</title>
+<meta name="description" content="Atendimento, funil, campanhas e pagamentos no WhatsApp. Um número, a operação inteira em um lugar só.">
+<link rel="icon" href="/assets/koonfy-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<!-- Cores definidas em Admin SaaS → Personalização. -->
+<link rel="stylesheet" href="/tema.css">
+<style>
+/* ===========================================================================
+   SISTEMA VISUAL — porte direto da referência Codex.io.
+   A ÚNICA troca é a voz cromática: no lugar do lima citrino entra o verde da
+   logo da Koonfy. Todo o resto (carbono, osso, grafite, pedra, fumaça, giz,
+   papel-creme) vem da referência sem alteração, porque é o contraste entre os
+   neutros e o acento que faz o sistema funcionar — mexer nos cinzas seria
+   desmontar o que se foi copiar.
+   =========================================================================== */
+:root{
+  /* --- cor --- */
+  --sinal:#2ED378;            /* o acento: verde da logo, no papel do citrino */
+  --sinal-glow:rgba(46,211,120,.15);
+  --carbono:#111111;
+  --osso:#f9f9f9;
+  --grafite:#2b2b2b;
+  --cinza:#6e6e6e;
+  --pedra:#9c9c9c;
+  --fumaca:#565656;
+  --giz:#d6d6d6;
+  --creme:#eeeeee;
+  --preto:#000000;
+  --areia:#b7b3a2;
+
+  /* --- papéis, para o modo claro poder inverter só isto --- */
+  --tela:var(--carbono);
+  --painel:var(--grafite);
+  --texto:var(--osso);
+  --mudo:var(--pedra);
+  --fio:#2b2b2b;
+  --inversa:var(--creme);
+  --inversa-texto:var(--carbono);
+  --tinta-acao:var(--carbono);   /* texto sobre o botão de acento */
+
+  /* --- tipografia --- */
+  --fonte:'Inter','Söhne',ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --t-rotulo:10px;   --lh-rotulo:1.5;  --ls-rotulo:.32px;
+  --t-caption:12px;  --lh-caption:1.5; --ls-caption:.24px;
+  --t-corpo-sm:14px;
+  --t-corpo:16px;    --lh-corpo:1.5;
+  --t-subtitulo:20px;--lh-subtitulo:1.3;
+  --t-titulo-sm:24px;--lh-titulo-sm:1.2; --ls-titulo-sm:-.24px;
+  --t-titulo:48px;   --lh-titulo:1.1;    --ls-titulo:-.48px;
+  --t-display:80px;  --lh-display:.9;    --ls-display:-.8px;
+
+  /* --- espaço (base 8) --- */
+  --e8:8px; --e16:16px; --e24:24px; --e32:32px; --e40:40px; --e48:48px;
+  --e64:64px; --e80:80px; --e96:96px; --e128:128px; --e144:144px; --e192:192px;
+  --largura:1280px;
+
+  /* --- raio: 4px no que é interativo, 12px em cartão, nada de pílula --- */
+  --r-botao:4px; --r-nav:8px; --r-cartao:12px; --r-decor:20px;
+}
+/* AS FAIXAS TROCAM DE COR, e não a página inteira: cada seção declara se é
+   escura ou clara, e os papéis (--tela, --texto, --mudo, --painel, --fio)
+   são reescritos ali dentro. A transição é suave porque a joia atravessa a
+   fronteira das duas enquanto desce. */
+.escura{--tela:var(--carbono);--painel:var(--grafite);--texto:var(--osso);
+        --mudo:var(--pedra);--fio:#2b2b2b;--tinta-acao:var(--carbono);
+        background:var(--tela);color:var(--texto)}
+.clara{--tela:var(--creme);--painel:#f9f9f9;--texto:var(--carbono);
+       --mudo:var(--fumaca);--fio:var(--giz);--tinta-acao:var(--carbono);
+       background:var(--tela);color:var(--texto)}
+html{color-scheme:dark}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--tela);color:var(--texto);
+  font-family:var(--fonte);font-weight:400;font-size:var(--t-corpo);line-height:var(--lh-corpo);
+  font-feature-settings:"kern" on,"liga" on;-webkit-font-smoothing:antialiased;
+}
+img{max-width:100%;display:block}
+a{color:inherit;text-decoration:none}
+
+/* ---------- primitivas de texto ---------- */
+.display{
+  font-size:var(--t-display);line-height:var(--lh-display);letter-spacing:-.01em;
+  font-weight:400;text-transform:uppercase;margin:0;
+}
+.titulo{font-size:var(--t-titulo);line-height:var(--lh-titulo);letter-spacing:var(--ls-titulo);font-weight:400;text-transform:uppercase;margin:0}
+.titulo-sec{font-size:var(--t-titulo-sm);line-height:var(--lh-titulo-sm);letter-spacing:var(--ls-titulo-sm);font-weight:500;margin:0}
+.subtitulo{font-size:var(--t-subtitulo);line-height:var(--lh-subtitulo);font-weight:400;margin:0}
+.corpo{font-size:var(--t-corpo);line-height:var(--lh-corpo);margin:0;max-width:560px}
+.corpo.mudo{color:var(--mudo)}
+.rotulo{
+  font-size:var(--t-caption);line-height:var(--lh-caption);letter-spacing:.032em;
+  font-weight:500;text-transform:uppercase;
+}
+.rotulo.sinal{color:var(--sinal)}
+
+/* ---------- botões: 4px, sem sombra, sem pílula ---------- */
+.btn{
+  display:inline-flex;align-items:center;gap:10px;border:1px solid transparent;
+  border-radius:var(--r-botao);padding:12px 24px;font:500 var(--t-corpo)/1.2 var(--fonte);
+  cursor:pointer;transition:opacity .15s linear;
+}
+.btn:hover{opacity:.86}
+.btn .seta{width:16px;height:16px;flex:0 0 16px;stroke:currentColor;fill:none;
+           stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.btn-sinal{background:var(--btn-verde,var(--sinal));color:var(--btn-tinta,#fff)}
+.btn-sinal:hover{background:var(--btn-verde-hover,var(--btn-verde,var(--sinal)))}
+.btn-escuro{background:var(--inversa-texto);color:var(--inversa)}
+.btn-fantasma{
+  background:transparent;color:var(--texto);border-color:var(--texto);
+  padding:10px 20px;font-size:var(--t-caption);letter-spacing:.032em;text-transform:uppercase;
+}
+
+/* ---------- layout ---------- */
+.faixa{padding:var(--e80) var(--e24)}
+.wrap{max-width:var(--largura);margin:0 auto}
+.split{display:grid;grid-template-columns:40% 1fr;gap:var(--e80);align-items:center}
+.split.invertido{grid-template-columns:1fr 40%}
+.pilha{display:flex;flex-direction:column;gap:var(--e24)}
+.linha{display:flex;align-items:center;gap:var(--e16);flex-wrap:wrap}
+
+/* ---------- navegação: plana, sem preenchimento ---------- */
+.nav{position:sticky;top:0;z-index:50;background:var(--tela);border-radius:var(--r-nav)}
+.nav .wrap{display:flex;align-items:center;gap:var(--e32);padding:var(--e24)}
+/* A palavra é uma MÁSCARA, não uma imagem colorida: assim ela assume a cor
+   da faixa em que está — branca no escuro, carbono no claro — e continua
+   nítida em qualquer tamanho. */
+.marca{display:flex;align-items:center;gap:10px}
+.marca-nome{display:block;width:104px;height:26px;background:currentColor;
+            -webkit-mask:url(/assets/koonfy-marca.webp) center/contain no-repeat;
+            mask:url(/assets/koonfy-marca.webp) center/contain no-repeat}
+
+.navlinks{display:flex;gap:var(--e32);margin-left:auto}
+.navlinks a{font-size:var(--t-caption);font-weight:500;letter-spacing:.027em;text-transform:uppercase}
+.navlinks a:hover{color:var(--sinal)}
+
+/* ---------- A JOIA: um objeto só, que desce com a página ---------- */
+/* Fixa na viewport e movida por transform — o percurso é calculado no JS a
+   partir da rolagem, com pontos de parada por seção. Sem `position:fixed` a
+   joia teria de ser recriada em cada faixa, e aí seriam várias. */
+.joia{position:fixed;left:50%;top:0;z-index:4;width:var(--j,240px);height:auto;
+      pointer-events:none;will-change:transform,filter;
+      /* --acesa vai de 0 a 1: 0 é a joia em repouso, 1 é ela no ponto das
+         conexões. O brilho e a saturação sobem juntos, e a sombra verde
+         abre — é a peça respondendo ao que acontece na página. */
+      filter:drop-shadow(0 24px calc(60px + var(--acesa,0) * 70px)
+                        rgba(46,211,120,calc(.28 + var(--acesa,0) * .45)))
+             brightness(calc(1 + var(--acesa,0) * .18))
+             saturate(calc(1 + var(--acesa,0) * .45))}
+.joia-espaco{height:var(--je,34vh);min-height:230px}
+@media (prefers-reduced-motion:reduce){.joia{transition:none}}
+
+/* ---------- anel de nó: círculo 40px com ícone ---------- */
+/* CADA NÓ É UMA PLACA de vidro verde com o ícone do app em branco — a mesma
+   matéria da joia, em miniatura, e o mesmo desenho do menu lateral. */
+.no{width:44px;height:44px;border-radius:13px;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(150deg,#5fe49b,#0f7a41);color:#fff;
+    box-shadow:0 8px 18px rgba(46,211,120,.30),inset 0 1px 0 rgba(255,255,255,.45)}
+.no svg{width:22px;height:22px}
+
+/* ---------- herói ---------- */
+.heroi{padding:var(--e96) var(--e24) var(--e128);text-align:center;position:relative;overflow:hidden}
+.heroi .wrap{display:flex;flex-direction:column;align-items:center;gap:var(--e32)}
+.heroi .display{max-width:1100px}
+.heroi .palco{padding:30px 0 18px}
+/* O selo da Meta no lugar dos rótulos escritos: é a credencial que vale, e
+   ela chega inteira. O PNG é preto sobre transparente; `brightness(0)`
+   achata tudo em preto e `invert(1)` devolve em branco — o desenho e a
+   tipografia oficiais, na cor da faixa. */
+.selo-meta{width:min(420px,80vw);height:auto;opacity:.92;
+           filter:brightness(0) invert(1)}
+.clara .selo-meta{filter:none;opacity:.86}
+.orbita{position:absolute;inset:0;pointer-events:none}
+.orbita .no{position:absolute}
+@media (max-width:1180px){.orbita{display:none}}
+
+/* ---------- fileira de logos: flutuam na tela, sem cartão ---------- */
+.logos{display:flex;justify-content:center;gap:var(--e48);flex-wrap:wrap;opacity:.6}
+.logos span{font-size:var(--t-caption);font-weight:500;letter-spacing:.032em;text-transform:uppercase}
+
+/* ---------- constelação ---------- */
+.constelacao{position:relative;aspect-ratio:1/.82;display:flex;align-items:center;justify-content:center}
+.constelacao svg.linhas{position:absolute;inset:0;width:100%;height:100%}
+.constelacao svg.linhas line{stroke:var(--fumaca);stroke-width:1;stroke-dasharray:3 5;
+                             transition:stroke .5s ease}
+/* Com a joia no centro, a rede acende e a carga corre para dentro. */
+.constelacao.ligada svg.linhas line{stroke:var(--sinal);animation:correr 1.1s linear infinite}
+@keyframes correr{to{stroke-dashoffset:-16}}
+.constelacao.ligada .no{border-color:var(--sinal);transition:border-color .5s ease}
+.constelacao .no{position:absolute;transform:translate(-50%,-50%)}
+
+/* ---------- banda de inversão: a única faixa clara ---------- */
+.inversao{background:var(--inversa);color:var(--inversa-texto);position:relative;overflow:hidden;
+          padding:calc(var(--e80) * 2) var(--e24) calc(var(--e80) * 1.6)}
+.inversao .wrap{display:flex;flex-direction:column;align-items:center;gap:var(--e24);text-align:center;position:relative;z-index:2}
+.inversao .corpo{color:var(--cinza)}
+
+/* ---------- cartões (12px, chapados, separados por degrau de cor) ---------- */
+.cartoes{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--e24)}
+.cartao{background:var(--painel);border:1px solid var(--fio);border-radius:var(--r-cartao);padding:var(--e32);display:flex;flex-direction:column;gap:var(--e16)}
+.cartao .preco{font-size:var(--t-titulo);line-height:1;letter-spacing:var(--ls-titulo);font-weight:400}
+.cartao ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;color:var(--mudo);font-size:var(--t-corpo-sm)}
+.cartao li{display:flex;gap:10px;align-items:flex-start}
+.cartao li::before{content:"";width:6px;height:6px;margin-top:8px;background:var(--sinal);flex:0 0 6px}
+.cartao .btn{align-self:flex-start;margin-top:auto}
+
+/* ---------- celular do Figma ---------- */
+.fone{--kf-w:360px;position:relative;z-index:3;width:var(--kf-w);height:calc(var(--kf-w) * 2.0444);margin:0 auto}
+.fone>img{position:absolute;inset:0;width:100%;height:100%}
+.vidro{position:absolute;left:6.2%;right:6.2%;top:3%;bottom:3%;overflow:hidden;border-radius:calc(var(--kf-w) * .115)}
+.nots{position:absolute;left:50%;top:calc(var(--kf-w) * .6672);width:calc(var(--kf-w) * .7943);height:calc(var(--kf-w) * .861);transform:translateX(-50%)}
+.not{position:absolute;left:0;width:100%;overflow:hidden;opacity:0;
+     animation:cair 12s cubic-bezier(.22,1,.36,1) infinite both;animation-delay:calc(var(--i) * 1.5s)}
+.not img{position:absolute;left:0;width:100%;max-width:none}
+@keyframes cair{
+  0%{opacity:0;transform:translate3d(0,-40px,0) scale(.94)}
+  4%{opacity:1;transform:none}
+  74%{opacity:1;transform:none}
+  82%{opacity:0;transform:translate3d(0,-16px,0) scale(.97)}
+  100%{opacity:0;transform:translate3d(0,-40px,0) scale(.94)}
+}
+
+/* ---------- rodapé ---------- */
+.rodape{border-top:1px solid var(--fio);padding:var(--e64) var(--e24)}
+.rodape .cols{display:grid;grid-template-columns:2fr repeat(3,1fr);gap:var(--e48)}
+.rodape .marca-nome{width:120px;height:30px}
+.rodape h4{margin:0 0 var(--e16);font-size:var(--t-rotulo);letter-spacing:var(--ls-rotulo);text-transform:uppercase;font-weight:500;color:var(--mudo)}
+.rodape a{display:block;font-size:var(--t-corpo-sm);color:var(--mudo);padding:5px 0}
+.rodape a:hover{color:var(--sinal)}
+
+/* ---------- seletor de tema ---------- */
+.tema{display:inline-flex;border:1px solid var(--fio);border-radius:var(--r-botao);overflow:hidden}
+.tema button{appearance:none;border:0;background:transparent;color:var(--mudo);cursor:pointer;
+  padding:8px 12px;font:500 var(--t-caption)/1 var(--fonte);letter-spacing:.032em;text-transform:uppercase}
+.tema button[aria-pressed="true"]{background:var(--sinal);color:var(--tinta-acao)}
+
+/* ---------- responsivo ---------- */
+@media (max-width:1080px){
+  :root{--t-display:56px;--t-titulo:38px}
+  .split,.split.invertido{grid-template-columns:1fr;gap:var(--e48)}
+  .cartoes{grid-template-columns:1fr}
+  .rodape .cols{grid-template-columns:1fr 1fr}
+}
+@media (max-width:900px){
+  /* A roda fica mais aberta e as peças menores: no estreito elas estavam
+     quase encostando umas nas outras. */
+  .constelacao{aspect-ratio:1/1}
+  .no{width:38px;height:38px;border-radius:11px}
+  .no svg{width:19px;height:19px}
+}
+@media (max-width:680px){
+  .no{width:34px;height:34px;border-radius:10px}
+  .no svg{width:17px;height:17px}
+  :root{--t-display:40px;--t-titulo:30px;--e80:56px;--e96:64px;--e128:72px}
+  .nav .wrap{flex-wrap:wrap;gap:12px;padding:16px}
+  .marca{font-size:16px}.marca img{width:24px;height:24px}
+  .nav .btn{padding:10px 14px;font-size:14px}
+  .nav .linha{margin-left:auto;gap:8px}
+  .heroi{padding-top:var(--e48)}
+  .navlinks{display:none}
+  .fone{--kf-w:290px}
+    .rodape .cols{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){
+  .not{animation:none;opacity:1}
+  .joia{transition:none}
+}
+</style>
+</head>
+<body>
+
+<!-- ===================== NAVEGAÇÃO ===================== -->
+<header class="nav">
+  <div class="wrap">
+    <a class="marca" href="/nova.html" aria-label="Koonfy"><i class="marca-nome"></i></a>
+    <nav class="navlinks">
+      <a href="#produto">Produto</a>
+      <a href="#canais">Canais</a>
+      <a href="#celular">Notificações</a>
+      <a href="#planos">Planos</a>
+    </nav>
+    <div class="linha" style="gap:12px">
+
+      <a class="btn btn-sinal" data-cta="signup" data-cta-txt href="/app?novo=1"><svg class="seta" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg> Começar agora</a>
+    </div>
+  </div>
+</header>
+
+<!-- A joia vive fora das seções: ela atravessa todas. -->
+<img class="joia" id="joia" src="/assets/koonfy-joia.webp" alt="" aria-hidden="true">
+
+<!-- ===================== HERÓI ===================== -->
+<section class="heroi escura">
+  <!-- anéis de nó orbitando a marca, como na referência -->
+  <div class="orbita" aria-hidden="true">
+    <div class="no sinal" style="left:4%;top:18%"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg></div>
+    <div class="no" style="left:7%;top:62%"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="14" x2="23" y2="14"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="14" x2="4" y2="14"></line></svg></div>
+    <div class="no" style="right:4%;top:24%"><svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg></div>
+    <div class="no sinal" style="right:7%;top:64%"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg></div>
+  </div>
+
+  <div class="wrap">
+    <img class="selo-meta" src="/assets/meta-tech-partner.png"
+         alt="Meta Tech Partner · Powered by WhatsApp Business API">
+
+    <div class="joia-espaco" aria-hidden="true"></div>
+    <h1 class="display">Todo o seu atendimento<br>no WhatsApp em<br>um lugar só</h1>
+
+    <p class="corpo mudo">Conversas, funil, campanhas, automação com IA e pagamentos no mesmo número. Sem plugin, sem integração paga, sem risco de banimento.</p>
+
+    <div class="linha" style="justify-content:center">
+      <a class="btn btn-sinal" data-cta="signup" data-cta-txt href="/app?novo=1"><svg class="seta" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg> Testar 7 dias grátis</a>
+      <a class="btn btn-fantasma" href="#produto">Ver como funciona</a>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FILEIRA DE LOGOS ===================== -->
+<section class="faixa escura" style="padding-top:0">
+  <div class="wrap logos">
+    <span>Meta Business Partner</span>
+    <span>WhatsApp Cloud API</span>
+    <span>Pix &amp; Cartão</span>
+    <span>Webhooks</span>
+    <span>Nuvemshop</span>
+    <span>OpenAI</span>
+  </div>
+</section>
+
+<!-- ===================== SPLIT + CONSTELAÇÃO ===================== -->
+<section class="faixa clara" id="canais">
+  <div class="wrap split">
+    <div class="pilha">
+      <span class="rotulo sinal">Um número, a operação inteira</span>
+      <h2 class="titulo-sec">Atender no WhatsApp virou juntar dez ferramentas que não se falam</h2>
+      <p class="corpo mudo">Um sistema para o chat, outro para o funil, uma planilha para os contatos, um gateway para cobrar e um robô que ninguém consegue configurar. No fim do mês ninguém sabe de onde veio a venda.</p>
+      <p class="corpo mudo">A Koonfy é um número só com tudo ligado por dentro: a conversa vira lead, o lead anda no funil, a cobrança sai na conversa e o pagamento confirmado move o card sozinho.</p>
+      <div class="linha"><a class="btn btn-fantasma" href="#planos">Ver planos</a></div>
+    </div>
+
+    <div class="constelacao" id="constelacao">
+    </div>
+  </div>
+</section>
+
+<!-- ===================== SPLIT: O CELULAR ===================== -->
+<section class="faixa escura" id="celular">
+  <div class="wrap split invertido">
+    <div class="fone">
+      <img src="/assets/figma-celular.webp" alt="Notificações da Koonfy na tela de bloqueio do celular">
+      <div class="vidro"><div class="nots">
+        <div class="not" style="--i:0;top:calc(var(--kf-w) * .0322);height:calc(var(--kf-w) * .1822)"><img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -.0322)"></div>
+        <div class="not" style="--i:1;top:calc(var(--kf-w) * .2144);height:calc(var(--kf-w) * .1867)"><img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -.2144)"></div>
+        <div class="not" style="--i:2;top:calc(var(--kf-w) * .4011);height:calc(var(--kf-w) * .2044)"><img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -.4011)"></div>
+        <div class="not" style="--i:3;top:calc(var(--kf-w) * .6055);height:calc(var(--kf-w) * .2188)"><img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -.6055)"></div>
+      </div></div>
+    </div>
+
+    <div class="pilha">
+      <span class="rotulo sinal">No seu bolso</span>
+      <h2 class="titulo-sec">Venda aprovada, automação rodando, cliente novo chegando</h2>
+      <p class="corpo mudo">Instale como aplicativo e receba a notificação com o navegador fechado. Toque nela e cai direto na conversa. Funciona no Android e no iPhone, sem passar por loja nenhuma.</p>
+      <p class="corpo mudo">E quando o cliente <b>liga</b>, a chamada toca aqui: você atende pelo painel ou pelo celular, passa para outro atendente e a gravação fica guardada junto da conversa.</p>
+      <div class="linha"><a class="btn btn-fantasma" data-cta="login" href="/app">Abrir o painel</a></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== BANDA DE INVERSÃO (a única faixa clara) ===================== -->
+<section class="faixa clara inversao">
+
+  <div class="wrap">
+    <h2 class="display">Seu WhatsApp<br>já vende. Falta ele<br>cobrar e anotar</h2>
+    <p class="corpo">Ligue a Koonfy no número que você já usa. Nada de migrar conversa, avisar cliente nem trocar de chip.</p>
+    <div class="linha" style="justify-content:center">
+      <a class="btn btn-escuro" data-cta="signup" href="/app?novo=1"><svg class="seta" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg> Criar minha conta</a>
+      <a class="btn btn-fantasma" href="#planos" style="color:var(--inversa-texto);border-color:var(--inversa-texto)">Ver planos</a>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== PLANOS (o escuro continua) ===================== -->
+<section class="faixa escura" id="planos">
+  <div class="wrap pilha" style="gap:var(--e48)">
+    <div class="pilha" style="gap:var(--e16)">
+      <span class="rotulo sinal">Planos</span>
+      <h2 class="titulo">Escolha pelo tamanho<br>da sua operação</h2>
+    </div>
+
+    <div class="cartoes">
+      <article class="cartao">
+        <span class="rotulo">Starter</span>
+        <div class="preco">R$ 97<span style="font-size:16px;color:var(--mudo)">/mês</span></div>
+        <ul>
+          <li>1 número de WhatsApp</li>
+          <li>10.000 contatos</li>
+          <li>10.000 envios por mês</li>
+          <li>Campanhas ilimitadas</li>
+          <li>1 automação</li>
+        </ul>
+        <a class="btn btn-fantasma" data-cta="plano" data-plano="starter" href="/assinar">Assinar</a>
+      </article>
+
+      <article class="cartao">
+        <span class="rotulo sinal">Premium · mais escolhido</span>
+        <div class="preco">R$ 197<span style="font-size:16px;color:var(--mudo)">/mês</span></div>
+        <ul>
+          <li>3 números de WhatsApp</li>
+          <li>50.000 contatos</li>
+          <li>Agente de IA incluso</li>
+          <li>Pagamentos e checkout</li>
+          <li>Links rastreáveis</li>
+        </ul>
+        <a class="btn btn-sinal" data-cta="plano" data-plano="premium" href="/assinar"><svg class="seta" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg> Assinar</a>
+      </article>
+
+      <article class="cartao">
+        <span class="rotulo">Business</span>
+        <div class="preco">R$ 397<span style="font-size:16px;color:var(--mudo)">/mês</span></div>
+        <ul>
+          <li>Números ilimitados</li>
+          <li>Contatos ilimitados</li>
+          <li>Equipe com permissões</li>
+          <li>API e webhooks</li>
+          <li>Domínio próprio nos links</li>
+        </ul>
+        <a class="btn btn-fantasma" href="/app/">Falar com vendas</a>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== RODAPÉ ===================== -->
+<footer class="rodape escura">
+  <div class="wrap cols">
+    <div class="pilha" style="gap:var(--e16)">
+      <a class="marca" href="/nova.html" aria-label="Koonfy"><i class="marca-nome"></i></a>
+      <p class="corpo mudo" style="font-size:14px">CRM de WhatsApp com IA, pagamentos e campanhas. Feito no Brasil.</p>
+    </div>
+    <div>
+      <h4>Produto</h4>
+      <a href="#canais">Canais</a><a href="#celular">Notificações</a><a href="#planos">Planos</a><a data-cta="login" href="/app">Entrar</a>
+    </div>
+    <div>
+      <h4>Recursos</h4>
+      <a href="/app/">Agente de IA</a><a href="/app/">Campanhas</a><a href="/app/">Pagamentos</a><a href="/app/">Rastreamento</a>
+    </div>
+    <div>
+      <h4>Legal</h4>
+      <a href="/termos">Termos de uso</a><a href="/privacidade">Privacidade</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+// OS ÍCONES SÃO OS DO APP: o mesmo desenho que está na barra lateral do
+// painel, um por funcionalidade. Quem vê a vitrine e depois entra encontra
+// os mesmos símbolos — é a mesma casa, não duas.
+var ICONES_KOONFY = {
+  inbox:'<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-3-.4-4.2-1L3 20l1.1-4.3A8.5 8.5 0 1 1 21 11.5z"/>',
+  team:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><circle cx="9" cy="10" r="1"/><circle cx="13" cy="10" r="1"/><circle cx="17" cy="10" r="1"/>',
+  schedule:'<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/><path d="M7.5 13h3M13.5 13h3M7.5 16.5h3"/>',
+  contacts:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.2 3.4-5 6.5-5s5.7 1.8 6.5 5"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 15.2c2.4.3 4.2 1.9 4.9 4.3"/>',
+  funnel:'<rect x="3" y="4" width="5.5" height="16" rx="1.5"/><rect x="9.8" y="4" width="5.5" height="10" rx="1.5"/><rect x="16.5" y="4" width="4.5" height="13" rx="1.5"/>',
+  consent:'<path d="M12 3l7 3.5v5c0 4.3-2.9 8-7 9.2-4.1-1.2-7-4.9-7-9.2v-5L12 3z"/><path d="m9.2 12.2 1.9 1.9 3.7-4"/>',
+  flows:'<rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="15" y="15" width="6" height="6" rx="1.5"/><path d="M9 6h5a4 4 0 0 1 4 4v5"/>',
+  ia:'<rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 7V4M9 12.5h.01M15 12.5h.01M9.5 16h5"/><path d="M2 12h1.5M20.5 12H22"/>',
+  integrations:'<path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2"/><path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06"/><path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8"/>',
+  campaigns:'<path d="M3 10v4l4 .8V9.2L3 10z"/><path d="M7 9l11-5v16L7 15z"/><path d="M9.5 15.6V19a2 2 0 0 0 4 0v-2.4"/>',
+  sms:'<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/>',
+  templates:'<path d="M6 2h8l4 4v16H6z"/><path d="M14 2v4h4M9 12h6M9 16h6"/>',
+  quick:'<path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/>',
+  elitepay:'<g fill="currentColor" transform="scale(1.5)"><path d="M11.917 11.71a2.046 2.046 0 0 1-1.454-.602l-2.1-2.1a.4.4 0 0 0-.551 0l-2.108 2.108a2.044 2.044 0 0 1-1.454.602h-.414l2.66 2.66c.83.83 2.177.83 3.007 0l2.667-2.668h-.253zM4.25 4.282c.55 0 1.066.214 1.454.602l2.108 2.108a.39.39 0 0 0 .552 0l2.1-2.1a2.044 2.044 0 0 1 1.453-.602h.253L9.503 1.623a2.127 2.127 0 0 0-3.007 0l-2.66 2.66h.414z"/><path d="m14.377 6.496-1.612-1.612a.307.307 0 0 1-.114.023h-.733c-.379 0-.75.154-1.017.422l-2.1 2.1a1.005 1.005 0 0 1-1.425 0L5.268 5.32a1.448 1.448 0 0 0-1.018-.422h-.9a.306.306 0 0 1-.109-.021L1.623 6.496c-.83.83-.83 2.177 0 3.008l1.618 1.618a.305.305 0 0 1 .108-.022h.901c.38 0 .75-.153 1.018-.421L7.375 8.57a1.034 1.034 0 0 1 1.426 0l2.1 2.1c.267.268.638.421 1.017.421h.733c.04 0 .079.01.114.024l1.612-1.612c.83-.83.83-2.178 0-3.008z"/></g>',
+  checkouts:'<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6.5 14.5h4"/>',
+  links:'<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
+  tracking:'<path d="M3 17l5-5 4 4 6.5-7"/><path d="M14.5 9H19v4.5"/><path d="M3 21h18"/>',
+  pixels:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+  agents:'<circle cx="9" cy="8" r="3.2"/><path d="M2.8 20c.7-3 3.2-4.8 6.2-4.8s5.5 1.8 6.2 4.8"/><path d="M16 4.2a3.2 3.2 0 0 1 0 6.1M18.5 20c-.3-1.6-1-3-2-4"/>',
+  billing:'<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/><path d="M6.5 15h4"/>',
+  afiliacao:'<path d="M12 3.2l2.1 4.5 4.9.6-3.6 3.4.9 4.9-4.3-2.4-4.3 2.4.9-4.9L5 8.3l4.9-.6z"/><path d="M8.5 20.5h7"/>'
+};
+// O nome de cada um, para o alt e para quem for mexer aqui depois.
+var NOMES_KOONFY = {"inbox":"Conversas","team":"Chat interno","schedule":"Agendamentos","contacts":"Contatos","funnel":"Pipeline","consent":"Opt-in & Opt-out","flows":"Flow Builder","ia":"Agente de IA","integrations":"Integrações","campaigns":"Campanhas","sms":"SMS","templates":"Modelos","quick":"Respostas rápidas","elitepay":"Pagamentos","checkouts":"Checkout Builder","links":"Links rastreáveis","tracking":"Tracking","pixels":"Pixels","agents":"Atendentes","billing":"Assinatura","afiliacao":"Afiliação"};
+(function () {
+  // =========================================================================
+  // A JOIA QUE DESCE COM A PÁGINA
+  //
+  // O gesto da referência é um objeto de marca só, atravessando a página
+  // inteira. Aqui ele é uma imagem fixa na viewport; a rolagem escolhe onde
+  // ela está, de que tamanho e quanto girou, interpolando entre PARADAS.
+  //
+  // Cada parada está amarrada a uma SEÇÃO, não a um número mágico de pixels:
+  // a página pode crescer que o percurso continua batendo.
+  // =========================================================================
+  var joia = document.getElementById('joia');
+
+  // Cada parada é um ALVO na página. A joia pousa no centro dele; entre uma
+  // parada e outra ela desliza. `fim:true` marca o ponto em que ela se
+  // despede: dali para baixo a página segue sem o objeto.
+  var PARADAS = [
+    { alvo: '.joia-espaco', tam: 240, giro: 0, opac: 1 },
+    { alvo: '#constelacao', tam: 150, giro: -10, opac: 1, forte: true },
+    // ZIGUEZAGUE pelo celular: três pousos alternando os lados do aparelho,
+    // com a peça pequena. Ela não entra nem se apaga — passa por ali.
+    { alvo: '.fone', lado: -1, alturaRel: 0.18, tam: 82, giro: -14, opac: 1 },
+    { alvo: '.fone', lado: 1, alturaRel: 0.50, tam: 70, giro: 16, opac: 1 },
+    { alvo: '.fone', lado: -1, alturaRel: 0.82, tam: 88, giro: -8, opac: 1 },
+    // Fim da viagem: pousa sobre a chamada da faixa clara e fica.
+    { alvo: '.inversao .display', tam: 170, giro: -4, opac: 1, acima: true }
+  ];
+
+  function entre(a, b, t) { return a + (b - a) * t; }
+
+  var pontos = [];
+  function medir() {
+    pontos = [];
+    for (var i = 0; i < PARADAS.length; i++) {
+      var el = document.querySelector(PARADAS[i].alvo);
+      if (!el) continue;
+      var r = el.getBoundingClientRect();
+      pontos.push({
+        el: el,
+        at: Math.max(0, window.scrollY + r.top - innerHeight / 2 + (
+          PARADAS[i].borda ? 0
+          : PARADAS[i].alturaRel !== undefined ? r.height * PARADAS[i].alturaRel
+          : r.height / 2)),
+        d: PARADAS[i]
+      });
+    }
+    pontos.sort(function (a, b) { return a.at - b.at; });
+  }
+
+  // Onde a joia pousa, em coordenadas da TELA, agora. Com `acima`, ela
+  // descansa sobre a borda superior do alvo em vez de ficar por cima dele.
+  function centro(pt) {
+    var r = pt.el.getBoundingClientRect();
+    var y = pt.d.acima ? r.top - pt.d.tam / 2 + 18
+          : pt.d.borda ? r.top
+          : pt.d.alturaRel !== undefined ? r.top + r.height * pt.d.alturaRel
+          : r.top + r.height / 2;
+    // `lado` joga a peça para fora da borda do alvo: -1 à esquerda, 1 à
+    // direita. É o que faz o ziguezague ao redor do aparelho.
+    var x = r.left + r.width / 2;
+    if (pt.d.lado) x += pt.d.lado * (r.width / 2 + pt.d.tam * 0.42);
+    var meia = document.documentElement.clientWidth / 2;
+    var limite = Math.max(0, meia - pt.d.tam / 2 - 10);
+    var dx = Math.max(-limite, Math.min(limite, x - meia));
+    return { x: dx, y: y };
+  }
+
+  var rede = document.getElementById('constelacao');
+  var alvo = { x: 0, y: innerHeight / 2, tam: 240, giro: 0, opac: 1, acesa: 0.06,
+               forte: false, clarao: 0, aparelho: 0 };
+  var atual = null, pedido = null;
+  function calcular() {
+    if (!pontos.length) return;
+    var y = window.scrollY, i = 0;
+    while (i < pontos.length - 1 && y > pontos[i + 1].at) i++;
+    var a = pontos[i], b = pontos[Math.min(i + 1, pontos.length - 1)];
+    var t = (b.at === a.at) ? 0 : Math.min(1, Math.max(0, (y - a.at) / (b.at - a.at)));
+    t = t * t * (3 - 2 * t);                               // suaviza a passagem
+    var ca = centro(a), cb = centro(b);
+    alvo.x = entre(ca.x, cb.x, t);
+    alvo.y = entre(ca.y, cb.y, t);
+    alvo.tam = entre(a.d.tam, b.d.tam, t);
+    alvo.giro = entre(a.d.giro, b.d.giro, t);
+    alvo.opac = entre(a.d.opac, b.d.opac, t);
+    // REAÇÃO. Em repouso a joia fica levemente acesa; chegando ao ponto das
+    // conexões ela abre o brilho de vez e a rede acende junto.
+    var f = (a.d.forte ? 1 - t : 0) + (b.d.forte ? t : 0);
+    alvo.acesa = Math.max(0.06, f * f);
+    alvo.forte = f > 0.55;
+
+    // A TROCA. Chegando à parada do celular a joia se apaga; o clarão verde
+    // é justamente o meio do caminho — 4t(1-t) vale 0 nas pontas e 1 no
+    // meio. Saindo da parada, o mesmo desenho ao contrário: o aparelho se
+    // desfaz na luz e a joia volta de dentro dela.
+    var entrando = b.d.troca ? Math.min(1, t / 0.6) : (a.d.troca ? 1 : 0);
+    var saindo = a.d.troca ? Math.max(0, (t - 0.74) / 0.26) : 0;
+    // Sem clarão nesta versão: a joia atravessa a seção do celular à vista,
+    // em ziguezague, e o fundo continua o carbono liso.
+    alvo.clarao = 0;
+    alvo.aparelho = 1;                                   // o aparelho fica sempre inteiro
+    alvo.entrando = (b.d.troca || a.d.troca) ? entrando : (y > (a.at || 0) ? 1 : 0);
+    alvo.saindo = saindo;
+  }
+
+  function pintar() {
+    pedido = null;
+    if (!atual) atual = { x: alvo.x, y: alvo.y, tam: alvo.tam, giro: alvo.giro, opac: alvo.opac, acesa: alvo.acesa, clarao: alvo.clarao, aparelho: alvo.aparelho };
+    var k = 0.16;                                          // inércia: ela persegue o alvo
+    atual.x += (alvo.x - atual.x) * k;
+    atual.y += (alvo.y - atual.y) * k;
+    atual.tam += (alvo.tam - atual.tam) * k;
+    atual.giro += (alvo.giro - atual.giro) * k;
+    atual.opac += (alvo.opac - atual.opac) * k;
+    joia.style.setProperty('--j', Math.round(atual.tam) + 'px');
+    joia.style.opacity = atual.opac.toFixed(3);
+    atual.acesa += ((alvo.acesa || 0) - atual.acesa) * 0.12;
+    joia.style.setProperty('--acesa', atual.acesa.toFixed(3));
+    if (rede) rede.classList.toggle('ligada', !!alvo.forte);
+    atual.aparelho += ((alvo.aparelho || 0) - atual.aparelho) * 0.2;
+    joia.style.transform = 'translate(-50%,-50%) translate(' + Math.round(atual.x) + 'px,'
+      + Math.round(atual.y) + 'px) rotate(' + atual.giro.toFixed(2) + 'deg)';
+    var perto = Math.abs(alvo.x - atual.x) / 100 + Math.abs(alvo.y - atual.y) / 100
+      + Math.abs(alvo.tam - atual.tam) / 100
+      + Math.abs(alvo.giro - atual.giro) / 10 + Math.abs(alvo.opac - atual.opac)
+      + Math.abs((alvo.acesa || 0) - atual.acesa)
+      + Math.abs((alvo.clarao || 0) - atual.clarao) + Math.abs((alvo.aparelho || 0) - atual.aparelho);
+    if (perto > 0.002) agendar();
+  }
+  function agendar() { if (!pedido) pedido = requestAnimationFrame(pintar); }
+  function aoRolar() {
+    calcular(); agendar();
+  }
+
+  medir(); calcular();
+  atual = { x: alvo.x, y: alvo.y, tam: alvo.tam, giro: alvo.giro, opac: alvo.opac, acesa: alvo.acesa, clarao: alvo.clarao, aparelho: alvo.aparelho };
+  pintar();
+  addEventListener('scroll', aoRolar, { passive: true });
+  addEventListener('resize', function () { medir(); calcular(); agendar(); });
+  // A página cresce depois: imagem que carrega, fonte que troca, planos que
+  // chegam da API. Sem remedir, a joia para alguns pixels fora do alvo.
+  addEventListener('load', function () { medir(); calcular(); agendar(); });
+  if (window.ResizeObserver) {
+    var ro = new ResizeObserver(function () { medir(); calcular(); agendar(); });
+    ro.observe(document.body);
+  }
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () { medir(); calcular(); agendar(); });
+  }
+
+  // =========================================================================
+  // CONSTELAÇÃO
+  //
+  // Os nós são canais e recursos que a Koonfy já tem, e a topologia é o
+  // conteúdo. As linhas PARAM antes do centro: a joia passa por ali, e uma
+  // linha cruzando por baixo dela ficava suja.
+  // =========================================================================
+  var ICONES = ICONES_KOONFY;
+  var NOS = Object.keys(ICONES_KOONFY);
+  var caixa = document.getElementById('constelacao');
+  if (caixa) {
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'linhas');
+    caixa.appendChild(svg);
+    NOS.forEach(function (nome, i) {
+      var ang = (i / NOS.length) * Math.PI * 2 - Math.PI / 2;
+      // Raio maior nas telas estreitas: com 21 peças, o anel apertado
+      // amontoava tudo.
+      var estreito = document.documentElement.clientWidth < 900;
+      var rx = estreito ? 44 : 40, ry = estreito ? 45 : 42;
+      var cx = 50 + Math.cos(ang) * rx, cy = 50 + Math.sin(ang) * ry;      // o nó
+      var ix = 50 + Math.cos(ang) * 10.5, iy = 50 + Math.sin(ang) * 11.5;  // encosta na joia
+      var l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      l.setAttribute('x1', ix + '%'); l.setAttribute('y1', iy + '%');
+      l.setAttribute('x2', cx + '%'); l.setAttribute('y2', cy + '%');
+      svg.appendChild(l);
+      var d = document.createElement('div');
+      d.className = 'no';
+      d.title = NOMES_KOONFY[nome] || '';
+      d.style.left = cx + '%'; d.style.top = cy + '%';
+      // O Pix (e qualquer ícone de preenchimento) não leva traço: com traço
+      // por cima, o desenho engorda e vira mancha.
+      var cheio = /fill="currentColor"/.test(ICONES_KOONFY[nome]);
+      d.innerHTML = cheio
+        ? '<svg viewBox="0 0 24 24" aria-hidden="true">' + ICONES_KOONFY[nome] + '</svg>'
+        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"'
+          + ' stroke-linecap="round" stroke-linejoin="round">' + ICONES_KOONFY[nome] + '</svg>';
+      caixa.appendChild(d);
+    });
+  }
+
+  // =========================================================================
+  // OS BOTÕES SÃO OS DO PAINEL
+  //
+  // O texto da ação e os dias de teste vêm do Admin (Admin SaaS → Landing), a
+  // mesma fonte da vitrine atual: cadastro vai para /app?novo=1 e login para
+  // /app. Sem isto a página promete "7 dias" enquanto o Admin vende outro
+  // prazo — foi por isso que "Testar 7 dias grátis" e "Começar agora" estavam
+  // desencontrados.
+  // =========================================================================
+  fetch('/api/public/landing').then(function (r) { return r.json(); }).then(function (c) {
+    var txt = (c.ctaText || '').trim() || (c.trialDays ? 'Testar ' + c.trialDays + ' dias grátis' : 'Começar agora');
+    // Assinar leva ao checkout do plano; o id real vem da API.
+    var porNome = {};
+    (c.planos || []).forEach(function (p, i) { porNome[i] = p.id; });
+    var ordem = ['starter', 'premium', 'business'];
+    document.querySelectorAll('[data-cta="plano"]').forEach(function (b) {
+      var i = ordem.indexOf(b.getAttribute('data-plano'));
+      var id = porNome[i < 0 ? 0 : i];
+      b.setAttribute('href', '/assinar' + (id ? '?plano=' + encodeURIComponent(id) : ''));
+    });
+    document.querySelectorAll('[data-cta]').forEach(function (b) {
+      var alvo = b.getAttribute('data-cta');
+      b.setAttribute('href', alvo === 'login' ? '/app' : '/assinar');
+      if (alvo === 'signup' && b.hasAttribute('data-cta-txt')) {
+        var n = [].slice.call(b.childNodes).filter(function (x) { return x.nodeType === 3 && x.textContent.trim(); })[0];
+        if (n) n.textContent = ' ' + txt;
+      }
+    });
+    medir(); calcular(); agendar();
+  }).catch(function () {});
+})();
+</script>
+</body>
+</html>

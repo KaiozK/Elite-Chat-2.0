@@ -582,6 +582,42 @@ async function registerSubaccount(acc, fields) {
   return ep.subaccount;
 }
 
+
+// ---------------------------------------------------------------------------
+// A CONTA DE PAGAMENTOS NASCE SOZINHA.
+//
+// Os dados são os mesmos do cadastro do Koonfy: razão social, CPF/CNPJ,
+// e-mail, telefone e chave Pix. Estando todos gravados, não há formulário
+// nenhum a preencher — a conta de Pagamentos é criada quando a pessoa assina.
+// Faltando a chave Pix (que é do banco do cliente e não dá para deduzir), o
+// formulário do Pagamentos continua existindo, já pré-preenchido com o resto.
+//
+// Na Simplify não existe subconta do lado do adquirente: `createSubaccount`
+// registra localmente e o dinheiro é separado pela carteira do Koonfy, com o
+// split da plataforma configurado em Admin → Gateways. Na Woovi a subconta é
+// criada de verdade. Quem chama aqui não precisa saber a diferença.
+//
+// Nunca levanta erro: assinatura paga não pode falhar por causa disto.
+// ---------------------------------------------------------------------------
+async function garantirPagamentos(acc) {
+  const ep = ensure(acc);
+  if (ep.subaccount && ep.subaccount.status !== 'rejected') return ep.subaccount;
+  const p = acc.profile || {};
+  const campos = {
+    name: acc.name, document: p.document || '', email: acc.email,
+    phone: p.phone || '', pixKey: p.pixKey || '', pixKeyType: p.pixKeyType || '',
+    repName: '', repDocument: ''
+  };
+  const mode = platformCfg().onboardingMode === 'kyc' ? 'kyc' : 'subaccount';
+  if (validateOnboarding(campos, mode).length) return null;   // dado faltando: fica para o formulário
+  try {
+    return await registerSubaccount(acc, campos);
+  } catch (e) {
+    log(acc, { type: 'gateway_error', detail: 'Conta de Pagamentos automática adiada: ' + e.message });
+    return null;
+  }
+}
+
 // Webhook ACCOUNT_REGISTER_APPROVED (BaaS): compliance aprovou → ativa a conta.
 function applyAccountApproved(payload, broadcast) {
   const cid = (payload && payload.correlationID) || '';
@@ -965,7 +1001,8 @@ async function cancelCharge(acc, id) {
 
 // Texto da cobrança enviado no WhatsApp (placeholders simples)
 const DEFAULT_CHARGE_MSG = 'Olá {nome}! Sua cobrança de {valor} está pronta.\n{descricao}\nPague pelo link: {link}\n\nOu use o Pix copia e cola:\n{codigo}';
-function chargeMessage(acc, ch) {
+function chargeMessage(acc, ch, opts) {
+  const o = opts || {};
   const ep = ensure(acc);
   // Template de Cobrança ativo → usa o modelo do usuário; senão, a mensagem padrão.
   // A mensagem escrita na hora da cobrança manda em tudo: é a decisão mais
@@ -974,19 +1011,25 @@ function chargeMessage(acc, ch) {
     || ((ep.settings.chargeTemplateEnabled === false)
       ? DEFAULT_CHARGE_MSG
       : (ep.settings.autoMessage || DEFAULT_CHARGE_MSG));
-  // SEM código Pix ainda (gateway que exige os dados do pagador — o código só
-  // nasce depois de o cliente se identificar no checkout). Deixar o
-  // {codigo} vazio mandaria "Ou use o Pix copia e cola:" seguido de nada.
-  // Então a chamada do código sai da mensagem e fica só o link, que é
-  // justamente onde o cliente vai preencher e receber o Pix.
+
+  // O que NÃO cabe nesta mensagem:
+  //  · o código Pix, quando ele ainda não existe (adquirente que só emite o
+  //    código depois de o cliente se identificar) ou quando a mensagem vai
+  //    sair com botão — aí o lugar de pagar é o checkout;
+  //  · o link cru, quando ele já vai dentro do botão.
+  // Some junto a linha de chamada ("Ou use o Pix copia e cola:"), senão sobra
+  // um dois-pontos apontando para o vazio.
+  const semCodigo = o.semCodigo || !ch.brCode;
+  const semLink = !!o.semLink;
   let texto = tpl;
-  if (!ch.brCode) {
+  if (semCodigo || semLink) {
     texto = texto.split('\n')
-      .filter((linha, i, todas) => {
-        if (linha.includes('{codigo}')) return false;
-        // a linha anterior que só apresentava o código ("Ou use o Pix...:")
-        const prox = todas[i + 1] || '';
-        return !(prox.includes('{codigo}') && /:\s*$/.test(linha));
+      .filter((linha, k, todas) => {
+        if (semCodigo && linha.includes('{codigo}')) return false;
+        if (semLink && linha.includes('{link}')) return false;
+        const prox = todas[k + 1] || '';
+        const proxSai = (semCodigo && prox.includes('{codigo}')) || (semLink && prox.includes('{link}'));
+        return !(proxSai && /:\s*$/.test(linha));
       })
       .join('\n');
   }
@@ -997,6 +1040,34 @@ function chargeMessage(acc, ch) {
     .replace(/\{link\}/g, ch.payUrl || payLink(ch))
     .replace(/\{codigo\}/g, ch.brCode || '')
     .replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// ---------------------------------------------------------------------------
+// A COBRANÇA COMO BOTÃO (CTA URL do WhatsApp).
+//
+// Mandar o QR e o copia-e-cola dentro da conversa só funciona quando o Pix já
+// existe — e com adquirente que exige CPF/CNPJ do pagador (Simplify, e o
+// mercado caminha para lá) ele ainda não existe na hora do disparo. Fora isso,
+// código no meio do texto é ruim de pagar: copiar, sair, achar o banco.
+//
+// Com o botão, quem paga cai no CHECKOUT da conta: lá informa o documento,
+// escolhe o meio e recebe o Pix pronto — o mesmo lugar que já trata cartão e
+// boleto. Serve para qualquer adquirente, hoje e depois.
+// ---------------------------------------------------------------------------
+function chargeButton(acc, ch) {
+  const url = ch.payUrl || payLink(ch);
+  let body = chargeMessage(acc, ch, { semCodigo: true, semLink: true });
+  if (!body) body = `Sua cobrança de ${fmtBRL(ch.value)} está pronta.`;
+  body = body.slice(0, 1024);                      // limite do corpo na Meta
+  const displayText = 'Pagar agora';               // limite de 20 caracteres
+  return {
+    url, body, displayText,
+    interactive: {
+      type: 'cta_url',
+      body: { text: body },
+      action: { name: 'cta_url', parameters: { display_text: displayText, url } }
+    }
+  };
 }
 function fmtBRL(cents) { return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
 
@@ -2059,8 +2130,8 @@ function cobrancasEmAberto(accounts) {
 
 module.exports = {
   ensure, configured, platformCfg, gateway,
-  registerSubaccount, setSubaccountStatus, syncSubaccount, applyAccountApproved,
-  createCharge, cancelCharge, findCharge, chargeMessage, computeOutFee,
+  registerSubaccount, garantirPagamentos, setSubaccountStatus, syncSubaccount, applyAccountApproved,
+  createCharge, cancelCharge, findCharge, chargeMessage, chargeButton, computeOutFee,
   isElitePayCharge, applyPaid, metrics, adminOverview, log, plog, fmtBRL,
   noteBaseUrl, payLink, publicChargeView, defaultCheckout, defaultProduct, defaultBlocks,
   identifyPayer, fmtCpfCnpj, findProduct, findCheckout, checkoutBranding,

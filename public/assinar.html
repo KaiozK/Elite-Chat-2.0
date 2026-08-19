@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assinar a Koonfy</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/assets/koonfy-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/tema.css">
+<style>
+/* Mesmo sistema da vitrine: carbono, verde da marca, tipografia Inter em dois
+   pesos, cantos de 4px no que é interativo e 12px nos cartões. */
+:root{
+  --sinal:#2ED378; --carbono:#111111; --osso:#f9f9f9; --grafite:#2b2b2b;
+  --pedra:#9c9c9c; --fumaca:#565656; --giz:#d6d6d6; --creme:#eeeeee;
+  --tela:var(--carbono); --painel:#171d1a; --texto:var(--osso); --mudo:var(--pedra); --fio:#2b2b2b;
+  --fonte:'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--tela);color:var(--texto);font:400 16px/1.5 var(--fonte);
+     font-feature-settings:"kern" on,"liga" on;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+.topo{padding:24px;display:flex;align-items:center;gap:12px}
+.marca-nome{display:block;width:104px;height:26px;background:currentColor;
+  -webkit-mask:url(/assets/koonfy-marca.webp) left center/contain no-repeat;
+  mask:url(/assets/koonfy-marca.webp) left center/contain no-repeat}
+.wrap{max-width:960px;margin:0 auto;padding:8px 24px 80px}
+.grade{display:grid;grid-template-columns:1fr 360px;gap:40px;align-items:start}
+h1{font-size:44px;line-height:.95;letter-spacing:-.01em;font-weight:400;text-transform:uppercase;margin:0 0 8px}
+.rotulo{font-size:12px;font-weight:500;letter-spacing:.032em;text-transform:uppercase;color:var(--sinal)}
+.mudo{color:var(--mudo)}
+form{display:grid;gap:16px;margin-top:28px}
+label{display:grid;gap:6px;font-size:12px;font-weight:500;letter-spacing:.032em;text-transform:uppercase;color:var(--mudo)}
+input,select{background:var(--painel);border:1px solid var(--fio);border-radius:4px;color:var(--texto);
+  padding:13px 14px;font:400 16px/1.3 var(--fonte)}
+input:focus,select:focus{outline:none;border-color:var(--sinal)}
+input[readonly]{color:var(--mudo);background:#131817}
+.dupla{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;border:1px solid transparent;
+  border-radius:4px;padding:14px 24px;font:500 16px/1.2 var(--fonte);cursor:pointer;
+  background:var(--btn-verde,#19a95a);color:var(--btn-tinta,#fff)}
+.btn:hover{opacity:.88}
+.btn[disabled]{opacity:.5;cursor:default}
+.cartao{background:var(--painel);border:1px solid var(--fio);border-radius:12px;padding:24px}
+.preco{font-size:40px;line-height:1;letter-spacing:-.02em;font-weight:400;margin:6px 0 2px}
+.itens{list-style:none;margin:16px 0 0;padding:0;display:grid;gap:9px;font-size:14px;color:var(--mudo)}
+.itens li{display:flex;gap:9px;align-items:flex-start}
+.itens li::before{content:"";width:6px;height:6px;margin-top:8px;background:var(--sinal);flex:0 0 6px}
+.erro{color:#ff8080;font-size:14px;min-height:20px}
+.pix{display:grid;gap:14px;justify-items:center;text-align:center}
+.pix img{width:230px;height:230px;background:#fff;border-radius:8px;padding:8px}
+.codigo{width:100%;background:var(--painel);border:1px solid var(--fio);border-radius:4px;color:var(--mudo);
+  padding:12px;font:400 12px/1.4 ui-monospace,monospace;word-break:break-all}
+.passo{display:flex;gap:10px;align-items:center;font-size:12px;font-weight:500;letter-spacing:.032em;
+  text-transform:uppercase;color:var(--mudo);margin-bottom:20px}
+.passo b{width:22px;height:22px;border-radius:4px;display:grid;place-items:center;background:var(--fio);color:var(--texto);font-size:12px}
+.passo .ok{background:var(--sinal);color:#111}
+.oculto{display:none}
+@media (max-width:820px){ .grade{grid-template-columns:1fr} h1{font-size:34px} .dupla{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+
+<header class="topo"><a href="/" aria-label="Koonfy"><i class="marca-nome"></i></a></header>
+
+<div class="wrap">
+  <div class="passo" id="passo">
+    <b class="ok">1</b> Seus dados <span>·</span> <b>2</b> Pagamento <span>·</span> <b>3</b> Sua conta
+  </div>
+
+  <div class="grade">
+    <!-- ETAPA 1: dados do comprador -->
+    <section id="etapa-dados">
+      <span class="rotulo">Checkout</span>
+      <h1>Comece pela<br>assinatura</h1>
+      <p class="mudo" style="max-width:520px">Estes são os dados que abrem a sua conta de recebimento — os mesmos que o
+        adquirente exige para emitir o Pix. Por isso todos são obrigatórios, e por isso eles voltam
+        travados no cadastro: quem paga e quem recebe têm que ser a mesma pessoa.</p>
+
+      <form id="form-dados" autocomplete="on">
+        <label>Nome completo<input id="nome" name="name" autocomplete="name" required></label>
+        <div class="dupla">
+          <label>WhatsApp<input id="telefone" name="tel" inputmode="tel" autocomplete="tel" placeholder="(11) 99999-9999" required></label>
+          <label>CPF ou CNPJ<input id="documento" inputmode="numeric" placeholder="000.000.000-00" required></label>
+        </div>
+        <label>E-mail<input id="email" type="email" autocomplete="email" placeholder="voce@empresa.com" required></label>
+        <p class="erro" id="erro-dados"></p>
+        <button class="btn" id="btn-pagar" type="submit">Ir para o pagamento</button>
+      </form>
+    </section>
+
+    <!-- ETAPA 2: Pix -->
+    <section id="etapa-pix" class="oculto">
+      <span class="rotulo">Pagamento</span>
+      <h1>Pague com Pix</h1>
+      <p class="mudo">A confirmação é automática. Assim que cair, esta tela avança sozinha.</p>
+      <div class="pix" style="margin-top:24px">
+        <img id="pix-qr" alt="QR Code do Pix">
+        <div class="codigo" id="pix-codigo"></div>
+        <button class="btn" id="btn-copiar" type="button">Copiar código Pix</button>
+        <p class="mudo" style="font-size:14px" id="pix-status">Aguardando o pagamento…</p>
+      </div>
+    </section>
+
+    <!-- ETAPA 3: cadastro -->
+    <section id="etapa-conta" class="oculto">
+      <span class="rotulo">Pagamento confirmado</span>
+      <h1>Agora a sua<br>conta</h1>
+      <p class="mudo" style="max-width:520px">O que você preencheu no checkout já está aqui e não muda: é com ele que a
+        sua conta de Pagamentos nasce. Falta o nome da empresa e uma senha.</p>
+
+      <form id="form-conta">
+        <div class="dupla">
+          <label>Nome<input id="c-nome" readonly></label>
+          <label>WhatsApp<input id="c-telefone" readonly></label>
+        </div>
+        <div class="dupla">
+          <label>E-mail<input id="c-email" readonly></label>
+          <label>CPF ou CNPJ<input id="c-documento" readonly></label>
+        </div>
+        <label>Nome da empresa<input id="empresa" required placeholder="Como o cliente conhece você"></label>
+        <div class="dupla">
+          <label>Senha<input id="senha" type="password" autocomplete="new-password" minlength="6" required></label>
+          <label>Quantas pessoas vão atender<select id="size">
+            <option value="">Prefiro não dizer</option>
+            <option>Só eu</option><option>2 a 5</option><option>6 a 20</option><option>Mais de 20</option>
+          </select></label>
+        </div>
+        <label>O que você vende<input id="segment" placeholder="Ex.: consultoria, loja de roupas, curso"></label>
+        <p class="erro" id="erro-conta"></p>
+        <button class="btn" id="btn-concluir" type="submit">Entrar no painel</button>
+      </form>
+    </section>
+
+    <!-- resumo do plano -->
+    <aside class="cartao" id="resumo">
+      <span class="rotulo" id="r-nome">Plano</span>
+      <div class="preco" id="r-preco">—</div>
+      <div class="mudo" style="font-size:13px" id="r-ciclo"></div>
+      <ul class="itens" id="r-itens"></ul>
+    </aside>
+  </div>
+</div>
+
+<script>
+(function () {
+  var qs = new URLSearchParams(location.search);
+  var planId = qs.get('plano') || '';
+  var token = qs.get('token') || '';
+  var planos = [];
+
+  function $(id) { return document.getElementById(id); }
+  function mostrar(qual) {
+    ['dados', 'pix', 'conta'].forEach(function (n) {
+      $('etapa-' + n).classList.toggle('oculto', n !== qual);
+    });
+    var b = $('passo').querySelectorAll('b');
+    var i = { dados: 0, pix: 1, conta: 2 }[qual];
+    for (var k = 0; k < b.length; k++) b[k].classList.toggle('ok', k <= i);
+  }
+  function brl(c) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+
+  // ---- máscaras e conferência de documento, iguais às do painel ----
+  function mascaraDoc(v) {
+    var d = String(v || '').replace(/\D/g, '').slice(0, 14);
+    if (d.length <= 11) return d.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+      .replace(/\.(\d{3})(\d{1,2})$/, '.$1-$2');
+    return d.replace(/^(\d{2})(\d)/, '$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+      .replace(/\.(\d{3})(\d)/, '.$1/$2').replace(/(\d{4})(\d{1,2})$/, '$1-$2');
+  }
+  function mascaraTel(v) {
+    var d = String(v || '').replace(/\D/g, '').slice(0, 11);
+    if (d.length <= 10) return d.replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{4})(\d)/, '$1-$2');
+    return d.replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2');
+  }
+  $('documento').addEventListener('input', function () { this.value = mascaraDoc(this.value); });
+  $('telefone').addEventListener('input', function () { this.value = mascaraTel(this.value); });
+
+  // ---- resumo do plano ----
+  fetch('/api/public/landing').then(function (r) { return r.json(); }).then(function (c) {
+    planos = c.planos || [];
+    var p = planos.find(function (x) { return x.id === planId; }) || planos[0];
+    if (!p) return;
+    planId = p.id;
+    $('r-nome').textContent = p.nome;
+    $('r-preco').textContent = brl(p.preco);
+    $('r-ciclo').textContent = 'a cada ' + (p.dias || 30) + ' dias';
+    $('r-itens').innerHTML = (p.itens || []).map(function (i) { return '<li>' + i + '</li>'; }).join('');
+  });
+
+  // ---- etapa 1 → cobrança ----
+  $('form-dados').addEventListener('submit', function (e) {
+    e.preventDefault();
+    $('erro-dados').textContent = '';
+    $('btn-pagar').disabled = true;
+    fetch('/api/public/assinatura', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        planId: planId, nome: $('nome').value, email: $('email').value,
+        telefone: $('telefone').value, documento: $('documento').value, pais: 'BR'
+      })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (r) {
+        $('btn-pagar').disabled = false;
+        if (!r.ok) { $('erro-dados').textContent = r.j.error || 'Não foi possível criar a cobrança'; return; }
+        token = r.j.token;
+        history.replaceState(null, '', '?plano=' + planId + '&token=' + token);
+        verPix(r.j.cobranca);
+      }).catch(function () {
+        $('btn-pagar').disabled = false;
+        $('erro-dados').textContent = 'Falha de conexão. Tente de novo.';
+      });
+  });
+
+  function verPix(c) {
+    mostrar('pix');
+    if (c.qrCodeImage) $('pix-qr').src = c.qrCodeImage; else $('pix-qr').style.display = 'none';
+    $('pix-codigo').textContent = c.brCode || '';
+    aguardar();
+  }
+  $('btn-copiar').addEventListener('click', function () {
+    navigator.clipboard.writeText($('pix-codigo').textContent || '');
+    this.textContent = 'Código copiado';
+    var b = this;
+    setTimeout(function () { b.textContent = 'Copiar código Pix'; }, 2000);
+  });
+
+  // ---- espera o webhook confirmar ----
+  var relogio = null;
+  function aguardar() {
+    clearInterval(relogio);
+    relogio = setInterval(conferir, 4000);
+    conferir();
+  }
+  function conferir() {
+    if (!token) return;
+    fetch('/api/public/assinatura/' + token).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d || !d.status) return;
+      if (d.status === 'pending') return;
+      clearInterval(relogio);
+      preencher(d.dados);
+      mostrar('conta');
+    }).catch(function () {});
+  }
+  function preencher(d) {
+    $('c-nome').value = d.nome;
+    $('c-email').value = d.email;
+    $('c-telefone').value = mascaraTel(String(d.telefone).replace(/^55/, ''));
+    $('c-documento').value = mascaraDoc(d.documento);
+  }
+
+  // ---- etapa 3 → conta criada, entra no painel ----
+  $('form-conta').addEventListener('submit', function (e) {
+    e.preventDefault();
+    $('erro-conta').textContent = '';
+    $('btn-concluir').disabled = true;
+    fetch('/api/public/assinatura/' + token + '/concluir', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        empresa: $('empresa').value, senha: $('senha').value,
+        size: $('size').value, segment: $('segment').value
+      })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (r) {
+        $('btn-concluir').disabled = false;
+        if (!r.ok) { $('erro-conta').textContent = r.j.error || 'Não foi possível concluir'; return; }
+        // entra direto: a sessão vem pronta da rota
+        try { localStorage.setItem('wacrm_token', r.j.token); } catch (err) {}
+        location.href = '/app/';
+      }).catch(function () {
+        $('btn-concluir').disabled = false;
+        $('erro-conta').textContent = 'Falha de conexão. Tente de novo.';
+      });
+  });
+
+  // Quem volta pelo link do checkout cai direto no ponto em que parou.
+  if (token) {
+    fetch('/api/public/assinatura/' + token).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d || !d.status) return;
+      if (d.status === 'pending') { verPix(d.cobranca || {}); return; }
+      if (d.status === 'done') { location.href = '/app/'; return; }
+      preencher(d.dados); mostrar('conta');
+    }).catch(function () {});
+  }
+})();
+</script>
+</body>
+</html>

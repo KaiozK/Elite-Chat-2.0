@@ -618,7 +618,9 @@ app.get('/tema.css', (req, res) => {
   };
   const linhas = [];
   const por = (nome, valor) => { const c = cor(valor); if (c) linhas.push(`  ${nome}: ${c};`); };
-  por('--verde-esc', t.verde);          // marca: o "fy", ícones, destaques
+  // A cor da MARCA deixou de ser configurável quando a palavra virou desenho:
+  // não há mais "fy" para pintar. O token segue existindo para ícones e
+  // destaques, com o verde da logo, e qualquer valor antigo é ignorado.
   por('--btn-verde', t.botao);          // fundo do botão principal
   por('--btn-verde-hover', t.botaoHover);
   por('--btn-tinta', t.tintaBotao);     // texto dentro do botão
@@ -654,6 +656,14 @@ app.get('/termos', (req, res) => res.sendFile(path.join(__dirname, 'public', 'te
 // endereços com o mesmo texto.
 app.get('/privacidade.html', (req, res) => res.redirect(301, '/privacidade'));
 app.get('/termos.html', (req, res) => res.redirect(301, '/termos'));
+
+// VITRINE NOVA (sistema visual de carbono + verde da logo). Fica aqui, em
+// endereço próprio, enquanto a landing atual segue na raiz — trocar é mudar
+// o arquivo que `serveLanding` lê.
+app.get('/nova', (req, res) => res.sendFile(path.join(__dirname, 'public', 'nova.html')));
+
+// CHECKOUT DA ASSINATURA: quem compra antes de ter conta entra por aqui.
+app.get('/assinar', (req, res) => res.sendFile(path.join(__dirname, 'public', 'assinar.html')));
 
 app.use(express.static(path.join(__dirname, 'public')));
 

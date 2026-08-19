@@ -159,6 +159,117 @@
   + '.ecx-note{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:#178048}'
   + '.ecx-note svg{flex-shrink:0}'
   + '.ecx-cta{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;margin-top:52px}'
+
+  // ---- CELULAR: o PNG exportado do Figma, com as notificações caindo -----
+  // O aparelho e as notificações são as imagens do arquivo (nós 8:679 e
+  // 8:857), não um desenho parecido. Para a animação continuar existindo, a
+  // pilha é a MESMA imagem repetida em quatro janelas, cada uma mostrando o
+  // seu cartão: recortar assim mantém o pixel do design e ainda deixa cada
+  // notificação entrar na hora dela.
+  + '.kf-fwrap{display:flex;align-items:center;justify-content:center}'
+  + '.kf-fone{--kf-w:360px;position:relative;width:var(--kf-w);height:calc(var(--kf-w) * 2.0444)}'
+  + '.kf-apa{position:absolute;inset:0;width:100%;height:100%;display:block}'
+  + '.kf-vidro{position:absolute;left:6.2%;right:6.2%;top:3%;bottom:3%;overflow:hidden;'
+  +   'border-radius:calc(var(--kf-w) * .115)}'
+  + '.kf-nots{position:absolute;left:50%;top:calc(var(--kf-w) * .6672);'
+  +   'width:calc(var(--kf-w) * .7943);height:calc(var(--kf-w) * .861);transform:translateX(-50%)}'
+  + '.kf-not{position:absolute;left:0;width:100%;overflow:hidden;opacity:0;'
+  +   'animation:kfCai 12s cubic-bezier(.22,1,.36,1) infinite both;animation-delay:calc(var(--i) * 1.5s)}'
+  + '.kf-not img{position:absolute;left:0;width:100%;max-width:none}'
+  + '@keyframes kfCai{'
+  +   '0%{opacity:0;transform:translate3d(0,-40px,0) scale(.94)}'
+  +   '4%{opacity:1;transform:none}'
+  +   '74%{opacity:1;transform:none}'
+  +   '82%{opacity:0;transform:translate3d(0,-16px,0) scale(.97)}'
+  +   '100%{opacity:0;transform:translate3d(0,-40px,0) scale(.94)}}'
+  + '@media (max-width:900px){.kf-fone{--kf-w:320px}}'
+  + '@media (max-width:600px){.kf-fone{--kf-w:290px}}'
+  + '@media (prefers-reduced-motion:reduce){.kf-not{animation:none;opacity:1}}'
+
+  // ======================= TEMAS: ESCURO E CLARO =========================
+  // A landing já é escrita em variáveis (--verde, --tinta, --bgt, --linha).
+  // O tema troca essas variáveis e acrescenta o que estava fixo no CSS de
+  // origem — as superfícies brancas e os textos apagados. Só o `data-kf-tema`
+  // no <html> mede a diferença entre os dois, e ele sobrevive ao runtime
+  // redesenhar o corpo da página.
+  //
+  // DISCIPLINA DE UMA COR SÓ: o verde da logo é o único cromatismo. Ele
+  // aparece na ação principal, no traço dos ícones e nos rótulos — nada de um
+  // segundo acento; é isso que faz o verde valer alguma coisa.
+  + 'html[data-kf-tema="escuro"]{--verde:#2ED378;--verde-esc:#2ED378;--tinta:#F2F6F3;'
+  +   '--bgt:#161C19;--linha:#26302B;--kf-canvas:#0E1210;--kf-sup:#171D1A;--kf-sup2:#1E2622;'
+  +   '--kf-mudo:#95A19B;--kf-tinta-btn:#0E1210;color-scheme:dark}'
+  + 'html[data-kf-tema="claro"]{--verde:#2ED378;--verde-esc:#1FA85E;--tinta:#111614;'
+  +   '--bgt:#F1F4F2;--linha:#E3E9E5;--kf-canvas:#FAFBFA;--kf-sup:#FFFFFF;--kf-sup2:#F4F7F5;'
+  +   '--kf-mudo:#68746E;--kf-tinta-btn:#0E1210;color-scheme:light}'
+  + 'html[data-kf-tema] body{background:var(--kf-canvas);color:var(--tinta)}'
+  + 'html[data-kf-tema] .sec{background:transparent}'
+  + 'html[data-kf-tema] :is(.chip,.fcard,.kcard,.flo,.bub,.tpl,.refcard,.ecx-panel,.ecx-ch,.aicard,.kcol,.nav,.badge,.mock,.mockhd,.mockbody,.comp,.marqs,.campb,.tplsel,.coex-visual,.tbtn,.pcard,.ghost,.coex-node,.ecx-prow,.ecx-wmini,.ecx-chip,.step,.pck,.crow){background:var(--kf-sup);border-color:var(--linha);color:var(--tinta)}'
+  + 'html[data-kf-tema] :is(.lead,.ftxt,.muted,.hint,.corg,.kstage,.ecx-phead span,.ecx-ch span,.coex-node span){color:var(--kf-mudo)}'
+  + 'html[data-kf-tema] h1,html[data-kf-tema] h2,html[data-kf-tema] h3,html[data-kf-tema] h4,'
+  +   'html[data-kf-tema] .h2,html[data-kf-tema] .h3,html[data-kf-tema] .ftit,html[data-kf-tema] .cname{color:var(--tinta)}'
+  // Cartões chapados: a referência não empilha sombra nenhuma, quem separa a
+  // superfície do fundo é o degrau de cor.
+  + 'html[data-kf-tema="escuro"] :is(.chip,.fcard,.kcard,.flo,.bub,.tpl,.refcard,.ecx-panel,.ecx-ch,.aicard,.kcol,.nav,.badge,.mock,.mockhd,.mockbody,.comp,.marqs,.campb,.tplsel,.coex-visual,.tbtn,.pcard,.ghost,.coex-node,.ecx-prow,.ecx-wmini,.ecx-chip,.step,.pck,.crow){box-shadow:none}'
+  // Cantos retos nos elementos interativos (4px) e 12px nos cartões.
+  + 'html[data-kf-tema] .btn,html[data-kf-tema] .ghost,html[data-kf-tema] .chip,'
+  +   'html[data-kf-tema] .tbtn,html[data-kf-tema] .ecx-chip{border-radius:4px}'
+  + 'html[data-kf-tema] .fcard,html[data-kf-tema] .kcard,html[data-kf-tema] .pcard,'
+  +   'html[data-kf-tema] .ecx-panel,html[data-kf-tema] .coex-visual{border-radius:12px}'
+  // Rótulo de utilidade: caixa alta, 11px, tracking positivo — lê como marca
+  // de terminal, não como frase.
+  + 'html[data-kf-tema] .eyebrow{text-transform:uppercase;letter-spacing:.03em;font-size:11px;color:var(--verde)}'
+  // A cabeceira e as maquetes do produto tinham branco escrito no CSS de
+  // origem — sem estas duas linhas sobrava uma faixa clara no alto e um
+  // print de chat aceso no meio do escuro.
+  + 'html[data-kf-tema] :is(nav,header,.mock,.mockhd,.mockbody,.chatbg,.crow,.av,.comp,.marqs,.aicard,.bub,.step,.badge,.plane,.pop,.tplsel,.newtpl,.campb,.metaball){background:var(--kf-sup);border-color:var(--linha);color:var(--tinta)}'
+  + 'html[data-kf-tema] :is(nav,header,.mock,.mockhd,.mockbody,.chatbg,.crow,.av,.comp,.marqs,.aicard,.bub,.step,.badge,.plane,.pop,.tplsel,.newtpl,.campb,.metaball) :is(b,strong,span,small,p,em,li,h4,div){color:inherit}'
+  // O degradê do topo nasce claro e termina em --bgt; no escuro ele precisa
+  // nascer escuro também, senão a dobra inicial vira uma tarja branca.
+  + 'html[data-kf-tema="escuro"] .hero{background-image:linear-gradient(#0E1210 0%,#151B18 100%)}'
+  + 'html[data-kf-tema="claro"] .hero{background-image:linear-gradient(#FFFFFF 0%,var(--bgt) 100%)}'
+  // A ação principal é a única coisa cheia de cor na tela.
+  + 'html[data-kf-tema] .btn{background:var(--verde);color:var(--kf-tinta-btn);border-color:var(--verde)}'
+  + 'html[data-kf-tema] .btn:hover{opacity:.88}'
+  + 'html[data-kf-tema] .ghost{background:transparent;color:var(--tinta);border:1px solid var(--linha)}'
+  + 'html[data-kf-tema] a{color:var(--tinta)}'
+  + 'html[data-kf-tema] .navlink{color:var(--tinta);opacity:.82}'
+  + 'html[data-kf-tema] .navlink:hover{opacity:1}'
+  + 'html[data-kf-tema="escuro"] .grifo{background:rgba(46,211,120,.18);color:var(--verde)}'
+  + 'html[data-kf-tema="escuro"] .flo{background:#F2F6F3;border-color:rgba(255,255,255,.14);color:#111614}'
+  + 'html[data-kf-tema="escuro"] .badge{background:#F2F6F3;border-color:rgba(255,255,255,.14);color:#111614}'
+  + 'html[data-kf-tema="escuro"] .flo *,'
+  +   'html[data-kf-tema="escuro"] .badge *{color:#111614}'
+  // A BANDA DE INVERSÃO: uma única faixa clara no meio do escuro, e é a dos
+  // planos — o lugar onde a pessoa decide. A referência usa exatamente uma
+  // por página; duas dissolvem o efeito.
+  + 'html[data-kf-tema="escuro"] #planos{background:#ECF1EE!important}'
+  // O rodapé era a banda escura do tema claro. Invertido, ele viraria a
+  // segunda faixa clara da página — e a graça da inversão é ser uma só.
+  + 'html[data-kf-tema="escuro"] #empresa{background:#0A0D0B!important}'
+  + 'html[data-kf-tema="escuro"] #empresa .fhead,'
+  +   'html[data-kf-tema="escuro"] #empresa .flink{color:#E7EDE9}'
+  + 'html[data-kf-tema="escuro"] #planos h1,html[data-kf-tema="escuro"] #planos h2,'
+  +   'html[data-kf-tema="escuro"] #planos h3,html[data-kf-tema="escuro"] #planos .h2,'
+  +   'html[data-kf-tema="escuro"] #planos .h3,html[data-kf-tema="escuro"] #planos b,'
+  +   'html[data-kf-tema="escuro"] #planos li,html[data-kf-tema="escuro"] #planos .pcard{color:#111614}'
+  + 'html[data-kf-tema="escuro"] #planos .lead,html[data-kf-tema="escuro"] #planos .hint{color:#5C6A64}'
+  + 'html[data-kf-tema="escuro"] #planos .pcard,html[data-kf-tema="escuro"] #planos .chip{background:#fff;border-color:#DCE4DF}'
+  + 'html[data-kf-tema="escuro"] #planos .pcard,'
+  +   'html[data-kf-tema="escuro"] #planos .pcard *{color:#111614}'
+  + 'html[data-kf-tema="escuro"] #planos .btn{background:#111614;color:#F2F6F3;border-color:#111614}'
+  + 'html[data-kf-tema="escuro"] #planos .ghost{background:transparent;color:#111614;border-color:#C9D3CD}'
+  + 'html[data-kf-tema="escuro"] #planos .pck{background:#111614;color:#fff}'
+  + 'html[data-kf-tema="escuro"] #planos .muted,'
+  +   'html[data-kf-tema="escuro"] #planos .pcard .hint{color:#5C6A64}'
+  // O SELETOR DE TEMA: dois segmentos, no canto, do tamanho de um rótulo.
+  + '.kf-tema{position:fixed;right:18px;bottom:18px;z-index:9999;display:inline-flex;'
+  +   'border:1px solid var(--linha,#D7EEE3);border-radius:4px;overflow:hidden;'
+  +   'background:var(--kf-sup,#fff);font-size:11px;font-weight:600;letter-spacing:.03em}'
+  + '.kf-tema button{appearance:none;border:0;background:transparent;cursor:pointer;'
+  +   'padding:7px 12px;font:inherit;letter-spacing:inherit;text-transform:uppercase;'
+  +   'color:var(--kf-mudo,#5a6b5f)}'
+  + '.kf-tema button[aria-pressed="true"]{background:var(--verde,#2ED378);color:var(--kf-tinta-btn,#0E1210)}'
   + '@media (max-width:600px){'
   +   '.ecx-panel{width:100%;padding:20px;border-radius:20px}'
   +   '.ecx-wval{font-size:26px}.ecx-cta{gap:12px}.ecx-cta .btn,.ecx-cta .ghost{width:100%;justify-content:center}'
@@ -463,7 +574,8 @@
     wallet: '<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H18a2 2 0 0 1 2 2v1"/><rect x="3" y="7.5" width="18" height="12.5" rx="2.5"/><circle cx="16.5" cy="14" r="1.4" fill="currentColor" stroke="none"/>',
     bolt: '<path d="M13 2.5 5 13.5h6l-1 8 8-11h-6l1-8z"/>',
     users: '<circle cx="9" cy="8" r="3.4"/><path d="M3.5 19c.7-3 3-4.5 5.5-4.5s4.8 1.5 5.5 4.5M16 5.5a3.4 3.4 0 0 1 0 5M18.5 14.8c1.4.7 2.4 1.9 2.8 3.7"/>',
-    chart: '<path d="M4 20V10M10 20V4M16 20v-8M21 20H3"/>'
+    chart: '<path d="M4 20V10M10 20V4M16 20v-8M21 20H3"/>',
+    wifi: '<path d="M2 8.5a15 15 0 0 1 20 0M5.5 12.5a10 10 0 0 1 13 0M9 16.5a5 5 0 0 1 6 0"/><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/>'
   };
   var CKI = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
 
@@ -571,7 +683,49 @@
    +     '<a class="ghost" href="#planos">Ver planos</a></div>'
    + '</div></div>';
 
+  // ---- 0. O celular: tudo o que o Koonfy faz chegando como notificação ----
+  // A promessa da landing é "a operação inteira num lugar só", e ela estava
+  // escrita em texto. Aqui ela ACONTECE: mensagem, pagamento, lead do anúncio,
+  // IA e agendamento caem um a um na tela de bloqueio, no ritmo do iOS.
+  // ---- 0. O celular: tudo o que o Koonfy faz chegando como notificação ----
+  // A promessa da landing é "a operação inteira num lugar só", e ela estava
+  // escrita em texto. Aqui ela ACONTECE, na tela de bloqueio do aparelho.
+  // ---- 0. O celular: tudo o que o Koonfy faz chegando como notificação ----
+  // A promessa da landing é "a operação inteira num lugar só", e ela estava
+  // escrita em texto. Aqui ela ACONTECE, na tela de bloqueio do aparelho.
+  var SEC_FONE = ''
+   + '<div class="sec ecx-sec" id="tudo-num-lugar" data-screen-label="Tudo em um só lugar"><div class="wrap"><div class="frow rv" style="margin-top:0">'
+   +   '<div>'
+   +     '<span class="eyebrow"><span class="dot"></span>No seu bolso</span>'
+   +     '<h2 class="h2">Tudo em um <span class="grifo">só lugar!</span></h2>'
+   +     '<p class="lead">Venda aprovada, automação rodando, cliente novo chegando e campanha no ar. Tudo avisa no seu celular, na hora em que acontece, sem você precisar estar com a aba aberta.</p>'
+   +     li('Instale como <b>app</b> e receba push com o navegador fechado')
+   +     li('Toque na notificação e cai <b>direto na conversa</b>')
+   +     li('Venda aprovada avisa você e <b>o afiliado</b> na mesma hora')
+   +     li('Funciona no <b>Android e no iPhone</b>, sem instalar loja nenhuma')
+   +     '<button class="btn" style="margin-top:34px">Testar por 7 dias</button>'
+   +   '</div>'
+   +   '<div class="kf-fwrap"><div class="kf-fone">'
+   +     '<img class="kf-apa" src="/assets/figma-celular.webp" alt="Notificações do Koonfy na tela de bloqueio do celular">'
+   +     '<div class="kf-vidro"><div class="kf-nots">'
+   +     '<div class="kf-not" style="--i:0;top:calc(var(--kf-w) * 0.0322);height:calc(var(--kf-w) * 0.1822)">'
+   +       '<img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -0.0322)">'
+   +     '</div>'
+   +     '<div class="kf-not" style="--i:1;top:calc(var(--kf-w) * 0.2144);height:calc(var(--kf-w) * 0.1866)">'
+   +       '<img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -0.2144)">'
+   +     '</div>'
+   +     '<div class="kf-not" style="--i:2;top:calc(var(--kf-w) * 0.4011);height:calc(var(--kf-w) * 0.2044)">'
+   +       '<img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -0.4011)">'
+   +     '</div>'
+   +     '<div class="kf-not" style="--i:3;top:calc(var(--kf-w) * 0.6055);height:calc(var(--kf-w) * 0.2188)">'
+   +       '<img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -0.6055)">'
+   +     '</div>'
+   +     '</div></div>'
+   +   '</div></div>'
+   + '</div></div></div>';
+
   var NOVAS = [
+    ['tudo-num-lugar', SEC_FONE],
     ['pagamentos', SEC_PAY], ['multicanal', SEC_MULTI],
     ['rastreio', SEC_TRACK], ['mais-recursos', SEC_MORE]
   ];
@@ -584,6 +738,44 @@
   // A landing JÁ tem rodapé, com a linha de copyright. Os links entram AO LADO
   // dessa linha em vez de num rodapé novo — um segundo rodapé repetia o
   // copyright e ficava com cara de remendo.
+  // ---- Tema: aplica o escolhido e mantém o seletor no canto ----------------
+  //
+  // A escolha vive no <html>, que o runtime não recria, e no localStorage. Sem
+  // escolha salva, segue o sistema operacional da pessoa: quem já usa o
+  // computador no escuro não leva um clarão na cara.
+  function temaSalvo() {
+    try { return localStorage.getItem('kf-tema') || ''; } catch (e) { return ''; }
+  }
+  function aplicarTema(t) {
+    var escuro = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var alvo = t || temaSalvo() || (escuro ? 'escuro' : 'claro');
+    document.documentElement.setAttribute('data-kf-tema', alvo);
+    if (t) { try { localStorage.setItem('kf-tema', t); } catch (e) {} }
+    var cx = document.getElementById('kf-tema');
+    if (cx) {
+      var bs = cx.querySelectorAll('button');
+      for (var i = 0; i < bs.length; i++) {
+        bs[i].setAttribute('aria-pressed', bs[i].dataset.tema === alvo ? 'true' : 'false');
+      }
+    }
+  }
+  function ensureTema() {
+    if (!document.getElementById('kf-tema')) {
+      var c = document.createElement('div');
+      c.id = 'kf-tema'; c.className = 'kf-tema';
+      c.setAttribute('role', 'group');
+      c.setAttribute('aria-label', 'Tema da página');
+      c.innerHTML = '<button type="button" data-tema="claro">Claro</button>'
+                  + '<button type="button" data-tema="escuro">Escuro</button>';
+      c.addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-tema]');
+        if (b) aplicarTema(b.dataset.tema);
+      });
+      document.body.appendChild(c);
+    }
+    aplicarTema('');
+  }
+
   function ensureRodape() {
     if (document.getElementById('kf-rodape')) return;
     var alvo = null;
@@ -700,8 +892,8 @@
   // `aplicarRecursos` roda DEPOIS de `inject`: as seções são reinjetadas a
   // partir das constantes a cada redesenho do runtime, e voltariam com os
   // itens desligados se a limpeza não viesse na sequência.
-  var tries = 0, iv = setInterval(function () { wireCta(); aplicarPlanos(); var f = inject(); aplicarRecursos(); if (f || ++tries > 60) clearInterval(iv); }, 250);
-  new MutationObserver(function () { ensureCss(); ensureSeo(); inject(); applyCta(); aplicarPlanos(); ajustarTeste(); aplicarRecursos(); wireCta(); }).observe(document.documentElement, { childList: true, subtree: true });
+  var tries = 0, iv = setInterval(function () { wireCta(); aplicarPlanos(); var f = inject(); aplicarRecursos(); ensureTema(); if (f || ++tries > 60) clearInterval(iv); }, 250);
+  new MutationObserver(function () { ensureCss(); ensureSeo(); inject(); applyCta(); aplicarPlanos(); ajustarTeste(); aplicarRecursos(); wireCta(); ensureTema(); }).observe(document.documentElement, { childList: true, subtree: true });
 })();
 </script>
 

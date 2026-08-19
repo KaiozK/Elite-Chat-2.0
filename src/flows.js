@@ -301,9 +301,18 @@ async function execNode(acc, node, ctx, deliver, flow) {
       'pagamento.qrcode': ch.qrCodeImage || ''   // imagem do QR Code Pix (URL) p/ um nó de mídia
     };
     if (node.sendMessage !== false) {
-      const text = elitepay.chargeMessage(acc, ch);
-      const r = await wa.sendText(acc, to, text);
-      if (deliver) deliver(acc, to, { type: 'text', text }, r);
+      // Botão de pagamento: abre o Checkout, onde o cliente informa o
+      // CPF/CNPJ que o adquirente pede e escolhe como pagar. Se a Meta
+      // recusar o interativo, o texto com o link vai no lugar.
+      const btn = elitepay.chargeButton(acc, ch);
+      try {
+        const r = await wa.sendInteractive(acc, to, btn.interactive);
+        if (deliver) deliver(acc, to, { type: 'interactive', text: btn.body + '\n[🔗 ' + btn.displayText + ']' }, r);
+      } catch (e) {
+        const text = elitepay.chargeMessage(acc, ch, { semCodigo: true });
+        const r = await wa.sendText(acc, to, text);
+        if (deliver) deliver(acc, to, { type: 'text', text }, r);
+      }
     }
     // Envia o QR Code como imagem quando marcado no nó (fica "top" no chat)
     if (node.sendQr && ch.qrCodeImage) {

@@ -134,7 +134,7 @@ const DEFAULTS = {
     //
     // `funil` são as cores das etapas do gráfico de funil, do topo para a base.
     tema: {
-      verde: '',        // cor da MARCA: o "fy", ícones e destaques
+      // `verde` saiu: a marca virou imagem e a cor dela não é mais escolhida
       botao: '',        // fundo do botão principal (mais fechado que o da marca)
       botaoHover: '',   // o mesmo, um passo mais escuro
       tintaBotao: '',   // cor do texto dentro do botão

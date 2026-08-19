@@ -10,6 +10,7 @@ const wa = require('./whatsapp');
 const meta = require('./meta');
 const store = require('./store');
 const documento = require('./documento');
+const preassinatura = require('./preassinatura');
 const session = require('./session');
 const survey = require('./survey');
 const consent = require('./consent');
@@ -262,18 +263,15 @@ module.exports = function (broadcast, clients) {
     // require inline: o `elitepay` do escopo só é vinculado mais abaixo, e
     // tocá-lo aqui cairia na zona morta do const.
     const pag = require('./elitepay');
-    if (receb.document && receb.pixKey && pag.configured()) {
+    // Um caminho só: `garantirPagamentos` confere o que está gravado na conta e
+    // cria a subconta (Woovi) ou o cadastro local (Simplify). Faltando dado, ele
+    // devolve null e o cliente termina depois pelo painel, com o formulário já
+    // preenchido — o cadastro do Koonfy não se perde por causa disso.
+    if (pag.configured()) {
       try {
-        const sub = await pag.registerSubaccount(acc, {
-          name: acc.name, document: receb.document, email: acc.email,
-          phone: acc.profile.phone || '', pixKey: receb.pixKey, pixKeyType: receb.pixKeyType,
-          repName: '', repDocument: ''
-        });
+        const sub = await pag.garantirPagamentos(acc);
         db.save();
-        // `registerSubaccount` grava a subconta aqui e ADIA a sincronização com
-        // o gateway se ela falhar. Dizer só "ok" esconderia isso: o que volta é
-        // o estado de verdade, para a tela não prometer o que não aconteceu.
-        pagamentos = { criada: true, status: sub.status, sincronizada: !!sub.synced };
+        if (sub) pagamentos = { criada: true, status: sub.status, sincronizada: !!sub.synced };
       } catch (e) {
         store.logEvent({ type: 'register_pagamentos_falhou', accountId: acc.id, error: e.message });
         pagamentos = { criada: false, erro: e.message };
@@ -316,6 +314,9 @@ module.exports = function (broadcast, clients) {
     }
     // conta de cliente (dono — login por e-mail)
     const acc = db.findAccountByEmail(user);
+    if (acc && acc.pendenteCadastro) {
+      return res.status(409).json({ error: 'O seu pagamento foi confirmado, mas o cadastro não foi concluído. Abra o link que você recebeu para criar a sua senha.', code: 'cadastro_pendente' });
+    }
     if (acc && db.verifyPassword(pass || '', acc.passHash)) {
       if (db.needsRehash(acc.passHash)) { acc.passHash = db.hashPassword(pass || ''); db.save(); }
       // VERIFICAÇÃO EM DUAS ETAPAS: a senha conferiu, mas ainda não há sessão.
@@ -429,6 +430,36 @@ module.exports = function (broadcast, clients) {
     }
     return linhas;
   }
+
+  // =========================================================================
+  // ASSINATURA SEM CONTA — o checkout do Koonfy
+  //
+  // A pessoa paga ANTES de existir no sistema. Estas três rotas são o
+  // caminho inteiro: criar a cobrança com os dados do comprador, consultar
+  // se já caiu, e terminar o cadastro (empresa e senha) depois que caiu.
+  //
+  // São públicas de propósito: exigir sessão aqui seria exigir a conta que
+  // ainda não existe. O que protege é o token da pré-assinatura, sorteado
+  // com 18 bytes e conhecido só por quem abriu o checkout.
+  // =========================================================================
+  router.post('/public/assinatura', h(async (req, res) => {
+    const r = await preassinatura.criar(req.body || {});
+    res.json(r);
+  }));
+
+  router.get('/public/assinatura/:token', (req, res) => {
+    const d = preassinatura.publico(req.params.token);
+    if (!d) return res.status(404).json({ error: 'Cadastro não encontrado' });
+    res.json(d);
+  });
+
+  router.post('/public/assinatura/:token/concluir', h(async (req, res) => {
+    const acc = preassinatura.concluir(req.params.token, req.body || {});
+    // Já entra logado: quem acabou de pagar não deve ter que digitar a senha
+    // que criou dois segundos atrás.
+    const token = newSession('account', acc);
+    res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc) });
+  }));
 
   router.get('/public/landing', (req, res) => {
     const p = db.get().platform;
@@ -2007,8 +2038,19 @@ module.exports = function (broadcast, clients) {
     if (lim) return res.status(402).json({ error: lim, code: "limit", resource: "contacts" });
     const waId = store.normalizeWaId(req.body.phone);
     if (waId.length < 10) return res.status(400).json({ error: 'Telefone inválido. Use o formato internacional, ex.: 5511999998888' });
-    const c = store.upsertContact(req.wctx, waId, req.body.name);
-    if (req.body.name) { c.name = req.body.name; db.save(); }
+    // E-mail e CPF/CNPJ entram junto com o contato: são os dois dados que o
+    // checkout precisa e que o adquirente exige na hora de emitir o Pix.
+    // Guardados aqui, a compra seguinte já chega preenchida.
+    const erroDoc = documento.erroDoc(req.body.document || '', { obrigatorio: false });
+    if (erroDoc) return res.status(400).json({ error: erroDoc });
+    const c = store.upsertContact(req.wctx, waId, req.body.name, {
+      email: String(req.body.email || '').trim()
+    });
+    if (req.body.name) c.name = req.body.name;
+    if (req.body.email !== undefined) c.email = String(req.body.email || '').trim();
+    const doc = String(req.body.document || '').replace(/D/g, '');
+    if (doc) { c.vars = c.vars || {}; c.vars.cpf_cnpj = doc; }
+    db.save();
     res.json({ contact: c });
   });
 
@@ -2071,6 +2113,12 @@ module.exports = function (broadcast, clients) {
     if (typeof req.body.notes === 'string') c.notes = req.body.notes;
     if (typeof req.body.stage === 'string') c.stage = req.body.stage;
     if (typeof req.body.email === 'string') c.email = req.body.email.trim();
+    if (typeof req.body.document === 'string') {
+      const e = documento.erroDoc(req.body.document, { obrigatorio: false });
+      if (e) return res.status(400).json({ error: e });
+      c.vars = c.vars || {};
+      c.vars.cpf_cnpj = req.body.document.replace(/D/g, '');
+    }
     if (Array.isArray(req.body.tags)) c.tags = req.body.tags.map(t => String(t).trim()).filter(Boolean);
     db.save();
     res.json({ contact: c });
@@ -4088,7 +4136,9 @@ module.exports = function (broadcast, clients) {
     const b = req.body || {};
     const p = db.get().platform;
     if (!p.tema) p.tema = { verde: '', botao: '', botaoHover: '', tintaBotao: '', verdeDeep: '', menu: '', menuTinta: '', funil: [] };
-    for (const k of ['verde', 'botao', 'botaoHover', 'tintaBotao', 'verdeDeep', 'menu', 'menuTinta']) {
+    // 'verde' saiu da lista: a palavra da marca virou imagem e a cor dela
+    // não é mais escolhida em lugar nenhum.
+    for (const k of ['botao', 'botaoHover', 'tintaBotao', 'verdeDeep', 'menu', 'menuTinta']) {
       if (b[k] !== undefined) {
         const c = corOuVazio(b[k]);
         if (b[k] && !c) return res.status(400).json({ error: `Cor inválida em ${k}. Use hexadecimal, como #2ed378.` });
@@ -4112,10 +4162,11 @@ module.exports = function (broadcast, clients) {
   // Teste da notificação de VENDA, com o valor escolhido na hora.
   // Não cria cobrança, não mexe na carteira e não entra em relatório: é só o
   // aviso. Um "teste" que sujasse o financeiro seria pior que não existir.
-  // A rota é do DONO da conta, não só do admin da plataforma: quem precisa
-  // conferir se o aviso de venda chega é o cliente, e ele faz isso do celular,
-  // onde não existe painel de admin. O Admin SaaS chama a mesma rota.
-  router.post('/push/test-sale', auth, ownerOnly, h(async (req, res) => {
+  // SÓ O ADMIN da plataforma dispara. Já foi do dono da conta, para o cliente
+  // conferir a notificação pelo celular; a decisão mudou — quem testa o aviso é
+  // quem opera o Koonfy, e uma venda falsa aparecendo no aparelho do cliente
+  // (com som de caixa registradora) é ruído que ele não pediu.
+  router.post('/push/test-sale', auth, adminOnly, h(async (req, res) => {
     const cents = Math.round(Number((req.body || {}).amount) || 0);
     if (cents < 1) return res.status(400).json({ error: 'Informe o valor da venda' });
     const nome = String((req.body || {}).name || '').trim().slice(0, 60);
@@ -4633,7 +4684,8 @@ module.exports = function (broadcast, clients) {
   });
 
   // Envia a cobrança na conversa do WhatsApp e registra no histórico do chat.
-  // A cobrança vai como MENSAGEM DE TEXTO → precisa respeitar a janela de 24h da Meta.
+  // Sem template aprovado a cobrança vai como BOTÃO de pagamento → precisa
+  // respeitar a janela de 24h da Meta.
   // Fora dela (ou atendimento finalizado), o envio é bloqueado e o motivo é informado.
   async function sendChargeMessage(acc, ch, waId, stamp) {
     const to = store.normalizeWaId(waId);
@@ -4655,7 +4707,7 @@ module.exports = function (broadcast, clients) {
       return;
     }
 
-    // 2) Fallback: mensagem de texto padrão → precisa respeitar a janela de 24h da Meta.
+    // 2) Fallback: botão de pagamento → precisa respeitar a janela de 24h da Meta.
     const contact = store.findContact(acc, to);
     const check = contact ? session.canSend(contact, 'text') : { allowed: true };
     if (!check.allowed) {
@@ -4665,9 +4717,22 @@ module.exports = function (broadcast, clients) {
       db.save();
       throw e;
     }
-    const text = elitepay.chargeMessage(acc, ch);
-    const r = await wa.sendText(acc, to, text);
-    storeOutbound(acc, to, { type: 'text', text }, r, stamp);
+    // BOTÃO em vez de código Pix na conversa: quem paga abre o CHECKOUT, informa
+    // o CPF/CNPJ que o adquirente exige e escolhe Pix, cartão ou boleto ali.
+    // Se a Meta recusar o interativo por qualquer motivo, o texto com o link
+    // ainda sai — não vale perder a cobrança por causa do formato.
+    const btn = elitepay.chargeButton(acc, ch);
+    let r, msg;
+    try {
+      r = await wa.sendInteractive(acc, to, btn.interactive);
+      msg = { type: 'interactive', text: btn.body + '\n[🔗 ' + btn.displayText + ']' };
+    } catch (e) {
+      elitepay.log(acc, { type: 'charge_button_fallback', chargeId: ch.id, detail: 'Botão recusado, indo por texto: ' + e.message });
+      const text = elitepay.chargeMessage(acc, ch, { semCodigo: true });
+      r = await wa.sendText(acc, to, text);
+      msg = { type: 'text', text };
+    }
+    storeOutbound(acc, to, msg, r, stamp);
     elitepay.log(acc, { type: 'charge_sent', chargeId: ch.id, amount: ch.value, detail: 'Cobrança enviada no WhatsApp para +' + to });
     db.save();
   }

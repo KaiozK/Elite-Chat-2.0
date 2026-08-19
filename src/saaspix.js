@@ -23,21 +23,37 @@ const documento = require('./documento');
 function erro(msg, status = 400) { const e = new Error(msg); e.status = status; return e; }
 
 // Os dados da conta, no formato que o driver do gateway espera.
+// O documento e o telefone NAO sao pedidos de novo na hora de depositar: eles
+// ja foram informados em algum momento — no cadastro, no formulario do
+// Pagamentos ou na conexao do WhatsApp — e ficam gravados. Procurar nos tres
+// lugares aqui e o que permite a tela de recarga ser so "valor e pagar".
 function pagadorDaConta(acc) {
   const p = acc.profile || {};
-  const doc = String(p.document || '').replace(/\D/g, '');
-  const fone = String(p.phone || '').replace(/\D/g, '');
+  const sub = (acc.elitepay && acc.elitepay.subaccount) || {};
+  const so = v => String(v || '').replace(/D/g, '');
+  const doc = so(p.document) || so(sub.document);
+  const canal = (acc.channels || []).map(c => so(c.phoneNumber || c.displayPhoneNumber)).find(Boolean) || '';
+  const fone = so(p.phone) || so(sub.phone) || canal;
   return {
-    name: String(acc.name || '').trim(),
-    email: String(acc.email || '').trim(),
+    name: String(acc.name || sub.name || '').trim(),
+    email: String(acc.email || sub.email || '').trim(),
     document: doc,
     phone: fone
   };
 }
 
+// Guarda na conta o que foi descoberto, para nao redescobrir a cada cobranca.
+function fixarNoCadastro(acc) {
+  const p = pagadorDaConta(acc);
+  acc.profile = acc.profile || {};
+  if (!acc.profile.document && p.document) acc.profile.document = p.document;
+  if (!acc.profile.phone && p.phone) acc.profile.phone = p.phone;
+}
+
 // O que falta para o adquirente aceitar. Lista vazia = pode cobrar.
 function faltando(acc) {
   const g = elitepay.gateway();
+  fixarNoCadastro(acc);
   if (!g.requiresPayer) return [];
   const p = pagadorDaConta(acc);
   const f = [];
@@ -80,7 +96,7 @@ async function criarCobranca(acc, { correlationID, valueCents, comment }) {
     subPixKey: '', splits: null
   });
 
-  if (!r || !r.brCode) throw erro('O adquirente não devolveu o código Pix. Tente novamente.', 502);
+  if (!r || !r.brCode) throw erro('Não foi possível gerar o código Pix agora. Tente novamente.', 502);
   return r;
 }
 
@@ -93,7 +109,7 @@ async function criarCobranca(acc, { correlationID, valueCents, comment }) {
 // da Woovi por história, mas o que ela faz não tem nada de Woovi: é a regra de
 // negócio do faturamento. Qualquer gateway entra por aqui.
 // ---------------------------------------------------------------------------
-const PREFIXOS = ['topup-', 'xtr-', 'sub-', 'ren-', 'card-', 'wallet-', 'bol-'];
+const PREFIXOS = ['topup-', 'xtr-', 'sub-', 'ren-', 'card-', 'wallet-', 'bol-', 'nov-'];
 
 function ehCobrancaSaaS(correlationID) {
   const cid = String(correlationID || '');
@@ -107,4 +123,4 @@ function confirmar(correlationID, valueCents, broadcast) {
   );
 }
 
-module.exports = { criarCobranca, ehCobrancaSaaS, confirmar, faltando, pagadorDaConta };
+module.exports = { criarCobranca, ehCobrancaSaaS, confirmar, faltando, pagadorDaConta, fixarNoCadastro };

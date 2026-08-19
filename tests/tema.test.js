@@ -89,18 +89,28 @@ const url = (r) => 'http://127.0.0.1:' + porta + r;
   ok(!c.texto.includes(':root'), 'a folha não redefine nada: ' + c.texto.trim());
 
   console.log('\n=== 2. O que o admin salva vira variável ===');
-  let r = await salvar({ verde: '#ff0066', botao: '#123456', tintaBotao: '#ffffff' });
+  let r = await salvar({ botao: '#123456', tintaBotao: '#ffffff' });
   ok(r.http === 200, 'salvou: ' + r.http);
   c = await css();
-  ok(c.texto.includes('--verde-esc: #ff0066'), 'a cor da marca entrou');
-  ok(c.texto.includes('--btn-verde: #123456'), 'a do botão também');
+  ok(c.texto.includes('--btn-verde: #123456'), 'a cor do botão entrou');
+  ok(c.texto.includes('--btn-tinta: #ffffff'), 'a tinta do botão também');
   ok(!c.texto.includes('--verde-deep'), 'o campo que ficou vazio NÃO é escrito, o padrão vale');
 
-  console.log('\n=== 3. Campo vazio DESFAZ a personalização ===');
-  await salvar({ verde: '' });
+  console.log('\n=== 2b. A COR DA MARCA não é mais escolhida ===');
+  // A palavra "Koonfy" virou desenho: não há mais o "fy" para pintar, e o
+  // campo saiu do Admin. Mandar a cor pela rota não pode voltar a valer.
+  await salvar({ verde: '#ff0066' });
   c = await css();
-  ok(!c.texto.includes('--verde-esc'), 'a cor da marca voltou ao padrão');
-  ok(c.texto.includes('--btn-verde: #123456'), 'e o resto continua como estava');
+  ok(!c.texto.includes('#ff0066'), 'a cor mandada é ignorada');
+  ok(!c.texto.includes('--verde-esc'), 'e o token da marca fica com o padrão do CSS');
+
+  console.log('\n=== 3. Campo vazio DESFAZ a personalização ===');
+  await salvar({ botao: '' });
+  c = await css();
+  ok(!c.texto.includes('--btn-verde'), 'o botão voltou ao padrão');
+  await salvar({ botao: '#123456' });
+  c = await css();
+  ok(c.texto.includes('--btn-verde: #123456'), 'e volta a valer quando é preenchido de novo');
 
   console.log('\n=== 4. Só HEX entra ===');
   // Este valor vira CSS. Sem a trava, o campo do painel escreveria regra.
