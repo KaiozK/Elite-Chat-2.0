@@ -9851,15 +9851,27 @@ function admNsPaint() {
     </div>
 
     <div class="capi-box" style="margin-top:16px">
-      <div class="capi-head">${ico('webhook', 14)} URLs para cadastrar no app <span class="capi-tag">Portal de Parceiros</span></div>
-      <p class="muted" style="font-size:12px;margin:8px 0 5px">URL de redirecionamento (OAuth):</p>
+      <div class="capi-head">${ico('webhook', 14)} URL para colar no app <span class="capi-tag">Portal de Parceiros</span></div>
+      <p class="muted" style="font-size:12px;margin:8px 0 5px">URL de redirecionamento (OAuth), no campo <b>Redirect URI</b>:</p>
       <div class="linkrow"><code>${esc(n.redirectUri)}</code>
         <button class="icon-btn" title="Copiar" onclick="copyText('${esc(n.redirectUri)}')">${ico('copy', 13)}</button></div>
-      <p class="muted" style="font-size:12px;margin:10px 0 5px">URL de notificações (webhooks):</p>
+      <p class="muted" style="font-size:11.5px;margin:10px 0 0">
+        Escopos necessários: <b>read_orders</b> e <b>read_customers</b>. Em produção, o domínio precisa ser HTTPS.
+      </p>
+    </div>
+
+    <div class="capi-box" style="margin-top:16px">
+      <div class="capi-head">${ico('activity', 14)} Notificações de evento <span class="capi-tag">automático</span></div>
+      <p class="muted" style="font-size:12px;margin:8px 0 10px">
+        <b>Esta URL não se cadastra no Portal de Parceiros</b>, e não existe campo para ela lá.
+        Na Nuvemshop os webhooks de evento são criados <b>por API, um por loja</b>: o Koonfy registra
+        os dele no momento em que cada lojista conecta a loja. É só para conferência e diagnóstico.
+      </p>
       <div class="linkrow"><code>${esc(n.webhookUrl)}</code>
         <button class="icon-btn" title="Copiar" onclick="copyText('${esc(n.webhookUrl)}')">${ico('copy', 13)}</button></div>
       <p class="muted" style="font-size:11.5px;margin:10px 0 0">
-        Escopos necessários: <b>read_orders</b> e <b>read_customers</b>. Em produção, o domínio precisa ser HTTPS.
+        Se os eventos de uma loja pararem de chegar, o lojista clica em <b>Reassinar eventos</b> na tela de
+        Integrações dele. Isso apaga os webhooks antigos naquela loja e cria de novo, apontando para cá.
       </p>
     </div>
 
