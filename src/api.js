@@ -4119,7 +4119,7 @@ module.exports = function (broadcast, clients) {
   router.get('/admin/brand', auth, adminOnly, (req, res) => {
     const m = db.get().platform.marca || {};
     res.json({
-      temLogo: !!m.logo, mime: m.mime || '', nome: m.nome || '',
+      temLogo: !!m.logo, mime: m.mime || '', nome: m.nome || '', arquivo: m.arquivo || '',
       bytes: m.bytes || 0, updatedAt: m.updatedAt || 0,
       url: m.logo ? '/marca/logo?v=' + (m.updatedAt || 0) : '/assets/koonfy-192.png',
       formatos: Object.keys(MIMES_MARCA).map(k => MIMES_MARCA[k]).filter((v, i, a) => a.indexOf(v) === i)
@@ -4139,10 +4139,14 @@ module.exports = function (broadcast, clients) {
       return res.status(400).json({ error: `Máximo 2 MB. Este tem ${(bytes / 1048576).toFixed(1)} MB.` });
     }
     const p = db.get().platform;
-    p.marca = {
-      logo: dados, mime, nome: String(b.nome || '').slice(0, 120),
-      bytes, updatedAt: Date.now()
-    };
+    // Só a IMAGEM muda aqui. `nome` e `descricao` são a marca escrita, que se
+    // edita no card ao lado; gravar o objeto inteiro fazia o nome do arquivo
+    // virar o nome do app e levava a descrição junto.
+    const antes = p.marca || {};
+    p.marca = Object.assign({}, antes, {
+      logo: dados, mime, bytes, updatedAt: Date.now(),
+      arquivo: String(b.nome || '').slice(0, 120)
+    });
     db.save();
     store.logEvent({ type: 'marca_atualizada', mime, bytes });
     res.json({ ok: true, url: '/marca/logo?v=' + p.marca.updatedAt, bytes });
@@ -4162,7 +4166,11 @@ module.exports = function (broadcast, clients) {
   });
 
   router.delete('/admin/brand', auth, adminOnly, (req, res) => {
-    db.get().platform.marca = { logo: '', mime: '', nome: '', bytes: 0, updatedAt: 0 };
+    // Volta à arte padrão sem apagar a marca ESCRITA: o nome na aba do
+    // navegador não tem relação com o arquivo enviado.
+    const m = db.get().platform.marca || {};
+    db.get().platform.marca = { logo: '', mime: '', bytes: 0, updatedAt: 0, arquivo: '',
+      nome: m.nome || '', descricao: m.descricao || '' };
     db.save();
     res.json({ ok: true });
   });

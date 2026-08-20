@@ -9261,7 +9261,7 @@ async function admMarcaCarregar() {
     const img = $('#mk-prev img');
     if (img) img.src = d.url + (d.url.includes('?') ? '' : '?t=' + Date.now());
     info.innerHTML = d.temLogo
-      ? `<b>${esc(d.nome || 'logo enviada')}</b> · ${(d.bytes / 1024).toFixed(0)} KB · ${esc((d.mime || '').replace('image/', '').toUpperCase())}
+      ? `<b>${esc(d.arquivo || d.nome || 'logo enviada')}</b> · ${(d.bytes / 1024).toFixed(0)} KB · ${esc((d.mime || '').replace('image/', '').toUpperCase())}
          <br><span style="font-size:12px">Enviada em ${fmtDataHora(d.updatedAt)}</span>`
       : 'Usando a logo padrão do repositório. Envie um arquivo para trocar.';
     const rm = $('#mk-limpar');
