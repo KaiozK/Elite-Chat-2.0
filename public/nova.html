@@ -341,7 +341,9 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 .jan-topo s{width:9px;height:9px;border-radius:99px;background:#c9d1cd;text-decoration:none}
 .jan-topo em{margin-left:8px;font-style:normal;font-size:11px;font-weight:500;letter-spacing:.032em;
              text-transform:uppercase;color:#7b8783}
-.jan-tela{padding:16px;min-height:270px;color:#131816;font-size:13px}
+.jan-tela{padding:16px;height:352px;color:#131816;font-size:13px;
+          display:flex;align-items:center}
+.jan-tela>*{width:100%}
 
 /* A entrada em cascata é a base de quase todas as telas: cada item usa --i
    como atraso, então a lista se monta na frente de quem está olhando. */
@@ -527,7 +529,11 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
   .car-slide.on{grid-template-columns:1fr;gap:var(--e32)}
 }
 @media (max-width:680px){
-  .jan-tela{min-height:0;padding:12px}
+  .jan-tela{height:358px;padding:12px}
+  /* O resumo do pedido sai no estreito: empilhado embaixo do formulario ele
+     levava a tela de pagamentos a 536px, o dobro das outras. Quem conta a
+     historia ali e o formulario com o botao. */
+  .ck-resumo{display:none}
   .tl-cols{grid-template-columns:1fr}
   /* No estreito a lista de conversas já conta a história: o chat ao lado
      viraria duas colunas de 140px, ilegíveis nas duas. */
