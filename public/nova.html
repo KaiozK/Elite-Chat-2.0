@@ -419,6 +419,66 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 .tl-aviso{align-self:stretch;text-align:center;font-size:11.5px;font-weight:500;color:#12804d;
           background:#d8f3e4;border-radius:9px;padding:10px}
 
+/* pagamentos: o checkout do Builder, no claro e encolhido */
+.ck{position:relative;display:flex;flex-direction:column;gap:10px}
+.ck-cab{display:flex;align-items:center;gap:9px;padding-bottom:9px;border-bottom:1px solid #e2e7e4}
+.ck-marca{width:24px;height:24px;border-radius:7px;background:#2ed378;color:#06301b;font-style:normal;
+          font-size:11px;font-weight:500;display:grid;place-items:center}
+.ck-cab b{font-size:12px;font-weight:500}
+.ck-seguro{margin-left:auto;font-style:normal;font-size:9.5px;letter-spacing:.032em;text-transform:uppercase;
+           color:#5f6b66;border:1px solid #e2e7e4;border-radius:4px;padding:5px 9px}
+.ck-grade{display:grid;grid-template-columns:1fr 168px;gap:10px;align-items:start}
+.ck-cartao{background:#fff;border:1px solid #e6eae8;border-radius:10px;padding:11px;
+           display:flex;flex-direction:column;gap:8px}
+.ck-passos{display:flex;align-items:center;gap:6px;font-size:9.5px;letter-spacing:.032em;
+           text-transform:uppercase;color:#96a19c;margin-bottom:2px}
+.ck-passos i{width:16px;height:16px;border-radius:4px;background:#eef2f0;color:#96a19c;font-style:normal;
+             font-size:9.5px;display:grid;place-items:center;flex:0 0 16px}
+.ck-passos i.on{background:#2ed378;color:#06301b}
+.ck-passos s{flex:1;height:1px;background:#e6eae8;text-decoration:none}
+.ck-campo{display:block}
+.ck-campo em{display:block;font-style:normal;font-size:9px;letter-spacing:.032em;text-transform:uppercase;
+             color:#96a19c;margin-bottom:4px}
+/* O campo é uma caixa vazia até o texto ser DIGITADO nele: é a máscara que
+   revela a linha da esquerda para a direita, com o cursor no fim. */
+.ck-campo b{display:block;background:#fbfcfc;border:1px solid #e6eae8;border-radius:5px;
+            padding:7px 9px;font-size:11px;font-weight:400;color:#131816;
+            white-space:nowrap;overflow:hidden}
+.car-slide.on .ck-campo b.digita{animation:ckDigita .5s steps(22,end) both;
+                                 animation-delay:calc(var(--i) * .34s)}
+@keyframes ckDigita{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+.ck-dupla{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ck-meios{display:flex;gap:6px;margin-top:2px}
+.ck-meios span{flex:1;text-align:center;border:1px solid #e6eae8;border-radius:5px;padding:6px;
+               font-size:10px;color:#5f6b66;background:#fbfcfc}
+.ck-meios span.on{border-color:#2ed378;color:#12804d;background:#eefbf4}
+/* O botão é o mesmo da página: fundo fechado com a faixa clara atravessando. */
+.ck-botao{margin-top:2px;text-align:center;border-radius:6px;padding:10px;color:#fff;
+          font-size:11.5px;font-weight:500;
+          background:linear-gradient(45deg,#1c834a,#1c834a,#2ed378,#1c834a,#1c834a);
+          background-size:200% 200%}
+.car-slide.on .ck-botao{animation:passar 5s ease-in-out infinite, ckAperta 5s ease-in-out infinite}
+@keyframes ckAperta{0%,62%{transform:none}68%{transform:scale(.96)}74%,100%{transform:none}}
+.ck-resumo{gap:6px}
+.ck-rot{font-style:normal;font-size:9px;letter-spacing:.032em;text-transform:uppercase;color:#96a19c}
+.ck-item{display:flex;gap:8px;align-items:center;padding-bottom:8px;border-bottom:1px solid #eef2f0}
+.ck-item i{width:28px;height:28px;border-radius:6px;background:#d8f3e4;flex:0 0 28px}
+.ck-item b{display:block;font-size:11px;font-weight:500}
+.ck-item span{font-size:9.5px;color:#96a19c}
+.ck-linha{display:flex;justify-content:space-between;font-size:10.5px;color:#5f6b66}
+.ck-linha b{font-weight:400;color:#131816}
+.ck-linha.total{border-top:1px solid #eef2f0;padding-top:7px;margin-top:3px;font-size:13px}
+.ck-linha.total b{font-weight:500}
+/* A confirmação cobre a tela no fim: é o desfecho que a seção promete. */
+.ck-feito{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:9px;
+          background:rgba(244,246,245,.94);color:#12804d;font-size:13px;font-weight:500;
+          border-radius:8px;opacity:0;pointer-events:none}
+.ck-feito i{width:22px;height:22px;border-radius:99px;background:#2ed378;position:relative}
+.ck-feito i::after{content:"";position:absolute;left:8px;top:5px;width:5px;height:10px;
+                   border:solid #06301b;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.car-slide.on .ck-feito{animation:ckFeito 5s ease-in-out infinite}
+@keyframes ckFeito{0%,74%{opacity:0}82%,96%{opacity:1}100%{opacity:0}}
+
 /* tracking */
 .tl-trk{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .tl-kpi{background:#fff;border:1px solid #e6eae8;border-radius:10px;padding:12px}
@@ -472,6 +532,10 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
   /* No estreito a lista de conversas já conta a história: o chat ao lado
      viraria duas colunas de 140px, ilegíveis nas duas. */
   .tl-chat{display:none}
+  /* No estreito o resumo desce: duas colunas de 150px deixariam as duas
+     ilegíveis, e o formulário é o que conta a história. */
+  .ck-grade{grid-template-columns:1fr}
+  .ck-dupla{grid-template-columns:1fr}
   .tl-trk{grid-template-columns:1fr 1fr}
   .tl-kpi.destaque{grid-column:span 2}
   .tl-fonte{grid-column:span 2}
@@ -479,7 +543,8 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 @media (prefers-reduced-motion:reduce){
   .car-slide.on .entra,.car-slide.on .tl-card.anda,.car-slide.on .tl-bloco.acende,
   .car-slide.on .tl-barra i,.car-slide.on .tl-fonte i,.car-slide.on .tl-onda s,
-  .tl-digita span,.car-slide.on{animation:none}
+  .tl-digita span,.car-slide.on,.car-slide.on .ck-campo b.digita,
+  .car-slide.on .ck-botao,.car-slide.on .ck-feito{animation:none}
   .tl-barra i,.tl-fonte i{width:var(--w)}
 }
 
@@ -839,10 +904,31 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
           </div>
           <div class="janela">
             <div class="jan-topo"><s></s><s></s><s></s><em>Pagamentos</em></div>
-            <div class="jan-tela"><div class="tl-pag">
-  <div class="tl-bal out entra" style="--i:1">Sua matrícula: R$ 297,00</div>
-  <div class="tl-botao entra" style="--i:2">Pagar agora</div>
-  <div class="tl-aviso entra" style="--i:4">Pagamento confirmado</div>
+            <div class="jan-tela"><div class="ck">
+  <div class="ck-cab"><i class="ck-marca">L</i><b>Sua Loja</b><em class="ck-seguro">Ambiente seguro</em></div>
+  <div class="ck-grade">
+    <div class="ck-cartao">
+      <div class="ck-passos"><i class="on">1</i><span>Identificação</span><s></s><i>2</i><span>Pagamento</span></div>
+      <label class="ck-campo"><em>Nome completo</em><b class="digita" style="--i:1">Marina Alves</b></label>
+      <div class="ck-dupla">
+        <label class="ck-campo"><em>CPF</em><b class="digita" style="--i:2">318.402.190-77</b></label>
+        <label class="ck-campo"><em>WhatsApp</em><b class="digita" style="--i:3">(11) 98812-4470</b></label>
+      </div>
+      <div class="ck-meios">
+        <span class="on">Pix</span><span>Cartão</span><span>Boleto</span>
+      </div>
+      <div class="ck-botao">Pagar R$ 297,00</div>
+    </div>
+
+    <div class="ck-cartao ck-resumo">
+      <em class="ck-rot">Resumo do pedido</em>
+      <div class="ck-item"><i></i><div><b>Mentoria Elite</b><span>Plano mensal</span></div></div>
+      <div class="ck-linha"><span>Subtotal</span><b>R$ 297,00</b></div>
+      <div class="ck-linha"><span>Taxas</span><b>Grátis</b></div>
+      <div class="ck-linha total"><span>Total</span><b>R$ 297,00</b></div>
+    </div>
+  </div>
+  <div class="ck-feito"><i></i> Pagamento confirmado</div>
 </div></div>
           </div>
         </div>
