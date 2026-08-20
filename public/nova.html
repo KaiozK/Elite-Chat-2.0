@@ -681,6 +681,12 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
      em 40px de corpo, contra 343px de largura util num aparelho de 375: nao ha
      tamanho grande que resolva, entao o corpo passa a ser medido em vw. A 4.8vw
      a linha mais longa fecha com folga em qualquer telefone da faixa. */
+  /* A chamada do herói em DUAS linhas: a segunda quebra some e o corpo é
+     medido em vw, que é o único jeito de a linha mais longa caber inteira.
+     O respiro lateral encolhe para 16px, o que devolve dois pontos de corpo. */
+  .so-largo{display:none}
+  .heroi{padding-left:16px;padding-right:16px}
+  .heroi .display{font-size:5.4vw;line-height:1.06;letter-spacing:-.01em}
   .inversao{padding:190px 16px 72px}
   .inversao .display{font-size:4.8vw;line-height:1.06;letter-spacing:-.01em}
   .nav .linha{margin-left:auto;gap:14px}
@@ -741,7 +747,7 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
          alt="Meta Tech Partner · Powered by WhatsApp Business API">
 
     <div class="joia-espaco" aria-hidden="true"></div>
-    <h1 class="display">Todo o seu atendimento<br>no WhatsApp em<br>um lugar só</h1>
+    <h1 class="display">Todo o seu atendimento<br>no WhatsApp em<br class="so-largo"> um lugar só</h1>
 
     <p class="corpo mudo">Conversas, funil, campanhas, automação com IA e pagamentos no mesmo número. Na API oficial da Meta, sem plugin e sem integração paga.</p>
 
