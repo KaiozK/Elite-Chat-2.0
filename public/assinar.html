@@ -70,6 +70,14 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
   text-transform:uppercase;color:var(--mudo);margin-bottom:20px}
 .passo b{width:22px;height:22px;border-radius:4px;display:grid;place-items:center;background:var(--fio);color:var(--texto);font-size:12px}
 .passo .ok{background:var(--sinal);color:#111}
+/* As garantias moram embaixo do resumo, na coluna estreita: sao a ultima coisa
+   que a pessoa le antes de decidir. Sem cartao em volta, para nao competir com
+   o resumo do plano — elas apoiam, nao disputam. */
+.garantias{list-style:none;margin:20px 0 0;padding:0;display:grid;gap:14px;font-size:13px;color:var(--mudo)}
+.garantias li{display:flex;gap:10px;align-items:flex-start;line-height:1.5;position:relative;padding-left:24px}
+.garantias li::before{content:"";position:absolute;left:5px;top:4px;width:5px;height:9px;
+                      border:solid var(--sinal);border-width:0 1.8px 1.8px 0;transform:rotate(45deg)}
+.garantias b{color:var(--texto);font-weight:500}
 .oculto{display:none}
 @media (max-width:820px){ .grade{grid-template-columns:1fr} h1{font-size:34px} .dupla{grid-template-columns:1fr} }
 </style>
@@ -87,10 +95,10 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
     <!-- ETAPA 1: dados do comprador -->
     <section id="etapa-dados">
       <span class="rotulo">Checkout</span>
-      <h1>Comece pela<br>assinatura</h1>
-      <p class="mudo" style="max-width:520px">Estes são os dados que abrem a sua conta de recebimento, e são os mesmos exigidos
-        por lei para emitir o Pix. Por isso todos são obrigatórios, e por isso eles voltam
-        travados no cadastro: quem paga e quem recebe têm que ser a mesma pessoa.</p>
+      <h1>Sua operação<br>começa aqui</h1>
+      <p class="mudo" style="max-width:520px">Preencha uma vez e pronto: com estes dados a sua conta já sai com o painel liberado
+        <b>e</b> com a sua conta de recebimento aberta, pronta para cobrar por Pix, cartão e boleto no
+        primeiro dia. Leva menos de um minuto, e você não digita nada duas vezes.</p>
 
       <form id="form-dados" autocomplete="on">
         <label>Nome completo<input id="nome" name="name" autocomplete="name" required></label>
@@ -107,8 +115,8 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
     <!-- ETAPA 2: Pix -->
     <section id="etapa-pix" class="oculto">
       <span class="rotulo">Pagamento</span>
-      <h1>Pague com Pix</h1>
-      <p class="mudo">A confirmação é automática. Assim que cair, esta tela avança sozinha.</p>
+      <h1>Falta só<br>o pagamento</h1>
+      <p class="mudo">A liberação é na hora. Assim que o Pix cai, esta tela avança sozinha e o painel já é seu.</p>
       <div class="pix" style="margin-top:24px">
         <img id="pix-qr" alt="QR Code do Pix">
         <div class="codigo" id="pix-codigo"></div>
@@ -120,9 +128,9 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
     <!-- ETAPA 3: cadastro -->
     <section id="etapa-conta" class="oculto">
       <span class="rotulo">Pagamento confirmado</span>
-      <h1>Agora a sua<br>conta</h1>
-      <p class="mudo" style="max-width:520px">O que você preencheu no checkout já está aqui e não muda: é com ele que a
-        sua conta de Pagamentos nasce. Falta o nome da empresa e uma senha.</p>
+      <h1>Tudo pronto.<br>Bem-vindo</h1>
+      <p class="mudo" style="max-width:520px">Seus dados já vieram do passo anterior, não precisa repetir. Falta só o nome da
+        empresa e uma senha para você entrar e conectar o seu WhatsApp.</p>
 
       <form id="form-conta">
         <div class="dupla">
@@ -154,6 +162,15 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
       <div class="mudo" style="font-size:13px" id="r-ciclo"></div>
       <ul class="itens" id="r-itens"></ul>
     </aside>
+
+    <!-- As tres duvidas de quem esta com o dedo no botao: quando libera, o que
+         acontece se nao servir, e quem atende. Responder isso aqui vende mais
+         do que qualquer adjetivo no titulo. -->
+    <ul class="garantias">
+      <li><b>Liberação na hora.</b> Pix confirmado, painel aberto no mesmo minuto.</li>
+      <li><b>Cancele quando quiser.</b> Pelo painel, sem ligação e sem multa.</li>
+      <li><b>Seu número, do seu jeito.</b> Conecte o WhatsApp que você já usa.</li>
+    </ul>
   </div>
 </div>
 
