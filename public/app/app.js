@@ -1765,6 +1765,42 @@ async function refreshBadge() {
 }
 
 // ---------- roteamento ----------
+// ---------------------------------------------------------------------------
+// AS ABAS DO ADMIN SaaS
+//
+// Cada uma é uma ROTA e um item do menu lateral do painel da plataforma.
+// Eram treze abas numa barra horizontal: no computador passava do fim da
+// tela, no celular viravam treze botões que ninguém acerta com o dedo, e
+// nenhuma tinha endereço — não dava para salvar nem voltar direto.
+//
+// Fica AQUI, e não junto do código do Admin, porque `views` espalha estas
+// chaves na avaliação do arquivo: declarado depois, o const ainda estaria na
+// zona morta e o app morreria antes de pintar.
+// ---------------------------------------------------------------------------
+const ADM_ABAS = {
+  'adm/vis':            { aba: 'adm-vis',  titulo: 'Visão geral do SaaS', sub: 'Receita, assinaturas e crescimento' },
+  'adm/contas':         { aba: 'adm-acc',  titulo: 'Contas',              sub: 'Todos os clientes da plataforma' },
+  'adm/planos':         { aba: 'adm-pl',   titulo: 'Planos',              sub: 'Preço, limites e recursos de cada plano' },
+  'adm/afiliados':      { aba: 'adm-aff',  titulo: 'Afiliados',           sub: 'Comissões e indicações' },
+  'adm/gateways':       { aba: 'adm-pay',  titulo: 'Gateways',            sub: 'Provedores, taxas e regras de cobrança' },
+  'adm/notificacoes':   { aba: 'adm-notif',titulo: 'Notificações',        sub: 'Testar os avisos que chegam no celular' },
+  'adm/saques':         { aba: 'adm-wd',   titulo: 'Saques',              sub: 'Pedidos de saque dos clientes' },
+  'adm/pagamentos':     { aba: 'adm-ep',   titulo: 'Pagamentos',          sub: 'Subcontas, cobranças e taxas recebidas' },
+  'adm/integracoes':    { aba: 'adm-int',  titulo: 'Integrações',         sub: 'Serviços externos e SMS' },
+  'adm/plataforma':     { aba: 'adm-plat', titulo: 'Plataforma',          sub: 'Credenciais do app da Meta' },
+  'adm/marketing':      { aba: 'adm-mkt',  titulo: 'Marketing',           sub: 'Pixels e rastreamento da vitrine' },
+  'adm/seguranca':      { aba: 'adm-sec',  titulo: 'Segurança',           sub: 'Senha, sessões e acesso' },
+  'adm/seo':            { aba: 'adm-seo',  titulo: 'SEO',                 sub: 'Como a vitrine aparece no Google' },
+  'adm/personalizacao': { aba: 'adm-tema', titulo: 'Personalização',      sub: 'Logo, nome e cores da marca' }
+};
+
+// A aba pedida pela rota. Fora do painel da plataforma, e sem rota de aba,
+// vale a que estiver marcada na barra — o comportamento de antes.
+function admAbaDaRota() {
+  const v = (location.hash || '').replace('#/', '').split('?')[0];
+  return ADM_ABAS[v] || null;
+}
+
 const views = {
   dashboard: renderDashboard, inbox: renderInbox, contacts: renderContacts,
   funnel: renderFunnel, campaigns: renderCampaigns, templates: renderTemplates, quick: renderQuick,
@@ -1786,7 +1822,9 @@ const views = {
   'adm/visao': renderAdmVisao,
   'adm/contatos': renderAdmContatos,
   'adm/usuarios': renderAdmUsuarios,
-  'adm/supers': renderAdmSupers
+  'adm/supers': renderAdmSupers,
+  // As abas do Admin SaaS, cada uma com o seu endereço.
+  ...Object.fromEntries(Object.keys(ADM_ABAS).map(k => [k, renderAdmin]))
 };
 
 // Em /adm/ o destino padrão é a operação, não o dashboard de um cliente, e
@@ -2287,12 +2325,12 @@ function admCartao(icone, valor, rotulo, destaque) {
 }
 
 async function renderAdmVisao() {
-  $('#view').innerHTML = `<div class="page-head"><h1>Visão geral da operação</h1>` +
-    `<p class="muted">Tudo o que acontece em todas as contas, somado.</p></div>` + skel(4);
+  $('#view').innerHTML = `<div class="page"><div class="page-head"><h1>Visão geral da operação</h1>` +
+    `<p class="muted">Tudo o que acontece em todas as contas, somado.</p></div>` + skel(4) + `</div>`;
   try {
     const d = await api('/adm/overview');
     const t = d.totais;
-    $('#view').innerHTML = `
+    $('#view').innerHTML = `<div class="page">
       <div class="page-head">
         <h1>Visão geral da operação</h1>
         <p class="muted">Tudo o que acontece em todas as contas, somado.</p>
@@ -2308,21 +2346,21 @@ async function renderAdmVisao() {
       <div class="card">
         <h2>${ico('activity')} Onde a operação está</h2>
         <p class="muted" style="margin:0 0 12px;font-size:13px">Contas ordenadas pelo movimento dos últimos 7 dias.</p>
-        <div style="overflow-x:auto"><table><thead><tr>
+        <div class="tab-mob-wrap" style="overflow-x:auto"><table class="tab-mob"><thead><tr>
           <th>Conta</th><th>Plano</th><th style="text-align:right">Contatos</th>
           <th style="text-align:right">Mensagens 7d</th><th style="text-align:right">Pessoas</th><th>WhatsApp</th>
         </tr></thead><tbody>
         ${d.ranking.map(a => `<tr>
           <td><b>${esc(a.nome)}</b><div class="muted" style="font-size:11.5px">${esc(a.email)}</div></td>
-          <td>${a.super ? '<span class="pill done">Superconta</span>' : esc(a.plano)}</td>
-          <td style="text-align:right">${fmtN(a.contatos)}</td>
-          <td style="text-align:right"><b>${fmtN(a.mensagens7d)}</b></td>
-          <td style="text-align:right">${fmtN(a.pessoas)}</td>
-          <td>${a.conectado ? '<span class="pill done">conectado</span>' : '<span class="muted">fora do ar</span>'}</td>
+          <td data-r="Plano">${a.super ? '<span class="pill done">Superconta</span>' : esc(a.plano)}</td>
+          <td data-r="Contatos" style="text-align:right">${fmtN(a.contatos)}</td>
+          <td data-r="Mensagens 7d" style="text-align:right"><b>${fmtN(a.mensagens7d)}</b></td>
+          <td data-r="Pessoas" style="text-align:right">${fmtN(a.pessoas)}</td>
+          <td data-r="WhatsApp">${a.conectado ? '<span class="pill done">conectado</span>' : '<span class="muted">fora do ar</span>'}</td>
         </tr>`).join('')}
         </tbody></table></div>
         ${d.ranking.length ? '' : '<p class="muted">Nenhuma conta ainda.</p>'}
-      </div>`;
+      </div></div>`;
   } catch (e) { $('#view').innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 }
 
@@ -2330,14 +2368,14 @@ async function renderAdmVisao() {
 // as bases de todos os clientes não cabe numa resposta só.
 let ADM_CT = { q: '', conta: '', pagina: 0 };
 async function renderAdmContatos() {
-  $('#view').innerHTML = `
+  $('#view').innerHTML = `<div class="page">
     <div class="page-head"><h1>Contatos</h1>
       <p class="muted">De todas as contas, com o cliente ao lado.</p></div>
     <div class="card"><div class="row" style="align-items:flex-end">
       <label style="flex:2">Buscar<input id="admct-q" placeholder="nome, telefone ou e-mail" value="${esc(ADM_CT.q)}"></label>
       <button class="btn primary no-grow" onclick="admCtBuscar()">Buscar</button>
     </div></div>
-    <div id="admct-box">${skel(4)}</div>`;
+    <div id="admct-box">${skel(4)}</div></div>`;
   const inp = document.getElementById('admct-q');
   if (inp) inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') admCtBuscar(); });
   admCtCarregar();
@@ -2360,14 +2398,14 @@ async function admCtCarregar() {
     const ini = ADM_CT.pagina * porPagina;
     box.innerHTML = `<div class="card">
       <h2>${ico('users')} ${fmtN(d.total)} contato(s)</h2>
-      <div style="overflow-x:auto"><table><thead><tr>
+      <div class="tab-mob-wrap" style="overflow-x:auto"><table class="tab-mob"><thead><tr>
         <th>Contato</th><th>Conta</th><th>Etapa</th><th>Última mensagem</th>
       </tr></thead><tbody>
       ${d.itens.map(c => `<tr>
         <td><b>${esc(c.nome || 'sem nome')}</b><div class="muted" style="font-size:11.5px">+${esc(c.waId)}${c.email ? ' · ' + esc(c.email) : ''}</div></td>
-        <td>${esc(c.conta)}${c.super ? ' <span class="pill done">Super</span>' : ''}</td>
-        <td>${c.etapa ? esc(c.etapa) : '<span class="muted">-</span>'}${c.optOut ? ' <span class="pill">opt-out</span>' : ''}</td>
-        <td>${c.ultimaMensagem ? timeAgo(c.ultimaMensagem) : '<span class="muted">nunca</span>'}</td>
+        <td data-r="Conta">${esc(c.conta)}${c.super ? ' <span class="pill done">Super</span>' : ''}</td>
+        <td data-r="Etapa">${c.etapa ? esc(c.etapa) : '<span class="muted">-</span>'}${c.optOut ? ' <span class="pill">opt-out</span>' : ''}</td>
+        <td data-r="Última mensagem">${c.ultimaMensagem ? timeAgo(c.ultimaMensagem) : '<span class="muted">nunca</span>'}</td>
       </tr>`).join('')}
       </tbody></table></div>
       ${d.total ? '' : '<p class="muted">Nenhum contato encontrado.</p>'}
@@ -2384,27 +2422,27 @@ async function admCtCarregar() {
 
 // TODA A GENTE: donos e atendentes, de todas as contas.
 async function renderAdmUsuarios() {
-  $('#view').innerHTML = `<div class="page-head"><h1>Usuários</h1>` +
-    `<p class="muted">Todo mundo que entra no sistema: titulares e atendentes.</p></div>` + skel(4);
+  $('#view').innerHTML = `<div class="page"><div class="page-head"><h1>Usuários</h1>` +
+    `<p class="muted">Todo mundo que entra no sistema: titulares e atendentes.</p></div>` + skel(4) + `</div>`;
   try {
     const d = await api('/adm/users');
-    $('#view').innerHTML = `
+    $('#view').innerHTML = `<div class="page">
       <div class="page-head"><h1>Usuários</h1>
         <p class="muted">Todo mundo que entra no sistema: titulares e atendentes.</p></div>
       <div class="card">
         <h2>${ico('headset')} ${fmtN(d.total)} pessoa(s)</h2>
-        <div style="overflow-x:auto"><table><thead><tr>
+        <div class="tab-mob-wrap" style="overflow-x:auto"><table class="tab-mob"><thead><tr>
           <th>Pessoa</th><th>Conta</th><th>Papel</th><th>Último acesso</th>
         </tr></thead><tbody>
         ${d.itens.map(u => `<tr>
           <td><b>${esc(u.nome)}</b><div class="muted" style="font-size:11.5px">${esc(u.email)}</div></td>
-          <td>${esc(u.conta)}${u.super ? ' <span class="pill done">Super</span>' : ''}</td>
-          <td>${esc(u.papel)}${u.ativo ? '' : ' <span class="pill">inativo</span>'}</td>
-          <td>${u.ultimoAcesso ? timeAgo(u.ultimoAcesso) : '<span class="muted">nunca entrou</span>'}</td>
+          <td data-r="Conta">${esc(u.conta)}${u.super ? ' <span class="pill done">Super</span>' : ''}</td>
+          <td data-r="Papel">${esc(u.papel)}${u.ativo ? '' : ' <span class="pill">inativo</span>'}</td>
+          <td data-r="Último acesso">${u.ultimoAcesso ? timeAgo(u.ultimoAcesso) : '<span class="muted">nunca entrou</span>'}</td>
         </tr>`).join('')}
         </tbody></table></div>
         ${d.total ? '' : '<p class="muted">Nenhum usuário ainda.</p>'}
-      </div>`;
+      </div></div>`;
   } catch (e) { $('#view').innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 }
 
@@ -2414,11 +2452,11 @@ async function renderAdmUsuarios() {
 // teto de uso e sem cobrança, e ficam fora das métricas de clientes (contar
 // uma conta que não paga como assinante inflaria MRR e conversão).
 async function renderAdmSupers() {
-  $('#view').innerHTML = `<div class="page-head"><h1>Supercontas</h1>` +
-    `<p class="muted">As contas dos seus próprios negócios.</p></div>` + skel(3);
+  $('#view').innerHTML = `<div class="page"><div class="page-head"><h1>Supercontas</h1>` +
+    `<p class="muted">As contas dos seus próprios negócios.</p></div>` + skel(3) + `</div>`;
   try {
     const d = await api('/adm/supers');
-    $('#view').innerHTML = `
+    $('#view').innerHTML = `<div class="page">
       <div class="page-head"><h1>Supercontas</h1>
         <p class="muted">As contas dos seus próprios negócios, uma por empresa.</p></div>
       <div class="card">
@@ -2437,20 +2475,20 @@ async function renderAdmSupers() {
       </div>
       <div class="card">
         <h2>${ico('sparkles')} ${fmtN(d.itens.length)} Superconta(s)</h2>
-        ${d.itens.length ? `<div style="overflow-x:auto"><table><thead><tr>
+        ${d.itens.length ? `<div class="tab-mob-wrap" style="overflow-x:auto"><table class="tab-mob"><thead><tr>
           <th>Empresa</th><th style="text-align:right">Contatos</th><th style="text-align:right">Pessoas</th>
           <th>WhatsApp</th><th>Criada</th><th></th>
         </tr></thead><tbody>
         ${d.itens.map(a => `<tr>
           <td><b>${esc(a.nome)}</b><div class="muted" style="font-size:11.5px">${esc(a.email)}</div></td>
-          <td style="text-align:right">${fmtN(a.contatos)}</td>
-          <td style="text-align:right">${fmtN(a.pessoas)}</td>
-          <td>${a.conectado ? '<span class="pill done">conectado</span>' : '<span class="muted">fora do ar</span>'}</td>
-          <td>${timeAgo(a.criadaEm)}</td>
+          <td data-r="Contatos" style="text-align:right">${fmtN(a.contatos)}</td>
+          <td data-r="Pessoas" style="text-align:right">${fmtN(a.pessoas)}</td>
+          <td data-r="WhatsApp">${a.conectado ? '<span class="pill done">conectado</span>' : '<span class="muted">fora do ar</span>'}</td>
+          <td data-r="Criada">${timeAgo(a.criadaEm)}</td>
           <td style="text-align:right"><button class="btn small" onclick="admSuperDesligar('${a.id}')">Virar conta comum</button></td>
         </tr>`).join('')}
         </tbody></table></div>` : '<p class="muted">Nenhuma Superconta ainda. Crie a primeira acima.</p>'}
-      </div>`;
+      </div></div>`;
   } catch (e) { $('#view').innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 }
 
@@ -8327,10 +8365,14 @@ async function withdrawWallet() {
 
 // ==================== ADMIN SaaS (plataforma) ====================
 async function renderAdmin() {
-  if (state.kind !== 'admin') { location.hash = '#/dashboard'; return; }
+  if (state.kind !== 'admin') { location.hash = '#/' + VIEW_PADRAO; return; }
+  // No painel da plataforma o menu lateral já diz onde se está: repetir a
+  // barra de abas seria navegar duas vezes pela mesma coisa.
+  const rota = admAbaDaRota();
+  const cab = rota || { titulo: 'Admin SaaS', sub: 'Receita, contas, planos, afiliados e pagamentos' };
   $('#view').innerHTML = `<div class="page">
-    <div class="page-head"><h1>Admin SaaS</h1><p>Receita, contas, planos, afiliados e pagamentos</p></div>
-    <div class="tabs">
+    <div class="page-head"><h1>${esc(cab.titulo)}</h1><p>${esc(cab.sub)}</p></div>
+    <div class="tabs${rota ? ' hidden' : ''}">
       <button class="active" data-tab="adm-vis" onclick="showSettingsTab('adm-vis')">Visão geral</button>
       <button data-tab="adm-acc" onclick="showSettingsTab('adm-acc')">Contas</button>
       <button data-tab="adm-pl" onclick="showSettingsTab('adm-pl')">Planos</button>
@@ -8445,7 +8487,9 @@ async function paintAdmin() {
     const m = d.metrics;
     const ad = d.advanced || {};
     const S = d.series || [];
-    const activeTab = $('.tabs button.active')?.dataset.tab || 'adm-vis';
+    // A rota manda; sem rota de aba, vale o botão marcado na barra.
+    const rota = admAbaDaRota();
+    const activeTab = rota ? rota.aba : ($('.tabs button.active')?.dataset.tab || 'adm-vis');
     box.innerHTML = `
       <div class="tabpane ${activeTab === 'adm-vis' ? 'show' : ''}" data-pane="adm-vis">
         ${armazenamentoAviso(d.armazenamento)}
@@ -8651,20 +8695,6 @@ async function paintAdmin() {
 
       <div class="tabpane ${activeTab === 'adm-pay' ? 'show' : ''}" data-pane="adm-pay">
         <div class="card">
-          <h2>${ico('zap')} Testar notificação de venda</h2>
-          <p class="muted" style="margin:0 0 12px;font-size:13px">
-            Dispara a notificação de <b>venda aprovada</b> nos aparelhos inscritos nesta conta, com o som de caixa
-            registradora. É o mesmo caminho de uma venda de verdade, só o valor é seu. Nenhuma cobrança é criada
-            e nada entra na carteira.
-          </p>
-          <div class="row" style="align-items:flex-end">
-            <label style="flex:1">Valor (R$)<input id="ts-valor" inputmode="decimal" placeholder="97,00"></label>
-            <label style="flex:1.4">Cliente (opcional)<input id="ts-nome" maxlength="60" placeholder="Maria Silva"></label>
-            <button class="btn primary no-grow" id="ts-btn" onclick="admTestarVenda(this)">${ico('bell', 14)} Disparar</button>
-          </div>
-        </div>
-
-        <div class="card">
           <h2>${ico('pix')} Adquirente do Pix</h2>
           <p class="muted" style="margin:0 0 12px;font-size:13px">
             Quem processa as cobranças. A troca vale para as <b>próximas</b> cobranças. As já emitidas continuam
@@ -8781,6 +8811,33 @@ async function paintAdmin() {
         </div>
       </div>
 
+      <div class="tabpane ${activeTab === 'adm-notif' ? 'show' : ''}" data-pane="adm-notif">
+        <div class="card">
+          <h2>${ico('zap')} Testar notificação de venda</h2>
+          <p class="muted" style="margin:0 0 12px;font-size:13px">
+            Dispara a notificação de <b>venda aprovada</b> nos aparelhos inscritos nesta conta, com o som de caixa
+            registradora. É o mesmo caminho de uma venda de verdade, só o valor é seu. Nenhuma cobrança é criada
+            e nada entra na carteira.
+          </p>
+          <div class="row" style="align-items:flex-end">
+            <label style="flex:1">Valor (R$)<input id="ts-valor" inputmode="decimal" placeholder="97,00"></label>
+            <label style="flex:1.4">Cliente (opcional)<input id="ts-nome" maxlength="60" placeholder="Maria Silva"></label>
+            <button class="btn primary no-grow" id="ts-btn" onclick="admTestarVenda(this)">${ico('bell', 14)} Disparar</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>${ico('bell')} Este aparelho está recebendo?</h2>
+          <p class="muted" style="margin:0 0 12px;font-size:13px">
+            Aviso simples, sem valor e sem som de venda. Serve para separar dois problemas: o aparelho não
+            está inscrito, ou está inscrito e o aviso de venda é que não sai. Teste este primeiro.
+          </p>
+          <div class="row">
+            <button class="btn no-grow" onclick="notifTestFire(this)">${ico('bell', 14)} Disparar aviso de teste</button>
+          </div>
+        </div>
+      </div>
+
       <div class="tabpane ${activeTab === 'adm-wd' ? 'show' : ''}" data-pane="adm-wd">
         <div class="card">
           <h2>${ico('download-circle')} Saques de afiliados</h2>
@@ -8825,9 +8882,15 @@ async function paintAdmin() {
       <div class="tabpane ${activeTab === 'adm-tema' ? 'show' : ''}" data-pane="adm-tema">
         <div id="adm-tema-box">${skel(3)}</div>
       </div>`;
+    // Painéis que buscam os próprios dados. Antes só três eram chamados aqui,
+    // porque os outros dependiam do clique na aba para carregar — entrando
+    // direto pela rota, ficariam no esqueleto para sempre.
     if (activeTab === 'adm-ep') admEpPaint();
     if (activeTab === 'adm-pay') admFeesPaint();
     if (activeTab === 'adm-int') admIntLoad();
+    if (activeTab === 'adm-mkt') admMktLoad();
+    if (activeTab === 'adm-sec') admSecLoad();
+    if (activeTab === 'adm-tema') admTemaLoad();
   } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 }
 

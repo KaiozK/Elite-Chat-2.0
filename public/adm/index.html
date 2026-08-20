@@ -50,6 +50,10 @@
 </div>
 
 <div id="app" class="hidden">
+  <!-- No celular a sidebar vira gaveta e desliza por cima; este é o fundo
+       escuro que fecha ao toque. Sem ele a gaveta abre e não há como sair
+       dela a não ser navegando. -->
+  <div class="nav-backdrop" id="nav-backdrop" onclick="toggleNav(false)"></div>
   <aside class="sidebar" id="sidebar">
     <div class="brand">
       <span class="brand-mark"><img src="/marca/logo" alt=""></span>
@@ -66,13 +70,62 @@
       <a class="nav-item" data-view="adm/usuarios" href="#/adm/usuarios">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M2.8 20c.7-3 3.2-4.8 6.2-4.8s5.5 1.8 6.2 4.8"/><path d="M16 4.2a3.2 3.2 0 0 1 0 6.1M18.5 20c-.3-1.6-1-3-2-4"/></svg>
         <span>Usuários</span></a>
-      <span class="nav-label">Plataforma</span>
       <a class="nav-item" data-view="adm/supers" href="#/adm/supers">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2l2.1 4.5 4.9.6-3.6 3.4.9 4.9-4.3-2.4-4.3 2.4.9-4.9L5 8.3l4.9-.6z"/></svg>
         <span>Supercontas</span></a>
-      <a class="nav-item" data-view="admin" href="#/admin">
+
+      <!-- O NEGÓCIO. Eram abas numa barra horizontal dentro de uma tela só:
+           passavam do fim da tela no computador e viravam botões espremidos no
+           celular. Cada uma agora tem endereço próprio e mora aqui. -->
+      <span class="nav-label">Negócio</span>
+      <a class="nav-item" data-view="adm/vis" href="#/adm/vis">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M6 20V9M11 20V4M16 20v-7M21 20v-4"/></svg>
+        <span>Visão do SaaS</span></a>
+      <a class="nav-item" data-view="adm/contas" href="#/adm/contas">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        <span>Contas</span></a>
+      <a class="nav-item" data-view="adm/planos" href="#/adm/planos">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5.5" height="16" rx="1.5"/><rect x="9.8" y="4" width="5.5" height="10" rx="1.5"/><rect x="16.5" y="4" width="4.5" height="13" rx="1.5"/></svg>
+        <span>Planos</span></a>
+      <a class="nav-item" data-view="adm/afiliados" href="#/adm/afiliados">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+        <span>Afiliados</span></a>
+
+      <span class="nav-label">Dinheiro</span>
+      <a class="nav-item" data-view="adm/gateways" href="#/adm/gateways">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6.5 14.5h4"/></svg>
+        <span>Gateways</span></a>
+      <a class="nav-item" data-view="adm/pagamentos" href="#/adm/pagamentos">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5.5c0-1.9-2.2-3-5-3s-5 1.1-5 3 2.2 2.8 5 3.4 5 1.5 5 3.4-2.2 3.2-5 3.2-5-1.3-5-3.2"/></svg>
+        <span>Pagamentos</span></a>
+      <a class="nav-item" data-view="adm/saques" href="#/adm/saques">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M4 20h16"/></svg>
+        <span>Saques</span></a>
+
+      <span class="nav-label">Sistema</span>
+      <!-- Primeiro da lista de propósito: é o único que se usa TODO dia, e do
+           celular. Os outros são configuração, mexidos uma vez. -->
+      <a class="nav-item" data-view="adm/notificacoes" href="#/adm/notificacoes">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+        <span>Notificações</span></a>
+      <a class="nav-item" data-view="adm/personalizacao" href="#/adm/personalizacao">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 1 9-9c0 1.7-1.3 3-3 3h-1.5a2 2 0 0 0-1.4 3.4c.5.6.4 1.6-.3 2.1-.5.3-1.2.5-1.8.5z"/><circle cx="7.5" cy="10.5" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="16.5" cy="10.5" r="1"/></svg>
+        <span>Personalização</span></a>
+      <a class="nav-item" data-view="adm/plataforma" href="#/adm/plataforma">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+        <span>Plataforma</span></a>
+      <a class="nav-item" data-view="adm/integracoes" href="#/adm/integracoes">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2"/><path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06"/><path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8"/></svg>
+        <span>Integrações</span></a>
+      <a class="nav-item" data-view="adm/marketing" href="#/adm/marketing">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+        <span>Marketing</span></a>
+      <a class="nav-item" data-view="adm/seo" href="#/adm/seo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <span>SEO</span></a>
+      <a class="nav-item" data-view="adm/seguranca" href="#/adm/seguranca">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 4.6-3.1 8.6-8 9.9C7.1 20.6 4 16.6 4 12V7l8-4z"/><path d="M9.2 12.2l2 2 3.8-4"/></svg>
-        <span>Configurações</span></a>
+        <span>Segurança</span></a>
       <a class="nav-item" data-view="logs" href="#/logs">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M6 6a8.5 8.5 0 0 0 0 12M18 6a8.5 8.5 0 0 1 0 12"/></svg>
         <span>Webhook &amp; Logs</span></a>

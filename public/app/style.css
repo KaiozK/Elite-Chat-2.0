@@ -4823,3 +4823,46 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
   .modal, .modal * { max-width: 100%; }
   .modal img, .modal svg, .modal canvas { height: auto; }
 }
+
+/* ============================================================
+   TABELA QUE VIRA CARTÃO NO CELULAR
+
+   Cinco colunas em 375px rolam de lado dentro do card: o dado está lá, mas
+   ler exige arrastar para um lado e de volta, e o cabeçalho fica para trás.
+   Aqui cada linha vira um bloco e o rótulo da coluna (o `data-r` do td)
+   aparece ao lado do valor. No computador nada muda.
+
+   Os seletores incluem `.card` e miram `table.tab-mob` de propósito: o
+   tratamento geral de tabela no celular (`.card table thead`) tem peso maior
+   que `.tab-mob thead` e ganharia, mesmo estando antes no arquivo.
+   ============================================================ */
+@media (max-width: 820px) {
+  .card table.tab-mob thead { display: none; }
+  .card table.tab-mob,
+  .card table.tab-mob tbody,
+  .card table.tab-mob tr,
+  .card table.tab-mob td { display: block; width: 100%; min-width: 0; }
+  .card table.tab-mob tr {
+    border: 1px solid var(--border2); border-radius: 12px;
+    padding: 12px 14px; margin-bottom: 10px; background: var(--card);
+  }
+  .card table.tab-mob tr:last-child { margin-bottom: 0; }
+  .card table.tab-mob td {
+    border: 0; padding: 5px 0; text-align: left !important;
+    display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
+  }
+  /* O rótulo vem do próprio td, então a coluna nunca se perde do valor. */
+  .card table.tab-mob td[data-r]::before {
+    content: attr(data-r); color: var(--text3); font-size: 12px;
+    letter-spacing: .03em; text-transform: uppercase; flex: none;
+  }
+  /* A primeira célula é o título do cartão: ocupa a linha inteira. */
+  .card table.tab-mob td:first-child {
+    display: block; padding-top: 0; padding-bottom: 8px;
+    margin-bottom: 6px; border-bottom: 1px solid var(--border);
+  }
+  /* Célula sem rótulo e sem conteúdo (a coluna dos botões) não vira linha. */
+  .card table.tab-mob td:empty { display: none; }
+  /* Sem largura mínima, o container não precisa rolar. */
+  .tab-mob-wrap { overflow-x: visible !important; }
+}
