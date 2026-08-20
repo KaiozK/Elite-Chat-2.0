@@ -910,7 +910,7 @@ function spendWallet(acc, valueCents, label, broadcast) {
 
 function findCharge(acc, id) { return ensure(acc).charges.find(c => c.id === id || c.correlationID === id); }
 
-async function createCharge(acc, { valueCents, comment, waId, contactName, origin, byName, expiresMin, productId, checkoutId, saas, message, pagador }) {
+async function createCharge(acc, { valueCents, comment, waId, contactName, origin, byName, expiresMin, productId, checkoutId, saas, message, buttonText, pagador }) {
   const sub = activeSubaccount(acc);
   // Produto escolhido preenche valor e descrição quando não vierem explícitos
   const prod = productId ? findProduct(acc, productId) : null;
@@ -975,6 +975,9 @@ async function createCharge(acc, { valueCents, comment, waId, contactName, origi
     // Mensagem escrita para ESTA cobrança, com as variáveis ainda cruas. Fica
     // guardada para que reenviar mande o mesmo texto, e não o modelo padrão.
     message: (message || '').slice(0, 1500) || null,
+    // Rotulo do botao de pagar: a Meta corta em 20 caracteres e recusa quebra
+    // de linha, entao o corte acontece aqui e nao vira erro no envio.
+    buttonText: String(buttonText || '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, 20) || null,
     feePercent, platformCut, gateway: gateway().id, gatewayId: g.gatewayId
   };
   ch.payUrl = payLink(ch);   // link enviado ao cliente → checkout hospedado (/pay/:id)
@@ -1059,7 +1062,10 @@ function chargeButton(acc, ch) {
   let body = chargeMessage(acc, ch, { semCodigo: true, semLink: true });
   if (!body) body = `Sua cobrança de ${fmtBRL(ch.value)} está pronta.`;
   body = body.slice(0, 1024);                      // limite do corpo na Meta
-  const displayText = 'Pagar agora';               // limite de 20 caracteres
+  // O RÓTULO DO BOTÃO. Vem da cobrança, das configurações do lojista ou do
+  // padrão, nesta ordem. A Meta corta em 20 caracteres e recusa quebra de
+  // linha, então o corte acontece aqui e não vira erro no envio.
+  const displayText = botaoTexto(acc, ch);
   return {
     url, body, displayText,
     interactive: {
@@ -1069,6 +1075,15 @@ function chargeButton(acc, ch) {
     }
   };
 }
+// O rótulo do botão de pagar, dentro do que a Meta aceita: 20 caracteres, sem
+// quebra de linha. Vazio em todos os níveis, volta para "Pagar agora".
+function botaoTexto(acc, ch) {
+  const ep = ensure(acc);
+  const bruto = (ch && ch.buttonText) || (ep.settings && ep.settings.buttonText) || '';
+  const limpo = String(bruto).replace(/[\r\n\t]+/g, ' ').trim().slice(0, 20).trim();
+  return limpo || 'Pagar agora';
+}
+
 function fmtBRL(cents) { return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
 
 // ---------------------------------------------------------------------------

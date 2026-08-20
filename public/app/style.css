@@ -4773,3 +4773,26 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 }
 #login .btn.primary:hover { background: var(--btn-grad, var(--btn-verde-hover)); opacity: .93; }
 @media (prefers-reduced-motion: reduce) { #login .btn.primary { animation: none } }
+
+
+/* ---------- o dia no painel, e o texto do botao de cobrar ---------- */
+/* No painel a pergunta e "e hoje?": o lugar dos atalhos de dias e ocupado pela
+   DATA, que nao e botao — nao ha o que clicar ali, so o que ler. */
+.per-hoje {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 8px 13px; font-size: 13px; font-weight: 500; color: var(--text);
+  white-space: nowrap;
+}
+.per-hoje svg { color: var(--verde-esc); flex: none; }
+
+/* O rotulo do botao de pagar, na tela de cobranca. A regra fica embaixo do
+   campo e vira contagem regressiva enquanto se digita. */
+.ep-botao-campo { margin-top: 12px; }
+.ep-botao-regra {
+  margin-top: 6px; font-size: 12px; line-height: 1.5; color: var(--muted);
+  display: flex; align-items: flex-start; gap: 6px;
+}
+.ep-botao-regra svg { flex: none; margin-top: 2px; }
+.ep-botao-regra b { color: var(--text2); font-weight: 500; }
+.ep-botao-regra.perto b { color: var(--amber-ink, #b45309); }

@@ -4837,10 +4837,14 @@ module.exports = function (broadcast, clients) {
     const cfg = elitepay.platformCfg();
     res.json({
       configured: elitepay.configured(),
-      // O adquirente ativo exige os dados do pagador para emitir o Pix?
-      // A tela de cobrança usa isto para pedir CPF e e-mail e já sair com o
-      // código na mão, em vez de só com o link.
+      // O adquirente ativo exige os dados do pagador para emitir o Pix? A
+      // cobrança não pede mais esses dados no painel — quem paga preenche no
+      // checkout —, mas o servidor ainda usa a informação para decidir se o
+      // código Pix sai junto da mensagem ou só o botão.
       exigePagador: !!elitepay.gateway().requiresPayer,
+      // O rótulo padrão do botão de pagar, para a tela de cobrança mostrar
+      // como marca-d'água e na prévia.
+      buttonText: (ep.settings && ep.settings.buttonText) || '',
       gatewayLabel: elitepay.gateway().label || '',
       subaccount: ep.subaccount,
       // O Koonfy já sabe nome, e-mail e telefone de quem cadastrou. Mandar o
@@ -4965,6 +4969,7 @@ module.exports = function (broadcast, clients) {
       origin: b.origin || 'manual', byName: req.who.name, expiresMin: b.expiresMin,
       productId: b.productId, checkoutId: b.checkoutId,    // produto + layout escolhidos
       message: b.message,                                  // texto montado na hora, com as variáveis
+      buttonText: b.buttonText,                            // rótulo do botão de pagar
       pagador
     });
     // "Usar como padrão nas próximas": grava o texto no modelo da conta.
@@ -4972,6 +4977,13 @@ module.exports = function (broadcast, clients) {
       const ep = elitepay.ensure(req.acc);
       ep.settings.autoMessage = String(b.message).slice(0, 1500);
       ep.settings.chargeTemplateEnabled = true;
+      db.save();
+    }
+    // O rótulo do botão vira padrão junto: quem escreveu "Garantir vaga" uma
+    // vez raramente quer "Pagar agora" na próxima.
+    if (b.saveAsDefault && typeof b.buttonText === 'string') {
+      elitepay.ensure(req.acc).settings.buttonText =
+        String(b.buttonText).replace(/[\r\n\t]+/g, ' ').trim().slice(0, 20);
       db.save();
     }
     let sent = false, sendError = null;

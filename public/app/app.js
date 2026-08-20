@@ -2236,7 +2236,6 @@ function greeting() {
 
 // Mantido para links antigos que chamavam com um número de dias.
 function setDashDays(n) { periodoSalvar({ dias: n }); renderDashboard(); }
-function setChartKind(k) { localStorage.setItem('ec_chartkind', k); renderDashboard(); }
 
 // ===========================================================================
 // PERÍODO DOS GRÁFICOS
@@ -2252,11 +2251,13 @@ function setChartKind(k) { localStorage.setItem('ec_chartkind', k); renderDashbo
 const MESES_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
+// O PAINEL NASCE OLHANDO HOJE. Antes o padrão eram 14 dias, que é resposta de
+// relatório: quem abre o painel de manhã quer saber do dia que está correndo.
 function periodoAtual() {
   if (!state.periodo) {
     let salvo = null;
     try { salvo = JSON.parse(localStorage.getItem('ec_periodo') || 'null'); } catch {}
-    state.periodo = salvo && (salvo.dias || (salvo.de && salvo.ate)) ? salvo : { dias: 14 };
+    state.periodo = salvo && (salvo.dias || (salvo.de && salvo.ate)) ? salvo : { dias: 1 };
   }
   return state.periodo;
 }
@@ -2288,8 +2289,23 @@ function periodoRotulo() {
 }
 
 // O controle: atalhos + um botão que abre o calendário/mês/ano.
-function periodoSeletor() {
+// DUAS FORMAS. Em relatórios e campanhas, os atalhos de dias continuam: ali
+// a pergunta é sobre um período. No painel a pergunta é "e hoje?", então o
+// lugar dos atalhos é ocupado pela DATA de hoje e o resto vai para o Filtrar.
+function periodoSeletor(opts) {
   const p = periodoAtual();
+  const o = opts || {};
+  if (o.hoje) {
+    const hoje = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    // O chip mostra o que está sendo olhado: hoje, ou o recorte que o Filtrar
+    // deixou. Sem isso, escolher "março" e ver a data de hoje ao lado mentiria.
+    const rot = (p.dias === 1 || (!p.dias && !p.de)) ? hoje : periodoRotulo();
+    return `<div class="per">
+      <span class="per-hoje">${ico('calendar', 13)} ${esc(rot)}</span>
+      <button class="per-btn ${p.dias === 1 ? '' : 'on'}" onclick="periodoModal()" title="Escolher um dia, mês, ano ou intervalo">
+        ${ico('search', 13)}<span>Filtrar</span></button>
+    </div>`;
+  }
   const atalhos = [7, 14, 30, 90];
   return `<div class="per">
     <div class="seg">${atalhos.map(n => `<button class="${p.dias === n ? 'on' : ''}" onclick="periodoDias(${n})">${n}d</button>`).join('')}</div>
@@ -2366,8 +2382,8 @@ function periodoIntervalo() {
 
 async function renderDashboard() {
   const hoje = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
-  const kind = localStorage.getItem('ec_chartkind') || 'bars';
-  const segKind = [['bars', 'Barras'], ['line', 'Linhas'], ['area', 'Área']];
+  // Só barras: os três tipos eram três jeitos de olhar o mesmo número, e a
+  // barra já é a leitura certa para contagem por dia.
   $('#view').innerHTML = `<div class="page">
     <div class="hero-head">
       <div>
@@ -2376,8 +2392,7 @@ async function renderDashboard() {
         <p>Veja o que está acontecendo no seu atendimento agora.</p>
       </div>
       <div class="hh-actions">
-        ${periodoSeletor()}
-        <div class="seg">${segKind.map(([k, l]) => `<button class="${k === kind ? 'on' : ''}" title="${l}" onclick="setChartKind('${k}')">${l}</button>`).join('')}</div>
+        ${periodoSeletor({ hoje: true })}
       </div>
     </div>
     <div id="missoes-faixa"></div>
@@ -3924,7 +3939,6 @@ async function pipeSave() {
   } catch (e) { toast(e.message, 'error'); }
 }
 
-
 function wireKanban() {
   let dragged = null;
   $$('.kcard').forEach(card => {
@@ -4713,7 +4727,6 @@ async function renderSettings() {
         <button class="btn primary lg" onclick="connectWhatsApp()">${waLogo(18)} Conectar WhatsApp</button>
         <p class="hint" style="margin-top:12px">Embedded Signup oficial · WhatsApp Business Platform (Cloud API ${esc(s.graphVersion || 'v26.0')})</p>
       </div>`;
-
 
   $('#view').innerHTML = `
     <div class="page">
@@ -8143,7 +8156,6 @@ async function renderAdmin() {
   paintAdmin();
 }
 
-
 // ---------------------------------------------------------------------------
 // PLATAFORMA (Admin SaaS). Credenciais do app da Meta usadas pelo Embedded
 // Signup do WhatsApp e pelo OAuth do Meta Ads. Fica SO aqui: o cliente nunca
@@ -10029,7 +10041,6 @@ async function admSaveAllFees(btn) {
     admEpPaint();
   } catch (e) { toast(e.message, 'error'); btn.disabled = false; btn.innerHTML = txt; }
 }
-
 
 function admCardSection(c, t) {
   const isPag = c.provider === 'pagarme';
@@ -15030,51 +15041,39 @@ const EP_MSG_PADRAO = 'Olá {nome}! Sua cobrança de {valor} está pronta.\n{des
 
 let epNC = null;   // { waId, contactName, etapa }
 
-// ---------------------------------------------------------------------------
-// DADOS DO PAGADOR na tela de cobrança
-//
-// Alguns adquirentes (a Simplify) só emitem o Pix sabendo quem vai pagar: nome,
-// CPF/CNPJ, e-mail e telefone. Sem isso a cobrança sai só com o LINK, e o
-// código copia e cola aparece depois, quando o cliente preenche no checkout.
-//
-// Como quase sempre quem cobra quer o código na mão para colar na conversa,
-// os campos entram aqui. Aparecem SÓ quando o adquirente exige — com a Woovi
-// seria pedir um dado que ninguém usa.
-// ---------------------------------------------------------------------------
-function epExigePagador() { return !!(state.epInfo && state.epInfo.exigePagador); }
-
-function epCamposPagador() {
-  if (!epExigePagador()) return '';
-  // O contato já pode ter CPF e e-mail de uma compra anterior no checkout;
-  // nesse caso os campos chegam preenchidos e é só confirmar.
-  const c = epNC && epNC.waId ? (state.contacts || []).find(x => x.waId === epNC.waId) : null;
-  const doc = (c && c.vars && c.vars.cpf_cnpj) || '';
-  const email = (c && c.email) || '';
+// O RÓTULO DO BOTÃO de pagar, que sai no WhatsApp junto da cobrança. A regra
+// da Meta fica escrita ao lado do campo: 20 caracteres, sem quebra de linha.
+// Ler a regra antes é melhor do que descobrir por um erro de envio.
+function epCampoBotao() {
+  const padrao = (state.epInfo && state.epInfo.buttonText) || 'Pagar agora';
   return `
-    <div class="ep-pagador">
-      <div class="ep-pagador-top">
-        ${ico('help', 13)}
-        <span>O adquirente <b>${esc((state.epInfo && state.epInfo.gatewayLabel) || 'Pix')}</b> exige os dados de quem vai
-        pagar para emitir o código. Preencha e o <b>Pix copia e cola sai na hora</b>; deixe em branco e a cobrança vai
-        só com o <b>link</b>, onde o próprio cliente preenche.</span>
+    <div class="ep-botao-campo">
+      <label>Texto do botão de pagar
+        <input id="ep-nc-btntxt" maxlength="20" placeholder="${esc(padrao)}" value=""
+               oninput="epContarBotao(this)"></label>
+      <div class="ep-botao-regra" id="ep-nc-btntxt-regra">
+        ${ico('help', 12)} Até <b>20 caracteres</b>, numa linha só. Emoji conta como caractere.
+        Em branco, sai <b>${esc(padrao)}</b>.
       </div>
-      <div class="ep-grid">
-        <label>CPF ou CNPJ do cliente
-          <input id="ep-nc-doc" inputmode="numeric" placeholder="000.000.000-00" value="${esc(doc ? mascararDoc(doc) : '')}"
-                 oninput="this.value=mascararDoc(this.value)" onblur="epChecarDoc(this)"></label>
-        <label>E-mail do cliente
-          <input id="ep-nc-email" type="email" placeholder="cliente@email.com" value="${esc(email)}"></label>
-      </div>
-      <div class="ep-pagador-erro" id="ep-nc-doc-erro"></div>
     </div>`;
 }
 
-// Aviso na hora, sem ir ao servidor: os dígitos verificadores são conta local.
-function epChecarDoc(el) {
-  const box = $('#ep-nc-doc-erro');
-  const e = el.value.replace(/\D/g, '') ? erroDoc(el.value) : '';
-  el.classList.toggle('bad', !!e);
-  if (box) { box.textContent = e || ''; box.classList.toggle('show', !!e); }
+// A contagem aparece enquanto se digita: o limite deixa de ser surpresa.
+function epContarBotao(el) {
+  const box = $('#ep-nc-btntxt-regra'); if (!box) return;
+  const n = el.value.length;
+  box.classList.toggle('perto', n >= 16);
+  const sobra = 20 - n;
+  const aviso = n
+    ? `${ico('help', 12)} <b>${sobra}</b> caractere${sobra === 1 ? '' : 's'} restante${sobra === 1 ? '' : 's'}.`
+    : '';
+  if (n) box.innerHTML = aviso;
+  else epRepintarRegra(box);
+}
+function epRepintarRegra(box) {
+  const padrao = (state.epInfo && state.epInfo.buttonText) || 'Pagar agora';
+  box.innerHTML = `${ico('help', 12)} Até <b>20 caracteres</b>, numa linha só. Emoji conta como caractere.`
+    + ` Em branco, sai <b>${esc(padrao)}</b>.`;
 }
 
 function epNewChargeModal(waId, contactName) {
@@ -15105,7 +15104,6 @@ function epNewChargeModal(waId, contactName) {
            <input type="hidden" id="ep-nc-waid" value="${esc(waId)}">`
         : `<label>Vincular a um contato (opcional)<input id="ep-nc-phone" placeholder="5511999999999, deixe em branco para cobrança avulsa" inputmode="tel"></label>
            <label class="chk"><input type="checkbox" id="ep-nc-send"> Enviar no WhatsApp do contato</label>`}
-      ${epCamposPagador()}
     </div>
 
     <div class="ep-etapa hidden" data-etapa="2">
@@ -15115,7 +15113,8 @@ function epNewChargeModal(waId, contactName) {
           <textarea id="ep-nc-msg" class="ep-msg" rows="9" oninput="epPreviewMsg()">${esc(padrao)}</textarea>
           <span class="fb-sub" style="margin-top:12px">Toque para inserir onde está o cursor</span>
           <div class="ep-vars">${EP_VARS.map(v => `<button type="button" class="ep-var" onclick="epInsertVar('${v.k}')" title="${esc(v.rot)}">{${v.k}}</button>`).join('')}</div>
-          <label class="chk" style="margin-top:12px"><input type="checkbox" id="ep-nc-def"> Usar este texto como padrão nas próximas cobranças</label>
+          ${epCampoBotao()}
+          <label class="chk" style="margin-top:12px"><input type="checkbox" id="ep-nc-def"> Usar este texto e este botão como padrão nas próximas cobranças</label>
         </div>
         <div class="ep-preview-wrap">
           <span class="fb-sub">Prévia</span>
@@ -15176,7 +15175,14 @@ function epPreviewMsg() {
     .replace(/\{link\}/g, 'https://pay.koonfy.com/epc_exemplo')
     .replace(/\{codigo\}/g, '00020126580014BR.GOV.BCB.PIX…')
     .replace(/\n{3,}/g, '\n\n').trim();
-  alvo.innerHTML = esc(txt) + `<div class="meta"><time>${fmtHora(Date.now())}</time><span class="st">✓</span></div>`;
+  // A prévia mostra o BOTÃO junto: é o que o cliente recebe, e ver o rótulo
+  // dentro do balão é o que revela quando ele ficou grande demais.
+  const rot = (($('#ep-nc-btntxt') || {}).value || '').trim()
+    || (state.epInfo && state.epInfo.buttonText) || 'Pagar agora';
+  alvo.innerHTML = esc(txt)
+    + `<div class="meta"><time>${fmtHora(Date.now())}</time><span class="st">✓</span></div>`
+    + `<div class="msg-btns"><span class="msg-btn">${esc(rot.slice(0, 20))}</span></div>`;
+  alvo.classList.add('com-btns');
 }
 // ao escolher o produto, preenche valor/descrição e já aponta o checkout dele
 function epPickProduct(id) {
@@ -15199,11 +15205,8 @@ async function epCreateCharge() {
       saveAsDefault: !!($('#ep-nc-def') && $('#ep-nc-def').checked),
       waId, send: !!($('#ep-nc-send') && $('#ep-nc-send').checked),
       origin: state.view === 'inbox' ? 'chat' : 'manual',
-      // Só vai quando o adquirente precisa; com a Woovi o campo nem existe.
-      pagador: epExigePagador() ? {
-        document: ($('#ep-nc-doc') && $('#ep-nc-doc').value) || '',
-        email: ($('#ep-nc-email') && $('#ep-nc-email').value.trim()) || ''
-      } : undefined
+      // O rótulo do botão. Em branco, o servidor usa o padrão da conta.
+      buttonText: ($('#ep-nc-btntxt') && $('#ep-nc-btntxt').value.trim()) || ''
     } });
     closeModal();
     if (r.sent) toast('Cobrança gerada e enviada na conversa! 💸');
