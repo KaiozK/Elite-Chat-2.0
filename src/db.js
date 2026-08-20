@@ -486,6 +486,7 @@ function migrar() {
     for (const k of Object.keys(p.limits)) if (!LIMIT_KEYS.includes(k)) delete p.limits[k];
   }
   migrateLegacy();
+  nomeDeArquivoNaMarca(db);
   for (const a of db.accounts) ensureAccountShape(a);
   flush();
 }
@@ -602,6 +603,30 @@ function botoesDasAntigas(acc) {
     }
   }
   return convertidas;
+}
+
+// ---------------------------------------------------------------------------
+// O NOME DO APP QUE VIROU NOME DE ARQUIVO
+//
+// A rota de upload da logo gravava `marca` inteiro e punha o nome do ARQUIVO
+// no campo `nome`, que é a marca escrita — a que sai na aba do navegador e na
+// tela "Adicionar à Tela de Início" do iPhone. A rota já foi corrigida, mas o
+// valor ruim continua gravado, e corrigir a rota não desfaz o que ela gravou.
+//
+// Só limpa o que é CLARAMENTE um arquivo de imagem: termina em .png, .jpg,
+// .webp, .svg, .ico, .gif ou .avif. Uma marca de verdade não se chama assim, e
+// um nome legítimo que por acaso termine em ".png" é preferível perder do que
+// arriscar apagar o nome que alguém escolheu.
+// ---------------------------------------------------------------------------
+function nomeDeArquivoNaMarca(data) {
+  const m = data.platform && data.platform.marca;
+  if (!m) return false;
+  const nome = String(m.nome || '').trim();
+  if (!nome || !/.(png|jpe?g|webp|svg|ico|gif|avif)$/i.test(nome)) return false;
+  // O que era nome de arquivo vira a etiqueta do arquivo, que é o seu lugar.
+  if (!m.arquivo) m.arquivo = nome;
+  m.nome = '';
+  return true;
 }
 
 function ensureAccountShape(acc) {

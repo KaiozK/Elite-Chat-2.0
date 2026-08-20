@@ -41,6 +41,10 @@ const url = (r) => 'http://127.0.0.1:' + porta + r;
 
 (async () => {
   const db = require(R + 'src/db');
+  // db.save() e adiado em 250ms: recarregar antes disso leria o estado
+  // anterior, e o teste mediria a gravacao errada.
+  const assentar = () => new Promise(r => setTimeout(r, 320));
+  await assentar();
   await db.loadAsync();
   const fs = require('fs'), path = require('path'), crypto = require('crypto');
   const express = require('express');
@@ -116,6 +120,26 @@ const url = (r) => 'http://127.0.0.1:' + porta + r;
   ok(img.bytes.equals(padrao), 'a arte do repositório voltou');
   mf = await manifesto();
   ok(mf.name === 'Koonfy | CRM de WhatsApp com IA', 'e o nome ficou de pé: ' + mf.name);
+
+  console.log('\n=== 4b. O nome de arquivo JA GRAVADO e limpo na subida ===');
+  // Corrigir a rota nao desfaz o que ela gravou ontem: quem enviou a logo
+  // antes da correcao continua com o app se chamando "ChatGPT Image.png".
+  // A limpeza roda no carregamento do banco.
+  await escrever({ nome: 'ChatGPT Image 3 de set. de 2025.png', descricao: '' });
+  mf = await manifesto();
+  ok(mf.short_name === 'ChatGPT Imag', 'antes, o iPhone mostrava: ' + mf.short_name);
+  await assentar();
+  await db.loadAsync();
+  mf = await manifesto();
+  ok(mf.name === 'Koonfy', 'depois de subir, volta ao padrao: ' + mf.name);
+  ok(String(db.get().platform.marca.arquivo || '').includes('ChatGPT'),
+     'e o valor vira etiqueta do arquivo, nao some: ' + db.get().platform.marca.arquivo);
+
+  // Um nome escolhido a mao NAO pode ser tocado.
+  await escrever({ nome: 'Koonfy', descricao: 'CRM de WhatsApp com IA' });
+  await assentar();
+  await db.loadAsync();
+  ok(db.get().platform.marca.nome === 'Koonfy', 'um nome de verdade sobrevive a subida');
 
   console.log('\n=== 5. Sem nome salvo, vale o padrão de fábrica ===');
   await escrever({ nome: '', descricao: '' });
