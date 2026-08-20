@@ -123,7 +123,7 @@ async function entregarWebhook(db, corpo) {
   let db = await subir();
   ok(db.storage.nome === 'mysql', 'o motor é o MySQL');
 
-  let r = await chamar('POST', '/api/login', { user: 'admin', pass: 'admin' });
+  let r = await chamar('POST', '/api/adm/login', { user: 'admin', pass: 'admin' });
   ok(!!r.token, 'admin entrou');
   const token = r.token;
 
@@ -161,7 +161,7 @@ async function entregarWebhook(db, corpo) {
   console.log('\n=== 4. REINÍCIO: o deploy não pode quebrar o chat ===');
   await derrubar(db);
   db = await subir();
-  r = await chamar('POST', '/api/login', { user: 'admin', pass: 'admin' });
+  r = await chamar('POST', '/api/adm/login', { user: 'admin', pass: 'admin' });
   const token2 = r.token;
   r = await chamar('GET', '/api/wa/status', null, token2);
   ok(r.wa && r.wa.phoneNumberId === PHONE_ID, 'a conexão sobreviveu ao reinício');

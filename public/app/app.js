@@ -2,7 +2,15 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 
-let TOKEN = localStorage.getItem('wacrm_token') || '';
+// PAINEL DA PLATAFORMA (/adm/) ou painel do cliente (/app/).
+//
+// Os dois moram na mesma origem e dividem o mesmo localStorage. Com uma
+// chave de token só, entrar como cliente numa aba derrubava a sessão do
+// admin na outra — e era a mesma sessão, o que anula a separação.
+const ADM = /^\/adm(\/|$)/.test(location.pathname);
+const TOKEN_KEY = ADM ? 'koonfy_adm_token' : 'wacrm_token';
+
+let TOKEN = localStorage.getItem(TOKEN_KEY) || '';
 
 // ---------------------------------------------------------------------------
 // ATRIBUIÇÃO DE AFILIADO (janela de 7 dias)
@@ -514,7 +522,11 @@ async function api(path, opts = {}) {
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined
   });
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401 && path !== '/login') { logout(true); throw new Error('Sessão expirada'); }
+  // 401 numa tela JÁ ABERTA é sessão vencida. 401 numa TENTATIVA DE ENTRAR é
+  // senha errada, e responder "Sessão expirada" a quem nunca entrou é uma
+  // mensagem sem sentido — pior, o logout() apagava o campo preenchido.
+  const ehLogin = path === '/login' || path === '/adm/login';
+  if (res.status === 401 && !ehLogin) { logout(true); throw new Error('Sessão expirada'); }
   if (!res.ok) {
     const err = new Error(data.error || 'Erro ' + res.status);
     err.meta = data.meta;
@@ -819,6 +831,9 @@ async function init() {
       // módulo do plano sozinho abria uma tela que não envia nada.
       state.smsPlataforma = me.smsPlataforma !== false;
       state.allowedViews = me.allowedViews || null;
+      // O painel da plataforma só abre para o admin. Um token de cliente
+      // guardado nesta chave abriria um menu cujas telas respondem 403.
+      if (ADM && me.kind !== 'admin') { TOKEN = ''; localStorage.removeItem(TOKEN_KEY); return showLogin(); }
       return enterApp();
     } catch {}
   }
@@ -1020,7 +1035,7 @@ async function enviarCodigo2FA(btn) {
   try {
     const r = await api('/login/2fa', { body: { ticket: TFA_TICKET, code: el.value.trim() } });
     TOKEN = r.token;
-    localStorage.setItem('wacrm_token', TOKEN);
+    localStorage.setItem(TOKEN_KEY, TOKEN);
     state.user = r.user; state.kind = r.kind; state.accountId = r.accountId;
     state.iaLigada = !!r.iaLigada;
     state.wa = r.wa; state.agent = null; state.permissions = null;
@@ -1209,11 +1224,11 @@ async function doLogin(e) {
             pixKeyType: ecSelVal('reg-pixtipo') || ''
           }
         } })
-      : await api('/login', { body: { user, pass } });
+      : await api(ADM ? '/adm/login' : '/login', { body: { user, pass } });
     // Senha certa, mas a conta pede o segundo fator: ainda NÃO existe token.
     if (r.twoFactor) return pedirCodigo2FA(r.ticket, r.email);
     TOKEN = r.token;
-    localStorage.setItem('wacrm_token', TOKEN);
+    localStorage.setItem(TOKEN_KEY, TOKEN);
     state.user = r.user;
     state.kind = r.kind;
 
@@ -1234,7 +1249,7 @@ async function doLogin(e) {
 async function logout(silent) {
   try { if (!silent) await api('/logout', { body: {} }); } catch {}
   TOKEN = '';
-  localStorage.removeItem('wacrm_token');
+  localStorage.removeItem(TOKEN_KEY);
   if (es) { es.close(); es = null; }
   clearInterval(pollTimer);
   location.hash = '';
@@ -1248,6 +1263,16 @@ async function enterApp() {
   const na = $('#nav-admin'); if (na) na.classList.toggle('hidden', state.kind !== 'admin');
   const av = $('#tb-avatar');
   if (av) av.textContent = (state.user || 'A')[0].toUpperCase();
+
+  // PAINEL DA PLATAFORMA: entrada curta. Não há canal de WhatsApp para
+  // escolher, carteira para somar, presença de atendente nem conversa para
+  // avisar — o resto desta função é o painel do cliente se montando.
+  if (ADM) {
+    setTheme(currentTheme());
+    route();
+    if (state.mustChangePassword) toast('Troque a senha padrão em Configurações → Segurança', 'error');
+    return;
+  }
   paintTopbarAvatar(); // usa a foto do perfil conectado quando existir
   applyNavPermissions();   // esconde do menu os módulos sem permissão de visualizar
   startPresence();         // heartbeat de presença (atendente)
@@ -1756,8 +1781,17 @@ const views = {
   'links/new': renderLinkForm, 'links/edit': renderLinkForm, 'links/stats': renderLinkStats,
   'campaigns/report': renderCampaignReport, 'campaigns/mapa': renderMapaLeads,
   'elitepay/checkout': renderCheckoutBuilder,
-  checkouts: renderCheckoutList
+  checkouts: renderCheckoutList,
+  // ---- painel da plataforma (/adm/) ----
+  'adm/visao': renderAdmVisao,
+  'adm/contatos': renderAdmContatos,
+  'adm/usuarios': renderAdmUsuarios,
+  'adm/supers': renderAdmSupers
 };
+
+// Em /adm/ o destino padrão é a operação, não o dashboard de um cliente, e
+// as telas do cliente não fazem parte do menu.
+const VIEW_PADRAO = ADM ? 'adm/visao' : 'dashboard';
 // qual item da sidebar destacar para cada view (rotas com "/" caem no pai)
 const NAV_OF = {
   'templates/new': 'templates', 'campaigns/new': 'campaigns',
@@ -2205,8 +2239,8 @@ function route() {
   if (window._fbMove) cleanupBuilder();  // sai do canvas do Flow Builder
   // o hash pode trazer query (#/elitepay/checkout?c=<id>) — ela NÃO faz parte
   // do nome da view; sem separar, a rota não é encontrada e cai no dashboard.
-  const v = ((location.hash || '#/dashboard').replace('#/', '') || 'dashboard').split('?')[0];
-  let target = views[v] ? v : 'dashboard';
+  const v = ((location.hash || '#/' + VIEW_PADRAO).replace('#/', '') || VIEW_PADRAO).split('?')[0];
+  let target = views[v] ? v : VIEW_PADRAO;
   // guard de PLANO: digitar a URL de um módulo fora do plano não entra
   // (o backend também recusa com 402; aqui é só para não abrir uma tela vazia)
     // Sem plano, qualquer destino cai em Assinatura: é o único lugar que
@@ -2235,6 +2269,215 @@ function route() {
   $$('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === navKey));
   updateTopbar();
   views[state.view]();
+}
+
+// ===========================================================================
+// PAINEL DA PLATAFORMA (/adm/)
+//
+// O Admin sabia de dinheiro e não sabia de OPERAÇÃO. Estas telas mostram o
+// que está acontecendo em todas as contas: quantos contatos existem, quem
+// são, quem atende e onde o movimento está. Tudo por leitura: nada é
+// copiado, e o dado continua na conta de origem.
+// ===========================================================================
+
+// Cartão de número grande, o mesmo desenho do topo de Pagamentos.
+function admCartao(icone, valor, rotulo, destaque) {
+  return `<div class="mh-card ${destaque ? 'hi' : ''}"><span class="mh-ic">${ico(icone, 20)}</span>` +
+    `<div class="mh-val">${valor}</div><div class="mh-lbl">${esc(rotulo)}</div></div>`;
+}
+
+async function renderAdmVisao() {
+  $('#view').innerHTML = `<div class="page-head"><h1>Visão geral da operação</h1>` +
+    `<p class="muted">Tudo o que acontece em todas as contas, somado.</p></div>` + skel(4);
+  try {
+    const d = await api('/adm/overview');
+    const t = d.totais;
+    $('#view').innerHTML = `
+      <div class="page-head">
+        <h1>Visão geral da operação</h1>
+        <p class="muted">Tudo o que acontece em todas as contas, somado.</p>
+      </div>
+      <div class="metric-hero">
+        ${admCartao('users', fmtN(t.contatos), 'Contatos em todas as contas', true)}
+        ${admCartao('message', fmtN(t.conversasAbertas), 'Conversas nas últimas 24h')}
+        ${admCartao('send', fmtN(t.msg24h), 'Mensagens nas últimas 24h')}
+        ${admCartao('briefcase', fmtN(t.clientes), 'Contas de clientes')}
+        ${admCartao('sparkles', fmtN(t.supercontas), 'Supercontas')}
+        ${admCartao('headset', fmtN(t.pessoas), 'Pessoas com acesso')}
+      </div>
+      <div class="card">
+        <h2>${ico('activity')} Onde a operação está</h2>
+        <p class="muted" style="margin:0 0 12px;font-size:13px">Contas ordenadas pelo movimento dos últimos 7 dias.</p>
+        <div style="overflow-x:auto"><table><thead><tr>
+          <th>Conta</th><th>Plano</th><th style="text-align:right">Contatos</th>
+          <th style="text-align:right">Mensagens 7d</th><th style="text-align:right">Pessoas</th><th>WhatsApp</th>
+        </tr></thead><tbody>
+        ${d.ranking.map(a => `<tr>
+          <td><b>${esc(a.nome)}</b><div class="muted" style="font-size:11.5px">${esc(a.email)}</div></td>
+          <td>${a.super ? '<span class="pill done">Superconta</span>' : esc(a.plano)}</td>
+          <td style="text-align:right">${fmtN(a.contatos)}</td>
+          <td style="text-align:right"><b>${fmtN(a.mensagens7d)}</b></td>
+          <td style="text-align:right">${fmtN(a.pessoas)}</td>
+          <td>${a.conectado ? '<span class="pill done">conectado</span>' : '<span class="muted">fora do ar</span>'}</td>
+        </tr>`).join('')}
+        </tbody></table></div>
+        ${d.ranking.length ? '' : '<p class="muted">Nenhuma conta ainda.</p>'}
+      </div>`;
+  } catch (e) { $('#view').innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+}
+
+// TODOS OS CONTATOS. A busca e o filtro por conta vão para o servidor: somar
+// as bases de todos os clientes não cabe numa resposta só.
+let ADM_CT = { q: '', conta: '', pagina: 0 };
+async function renderAdmContatos() {
+  $('#view').innerHTML = `
+    <div class="page-head"><h1>Contatos</h1>
+      <p class="muted">De todas as contas, com o cliente ao lado.</p></div>
+    <div class="card"><div class="row" style="align-items:flex-end">
+      <label style="flex:2">Buscar<input id="admct-q" placeholder="nome, telefone ou e-mail" value="${esc(ADM_CT.q)}"></label>
+      <button class="btn primary no-grow" onclick="admCtBuscar()">Buscar</button>
+    </div></div>
+    <div id="admct-box">${skel(4)}</div>`;
+  const inp = document.getElementById('admct-q');
+  if (inp) inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') admCtBuscar(); });
+  admCtCarregar();
+}
+function admCtBuscar() {
+  ADM_CT.q = ($('#admct-q') || {}).value || '';
+  ADM_CT.pagina = 0;
+  admCtCarregar();
+}
+function admCtPagina(n) { ADM_CT.pagina = Math.max(0, n); admCtCarregar(); }
+async function admCtCarregar() {
+  const box = document.getElementById('admct-box'); if (!box) return;
+  const porPagina = 100;
+  try {
+    const q = new URLSearchParams({
+      q: ADM_CT.q, accountId: ADM_CT.conta,
+      limit: String(porPagina), offset: String(ADM_CT.pagina * porPagina)
+    });
+    const d = await api('/adm/contacts?' + q.toString());
+    const ini = ADM_CT.pagina * porPagina;
+    box.innerHTML = `<div class="card">
+      <h2>${ico('users')} ${fmtN(d.total)} contato(s)</h2>
+      <div style="overflow-x:auto"><table><thead><tr>
+        <th>Contato</th><th>Conta</th><th>Etapa</th><th>Última mensagem</th>
+      </tr></thead><tbody>
+      ${d.itens.map(c => `<tr>
+        <td><b>${esc(c.nome || 'sem nome')}</b><div class="muted" style="font-size:11.5px">+${esc(c.waId)}${c.email ? ' · ' + esc(c.email) : ''}</div></td>
+        <td>${esc(c.conta)}${c.super ? ' <span class="pill done">Super</span>' : ''}</td>
+        <td>${c.etapa ? esc(c.etapa) : '<span class="muted">-</span>'}${c.optOut ? ' <span class="pill">opt-out</span>' : ''}</td>
+        <td>${c.ultimaMensagem ? timeAgo(c.ultimaMensagem) : '<span class="muted">nunca</span>'}</td>
+      </tr>`).join('')}
+      </tbody></table></div>
+      ${d.total ? '' : '<p class="muted">Nenhum contato encontrado.</p>'}
+      ${d.total > porPagina ? `<div class="row" style="margin-top:14px;justify-content:space-between;align-items:center">
+        <span class="muted" style="font-size:12.5px">${fmtN(ini + 1)} a ${fmtN(Math.min(ini + porPagina, d.total))} de ${fmtN(d.total)}</span>
+        <span>
+          <button class="btn small no-grow" ${ADM_CT.pagina ? '' : 'disabled'} onclick="admCtPagina(${ADM_CT.pagina - 1})">Anterior</button>
+          <button class="btn small no-grow" ${ini + porPagina >= d.total ? 'disabled' : ''} onclick="admCtPagina(${ADM_CT.pagina + 1})">Próxima</button>
+        </span>
+      </div>` : ''}
+    </div>`;
+  } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+}
+
+// TODA A GENTE: donos e atendentes, de todas as contas.
+async function renderAdmUsuarios() {
+  $('#view').innerHTML = `<div class="page-head"><h1>Usuários</h1>` +
+    `<p class="muted">Todo mundo que entra no sistema: titulares e atendentes.</p></div>` + skel(4);
+  try {
+    const d = await api('/adm/users');
+    $('#view').innerHTML = `
+      <div class="page-head"><h1>Usuários</h1>
+        <p class="muted">Todo mundo que entra no sistema: titulares e atendentes.</p></div>
+      <div class="card">
+        <h2>${ico('headset')} ${fmtN(d.total)} pessoa(s)</h2>
+        <div style="overflow-x:auto"><table><thead><tr>
+          <th>Pessoa</th><th>Conta</th><th>Papel</th><th>Último acesso</th>
+        </tr></thead><tbody>
+        ${d.itens.map(u => `<tr>
+          <td><b>${esc(u.nome)}</b><div class="muted" style="font-size:11.5px">${esc(u.email)}</div></td>
+          <td>${esc(u.conta)}${u.super ? ' <span class="pill done">Super</span>' : ''}</td>
+          <td>${esc(u.papel)}${u.ativo ? '' : ' <span class="pill">inativo</span>'}</td>
+          <td>${u.ultimoAcesso ? timeAgo(u.ultimoAcesso) : '<span class="muted">nunca entrou</span>'}</td>
+        </tr>`).join('')}
+        </tbody></table></div>
+        ${d.total ? '' : '<p class="muted">Nenhum usuário ainda.</p>'}
+      </div>`;
+  } catch (e) { $('#view').innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+}
+
+// SUPERCONTAS — as contas dos negócios do próprio dono.
+//
+// São contas comuns em tudo, menos em três coisas: rodam sem plano, sem
+// teto de uso e sem cobrança, e ficam fora das métricas de clientes (contar
+// uma conta que não paga como assinante inflaria MRR e conversão).
+async function renderAdmSupers() {
+  $('#view').innerHTML = `<div class="page-head"><h1>Supercontas</h1>` +
+    `<p class="muted">As contas dos seus próprios negócios.</p></div>` + skel(3);
+  try {
+    const d = await api('/adm/supers');
+    $('#view').innerHTML = `
+      <div class="page-head"><h1>Supercontas</h1>
+        <p class="muted">As contas dos seus próprios negócios, uma por empresa.</p></div>
+      <div class="card">
+        <h2>${ico('plus')} Criar uma Superconta</h2>
+        <p class="muted" style="margin:0 0 14px;font-size:13px">
+          Conta completa e sem limites: todos os recursos liberados, sem plano, sem cobrança e fora das
+          métricas de clientes. Você entra nela pelo <b>painel do cliente</b>, em <code>/app/</code>, com o
+          e-mail e a senha definidos aqui.
+        </p>
+        <div class="row" style="align-items:flex-end">
+          <label style="flex:1.2">Nome da empresa<input id="sup-nome" placeholder="Minha outra empresa"></label>
+          <label style="flex:1.2">E-mail de acesso<input id="sup-email" placeholder="voce@empresa.com"></label>
+          <label style="flex:1">Senha<input id="sup-senha" type="password" placeholder="mínimo 6 caracteres"></label>
+          <button class="btn primary no-grow" onclick="admSuperCriar(this)">${ico('plus', 14)} Criar</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>${ico('sparkles')} ${fmtN(d.itens.length)} Superconta(s)</h2>
+        ${d.itens.length ? `<div style="overflow-x:auto"><table><thead><tr>
+          <th>Empresa</th><th style="text-align:right">Contatos</th><th style="text-align:right">Pessoas</th>
+          <th>WhatsApp</th><th>Criada</th><th></th>
+        </tr></thead><tbody>
+        ${d.itens.map(a => `<tr>
+          <td><b>${esc(a.nome)}</b><div class="muted" style="font-size:11.5px">${esc(a.email)}</div></td>
+          <td style="text-align:right">${fmtN(a.contatos)}</td>
+          <td style="text-align:right">${fmtN(a.pessoas)}</td>
+          <td>${a.conectado ? '<span class="pill done">conectado</span>' : '<span class="muted">fora do ar</span>'}</td>
+          <td>${timeAgo(a.criadaEm)}</td>
+          <td style="text-align:right"><button class="btn small" onclick="admSuperDesligar('${a.id}')">Virar conta comum</button></td>
+        </tr>`).join('')}
+        </tbody></table></div>` : '<p class="muted">Nenhuma Superconta ainda. Crie a primeira acima.</p>'}
+      </div>`;
+  } catch (e) { $('#view').innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+}
+
+async function admSuperCriar(btn) {
+  const nome = ($('#sup-nome') || {}).value || '';
+  const email = ($('#sup-email') || {}).value || '';
+  const senha = ($('#sup-senha') || {}).value || '';
+  const txt = btn.innerHTML; btn.disabled = true;
+  try {
+    await api('/adm/supers', { body: { name: nome, email, pass: senha } });
+    toast('Superconta criada');
+    renderAdmSupers();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; btn.innerHTML = txt; }
+}
+
+async function admSuperDesligar(id) {
+  if (!await confirmModal({
+    title: 'Virar conta comum?',
+    text: 'A conta passa a ter plano, teto de uso e cobrança, e volta a contar nas métricas de clientes. Os dados dela não mudam.',
+    ok: 'Virar conta comum'
+  })) return;
+  try {
+    await api('/admin/accounts/' + id + '/unlimited', { method: 'PUT', body: { unlimited: false } });
+    toast('Agora é uma conta comum');
+    renderAdmSupers();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 // ---------- dashboard ----------

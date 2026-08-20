@@ -45,7 +45,7 @@ const baixar = async (rota, tok) => {
   const srv = app.listen(porta);
   await new Promise(r => setTimeout(r, 150));
 
-  const login = await (await fetch('http://127.0.0.1:' + porta + '/api/login', {
+  const login = await (await fetch('http://127.0.0.1:' + porta + '/api/adm/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user: 'admin', pass: 'admin' })
   })).json();

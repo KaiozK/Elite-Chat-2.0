@@ -45,14 +45,12 @@ function contaAdmin() {
 function avisarVenda(acc, ch) {
   if (!acc || !ch) return;
   const valor = brl(ch.value);
-  const quem = (ch.contactName || '').trim();
-  const meio = ch.method === 'card'
-    ? (ch.card && ch.card.kind === 'debito' ? 'no débito' : 'no cartão')
-    : ch.method === 'boleto' ? 'no boleto' : 'no Pix';
 
+  // O aviso de quem VENDEU: o valor da venda, e só. Nome do pagador e meio
+  // de pagamento estão a um toque de distância, na tela que o aviso abre.
   enviar(acc, 'sale', {
-    title: 'Venda aprovada! 💸',
-    body: `${valor}${quem ? ' de ' + quem : ''} — pagamento confirmado ${meio}.`,
+    title: 'Venda Aprovada',
+    body: `Valor: ${valor}`,
     tag: 'venda:' + ch.id,
     data: { type: 'sale', url: '/app/#/elitepay' }
   });
@@ -63,10 +61,12 @@ function avisarVenda(acc, ch) {
 
   const admin = contaAdmin();
   if (!admin || admin.id === acc.id) return;   // o admin também vende: não se avisa duas vezes
+  // O aviso da PLATAFORMA: o número que interessa aqui não é o da venda, é o
+  // que ficou para ela. Quem vendeu e quanto vendeu estão na tela do Admin.
   const taxa = ch.platformCut || 0;
   enviar(admin, 'sale', {
-    title: `Venda de ${acc.name} 💰`,
-    body: `${valor} confirmado ${meio}${taxa ? ` · sua taxa: ${brl(taxa)}` : ''}.`,
+    title: 'Venda aprovada',
+    body: `Sua comissão: ${brl(taxa)}`,
     tag: 'venda-cliente:' + ch.id,
     data: { type: 'sale', url: '/app/#/admin' }
   });

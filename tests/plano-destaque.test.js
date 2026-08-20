@@ -43,7 +43,7 @@ const url = (r) => 'http://127.0.0.1:' + porta + r;
   const srv = app.listen(porta);
   await new Promise(r => setTimeout(r, 150));
 
-  const login = await (await fetch(url('/api/login'), {
+  const login = await (await fetch(url('/api/adm/login'), {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user: 'admin', pass: 'admin' })
   })).json();

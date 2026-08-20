@@ -42,7 +42,7 @@ const dia = (ano, mes, d, hora = 12) => +new Date(ano, mes - 1, d, hora);
   const srv = app.listen(porta);
   await new Promise(r => setTimeout(r, 150));
 
-  const login = await (await fetch('http://127.0.0.1:' + porta + '/api/login', {
+  const login = await (await fetch('http://127.0.0.1:' + porta + '/api/adm/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user: 'admin', pass: 'admin' })
   })).json();

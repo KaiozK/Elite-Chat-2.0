@@ -52,7 +52,7 @@ const GENTE = [
   app.use('/api', require(R + 'src/api')(() => {}));
   const srv = app.listen(3995);
   await new Promise(r => setTimeout(r, 150));
-  const login = await (await fetch('http://127.0.0.1:3995/api/login', {
+  const login = await (await fetch('http://127.0.0.1:3995/api/adm/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user: 'admin', pass: 'admin' })
   })).json();

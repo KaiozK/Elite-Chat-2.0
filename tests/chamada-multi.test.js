@@ -81,7 +81,7 @@ const chamar = async (metodo, rota, corpo, token) => {
   await new Promise(r => setTimeout(r, 150));
 
   console.log('=== Preparo ===');
-  let r = await chamar('POST', '/api/login', { user: 'admin', pass: 'admin' });
+  let r = await chamar('POST', '/api/adm/login', { user: 'admin', pass: 'admin' });
   const tok = r.token;
   ok(!!tok, 'admin entrou');
   await chamar('PUT', '/api/settings', { accessToken: 'EAA-teste', wabaId: WABA, phoneNumberId: PHONE_ID }, tok);

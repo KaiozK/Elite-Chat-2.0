@@ -387,10 +387,17 @@ global.fetch = async (u, o) => {
   const aoDono = enviados.find(e => e.conta === acc2.id && e.tipo === 'sale');
   const aoAdmin = enviados.find(e => e.conta === admin.id && e.tipo === 'sale');
   ok(!!aoDono, 'o DONO da conta foi avisado da venda');
-  ok(aoDono && /R\$\s*197,00/.test(aoDono.payload.body), `com o valor: "${aoDono && aoDono.payload.body}"`);
-  ok(!!aoAdmin, 'o ADMIN da plataforma também');
-  ok(aoAdmin && aoAdmin.payload.title.includes(acc2.name), `dizendo quem vendeu: "${aoAdmin && aoAdmin.payload.title}"`);
-  ok(aoAdmin && /4,90/.test(aoAdmin.payload.body), `e quanto ficou de taxa: "${aoAdmin && aoAdmin.payload.body}"`);
+  // O R$ do Intl usa espaço fixo (U+00A0): normalizar evita uma falha por
+  // um caractere que ninguém vê.
+  const semNbsp = t => String(t || '').replace(/ /g, ' ');
+  ok(aoDono && aoDono.payload.title === 'Venda Aprovada', `titulo de quem vendeu: "${aoDono && aoDono.payload.title}"`);
+  ok(aoDono && semNbsp(aoDono.payload.body) === 'Valor: R$ 197,00', `com o valor da venda: "${aoDono && semNbsp(aoDono.payload.body)}"`);
+  ok(!!aoAdmin, 'o ADMIN da plataforma tambem');
+  // Sao dois numeros diferentes, e cada aviso mostra o SEU: quem vendeu le a
+  // venda, a plataforma le o que ficou com ela.
+  ok(aoAdmin && aoAdmin.payload.title === 'Venda aprovada', `titulo da plataforma: "${aoAdmin && aoAdmin.payload.title}"`);
+  ok(aoAdmin && semNbsp(aoAdmin.payload.body) === 'Sua comissão: R$ 4,90', `e a comissao dela: "${aoAdmin && semNbsp(aoAdmin.payload.body)}"`);
+  ok(aoAdmin && aoAdmin.payload.body.indexOf('197,00') < 0, 'sem o valor da venda no meio, que e o numero do outro');
 
   console.log('\n=== 13. AVISO de comissão para o afiliado ===');
   enviados.length = 0;
@@ -415,7 +422,7 @@ global.fetch = async (u, o) => {
   const srv = app.listen(3994);
   await new Promise(r => setTimeout(r, 150));
   const API = 'http://127.0.0.1:3994/api';
-  const login = await (await fetch(API + '/login', {
+  const login = await (await fetch(API + '/adm/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user: 'admin', pass: 'admin' })
   })).json();

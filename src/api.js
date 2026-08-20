@@ -89,8 +89,18 @@ module.exports = function (broadcast, clients) {
     next();
   }
 
-  const adminOnly = (req, res, next) =>
-    req.session.kind === 'admin' ? next() : res.status(403).json({ error: 'Apenas o administrador da plataforma' });
+  // Ser admin não basta: a sessão precisa ter entrado pela porta do admin.
+  // Sessões antigas, gravadas antes de existir escopo, continuam valendo — a
+  // separação não pode derrubar quem já estava logado.
+  const adminOnly = (req, res, next) => {
+    if (req.session.kind !== 'admin') {
+      return res.status(403).json({ error: 'Apenas o administrador da plataforma' });
+    }
+    if (req.session.escopo && req.session.escopo !== 'adm') {
+      return res.status(403).json({ error: 'Entre pelo painel da plataforma', code: 'escopo' });
+    }
+    next();
+  };
 
   // GUARD DE DONO — dinheiro da conta (assinatura, carteira, saque) é do titular.
   // O menu já esconde essas telas do atendente, mas esconder não é proteger: sem
@@ -152,13 +162,18 @@ module.exports = function (broadcast, clients) {
     });
   };
 
-  function newSession(kind, acc, agent) {
+  // `escopo` diz por QUAL porta a sessão entrou: `adm` (painel da plataforma)
+  // ou `app` (painel do cliente). As rotas de administração exigem `adm`, e é
+  // isso que separa as duas autenticações de verdade — sem o escopo, bastaria
+  // uma sessão com kind admin, viesse ela de onde viesse.
+  function newSession(kind, acc, agent, escopo) {
     const token = crypto.randomBytes(24).toString('hex');
     const sessions = db.get().sessions;
     sessions[token] = {
       kind, accountId: acc.id,
       agentId: agent ? agent.id : null,
       user: agent ? agent.name : (kind === 'admin' ? db.get().platform.adminUser : acc.email),
+      escopo: escopo || (kind === 'admin' ? 'adm' : 'app'),
       createdAt: Date.now()
     };
     const keys = Object.keys(sessions);
@@ -293,25 +308,37 @@ module.exports = function (broadcast, clients) {
     res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc), permissions: null, planRequired: precisaAssinar({ session: { kind: 'account' }, acc }) });
   }));
 
+  // ENTRADA DO ADMIN DA PLATAFORMA — porta própria, /adm/.
+  //
+  // MIGRAÇÃO DE FORMATO: verifyPassword aceita o hash antigo (SHA-256) e o
+  // novo (scrypt). Conferida a senha, o hash velho é regravado no formato
+  // novo aqui mesmo, com a senha que acabou de ser digitada. Ninguém precisa
+  // trocar de senha por causa disso.
+  router.post('/adm/login', h(async (req, res) => {
+    const { user, pass } = req.body || {};
+    const p = db.get().platform;
+    if (user !== p.adminUser || !db.verifyPassword(pass || '', p.adminPassHash)) {
+      return res.status(401).json({ error: 'Usuário ou senha inválidos' });
+    }
+    if (db.needsRehash(p.adminPassHash)) {
+      const antigo = p.adminPassHash;
+      p.adminPassHash = db.hashPassword(pass || '');
+      for (const x of db.get().accounts) if (x.passHash === antigo) x.passHash = p.adminPassHash;
+      db.save();
+    }
+    const acc = db.findAdminAccount();
+    const token = newSession('admin', acc, null, 'adm');
+    res.json({ token, user, kind: 'admin', accountId: acc.id, escopo: 'adm',
+      mustChangePassword: db.verifyPassword('admin', p.adminPassHash), wa: waPublic(acc) });
+  }));
+
   router.post('/login', h(async (req, res) => {
     const { user, pass } = req.body || {};
     const p = db.get().platform;
-    // admin da plataforma
-    // MIGRAÇÃO DE FORMATO: verifyPassword aceita o hash antigo (SHA-256) e o
-    // novo (scrypt). Conferida a senha, o hash velho é regravado no formato
-    // novo aqui mesmo, com a senha que acabou de ser digitada. Ninguém
-    // precisa trocar de senha por causa disso.
-    if (user === p.adminUser && db.verifyPassword(pass || '', p.adminPassHash)) {
-      if (db.needsRehash(p.adminPassHash)) {
-        const antigo = p.adminPassHash;
-        p.adminPassHash = db.hashPassword(pass || '');
-        for (const x of db.get().accounts) if (x.passHash === antigo) x.passHash = p.adminPassHash;
-        db.save();
-      }
-      const acc = db.findAdminAccount();
-      const token = newSession('admin', acc);
-      return res.json({ token, user, kind: 'admin', accountId: acc.id, mustChangePassword: db.verifyPassword('admin', p.adminPassHash), wa: waPublic(acc) });
-    }
+    // A credencial do admin NÃO abre aqui. A mensagem é a mesma de senha
+    // errada de propósito: um "esta é a porta errada" confirmaria, para quem
+    // está tentando, que o usuário existe.
+    if (user === p.adminUser) return res.status(401).json({ error: 'Usuário ou senha inválidos' });
     // conta de cliente (dono — login por e-mail)
     const acc = db.findAccountByEmail(user);
     if (acc && acc.pendenteCadastro) {
@@ -3961,6 +3988,154 @@ module.exports = function (broadcast, clients) {
     const amount = Math.round(Number(String(req.query.amount || '0').replace(',', '.')) * 100);
     if (!amount || amount < 0) return res.json({ amount: 0, fee: 0, net: 0 });
     res.json({ amount, ...elitepay.computeWithdrawFee(req.acc, amount) });
+  });
+
+  // ============ PAINEL DA PLATAFORMA — a operação de todas as contas ============
+  //
+  // Leitura, e só. Nada é copiado: o contato continua na conta dele. Espelhar
+  // as bases numa conta central misturaria clientes diferentes e seria
+  // trabalhoso de desfazer.
+
+  // Quem é "gente" no sistema: o dono de cada conta e cada atendente dela.
+  function pessoasDaConta(a) {
+    const donos = [{
+      tipo: 'dono', id: a.id, nome: a.name, email: a.email,
+      papel: 'Titular da conta', ultimoAcesso: a.lastLoginAt || 0, ativo: true
+    }];
+    const equipe = (a.team || []).map(t => ({
+      tipo: 'atendente', id: t.id, nome: t.name, email: t.email || '',
+      papel: t.role === 'admin' ? 'Administrador' : (t.sector || 'Atendente'),
+      ultimoAcesso: t.lastLoginAt || 0, ativo: t.active !== false
+    }));
+    return donos.concat(equipe);
+  }
+
+  // RESUMO DA OPERAÇÃO — o que acontece agora, somando todas as contas.
+  router.get('/adm/overview', auth, adminOnly, (req, res) => {
+    const data = db.get();
+    const now = Date.now();
+    const dia = 86400000;
+    const contas = data.accounts.filter(a => !a.isAdmin);
+    const clientes = contas.filter(a => !a.unlimited);
+    const supers = contas.filter(a => a.unlimited);
+
+    let contatos = 0, mensagens = 0, msg24h = 0, conversasAbertas = 0, pessoas = 0, canais = 0;
+    for (const a of contas) {
+      contatos += (a.contacts || []).length;
+      pessoas += pessoasDaConta(a).length;
+      canais += (a.channels || []).length;
+      const msgs = a.messages || [];
+      mensagens += msgs.length;
+      // Conversa em andamento: teve mensagem nas últimas 24h. É o número que
+      // diz se a operação está viva agora, e não o total histórico.
+      const recentes = new Set();
+      for (const m of msgs) {
+        if (!m.timestamp || m.timestamp < now - dia) continue;
+        msg24h++;
+        recentes.add(m.waId);
+      }
+      conversasAbertas += recentes.size;
+    }
+
+    // As contas que mais movimentam, para saber onde a operação está.
+    const ranking = contas.map(a => {
+      let sete = 0;
+      for (const m of a.messages || []) if (m.timestamp && m.timestamp >= now - 7 * dia) sete++;
+      return {
+        id: a.id, nome: a.name, email: a.email, super: !!a.unlimited,
+        contatos: (a.contacts || []).length, mensagens7d: sete,
+        pessoas: pessoasDaConta(a).length,
+        conectado: !!(a.wa && a.wa.connected),
+        plano: a.unlimited ? 'Superconta' : ((data.plans.find(x => x.id === a.billing.planId) || {}).name || 'sem plano'),
+        criadaEm: a.createdAt
+      };
+    }).sort((x, y) => y.mensagens7d - x.mensagens7d);
+
+    res.json({
+      totais: {
+        contas: contas.length, clientes: clientes.length, supercontas: supers.length,
+        contatos, pessoas, canais, mensagens, msg24h, conversasAbertas
+      },
+      ranking
+    });
+  });
+
+  // TODOS OS CONTATOS, de todas as contas, com busca e filtro por cliente.
+  // Paginado porque a soma de todas as bases não cabe numa resposta só.
+  router.get('/adm/contacts', auth, adminOnly, (req, res) => {
+    const data = db.get();
+    const q = String(req.query.q || '').trim().toLowerCase();
+    const conta = String(req.query.accountId || '').trim();
+    const limite = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
+    const pulo = Math.max(0, Number(req.query.offset) || 0);
+
+    const linhas = [];
+    for (const a of data.accounts) {
+      if (a.isAdmin) continue;
+      if (conta && a.id !== conta) continue;
+      for (const c of a.contacts || []) {
+        if (q) {
+          const alvo = [c.name, c.waId, (c.vars || {}).email].join(' ').toLowerCase();
+          if (!alvo.includes(q)) continue;
+        }
+        linhas.push({
+          waId: c.waId, nome: c.name || '', conta: a.name, contaId: a.id,
+          super: !!a.unlimited, etapa: c.stage || '', tags: c.tags || [],
+          ultimaMensagem: c.lastMessageAt || 0, criadoEm: c.createdAt || 0,
+          email: (c.vars || {}).email || '', optOut: !!c.optOut
+        });
+      }
+    }
+    linhas.sort((x, y) => (y.ultimaMensagem || 0) - (x.ultimaMensagem || 0));
+    res.json({ total: linhas.length, itens: linhas.slice(pulo, pulo + limite) });
+  });
+
+  // TODA A GENTE: donos e atendentes de todas as contas.
+  router.get('/adm/users', auth, adminOnly, (req, res) => {
+    const data = db.get();
+    const q = String(req.query.q || '').trim().toLowerCase();
+    const linhas = [];
+    for (const a of data.accounts) {
+      if (a.isAdmin) continue;
+      for (const pes of pessoasDaConta(a)) {
+        if (q && ![pes.nome, pes.email].join(' ').toLowerCase().includes(q)) continue;
+        linhas.push(Object.assign({}, pes, { conta: a.name, contaId: a.id, super: !!a.unlimited }));
+      }
+    }
+    linhas.sort((x, y) => (y.ultimoAcesso || 0) - (x.ultimoAcesso || 0));
+    res.json({ total: linhas.length, itens: linhas });
+  });
+
+  // SUPERCONTAS — contas dos negócios do próprio dono.
+  //
+  // São contas comuns em tudo, menos em três coisas: rodam sem plano, sem
+  // teto de uso e sem cobrança, e ficam fora das métricas de clientes —
+  // contar uma conta que não paga como assinante inflaria MRR e conversão.
+  // O dono entra nelas pelo painel do CLIENTE, com e-mail e senha próprios:
+  // é o mesmo produto que ele vende, sem a camada comercial.
+  router.get('/adm/supers', auth, adminOnly, (req, res) => {
+    const itens = db.get().accounts.filter(a => !a.isAdmin && a.unlimited).map(a => ({
+      id: a.id, nome: a.name, email: a.email, criadaEm: a.createdAt,
+      contatos: (a.contacts || []).length,
+      pessoas: pessoasDaConta(a).length,
+      conectado: !!(a.wa && a.wa.connected)
+    })).sort((x, y) => y.criadaEm - x.criadaEm);
+    res.json({ itens });
+  });
+
+  router.post('/adm/supers', auth, adminOnly, (req, res) => {
+    const b = req.body || {};
+    const mail = String(b.email || '').toLowerCase().trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return res.status(400).json({ error: 'Informe um e-mail válido' });
+    if (!b.pass || String(b.pass).length < 6) return res.status(400).json({ error: 'A senha deve ter pelo menos 6 caracteres' });
+    if (db.findAccountByEmail(mail)) return res.status(409).json({ error: 'Já existe uma conta com este e-mail' });
+    const acc = db.newAccount({ name: String(b.name || '').trim() || mail, email: mail, pass: String(b.pass) });
+    // Nasce sem prazo para vencer: não há trial no que não é cobrado.
+    acc.unlimited = true;
+    db.get().accounts.push(acc);
+    db.save();
+    store.logEvent({ type: 'superconta_criada', accountId: acc.id, detail: acc.name });
+    res.json({ ok: true, id: acc.id });
   });
 
   // ============ ADMIN SaaS (métricas, contas, planos, afiliados, saques) ============

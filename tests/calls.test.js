@@ -103,7 +103,7 @@ async function entregar(db, corpo) {
   await new Promise(r => setTimeout(r, 150));
 
   console.log('=== Preparo: WhatsApp conectado ===');
-  let r = await chamar('POST', '/api/login', { user: 'admin', pass: 'admin' });
+  let r = await chamar('POST', '/api/adm/login', { user: 'admin', pass: 'admin' });
   const token = r.token;
   ok(!!token, 'admin entrou');
   r = await chamar('PUT', '/api/settings', { accessToken: 'EAA-teste', wabaId: WABA, phoneNumberId: PHONE_ID }, token);

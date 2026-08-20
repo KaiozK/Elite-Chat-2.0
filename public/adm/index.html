@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Painel da plataforma</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="icon" href="/marca/logo">
+<!-- SEM manifesto e SEM service worker, de propósito. Este painel não é para
+     instalar no celular, e um SW aqui disputaria escopo com o do /app/, que é
+     o que precisa funcionar offline. Também não é indexável: é a porta dos
+     fundos da plataforma. -->
+<meta name="robots" content="noindex, nofollow">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app/style.css?v=pipe2">
+<link rel="stylesheet" href="/tema.css">
+<script>/* aplica o tema salvo antes de pintar (sem flash) */
+  (function () { try {
+    var t = localStorage.getItem('ec_theme') === 'dark' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', t);
+  } catch (e) {} })();
+</script>
+</head>
+<body>
+
+<div id="login" class="login-wrap hidden">
+  <form id="login-form" class="login-card">
+    <div class="brand login-brand">
+      <span class="brand-mark"><img src="/marca/logo" alt=""></span>
+      <div class="brand-text"><i class="brand-name" role="img" aria-label="Koonfy"></i></div>
+    </div>
+    <h1 id="auth-title">Painel da plataforma</h1>
+    <p class="muted lead" id="auth-sub">Acesso restrito à administração</p>
+
+    <label>Usuário
+      <input id="login-user" autocomplete="username" placeholder="admin">
+    </label>
+    <label>Senha
+      <input id="login-pass" type="password" autocomplete="current-password">
+    </label>
+
+    <div class="reg-botoes">
+      <button class="btn primary block" type="submit" id="auth-btn">Entrar</button>
+    </div>
+    <!-- Sem cadastro e sem "esqueci a senha": esta porta é de uma pessoa só. -->
+    <p class="hint" id="auth-toggle">Cliente Koonfy? <a href="/app/">Entre no seu painel</a></p>
+    <p id="login-err" class="err"></p>
+  </form>
+</div>
+
+<div id="app" class="hidden">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <span class="brand-mark"><img src="/marca/logo" alt=""></span>
+      <div class="brand-text"><i class="brand-name" role="img" aria-label="Koonfy"></i></div>
+    </div>
+    <nav>
+      <span class="nav-label">Operação</span>
+      <a class="nav-item" data-view="adm/visao" href="#/adm/visao">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        <span>Visão geral</span></a>
+      <a class="nav-item" data-view="adm/contatos" href="#/adm/contatos">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.2 3.4-5 6.5-5s5.7 1.8 6.5 5"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 15.2c2.4.3 4.2 1.9 4.9 4.3"/></svg>
+        <span>Contatos</span></a>
+      <a class="nav-item" data-view="adm/usuarios" href="#/adm/usuarios">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M2.8 20c.7-3 3.2-4.8 6.2-4.8s5.5 1.8 6.2 4.8"/><path d="M16 4.2a3.2 3.2 0 0 1 0 6.1M18.5 20c-.3-1.6-1-3-2-4"/></svg>
+        <span>Usuários</span></a>
+      <span class="nav-label">Plataforma</span>
+      <a class="nav-item" data-view="adm/supers" href="#/adm/supers">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2l2.1 4.5 4.9.6-3.6 3.4.9 4.9-4.3-2.4-4.3 2.4.9-4.9L5 8.3l4.9-.6z"/></svg>
+        <span>Supercontas</span></a>
+      <a class="nav-item" data-view="admin" href="#/admin">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 4.6-3.1 8.6-8 9.9C7.1 20.6 4 16.6 4 12V7l8-4z"/><path d="M9.2 12.2l2 2 3.8-4"/></svg>
+        <span>Configurações</span></a>
+      <a class="nav-item" data-view="logs" href="#/logs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M6 6a8.5 8.5 0 0 0 0 12M18 6a8.5 8.5 0 0 1 0 12"/></svg>
+        <span>Webhook &amp; Logs</span></a>
+    </nav>
+    <div class="sidebar-foot">
+      <span class="version">Painel da plataforma</span>
+    </div>
+  </aside>
+
+  <div class="shell">
+    <header class="topbar">
+      <button class="nav-toggle" id="nav-toggle" onclick="toggleNav()" aria-label="Abrir menu" title="Menu">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <h2 id="tb-title">Visão geral</h2>
+      <div class="tb-right">
+        <button class="theme-btn" id="theme-btn" title="Tema claro/escuro" onclick="toggleTheme()" aria-label="Alternar tema">
+          <svg id="theme-ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></svg>
+        </button>
+        <div class="tb-userwrap">
+          <span class="tb-user">
+            <span class="tb-avatar" id="tb-avatar">A</span>
+            <span class="tb-who"><b id="who"></b></span>
+          </span>
+        </div>
+        <button class="btn small" onclick="logout()">Sair</button>
+      </div>
+    </header>
+    <main id="view"></main>
+  </div>
+</div>
+
+<div id="modal-root"></div>
+<div id="toast-root"></div>
+
+<script src="/app/config.js?v=mob4"></script>
+<script src="/app/br-uf.js?v=1"></script>
+<script src="/app/app.js?v=pipe2"></script>
+</body>
+</html>
