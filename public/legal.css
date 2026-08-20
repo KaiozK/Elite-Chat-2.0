@@ -1,0 +1,186 @@
+/* ===========================================================================
+   PÁGINAS LEGAIS — Termos de Uso e Política de Privacidade
+   ===========================================================================
+
+   As duas ficaram para trás quando a vitrine mudou de identidade: azul-cinza
+   de painel administrativo, a palavra "Koonfy" escrita em HTML com o "fy"
+   verde (que virou desenho faz tempo), cantos de 13px e fonte do sistema.
+   Quem saía da vitrine e clicava em "Termos" via outro produto.
+
+   Aqui elas voltam para o sistema da vitrine: carbono, creme, o verde da
+   logo como único acento, Inter, 4px no que é interativo e 12px em cartão.
+
+   UMA FOLHA PARA AS DUAS, de propósito. Elas são a mesma página com texto
+   diferente, e quando o estilo mora dentro de cada arquivo elas divergem na
+   primeira alteração feita com pressa.
+
+   O QUE MUDA EM RELAÇÃO À VITRINE, e por quê: a vitrine é escura e usa
+   maiúsculas grandes, que é voz de anúncio. Documento é para LER, às vezes
+   por obrigação e quase sempre no celular. Então o corpo do texto vive numa
+   faixa clara, com medida de leitura curta e entrelinha alta; as maiúsculas
+   ficam só nos rótulos e no título. Cabeçalho e rodapé continuam escuros,
+   que é o que costura a página ao resto do site.
+   =========================================================================== */
+
+:root{
+  /* --- cor: os mesmos tokens da vitrine --- */
+  --sinal:#2ED378;
+  --sinal-fundo:#1C834A;
+  --carbono:#111111;
+  --osso:#f9f9f9;
+  --grafite:#2b2b2b;
+  --cinza:#6e6e6e;
+  --pedra:#9c9c9c;
+  --fumaca:#565656;
+  --giz:#d6d6d6;
+  --creme:#eeeeee;
+
+  --fonte:'Inter','Söhne',ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+
+  /* --- espaço (base 8), como na vitrine --- */
+  --e8:8px; --e16:16px; --e24:24px; --e32:32px; --e40:40px; --e48:48px;
+  --e64:64px; --e80:80px; --e96:96px;
+  --largura:1120px;
+
+  /* --- raio: 4px interativo, 12px cartão. Nada de pílula. --- */
+  --r-botao:4px; --r-cartao:12px;
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--creme);color:var(--carbono);
+  font-family:var(--fonte);font-weight:400;font-size:16px;line-height:1.5;
+  font-feature-settings:"kern" on,"liga" on;-webkit-font-smoothing:antialiased;
+}
+img{max-width:100%;display:block}
+a{color:inherit}
+
+.wrap{max-width:var(--largura);margin:0 auto;padding:0 var(--e24)}
+
+/* ---------- faixas ---------- */
+.escura{background:var(--carbono);color:var(--osso)}
+.clara{background:var(--creme);color:var(--carbono)}
+
+/* ---------- navegação ---------- */
+.nav{position:sticky;top:0;z-index:50;background:var(--carbono);color:var(--osso)}
+.nav .wrap{display:flex;align-items:center;gap:var(--e32);padding:var(--e24) var(--e24)}
+/* A palavra é uma MÁSCARA e não uma imagem colorida: assim ela assume a cor
+   da faixa onde está, e continua nítida em qualquer tamanho. O deslocamento
+   de 11,5% da própria altura acerta a linha de base — o rabo do "y" ocupa
+   22,5% do desenho, então centrar a caixa deixa as letras acima do centro. */
+.marca{display:flex;align-items:center;gap:10px;text-decoration:none}
+.marca-nome{display:block;width:104px;height:26px;background:currentColor;transform:translateY(11.5%);
+            -webkit-mask:url(/assets/koonfy-marca.webp) center/contain no-repeat;
+            mask:url(/assets/koonfy-marca.webp) center/contain no-repeat}
+.navlinks{display:flex;gap:var(--e32);margin-left:auto;align-items:center}
+.navlinks a{font-size:12px;font-weight:500;letter-spacing:.027em;text-transform:uppercase;
+            text-decoration:none;transition:color .15s linear}
+.navlinks a:hover{color:var(--sinal)}
+.navlinks a[aria-current="page"]{color:var(--sinal)}
+
+/* ---------- topo do documento ---------- */
+.capa{padding:var(--e64) 0 var(--e80)}
+.rotulo{font-size:12px;line-height:1.5;letter-spacing:.032em;font-weight:500;text-transform:uppercase}
+.rotulo.sinal{color:var(--sinal)}
+.capa h1{font-size:clamp(34px,7vw,64px);line-height:1.05;letter-spacing:-.02em;
+         font-weight:400;text-transform:uppercase;margin:var(--e16) 0 var(--e24)}
+.capa .linha{color:var(--pedra);font-size:15px;max-width:620px;margin:0}
+.capa .meta{display:flex;flex-wrap:wrap;gap:var(--e16);margin-top:var(--e32);
+            color:var(--pedra);font-size:12px;letter-spacing:.032em;text-transform:uppercase}
+.capa .meta b{color:var(--osso);font-weight:500}
+
+/* ---------- corpo: duas colunas no computador ---------- */
+.doc{padding:var(--e64) 0 var(--e96)}
+.doc .wrap{display:grid;grid-template-columns:220px 1fr;gap:var(--e64);align-items:start}
+
+/* O SUMÁRIO existe porque estes documentos têm doze seções e quase sempre se
+   procura UMA. Rolar doze telas para achar "como excluir minha conta" é o
+   tipo de atrito que faz a pessoa desistir e escrever para o suporte. */
+.sumario{position:sticky;top:96px}
+.sumario h2{font-size:12px;letter-spacing:.032em;text-transform:uppercase;
+            color:var(--fumaca);font-weight:500;margin:0 0 var(--e16)}
+.sumario ol{list-style:none;margin:0;padding:0;counter-reset:s}
+.sumario li{counter-increment:s;margin-bottom:2px}
+.sumario a{display:flex;gap:10px;padding:7px 10px;border-radius:var(--r-botao);
+           text-decoration:none;font-size:14px;line-height:1.35;color:var(--fumaca);
+           transition:background .15s linear,color .15s linear}
+.sumario a::before{content:counter(s);color:var(--pedra);font-variant-numeric:tabular-nums;flex:none}
+.sumario a:hover{background:#e3e3e3;color:var(--carbono)}
+
+/* MEDIDA DE LEITURA. 68 caracteres é onde o olho acha a linha seguinte sem
+   se perder; numa tela de 1280px o texto ocuparia o dobro disso se deixasse. */
+.texto{max-width:68ch}
+.texto h2{font-size:24px;line-height:1.2;letter-spacing:-.24px;font-weight:500;
+          margin:var(--e48) 0 var(--e16);scroll-margin-top:96px}
+.texto h2:first-child{margin-top:0}
+.texto h2 .n{display:block;font-size:12px;letter-spacing:.032em;text-transform:uppercase;
+              color:var(--sinal-fundo);font-weight:500;margin-bottom:6px}
+.texto h3{font-size:17px;font-weight:500;margin:var(--e32) 0 var(--e8);letter-spacing:-.01em}
+.texto p{margin:0 0 var(--e16);color:var(--grafite)}
+.texto ul{margin:0 0 var(--e16);padding-left:0;list-style:none}
+.texto ul li{position:relative;padding-left:22px;margin-bottom:10px;color:var(--grafite)}
+/* O marcador é um traço e não um ponto: o sistema da vitrine não usa bolinha
+   em lugar nenhum, e um ponto aqui destoaria de todo o resto. */
+.texto ul li::before{content:"";position:absolute;left:0;top:11px;width:10px;height:1px;
+                     background:var(--sinal-fundo)}
+.texto a{color:var(--sinal-fundo);text-decoration:underline;text-underline-offset:3px;
+         text-decoration-thickness:1px}
+.texto a:hover{color:var(--carbono)}
+.texto b{font-weight:500;color:var(--carbono)}
+
+/* ---------- cartões ---------- */
+.cartao{background:#f9f9f9;border:1px solid var(--giz);border-radius:var(--r-cartao);
+        padding:var(--e24);margin:var(--e24) 0}
+.cartao p:last-child{margin-bottom:0}
+.cartao .rotulo{color:var(--sinal-fundo);display:block;margin-bottom:10px}
+
+/* O AVISO DE RASCUNHO. Fica visível de propósito enquanto houver campo entre
+   colchetes no texto: uma política com "[RAZÃO SOCIAL]" no ar é pior do que
+   uma política que assume, na cara, que ainda não foi finalizada. */
+.rascunho{background:#fff8e6;border:1px solid #e8d59b;border-radius:var(--r-cartao);
+          padding:var(--e24);margin:0 0 var(--e32)}
+.rascunho .rotulo{color:#8a6a12;display:block;margin-bottom:8px}
+.rascunho p{color:#5c4a12;margin:0}
+
+/* ---------- tabelas ---------- */
+.tabela{width:100%;border-collapse:collapse;margin:var(--e16) 0 var(--e24);font-size:15px}
+.tabela th{text-align:left;font-size:12px;letter-spacing:.032em;text-transform:uppercase;
+           font-weight:500;color:var(--fumaca);padding:0 0 10px;border-bottom:1px solid var(--giz)}
+.tabela td{padding:12px 0;border-bottom:1px solid var(--giz);vertical-align:top;color:var(--grafite)}
+.tabela td:first-child{padding-right:var(--e24);color:var(--carbono);width:42%}
+
+/* ---------- rodapé ---------- */
+.rodape{padding:var(--e48) 0}
+.rodape .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:var(--e24)}
+.rodape .marca-nome{width:120px;height:30px}
+.rodape .links{display:flex;gap:var(--e24);margin-left:auto;flex-wrap:wrap}
+.rodape a{font-size:12px;letter-spacing:.032em;text-transform:uppercase;
+          text-decoration:none;color:var(--pedra);transition:color .15s linear}
+.rodape a:hover{color:var(--sinal)}
+
+/* ---------- celular ----------
+   O sumário some: numa tela estreita ele empurraria o documento para baixo da
+   dobra, e o que se quer ali é começar a ler. */
+@media (max-width:900px){
+  .doc .wrap{grid-template-columns:1fr;gap:0}
+  .sumario{display:none}
+  .capa{padding:var(--e48) 0 var(--e64)}
+  .doc{padding:var(--e48) 0 var(--e64)}
+  .texto h2{font-size:21px;margin:var(--e40) 0 var(--e16)}
+  .navlinks{gap:var(--e16)}
+  .navlinks a{font-size:11px}
+  .marca-nome{width:88px;height:22px}
+  /* A tabela vira lista: duas colunas em 375px espremem as duas. */
+  .tabela, .tabela tbody, .tabela tr, .tabela td{display:block;width:100%}
+  .tabela thead{display:none}
+  .tabela tr{border-bottom:1px solid var(--giz);padding:12px 0}
+  .tabela td{border:0;padding:2px 0}
+  .tabela td:first-child{width:auto;font-weight:500}
+  .rodape .links{margin-left:0}
+}
+
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *{transition:none !important}
+}
