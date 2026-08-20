@@ -2909,7 +2909,6 @@ async function loadChat(waId, keepScroll) {
         </div>
         <div class="line">
           <textarea id="composer-text" placeholder="Digite uma mensagem... (Enter envia, Shift+Enter quebra linha)"></textarea>
-          <button class="btn send-btn no-grow mic-btn" id="mic-btn" onclick="gravarVoz()" title="Gravar mensagem de voz">${ico('mic', 18)}</button>
           <button class="btn primary send-btn no-grow" id="send-btn" onclick="sendTextNow()" title="Enviar (Enter)">${ico('send', 18)}</button>
         </div>
         <input type="file" id="file-input" class="hidden" onchange="fileChosen(this)">
@@ -3311,99 +3310,19 @@ function balaoProvisorio(waId, text) {
   sc.scrollTop = sc.scrollHeight;
   return balao;
 }
-
 // ---------------------------------------------------------------------------
-// MENSAGEM DE VOZ
+// MENSAGEM DE VOZ, DESLIGADA
 //
-// Enviar áudio pela API oficial sempre funcionou — o que não existia era como
-// GRAVAR: só dava para anexar um arquivo pronto, e ninguém tem um .mp3 do
-// próprio recado guardado no celular. A conversão de formato mora em voz.js;
-// aqui é só o botão, o cronômetro e o envio.
+// O botao do microfone gravava, convertia e mandava, e o envio nao chegava
+// pela API. Um botao que promete e nao entrega e pior do que a ausencia dele:
+// a pessoa grava, acha que mandou, e a mensagem some sem erro visivel.
+//
+// O que saiu foi a GRAVACAO. Audio RECEBIDO continua tocando na conversa (o
+// player fica logo acima) e o anexo continua aceitando um arquivo de audio
+// pronto: os dois caminhos funcionam. A conversao de formato segue em voz.js,
+// para o dia em que o envio voltar a valer.
 // ---------------------------------------------------------------------------
-async function gravarVoz() {
-  if (!window.ECVoz || !ECVoz.suportado()) {
-    return toast('Este navegador não grava áudio. Use o Anexo para enviar um arquivo.', 'error');
-  }
-  if (ECVoz.gravando()) return pararVoz(true);
 
-  try {
-    await ECVoz.iniciar(seg => {
-      const el = $('#mic-tempo');
-      if (el) el.textContent = `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, '0')}`;
-    });
-  } catch (e) {
-    return toast(e.name === 'NotAllowedError' ? 'Permita o microfone para gravar' : e.message, 'error');
-  }
-
-  const linha = $('.composer .line');
-  if (linha) linha.classList.add('gravando');
-  const btn = $('#mic-btn');
-  if (btn) {
-    btn.classList.add('rec');
-    btn.title = 'Parar e enviar';
-  }
-  const ta = $('#composer-text');
-  if (ta) {
-    ta.dataset.antes = ta.value;
-    ta.value = '';
-    ta.disabled = true;
-    ta.placeholder = '';
-  }
-  // O cronômetro e o cancelar entram NA linha do campo: o atendente precisa ver
-  // que está gravando sem procurar, e ter como desistir sem enviar.
-  if (linha && !$('#mic-hud')) {
-    const hud = document.createElement('div');
-    hud.id = 'mic-hud';
-    hud.innerHTML = `<span class="mic-dot"></span><span id="mic-tempo">0:00</span>
-      <button type="button" class="mic-cancel" onclick="pararVoz(false)">Cancelar</button>`;
-    linha.insertBefore(hud, linha.firstChild);
-  }
-}
-
-async function pararVoz(enviar) {
-  const linha = $('.composer .line'), btn = $('#mic-btn'), ta = $('#composer-text');
-  const limpar = () => {
-    if (linha) linha.classList.remove('gravando');
-    if (btn) { btn.classList.remove('rec'); btn.title = 'Gravar mensagem de voz'; }
-    const hud = $('#mic-hud'); if (hud) hud.remove();
-    if (ta) {
-      ta.disabled = false;
-      ta.value = ta.dataset.antes || '';
-      ta.placeholder = 'Digite uma mensagem... (Enter envia, Shift+Enter quebra linha)';
-    }
-  };
-
-  if (!enviar) { ECVoz.cancelar(); limpar(); return; }
-
-  let audio;
-  try { audio = await ECVoz.parar(); }
-  catch (e) { limpar(); return toast(e.message, 'error'); }
-  limpar();
-  if (!audio || !audio.blob.size) return;
-
-  // Recado de menos de 1 segundo é quase sempre toque sem querer no botão.
-  if (audio.segundos < 1) return toast('Gravação muito curta', 'error');
-
-  try {
-    toast('Enviando áudio…');
-    const base64 = await blobParaBase64(audio.blob);
-    const up = await api('/media/upload', {
-      body: { filename: `voz-${Date.now()}.${audio.ext}`, mime: audio.mime, data: base64 }
-    });
-    await api('/send/media', { body: { to: state.currentWaId, kind: 'audio', mediaId: up.id } });
-    loadChat(state.currentWaId, true);
-    loadConversations();
-  } catch (e) { toast(e.message, 'error'); }
-}
-
-function blobParaBase64(blob) {
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(String(r.result).split(',')[1]);
-    r.onerror = () => rej(new Error('Falha ao ler o áudio gravado'));
-    r.readAsDataURL(blob);
-  });
-}
 
 function attachFile() { $('#file-input').click(); }
 

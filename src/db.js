@@ -564,8 +564,49 @@ function carimbarHorasFaltantes(acc) {
   return corrigidas;
 }
 
+// ---------------------------------------------------------------------------
+// BOTÕES DAS MENSAGENS ANTIGAS
+//
+// Antes de o envio guardar o botão estruturado, o rótulo era colado no fim do
+// texto entre colchetes, e a lista virava uma sequência de marcadores. O chat
+// desenha botões de verdade quando a mensagem traz `buttons`; o que faltava
+// era o histórico. Aqui o formato antigo é lido e convertido — conserto do
+// dado, não da tela.
+// ---------------------------------------------------------------------------
+function botoesDasAntigas(acc) {
+  const msgs = acc.messages;
+  if (!Array.isArray(msgs) || !msgs.length) return 0;
+  let convertidas = 0;
+  for (const m of msgs) {
+    if (m.type !== 'interactive' || (Array.isArray(m.buttons) && m.buttons.length)) continue;
+    const txt = String(m.text || '');
+    // "corpo\n[🔗 Rótulo]" — o botão de link, do jeito que era gravado.
+    const cta = txt.match(/^([\s\S]*?)\n\[\uD83D\uDD17 ([^\]]{1,40})\]\s*$/);
+    if (cta) {
+      m.text = cta[1].trim();
+      m.buttons = [{ id: 'cta_url', title: cta[2].trim() }];
+      convertidas++;
+      continue;
+    }
+    // "corpo\n• opção\n• opção" — a lista. O balão fica com o corpo, e as
+    // opções viram botões: é o mais perto do que o cliente viu.
+    const linhas = txt.split('\n');
+    const corte = linhas.findIndex(l => l.trim().startsWith('• '));
+    if (corte > 0) {
+      const opcoes = linhas.slice(corte).filter(l => l.trim().startsWith('• '));
+      if (opcoes.length && opcoes.length === linhas.length - corte) {
+        m.text = linhas.slice(0, corte).join('\n').trim();
+        m.buttons = opcoes.slice(0, 3).map((l, i) => ({ id: 'row_' + (i + 1), title: l.trim().slice(2).slice(0, 24) }));
+        convertidas++;
+      }
+    }
+  }
+  return convertidas;
+}
+
 function ensureAccountShape(acc) {
   carimbarHorasFaltantes(acc);
+  botoesDasAntigas(acc);
   // ---- MULTI-CANAL: a conexão única (acc.wa) vira o canal padrão ----
   if (!Array.isArray(acc.channels) || !acc.channels.length) {
     const ch = emptyChannel('WhatsApp principal');

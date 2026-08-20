@@ -566,6 +566,55 @@ app.get('/index.html', serveLanding);
 // propósito: quem acabou de trocar a logo precisa VER a troca, e o `?v=` que
 // as telas mandam já resolve o cache longo quando ela não muda.
 // ---------------------------------------------------------------------------
+// MANIFESTO DO APP — montado, e não servido de arquivo.
+//
+// Nome, descrição e ícones vinham escritos à mão em manifest.webmanifest,
+// então trocar a marca no Admin não mudava a caixa "Instale o app" do
+// navegador: ela seguia com a arte de fábrica. Aqui o nome sai de
+// Personalização e os ícones apontam para /marca/logo.
+//
+// Os ícones MASCARÁVEIS continuam vindo dos arquivos de public/assets: eles
+// exigem uma área de segurança no desenho que uma logo qualquer não tem, e
+// um upload comum ali sairia cortado no Android.
+app.get('/app/manifest.webmanifest', (req, res) => {
+  const mk = (db.get().platform && db.get().platform.marca) || {};
+  const nome = String(mk.nome || '').trim() || 'Koonfy';
+  const descr = String(mk.descricao || '').trim();
+  const manifesto = {
+    id: '/app/',
+    name: descr ? nome + ' | ' + descr : nome,
+    short_name: nome.slice(0, 12),
+    description: descr || 'CRM de WhatsApp com atendimento, automações e campanhas.',
+    start_url: '/app/?src=pwa',
+    scope: '/app/',
+    display: 'standalone',
+    display_override: ['standalone', 'minimal-ui'],
+    orientation: 'portrait-primary',
+    background_color: '#EAFBF0',
+    theme_color: '#2ED378',
+    lang: 'pt-BR', dir: 'ltr',
+    categories: ['business', 'productivity'],
+    icons: [
+      { src: '/marca/logo', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/marca/logo', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/assets/koonfy-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+      { src: '/assets/koonfy-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+    ],
+    shortcuts: [
+      { name: 'Conversas', short_name: 'Inbox', url: '/app/?src=pwa#/inbox', icons: [{ src: '/marca/logo', sizes: '192x192' }] },
+      { name: 'Agenda', short_name: 'Agenda', url: '/app/?src=pwa#/schedule', icons: [{ src: '/marca/logo', sizes: '192x192' }] },
+      { name: 'Automações', short_name: 'Flows', url: '/app/?src=pwa#/flows', icons: [{ src: '/marca/logo', sizes: '192x192' }] }
+    ]
+  };
+  const corpo = JSON.stringify(manifesto);
+  const etag = '"mf-' + crypto.createHash('sha1').update(corpo).digest('hex').slice(0, 16) + '"';
+  res.set('ETag', etag);
+  res.set('Content-Type', 'application/manifest+json; charset=utf-8');
+  res.set('Cache-Control', 'public, max-age=0, must-revalidate');
+  if (req.get('if-none-match') === etag) return res.status(304).end();
+  res.send(corpo);
+});
+
 app.get('/marca/logo', (req, res) => {
   const m = (db.get().platform && db.get().platform.marca) || {};
 

@@ -103,7 +103,9 @@ async function execNode(acc, node, ctx, deliver, flow) {
       const displayText = (interpolate(node.urlText || 'Abrir link', ctx) || 'Abrir link').slice(0, 20);
       const interactive = { type: 'cta_url', body: { text: body }, action: { name: 'cta_url', parameters: { display_text: displayText, url } } };
       const r = await wa.sendInteractive(acc, to, interactive);
-      if (deliver) deliver(acc, to, { type: 'interactive', text: `${body}\n[🔗 ${displayText}]` }, r);
+      // O botão vai ESTRUTURADO: na conversa ele é desenhado como botão, e
+      // não como um rótulo entre colchetes no fim do texto.
+      if (deliver) deliver(acc, to, { type: 'interactive', text: body, buttons: [{ id: 'cta_url', title: displayText }] }, r);
       registrarImpressao(acc, flow, node, [{ id: 'cta', title: displayText }], to);
       // TERMINAL. Um botao de link tira a pessoa do WhatsApp: ela abre o site e
       // nao volta com uma resposta que o fluxo possa ler. Seguir para o proximo
@@ -142,7 +144,10 @@ async function execNode(acc, node, ctx, deliver, flow) {
       }
     };
     const r = await wa.sendInteractive(acc, to, interactive);
-    if (deliver) deliver(acc, to, { type: 'interactive', text: `${body}\n${rows.map(x => '• ' + x.title).join('\n')}` }, r);
+    // Numa lista o cliente vê UM botão, o do menu; as opções só aparecem
+    // depois que ele toca. Desenhar as dez linhas dentro do balão contaria
+    // uma história que a tela dele não mostra.
+    if (deliver) deliver(acc, to, { type: 'interactive', text: body, buttons: [{ id: 'list', title: interactive.action.button }] }, r);
     registrarImpressao(acc, flow, node, rows, to);
     return { ok: true, detail: `lista (${rows.length} itens)` };
   }
@@ -156,7 +161,9 @@ async function execNode(acc, node, ctx, deliver, flow) {
       const displayText = (interpolate(node.urlText || 'Abrir link', ctx) || 'Abrir link').slice(0, 20);
       const interactive = { type: 'cta_url', body: { text: body }, action: { name: 'cta_url', parameters: { display_text: displayText, url } } };
       const r = await wa.sendInteractive(acc, to, interactive);
-      if (deliver) deliver(acc, to, { type: 'interactive', text: `${body}\n[🔗 ${displayText}]` }, r);
+      // O botão vai ESTRUTURADO: na conversa ele é desenhado como botão, e
+      // não como um rótulo entre colchetes no fim do texto.
+      if (deliver) deliver(acc, to, { type: 'interactive', text: body, buttons: [{ id: 'cta_url', title: displayText }] }, r);
       registrarImpressao(acc, flow, node, [{ id: 'cta', title: displayText }], to);
       // TERMINAL. Um botao de link tira a pessoa do WhatsApp: ela abre o site e
       // nao volta com uma resposta que o fluxo possa ler. Seguir para o proximo
@@ -181,7 +188,9 @@ async function execNode(acc, node, ctx, deliver, flow) {
       action: { button: (node.buttonText || 'Ver opções').slice(0, 20), sections: [{ title: (node.header || 'Opções').slice(0, 24), rows }] }
     };
     const r = await wa.sendInteractive(acc, to, interactive);
-    if (deliver) deliver(acc, to, { type: 'interactive', text: `${interpolate(node.body || '', ctx)}\n${rows.map(x => '• ' + x.title).join('\n')}` }, r);
+    // Mesma regra da outra lista: o botão do menu é o que o cliente vê.
+    if (deliver) deliver(acc, to, { type: 'interactive', text: interpolate(node.body || '', ctx),
+      buttons: [{ id: 'list', title: interactive.action.button }] }, r);
     return { ok: true };
   }
   if (node.type === 'media') {
@@ -307,7 +316,9 @@ async function execNode(acc, node, ctx, deliver, flow) {
       const btn = elitepay.chargeButton(acc, ch);
       try {
         const r = await wa.sendInteractive(acc, to, btn.interactive);
-        if (deliver) deliver(acc, to, { type: 'interactive', text: btn.body + '\n[🔗 ' + btn.displayText + ']' }, r);
+        // Estruturado, como no envio manual: a conversa mostra o botão de
+        // pagar, e não o rótulo dele colado no fim da mensagem.
+        if (deliver) deliver(acc, to, { type: 'interactive', text: btn.body, buttons: [{ id: 'checkout', title: btn.displayText }] }, r);
       } catch (e) {
         const text = elitepay.chargeMessage(acc, ch, { semCodigo: true });
         const r = await wa.sendText(acc, to, text);

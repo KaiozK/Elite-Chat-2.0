@@ -4801,3 +4801,31 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 .ep-botao-regra svg { flex: none; margin-top: 2px; }
 .ep-botao-regra b { color: var(--text2); font-weight: 500; }
 .ep-botao-regra.perto b { color: var(--amber-ink, #b45309); }
+
+
+/* ==========================================================================
+   MODAIS NO CELULAR
+
+   Tres coisas empurravam o conteudo para fora da caixa, e nenhuma delas tinha
+   ponto de quebra:
+
+   · .row obrigava cada filho a 140px de largura minima. Duas datas lado a
+     lado pediam 290px, e a caixa oferece 287 num aparelho de 375 — o par
+     estourava por tres pixels e a linha inteira vazava;
+   · a caixa tinha 20px de respiro de cada lado, o que num aparelho estreito
+     e um quinto da largura util gasto em margem.
+
+   A regra e a mesma nos tres casos: no estreito, uma coluna. Duas colunas de
+   150px nao sao duas colunas, sao duas ilegiveis.
+   ========================================================================== */
+@media (max-width: 620px) {
+  .modal-back { padding: 12px; }
+  .modal { padding: 18px 16px; max-height: 92vh; }
+  /* O minimo de 140px era o que fazia o par de datas vazar. Solto, cada campo
+     ocupa o que couber e a linha quebra sozinha quando precisa. */
+  .row > * { min-width: 0; }
+  .row { gap: 12px; }
+  /* Nenhum modal rola para o lado: o que nao couber quebra ou encolhe. */
+  .modal, .modal * { max-width: 100%; }
+  .modal img, .modal svg, .modal canvas { height: auto; }
+}

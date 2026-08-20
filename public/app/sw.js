@@ -2,7 +2,7 @@
  * Cache do app shell + offline + Push Notifications + clique abre a conversa.
  * Escopo: /app/  (registrado por notifications.js)
  */
-const VERSION = 'koonfy-v8';   // v8: /tema.css na rede. Do cache, as cores do Admin se desfaziam no F5
+const VERSION = 'koonfy-v9';   // v9: manifesto e tema na rede. Do cache, a marca nova nunca chegava
 const SHELL = 'ec-shell-' + VERSION;
 const RUNTIME = 'ec-runtime-' + VERSION;
 
@@ -14,7 +14,6 @@ const SHELL_ASSETS = [
   '/app/style.css',
   '/app/notifications.js',
   '/app/voz.js',
-  '/app/manifest.webmanifest',
   '/assets/koonfy-192.png',
   '/assets/koonfy-maskable-192.png',
   // Os avisos sonoros precisam estar prontos ANTES do evento que os dispara:
@@ -133,7 +132,8 @@ self.addEventListener('fetch', (e) => {
   // recebia a versão antiga, como se o salvar não tivesse funcionado. O
   // `voz.js` estava na mesma situação: código do app servido de cache eterno.
   if (/\/app\/(app\.js|style\.css|notifications\.js|voz\.js)$/.test(url.pathname) ||
-      url.pathname === '/marca/logo' || url.pathname === '/tema.css') {
+      url.pathname === '/marca/logo' || url.pathname === '/tema.css' ||
+      url.pathname === '/app/manifest.webmanifest') {
     e.respondWith(
       fetch(req).then(r => { const cp = r.clone(); caches.open(SHELL).then(c => c.put(req, cp)); return r; })
         .catch(() => caches.match(req))
