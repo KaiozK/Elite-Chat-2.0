@@ -3767,7 +3767,11 @@ module.exports = function (broadcast, clients) {
           pedidos: x.total_orders || 0, gasto: nuvem.moeda(x.total_spent, x.currency),
           criadoEm: x.created_at
         };
-      })
+      }),
+      // Pedidos de acesso aos dados (LGPD) que chegaram pela Nuvemshop. É o
+      // lojista quem responde ao consumidor, então é a ele que isto precisa
+      // aparecer.
+      lgpd: ((nuvem.cfg(req.acc).lgpd || {}).pedidos || [])
     });
   }));
 

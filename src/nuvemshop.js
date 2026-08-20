@@ -113,7 +113,9 @@ function adminCfg(origin) {
     enabled: !!p.enabled, appId: p.appId, hasSecret: !!p.appSecret,
     available: isAvailable(), lojasConectadas: lojas,
     redirectUri: origin ? `${origin}/auth/nuvemshop/callback` : '',
-    webhookUrl: origin ? `${origin}/nuvemshop-webhook` : ''
+    webhookUrl: origin ? `${origin}/nuvemshop-webhook` : '',
+    // As três URLs de LGPD são obrigatórias para publicar o app.
+    lgpd: lgpdUrls(origin)
   };
 }
 
@@ -518,10 +520,161 @@ function webhookHandler(broadcast) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// LGPD — os três webhooks obrigatórios do Portal de Parceiros
+// ---------------------------------------------------------------------------
+
+// O QUE É "DADO DA LOJA" AQUI DENTRO.
+//
+// O Koonfy guarda duas coisas bem diferentes: a CONEXÃO com a loja (token,
+// nome, webhooks, carrinhos vistos) e as marcas que os eventos deixaram nos
+// contatos do lojista (de qual loja veio, quantos pedidos, o último pedido).
+//
+// Apagar a conexão é óbvio. Apagar as marcas também. O que este código NÃO
+// faz é apagar o CONTATO e a conversa: eles são do lojista, não da loja —
+// muita gente falou no WhatsApp antes de comprar, e sumir com a base de
+// clientes de alguém porque ele desinstalou um app seria destruir o trabalho
+// dele para cumprir um pedido que não era esse.
+const VARS_DA_LOJA = /^(pedido_|carrinho_|cliente_|loja_|evento_nuvemshop)/;
+
+function limparVarsDaLoja(contato) {
+  if (!contato || !contato.vars) return 0;
+  let n = 0;
+  for (const k of Object.keys(contato.vars)) {
+    if (VARS_DA_LOJA.test(k)) { delete contato.vars[k]; n++; }
+  }
+  return n;
+}
+
+function esquecerContato(contato) {
+  let n = limparVarsDaLoja(contato);
+  if (contato.ns) { delete contato.ns; n++; }
+  if (contato.source && contato.source.type === 'nuvemshop') { delete contato.source; n++; }
+  return n;
+}
+
+// store/redact — o lojista desinstalou o app.
+function apagarLoja(acc) {
+  let contatos = 0;
+  for (const c of acc.contacts || []) if (esquecerContato(c)) contatos++;
+  acc.nuvemshop = empty();
+  db.save();
+  return { contatos };
+}
+
+// Acha o contato pelo que a Nuvemshop manda do consumidor. O telefone é o
+// caminho mais confiável (é a chave do WhatsApp); o e-mail entra depois,
+// porque nem todo contato tem.
+function acharConsumidor(acc, cli) {
+  if (!cli) return null;
+  const tel = cli.phone ? store.normalizeWaId(cli.phone) : '';
+  const lista = acc.contacts || [];
+  if (tel) {
+    const porTel = lista.find(c => c.waId === tel);
+    if (porTel) return porTel;
+  }
+  const mail = String(cli.email || '').trim().toLowerCase();
+  if (mail) {
+    return lista.find(c => String((c.vars || {}).email || c.email || '').toLowerCase() === mail) || null;
+  }
+  return null;
+}
+
+// customers/redact — um consumidor pediu para ser esquecido.
+function apagarConsumidor(acc, cli) {
+  const contato = acharConsumidor(acc, cli);
+  if (!contato) return { achou: false };
+  const campos = esquecerContato(contato);
+  db.save();
+  return { achou: true, campos, waId: contato.waId };
+}
+
+// customers/data_request — o consumidor quer saber o que existe sobre ele.
+//
+// A Nuvemshop diz que é responsabilidade do app entregar as informações AO
+// LOJISTA, que é quem responde ao consumidor. Então o pedido é registrado na
+// conta com o que temos guardado, e aparece na aba Nuvemshop.
+function registrarPedidoDeDados(acc, corpo) {
+  const c = cfg(acc);
+  const cli = corpo.customer || {};
+  const contato = acharConsumidor(acc, cli);
+  c.lgpd = c.lgpd || { pedidos: [] };
+  c.lgpd.pedidos.unshift({
+    id: String((corpo.data_request || {}).id || ''),
+    quando: Date.now(),
+    email: String(cli.email || ''), telefone: String(cli.phone || ''),
+    documento: String(cli.identification || ''),
+    pedidos: (corpo.orders_requested || []).length,
+    // O que o Koonfy tem sobre essa pessoa. É isso que o lojista precisa
+    // repassar; sem a lista, o registro seria um aviso sem conteúdo.
+    encontrado: !!contato,
+    dados: contato ? {
+      waId: contato.waId, nome: contato.name || '',
+      etapa: contato.stage || '', tags: contato.tags || [],
+      variaveis: Object.fromEntries(Object.entries(contato.vars || {}).filter(([k]) => VARS_DA_LOJA.test(k))),
+      mensagens: (acc.messages || []).filter(m => m.waId === contato.waId).length
+    } : null
+  });
+  // Vinte pedidos bastam para o lojista ver o que chegou; a lista não pode
+  // crescer sem fim dentro da conta.
+  if (c.lgpd.pedidos.length > 20) c.lgpd.pedidos.length = 20;
+  db.save();
+  return { encontrado: !!contato };
+}
+
+// O HANDLER DOS TRÊS.
+//
+// Responde primeiro, trabalha depois: o prazo da Nuvemshop é de 3 segundos, e
+// um banco lento não pode virar "o app não respondeu".
+function lgpdHandler(tipo) {
+  return (req, res) => {
+    const body = req.body || {};
+    const sig = req.get('x-linkedstore-hmac-sha256');
+    if (!validSignature(platformCfg().appSecret, req.rawBody, sig)) {
+      store.logEvent({ type: 'nuvemshop_lgpd_assinatura_invalida', detail: tipo });
+      return res.status(401).json({ error: 'assinatura inválida' });
+    }
+    res.json({ ok: true });
+
+    try {
+      const acc = findAccountByStore(body.store_id);
+      if (!acc) {
+        // Loja que nunca conectou (ou já apagada): nada a fazer, e dizer isso
+        // no log é melhor do que silêncio quando alguém vier auditar.
+        store.logEvent({ type: 'nuvemshop_lgpd', detail: tipo + ': loja ' + body.store_id + ' não está conectada' });
+        return;
+      }
+      if (tipo === 'store/redact') {
+        const r = apagarLoja(acc);
+        store.logEvent({ type: 'nuvemshop_lgpd', accountId: acc.id, detail: `store/redact: conexão apagada, ${r.contatos} contato(s) limpos` });
+      } else if (tipo === 'customers/redact') {
+        const r = apagarConsumidor(acc, body.customer);
+        store.logEvent({ type: 'nuvemshop_lgpd', accountId: acc.id, detail: r.achou ? `customers/redact: dados da loja removidos de ${r.waId}` : 'customers/redact: consumidor não encontrado aqui' });
+      } else {
+        const r = registrarPedidoDeDados(acc, body);
+        store.logEvent({ type: 'nuvemshop_lgpd', accountId: acc.id, detail: r.encontrado ? 'customers/data_request: registrado com os dados encontrados' : 'customers/data_request: registrado, nada encontrado sobre o consumidor' });
+      }
+    } catch (e) {
+      store.logEvent({ type: 'nuvemshop_lgpd_erro', detail: tipo + ': ' + e.message });
+    }
+  };
+}
+
+// As três URLs que vão no Portal de Parceiros.
+function lgpdUrls(origin) {
+  const base = origin ? String(origin).replace(/\/+$/, '') : '';
+  return {
+    storeRedact: base ? base + '/nuvemshop/lgpd/store-redact' : '',
+    customersRedact: base ? base + '/nuvemshop/lgpd/customers-redact' : '',
+    customersDataRequest: base ? base + '/nuvemshop/lgpd/customers-data-request' : ''
+  };
+}
+
 module.exports = {
   EVENTS, GATILHOS, EVENTO_CARRINHO, empty, cfg, platformCfg, isAvailable, publicCfg, adminCfg,
   exchangeCode, apiFetch, fetchStore, registerWebhooks, disconnect,
   handleEvent, webhookHandler, validSignature,
   orderVars, cartVars, moeda, primeiroNome,
-  fluxosDoEvento, dispararFluxos, varrerCarrinhos, varrerTodas
+  fluxosDoEvento, dispararFluxos, varrerCarrinhos, varrerTodas,
+  lgpdHandler, lgpdUrls, apagarLoja, apagarConsumidor, registrarPedidoDeDados, acharConsumidor
 };

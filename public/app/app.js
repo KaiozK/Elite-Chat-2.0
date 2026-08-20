@@ -2539,6 +2539,11 @@ async function admSuperDesligar(id) {
 // ===========================================================================
 let NS_TAB = 'pedidos';
 
+// Link de parceiro da Nuvemshop. Quem chega na aba sem loja pode não ter loja
+// NENHUMA, e para essa pessoa "conectar" não quer dizer nada: ela precisa
+// primeiro abrir a dela.
+const NS_AFILIADO = 'https://www.nuvemshop.com.br/partners/52795162-kaio-caglioni-de-oliveira';
+
 async function renderNuvemshop() {
   // Chegando aqui sem loja (link antigo, endereço digitado), o lugar certo é
   // Integrações: é lá que se conecta.
@@ -2549,10 +2554,23 @@ async function renderNuvemshop() {
       <div class="card">
         <h2>${ico('cart')} Nenhuma loja conectada</h2>
         <p class="muted" style="margin:0 0 14px;font-size:13px">
-          Depois de conectar, esta aba mostra os pedidos, os carrinhos abandonados e a base da loja —
-          e o menu passa a trazer a Nuvemshop sozinho.
+          Depois de conectar, esta aba mostra os pedidos, os carrinhos abandonados e a base da loja.
+          O menu passa a trazer a Nuvemshop sozinho.
         </p>
-        <a class="btn primary no-grow" href="#/integrations">Conectar minha loja</a>
+        <div class="row">
+          <a class="btn primary no-grow" href="#/integrations">Conectar minha loja</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>${ico('sparkles')} Ainda não tem loja na Nuvemshop?</h2>
+        <p class="muted" style="margin:0 0 14px;font-size:13px">
+          Crie a sua e volte aqui para conectar. É a plataforma de loja virtual que o Koonfy integra:
+          os pedidos, os carrinhos e a base de clientes passam a chegar direto no seu WhatsApp.
+        </p>
+        <div class="row">
+          <a class="btn no-grow" href="${NS_AFILIADO}" target="_blank" rel="noopener">${ico('globe', 14)} Criar minha loja na Nuvemshop</a>
+        </div>
       </div></div>`;
     return;
   }
@@ -2708,7 +2726,7 @@ async function nsVarrer(btn) {
     // Três respostas diferentes, porque são três situações diferentes: não há
     // automação, não há carrinho no ponto, ou saiu mensagem.
     toast(r.motivo === 'sem_automacao'
-      ? 'Crie uma automação com o gatilho Loja Nuvemshop, Carrinho abandonado — sem ela não há o que enviar'
+      ? 'Crie uma automação com o gatilho Loja Nuvemshop, Carrinho abandonado. Sem ela não há o que enviar.'
       : r.avisados ? `${r.avisados} carrinho(s) entraram na automação` : 'Nenhum carrinho no ponto ainda',
       r.motivo === 'sem_automacao' ? 'error' : 'ok');
     nsCarrinhos();
@@ -2737,6 +2755,20 @@ async function nsClientes() {
 
     <div class="card">
       <h2>${ico('cart')} Clientes da loja</h2>
+      ${(d.lgpd || []).length ? `<div class="capi-box" style="margin:0 0 16px">
+        <div class="capi-head">${ico('shield', 14)} Pedidos de acesso aos dados (LGPD)
+          <span class="capi-tag">${fmtN(d.lgpd.length)}</span></div>
+        <p class="muted" style="font-size:12px;margin:8px 0 10px">
+          Consumidores que pediram, pela Nuvemshop, para saber o que existe sobre eles. Quem responde é você:
+          abaixo está o que o Koonfy tem guardado de cada um.
+        </p>
+        ${d.lgpd.map(x => `<div class="wh-meta" style="margin-top:8px">
+          <span class="pill">${timeAgo(x.quando)}</span>
+          <span class="pill">${esc(x.email || x.telefone || 'sem identificação')}</span>
+          ${x.encontrado ? `<span class="pill done">${fmtN((x.dados || {}).mensagens || 0)} mensagem(ns) no Koonfy</span>`
+            : '<span class="muted">nada encontrado aqui</span>'}
+        </div>`).join('')}
+      </div>` : ''}
       ${d.itens.length ? `<div class="tab-mob-wrap" style="overflow-x:auto"><table class="tab-mob"><thead><tr>
         <th>Cliente</th><th style="text-align:right">Pedidos</th><th style="text-align:right">Gasto</th><th>No Koonfy</th>
       </tr></thead><tbody>
@@ -9831,6 +9863,28 @@ function admNsPaint() {
       </p>
     </div>
 
+    <div class="capi-box" style="margin-top:16px">
+      <div class="capi-head">${ico('shield', 14)} LGPD <span class="capi-tag">obrigatório para publicar</span></div>
+      <p class="muted" style="font-size:12px;margin:8px 0 10px">
+        A Nuvemshop exige as três URLs abaixo no seu app. Elas já respondem: a primeira apaga a conexão da loja
+        quando o lojista desinstala, a segunda remove os dados de um consumidor que pediu para ser esquecido, e a
+        terceira registra o pedido de acesso aos dados na conta do lojista, que é quem responde ao consumidor.
+      </p>
+      <p class="muted" style="font-size:12px;margin:0 0 5px">URL webhook store redact:</p>
+      <div class="linkrow"><code>${esc(n.lgpd && n.lgpd.storeRedact || '')}</code>
+        <button class="icon-btn" title="Copiar" onclick="copyText('${esc(n.lgpd && n.lgpd.storeRedact || '')}')">${ico('copy', 13)}</button></div>
+      <p class="muted" style="font-size:12px;margin:10px 0 5px">URL webhook customers redact:</p>
+      <div class="linkrow"><code>${esc(n.lgpd && n.lgpd.customersRedact || '')}</code>
+        <button class="icon-btn" title="Copiar" onclick="copyText('${esc(n.lgpd && n.lgpd.customersRedact || '')}')">${ico('copy', 13)}</button></div>
+      <p class="muted" style="font-size:12px;margin:10px 0 5px">URL webhook customers data request:</p>
+      <div class="linkrow"><code>${esc(n.lgpd && n.lgpd.customersDataRequest || '')}</code>
+        <button class="icon-btn" title="Copiar" onclick="copyText('${esc(n.lgpd && n.lgpd.customersDataRequest || '')}')">${ico('copy', 13)}</button></div>
+      <p class="muted" style="font-size:11.5px;margin:10px 0 0">
+        As três são assinadas com o mesmo Client Secret acima. Sem o secret salvo, elas recusam tudo com 401,
+        que é o certo: um POST de qualquer lugar apagaria dados de qualquer loja.
+      </p>
+    </div>
+
     <div class="wh-meta" style="margin-top:16px">
       <span class="pill ${n.lojasConectadas ? 'done' : ''}">${fmtN(n.lojasConectadas)} loja(s) conectada(s)</span>
     </div>
@@ -12784,7 +12838,12 @@ function paintNuvemshop() {
       <div class="ns-actions">
         <button class="btn primary no-grow" onclick="connectNs()">${ico('link', 13)} Conectar loja Nuvemshop</button>
         <span class="ns-nota">Permita pop-ups no navegador para a janela abrir.</span>
-      </div>`}
+      </div>
+      <p class="muted" style="font-size:12.5px;margin:14px 0 0">
+        Ainda não tem loja na Nuvemshop?
+        <a href="${NS_AFILIADO}" target="_blank" rel="noopener"><b>Crie a sua aqui</b></a>
+        e volte para conectar.
+      </p>`}
   </div>`;
 
   // Passo 2 — o que fazer com os eventos.

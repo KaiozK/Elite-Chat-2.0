@@ -447,6 +447,19 @@ app.post('/sms-webhook', require('./src/sms').webhookHandler(broadcast));
 app.set('flowDeliver', flowDeliver);
 app.post('/nuvemshop-webhook', require('./src/nuvemshop').webhookHandler(broadcast));
 
+// LGPD — os três webhooks que o Portal de Parceiros da Nuvemshop exige para
+// publicar o app. Não são opcionais, e cada um é um pedido real sobre dados
+// de gente: a loja saiu, um consumidor quer ser esquecido, um consumidor quer
+// saber o que existe sobre ele.
+//
+// O prazo da Nuvemshop é de 3 SEGUNDOS para o 2XX, então os três respondem
+// antes de trabalhar. A assinatura é a mesma dos outros (HMAC sobre o corpo
+// cru): sem ela, um POST de qualquer lugar apagaria dados de qualquer loja.
+const nsLgpd = require('./src/nuvemshop');
+app.post('/nuvemshop/lgpd/store-redact', nsLgpd.lgpdHandler('store/redact'));
+app.post('/nuvemshop/lgpd/customers-redact', nsLgpd.lgpdHandler('customers/redact'));
+app.post('/nuvemshop/lgpd/customers-data-request', nsLgpd.lgpdHandler('customers/data_request'));
+
 app.use(require('./src/webhook')(broadcast));
 app.use('/api', require('./src/api')(broadcast, clients));
 

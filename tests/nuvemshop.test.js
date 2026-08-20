@@ -223,6 +223,75 @@ global.fetch = async (url, opts = {}) => {
   ok(!nuvem.EVENTS.some(e => e.event === 'cart/abandoned'),
      'e o carrinho NÃO entra nos webhooks assinados: a Nuvemshop não publica esse evento');
 
+  console.log('\n=== 12. LGPD: os tres webhooks obrigatorios ===');
+  // A Nuvemshop exige os tres para publicar o app, e cada um mexe em dado de
+  // gente. Prazo de resposta: 3 segundos.
+  const crypto = require('crypto');
+  const segredo = 'SEGREDO_DO_APP';
+  db.get().platform.nuvemshop = { enabled: true, appId: 1, appSecret: segredo };
+  db.save();
+
+  const assinar = (corpo) => crypto.createHmac('sha256', segredo).update(corpo).digest('hex');
+  const chamar = (tipo, corpo, assinatura) => new Promise((resolve) => {
+    const cru = JSON.stringify(corpo);
+    const req = {
+      body: corpo, rawBody: Buffer.from(cru),
+      get: (h) => h === 'x-linkedstore-hmac-sha256' ? (assinatura === undefined ? assinar(cru) : assinatura) : ''
+    };
+    const res = {
+      status(c) { this.codigo = c; return this; },
+      json(v) { this.corpo = v; resolve({ codigo: this.codigo || 200, corpo: v }); return this; }
+    };
+    nuvem.lgpdHandler(tipo)(req, res);
+  });
+
+  // ---- assinatura invalida nao passa
+  let resp = await chamar('store/redact', { store_id: 999 }, 'assinatura_falsa');
+  ok(resp.codigo === 401, 'assinatura invalida e recusada: ' + resp.codigo);
+  ok(!!acc.nuvemshop.accessToken, 'e a loja continua conectada: um POST de qualquer lugar nao apaga nada');
+
+  // ---- customers/data_request registra o que temos sobre o consumidor
+  resp = await chamar('customers/data_request', {
+    store_id: 999,
+    customer: { id: 5, email: 'carlos@ex.com', phone: '11977776666', identification: '123' },
+    orders_requested: [77], data_request: { id: 456 }
+  });
+  ok(resp.codigo === 200, 'responde 2XX dentro do prazo: ' + resp.codigo);
+  await new Promise(r => setTimeout(r, 60));
+  const pedidos = (nuvem.cfg(acc).lgpd || {}).pedidos || [];
+  ok(pedidos.length === 1, 'o pedido ficou registrado para o lojista: ' + pedidos.length);
+  ok(pedidos[0].encontrado === true, 'e achou o consumidor na base');
+  ok(pedidos[0].dados && pedidos[0].dados.waId, 'com o que o Koonfy guarda dele: ' + (pedidos[0].dados || {}).waId);
+
+  // ---- customers/redact esquece o consumidor, sem apagar a conversa
+  const alvo = acc.contacts.find(x => (x.vars || {}).email === 'carlos@ex.com' || x.waId.endsWith('11977776666'));
+  ok(!!alvo && !!alvo.ns, 'antes, o contato carrega a marca da loja');
+  const nomeAntes = alvo.name;
+  resp = await chamar('customers/redact', {
+    store_id: 999,
+    customer: { id: 5, email: 'carlos@ex.com', phone: '11977776666' },
+    orders_to_redact: [77]
+  });
+  await new Promise(r => setTimeout(r, 60));
+  ok(!alvo.ns, 'depois, a marca da loja sumiu');
+  ok(!Object.keys(alvo.vars || {}).some(k => k.startsWith('pedido_')), 'e os dados do pedido tambem');
+  ok(acc.contacts.includes(alvo) && alvo.name === nomeAntes,
+     'mas o CONTATO continua: ele e do lojista, nao da loja');
+
+  // ---- store/redact apaga a conexao inteira
+  resp = await chamar('store/redact', { store_id: 999 });
+  ok(resp.codigo === 200, 'responde 2XX: ' + resp.codigo);
+  await new Promise(r => setTimeout(r, 60));
+  ok(!acc.nuvemshop.accessToken, 'o token da loja foi apagado');
+  ok(!acc.nuvemshop.storeId, 'e o id da loja tambem');
+  ok((acc.contacts || []).every(x => !x.ns), 'nenhum contato guarda mais marca da loja');
+  ok((acc.contacts || []).length > 0, 'e a base de contatos do lojista continua de pe');
+
+  // ---- loja desconhecida nao quebra
+  resp = await chamar('store/redact', { store_id: 12345 });
+  ok(resp.codigo === 200, 'loja que nunca conectou tambem recebe 2XX: ' + resp.codigo);
+
+  console.log();
   global.fetch = fetchReal;
   console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTODOS OS TESTES PASSARAM');
   process.exitCode = falhas ? 1 : 0;
