@@ -312,7 +312,16 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
          font:500 var(--t-caption)/1 var(--fonte);letter-spacing:.032em;text-transform:uppercase;
          transition:border-color .18s ease,color .18s ease,background .18s ease}
 .car-aba:hover{color:var(--texto);border-color:var(--mudo)}
-.car-aba.on{color:var(--tinta-acao);background:var(--sinal);border-color:var(--sinal)}
+.car-aba.on{color:var(--tinta-acao);background:var(--sinal);border-color:var(--sinal);
+            position:relative;overflow:hidden}
+/* Um fio corre por baixo do rótulo da aba ativa enquanto a tela roda: a
+   troca deixa de ser um susto, porque dava para ver que ela vinha. Some no
+   instante em que alguém escolhe uma aba, junto com o giro. */
+.car-aba.on::after{content:"";position:absolute;left:0;bottom:0;height:2px;width:100%;
+                   background:var(--tinta-acao);opacity:.35;transform-origin:left;
+                   transform:scaleX(0);animation:carConta var(--dura,5.6s) linear both}
+.carrossel.parado .car-aba.on::after{animation:none;transform:scaleX(0)}
+@keyframes carConta{to{transform:scaleX(1)}}
 
 .car-palco{position:relative}
 .car-slide{display:none;grid-template-columns:1fr 1.15fr;gap:var(--e48);align-items:center}
@@ -750,7 +759,7 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
       </div>
 
       <div class="car-palco">
-        <div class="car-slide on" data-slide="atendimento">
+        <div class="car-slide on" data-slide="atendimento" data-dura="4200">
           <div class="car-texto">
             <h3 class="titulo-sec">Vários atendentes no mesmo número</h3>
             <p class="corpo-sm mudo">Fila de conversas, transferência entre pessoas, chat interno da equipe e respostas rápidas. Cada atendente com a sua permissão, e o histórico fica na conversa.</p>
@@ -773,7 +782,7 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 </div></div>
           </div>
         </div>
-        <div class="car-slide" data-slide="funil">
+        <div class="car-slide" data-slide="funil" data-dura="5200">
           <div class="car-texto">
             <h3 class="titulo-sec">O card anda sozinho quando o dinheiro entra</h3>
             <p class="corpo-sm mudo">A conversa vira lead, o lead percorre as etapas que você desenhar e o pagamento confirmado move o card sem ninguém arrastar.</p>
@@ -787,7 +796,7 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 </div></div>
           </div>
         </div>
-        <div class="car-slide" data-slide="automacao">
+        <div class="car-slide" data-slide="automacao" data-dura="5600">
           <div class="car-texto">
             <h3 class="titulo-sec">Fluxo visual e um agente de IA por conversa</h3>
             <p class="corpo-sm mudo">Monte o atendimento arrastando blocos, e ligue a IA só onde ela ajuda. O botão é por conversa, então o robô sai de cena quando alguém precisa assumir.</p>
@@ -806,7 +815,7 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 </div></div>
           </div>
         </div>
-        <div class="car-slide" data-slide="campanhas">
+        <div class="car-slide" data-slide="campanhas" data-dura="4200">
           <div class="car-texto">
             <h3 class="titulo-sec">Disparo com opt-in e opt-out de verdade</h3>
             <p class="corpo-sm mudo">Quem pede para sair sai de todas as listas de uma vez. É o que mantém o número saudável: lista suja é o caminho mais curto para uma denúncia.</p>
@@ -823,7 +832,7 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 </div></div>
           </div>
         </div>
-        <div class="car-slide" data-slide="pagamentos">
+        <div class="car-slide" data-slide="pagamentos" data-dura="4400">
           <div class="car-texto">
             <h3 class="titulo-sec">Cobrança na conversa, checkout com a sua cara</h3>
             <p class="corpo-sm mudo">Pix, cartão e boleto pelo seu próprio checkout. A cobrança sai como botão dentro do WhatsApp, e o dinheiro cai na carteira dentro do painel.</p>
@@ -837,7 +846,7 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 </div></div>
           </div>
         </div>
-        <div class="car-slide" data-slide="rastreamento">
+        <div class="car-slide" data-slide="rastreamento" data-dura="4400">
           <div class="car-texto">
             <h3 class="titulo-sec">Saber de onde veio a venda, e não achar</h3>
             <p class="corpo-sm mudo">Links rastreáveis, pixels do Meta, Google e TikTok, e envio de eventos pelo servidor. O anúncio que trouxe a conversa continua colado nela até o pagamento.</p>
@@ -854,7 +863,7 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 </div></div>
           </div>
         </div>
-        <div class="car-slide" data-slide="agenda">
+        <div class="car-slide" data-slide="agenda" data-dura="4600">
           <div class="car-texto">
             <h3 class="titulo-sec">O compromisso e a chamada no mesmo lugar</h3>
             <p class="corpo-sm mudo">Agendamentos presos ao contato e chamadas de voz que tocam no painel ou no celular. A gravação fica guardada na conversa.</p>
@@ -869,7 +878,7 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 </div></div>
           </div>
         </div>
-        <div class="car-slide" data-slide="integracoes">
+        <div class="car-slide" data-slide="integracoes" data-dura="4200">
           <div class="car-texto">
             <h3 class="titulo-sec">Webhook para o que já roda na sua operação</h3>
             <p class="corpo-sm mudo">Nuvemshop, plataformas de checkout e qualquer sistema que saiba mandar um POST. Os campos são mapeados na tela, sem programador do outro lado.</p>
@@ -884,7 +893,7 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 </div></div>
           </div>
         </div>
-        <div class="car-slide" data-slide="instalacao">
+        <div class="car-slide" data-slide="instalacao" data-dura="4200">
           <div class="car-texto">
             <h3 class="titulo-sec">API oficial da Meta, com as regras às claras</h3>
             <p class="corpo-sm mudo">O número roda na WhatsApp Cloud API, com a Koonfy como Tech Provider da Meta. Nada de aparelho num canto da sala nem de plugin que o WhatsApp derruba.</p>
@@ -1305,6 +1314,12 @@ var LOGOS_KOONFY = [
         sl.classList.remove('on');
         if (on) requestAnimationFrame(function () { sl.classList.add('on'); contar(sl); });
       });
+      // O fio da aba ativa dura o mesmo que a tela mais o respiro: é ele que
+      // avisa que a troca está chegando.
+      var slAtual = car.querySelector('.car-slide[data-slide="' + chave + '"]');
+      var msAtual = ((slAtual && Number(slAtual.dataset.dura)) || 4200) + RESPIRO;
+      car.style.setProperty('--dura', (msAtual / 1000) + 's');
+      agendarProximo(chave);
     }
 
     // Os números sobem de zero em vez de aparecerem prontos: é o que faz a
@@ -1328,6 +1343,9 @@ var LOGOS_KOONFY = [
     car.addEventListener('click', function (e) {
       var b = e.target.closest('.car-aba, .car-passo');
       if (!b) return;
+      // Escolheu uma aba: o giro acaba aqui. Continuar girando depois disso
+      // seria tirar da mão de quem acabou de dizer o que queria ver.
+      parado = true; clearTimeout(relogio); car.classList.add('parado');
       abrir(b.dataset.aba || b.dataset.ir);
       if (b.classList.contains('car-passo')) {
         var alvo = car.querySelector('.car-aba[data-aba="' + (b.dataset.ir) + '"]');
@@ -1335,16 +1353,49 @@ var LOGOS_KOONFY = [
       }
     });
 
-    // A primeira tela só começa a animar quando a seção aparece: animar fora
-    // da vista é gastar bateria para ninguém ver.
+    // ----- o giro -----
+    // A troca acontece DEPOIS que a animação da tela termina, e não num
+    // relógio fixo: cada slide tem a sua duração (a cascata da lista leva
+    // menos tempo que o card atravessando o funil). Um intervalo igual para
+    // todos ou cortaria a animação no meio ou deixaria a tela parada.
+    var RESPIRO = 1400;      // o tempo de LER, depois que a tela terminou
+    var relogio = null, parado = false, naTela = false;
+
+    function agendarProximo(chave) {
+      clearTimeout(relogio);
+      if (parado || !naTela || menosMovimento) return;
+      var sl = car.querySelector('.car-slide[data-slide="' + chave + '"]');
+      var dura = (sl && Number(sl.dataset.dura)) || 4200;
+      relogio = setTimeout(function () {
+        var i = abas.findIndex(function (b) { return b.dataset.aba === chave; });
+        abrir(abas[(i + 1) % abas.length].dataset.aba);
+      }, dura + RESPIRO);
+    }
+
+    // Quem tem "menos movimento" ligado no sistema não recebe um carrossel
+    // que anda sozinho: aí a escolha é toda dele, pelas abas.
+    var menosMovimento = window.matchMedia
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // Com o ponteiro em cima, para. Trocar o slide debaixo de quem está lendo
+    // é a forma mais rápida de perder o leitor.
+    car.addEventListener('pointerenter', function () { clearTimeout(relogio); });
+    car.addEventListener('pointerleave', function () {
+      var atual = car.querySelector('.car-slide.on');
+      if (atual) agendarProximo(atual.dataset.slide);
+    });
+
+    // Fora da tela não gira: ninguém está vendo, e a animação seguiria
+    // gastando bateria. Voltando à vista, o giro recomeça de onde parou.
     if (window.IntersectionObserver) {
-      var visto = false;
-      new IntersectionObserver(function (ents, obs) {
-        if (visto || !ents.some(function (x) { return x.isIntersecting; })) return;
-        visto = true; obs.disconnect();
-        abrir(abas[0].dataset.aba);
+      new IntersectionObserver(function (ents) {
+        naTela = ents.some(function (x) { return x.isIntersecting; });
+        if (!naTela) return clearTimeout(relogio);
+        var atual = car.querySelector('.car-slide.on');
+        abrir(atual ? atual.dataset.slide : abas[0].dataset.aba);
       }, { threshold: 0.25 }).observe(car);
     } else {
+      naTela = true;
       abrir(abas[0].dataset.aba);
     }
   })();
