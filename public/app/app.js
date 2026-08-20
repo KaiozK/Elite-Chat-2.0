@@ -2988,8 +2988,8 @@ function paintSession() {
     <button class="btn small" onclick="transferModal('${state.currentWaId}')" title="Transferir">${ico('arrowright', 13)}<i class="blbl">Transferir</i></button>
     <button class="btn small" onclick="editContactModal('${state.currentWaId}')" title="Editar contato">${ico('edit', 13)}<i class="blbl">Editar</i></button>
     ${finished
-      ? `<button class="btn small primary" onclick="reopenAttendance()" title="Reabrir Atendimento">${ico('refresh', 13)}<i class="blbl">Reabrir Atendimento</i></button>`
-      : `<button class="btn small" onclick="finishAttendance()" title="Finalizar Atendimento">${ico('check-circle', 13)}<i class="blbl">Finalizar Atendimento</i></button>`}
+      ? `<button class="btn small primary" onclick="reopenAttendance('${state.currentWaId}')" title="Reabrir Atendimento">${ico('refresh', 13)}<i class="blbl">Reabrir Atendimento</i></button>`
+      : `<button class="btn small" onclick="finishAttendance('${state.currentWaId}')" title="Finalizar Atendimento">${ico('check-circle', 13)}<i class="blbl">Finalizar Atendimento</i></button>`}
     ${iaBotaoChat()}`;
 
   // --- Composer: bloqueio total fora da janela / atendimento finalizado / OPT-OUT ---
@@ -3034,7 +3034,7 @@ function paintSession() {
     ${ico(finished ? 'check-circle' : (never ? 'info' : 'alert'), 15)}
     <div><b>${title}</b> <span class="sn-body">${body}</span></div>
     ${finished
-      ? `<button class="btn small primary no-grow" onclick="reopenAttendance()">Reabrir</button>`
+      ? `<button class="btn small primary no-grow" onclick="reopenAttendance('${state.currentWaId}')">Reabrir</button>`
       : `<button class="btn small primary no-grow" onclick="templateModal('${state.currentWaId}')">${ico('file', 12)} Enviar Template</button>`}
   </div>` : '';
 }
@@ -3079,16 +3079,22 @@ async function doTransfer(waId) {
   } catch (e) { toast(e.message, 'error'); }
 }
 
-async function finishAttendance() {
+// O ALVO VEM DE FORA. Ler `state.currentWaId` depois da confirmação era ler
+// a conversa que estivesse aberta no momento do clique em "Finalizar" — que
+// não é necessariamente a mesma de quando a caixa abriu.
+async function finishAttendance(waId) {
+  waId = waId || state.currentWaId;
+  if (!waId) return;
   if (!await confirmModal({
     title: 'Finalizar atendimento',
     text: 'A conversa será marcada como Finalizada e o envio de novas mensagens ficará bloqueado até que o atendimento seja reaberto. A data, o horário e o seu nome serão registrados.',
     ok: 'Finalizar atendimento'
   })) return;
   try {
-    const r = await api(`/conversations/${state.currentWaId}/finish`, { body: {} });
-    state.currentSession = r.session;
-    paintSession();
+    const r = await api(`/conversations/${waId}/finish`, { body: {} });
+    // Só repinta se esta ainda é a conversa na tela: pintar o estado de uma
+    // conversa por cima de outra é o mesmo bug com outra roupa.
+    if (state.currentWaId === waId) { state.currentSession = r.session; paintSession(); }
     toast('Atendimento finalizado');
     loadConversations();
   } catch (e) { toast(e.message, 'error'); }
@@ -3105,11 +3111,12 @@ async function coReactivateFromChat(waId) {
   } catch (e) { toast(e.message, 'error'); }
 }
 
-async function reopenAttendance() {
+async function reopenAttendance(waId) {
+  waId = waId || state.currentWaId;
+  if (!waId) return;
   try {
-    const r = await api(`/conversations/${state.currentWaId}/reopen`, { body: {} });
-    state.currentSession = r.session;
-    paintSession();
+    const r = await api(`/conversations/${waId}/reopen`, { body: {} });
+    if (state.currentWaId === waId) { state.currentSession = r.session; paintSession(); }
     toast('Atendimento reaberto');
     loadConversations();
   } catch (e) { toast(e.message, 'error'); }
@@ -3330,6 +3337,11 @@ function fileChosen(input) {
   const file = input.files[0];
   input.value = '';
   if (!file) return;
+  // O destinatário é quem estava na tela quando o arquivo foi escolhido. Um
+  // vídeo de 40 MB leva tempo para subir, e reler a conversa aberta depois
+  // mandava o arquivo para quem tivesse sido aberto nesse meio-tempo.
+  const waId = state.currentWaId;
+  if (!waId) return toast('Abra uma conversa antes de enviar um arquivo', 'error');
   if (file.size > 60 * 1024 * 1024) return toast('Arquivo muito grande (máx. 60 MB)', 'error');
   const reader = new FileReader();
   reader.onload = async () => {
@@ -3340,8 +3352,8 @@ function fileChosen(input) {
     try {
       toast('Enviando ' + file.name + '...');
       const up = await api('/media/upload', { body: { filename: file.name, mime: file.type, data: base64 } });
-      await api('/send/media', { body: { to: state.currentWaId, kind, mediaId: up.id, filename: file.name } });
-      loadChat(state.currentWaId, true);
+      await api('/send/media', { body: { to: waId, kind, mediaId: up.id, filename: file.name } });
+      if (state.currentWaId === waId) loadChat(waId, true);
     } catch (e) { toast(e.message, 'error'); }
   };
   reader.readAsDataURL(file);

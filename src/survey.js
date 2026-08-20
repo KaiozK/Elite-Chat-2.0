@@ -70,10 +70,26 @@ function buildInteractive(cfg) {
   };
 }
 
-// Resumo textual (para o histórico do chat)
+// O QUE FICA NO HISTÓRICO
+//
+// O corpo é a pergunta, e as notas vão como BOTÕES: é assim que o chat
+// desenha e é o que o cliente vê. Antes as notas viravam marcadores dentro
+// do texto, e o balão mostrava uma lista onde havia botões.
 function summaryText(cfg) {
+  return String(cfg.message || '').trim();
+}
+
+// Em formato de LISTA o cliente vê um botão só, o que abre o menu: as notas
+// aparecem depois que ele toca. Desenhar todas no balão contaria uma
+// história que a tela dele não mostra.
+function summaryButtons(cfg) {
   const notes = validNotes(cfg);
-  return `${cfg.message}\n${notes.map(n => '• ' + n.label).join('\n')}`;
+  if (!notes.length) return [];
+  if (formatOf(cfg) === 'list') {
+    const rotulo = String(cfg.listButton || 'Avaliar').trim() || 'Avaliar';
+    return [{ id: 'survey_list', title: rotulo.slice(0, BTN_TITLE_MAX) }];
+  }
+  return notes.map(n => ({ id: REPLY_PREFIX + n.id, title: String(n.label).trim().slice(0, BTN_TITLE_MAX) }));
 }
 
 // ---------- Envio ao finalizar o atendimento ----------
@@ -106,7 +122,7 @@ function makeOnFinished(broadcast) {
     try {
       const resp = await wa.sendInteractive(acc, contact.waId, interactive);
       const msg = store.storeOutbound(acc, contact.waId, {
-        type: 'interactive', text: summaryText(cfg)
+        type: 'interactive', text: summaryText(cfg), buttons: summaryButtons(cfg)
       }, resp);
       // marca que estamos aguardando a nota deste contato
       contact.surveyPending = { sentAt: Date.now(), format: formatOf(cfg) };
@@ -173,6 +189,6 @@ function metrics(acc, now = Date.now()) {
 
 module.exports = {
   MAX_BUTTONS, MAX_ROWS, BTN_TITLE_MAX, ROW_TITLE_MAX, REPLY_PREFIX,
-  cfgOf, validNotes, formatOf, buildInteractive, summaryText,
+  cfgOf, validNotes, formatOf, buildInteractive, summaryText, summaryButtons,
   makeOnFinished, handleReply, metrics
 };
