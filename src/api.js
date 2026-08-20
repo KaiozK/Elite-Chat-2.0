@@ -4056,7 +4056,7 @@ module.exports = function (broadcast, clients) {
         // reconhecer qual está gravada.
         simplify: (() => { const sp = require('./simplify'); const c = sp.cfg();
           return { clientId: c.clientId ? '••••' + c.clientId.slice(-6) : '', configured: sp.configured(),
-                   splitUsername: c.splitUsername || '', splitPercent: c.splitPercent || 0, base: sp.BASE }; })(),
+                   base: sp.BASE }; })(),
         billing: data.platform.billing, affiliate: data.platform.affiliate, landing: data.platform.landing },
       // Credenciais do app da Meta (Tech Provider). Rota já é adminOnly, então
       // o cliente nunca recebe isto: a configuração vive só no Admin SaaS.
@@ -4347,14 +4347,14 @@ module.exports = function (broadcast, clients) {
     if (b.wooviSandbox !== undefined) p.woovi.sandbox = !!b.wooviSandbox;
 
     // ---- SIMPLIFY (adquirente Pix alternativa) ----
-    if (!p.simplify) p.simplify = { clientId: '', clientSecret: '', splitUsername: '', splitPercent: 0 };
+    if (!p.simplify) p.simplify = { clientId: '', clientSecret: '' };
+    delete p.simplify.splitUsername;
+    delete p.simplify.splitPercent;
     if (b.simplifyClientId !== undefined) p.simplify.clientId = String(b.simplifyClientId).trim();
     if (b.simplifyClientSecret !== undefined) p.simplify.clientSecret = String(b.simplifyClientSecret).trim();
-    if (b.simplifySplitUser !== undefined) p.simplify.splitUsername = String(b.simplifySplitUser).trim();
-    // A Simplify recusa split acima de 90%, e abaixo de 0,01% ela ignora.
-    if (b.simplifySplitPct !== undefined) {
-      p.simplify.splitPercent = Math.min(90, Math.max(0, Number(String(b.simplifySplitPct).replace(',', '.')) || 0));
-    }
+    // O split para outro usuário da Simplify saiu: não é a taxa da plataforma,
+    // e ficar ao lado das credenciais fazia parecer que era. O que a
+    // plataforma cobra está em Gateways, no card de taxas.
     // Qual adquirente atende o Pix. Trocar aqui vale para as PRÓXIMAS
     // cobranças; as já emitidas continuam sendo confirmadas pelo gateway que
     // as criou, porque cada uma guarda o seu.

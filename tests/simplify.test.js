@@ -110,32 +110,18 @@ global.fetch = async (u, o) => {
   ok(ultimaChamada.corpo.split === undefined,
     'a taxa de 2,5% NÃO virou split: ela já fica na conta da plataforma');
 
-  console.log('\n=== 5. O split serve para mandar a OUTRO usuário da Simplify ===');
-  // Um sócio, um parceiro. Configurado à mão no Admin, e nunca deduzido da taxa.
-  p.simplify.splitUsername = 'socio';
-  p.simplify.splitPercent = 2.5;
+  console.log('\n=== 5. O deposito NUNCA leva split ===');
+  // O campo de split para outro usuario da Simplify saiu do Admin: ele nao e
+  // a taxa da plataforma, e ficava ao lado das credenciais parecendo ser.
+  // Quem o preenchesse por engano mandava para fora uma fatia de cada venda.
+  p.simplify.splitUsername = 'socio_antigo';   // resquicio de quem preencheu
+  p.simplify.splitPercent = 30;
   await elitepay.gateway().createCharge({
     correlationID: 'ep-3', value: 10000, splits: [{ pixKey: 'x', value: 250 }],
     customer: { payer: { name: 'A', email: 'a@a.com', document: '11144477735', phone: '11999999999' } }
   });
-  ok(ultimaChamada.corpo.split[0].username === 'socio', 'vai para o usuário configurado');
-  ok(ultimaChamada.corpo.split[0].percentage === 2.5, `com a porcentagem do Admin: ${ultimaChamada.corpo.split[0].percentage}%`);
-
-  // A Simplify recusa acima de 90% e a cobrança inteira falharia.
-  p.simplify.splitPercent = 99;
-  await elitepay.gateway().createCharge({
-    correlationID: 'ep-4', value: 10000,
-    customer: { payer: { name: 'A', email: 'a@a.com', document: '11144477735', phone: '11999999999' } }
-  });
-  ok(ultimaChamada.corpo.split[0].percentage === 90, `99% foi limitado a ${ultimaChamada.corpo.split[0].percentage}%`);
-
-  p.simplify.splitUsername = '';
-  p.simplify.splitPercent = 0;
-  await elitepay.gateway().createCharge({
-    correlationID: 'ep-5', value: 5000,
-    customer: { payer: { name: 'A', email: 'a@a.com', document: '11144477735', phone: '11999999999' } }
-  });
-  ok(ultimaChamada.corpo.split === undefined, 'sem usuário configurado, o campo `split` fica de fora');
+  ok(ultimaChamada.corpo.split === undefined,
+     'nem com o valor antigo ainda gravado o deposito leva split');
 
   console.log('\n=== 6. Erro da Simplify chega legível ===');
   devolverErro = 'CPF do pagador inválido';
@@ -351,6 +337,37 @@ global.fetch = async (u, o) => {
     'e a diferença é exatamente a taxa, que ficou na conta da plataforma');
   elitepay.platformCfg().feeInPercent = 0;
 
+  console.log('\n=== 11c. PIX OUT: a taxa do saque ===');
+  // O espelho da entrada. O dinheiro ficou na conta da plataforma, entao o
+  // saque do lojista e um Pix que ela paga; a taxa de PIX Out sai descontada
+  // do valor pedido, e o que a tela de Saques mostra ao admin e o LIQUIDO.
+  elitepay.platformCfg().feeOutPercent = 1.5;
+  const saque = elitepay.computeWithdrawFee(acc2, 10000);
+  ok(saque.fee === 150, `1,5% de R$ 100,00 = R$ 1,50 (${saque.fee} centavos)`);
+  ok(saque.net === 9850, `o lojista recebe o liquido: R$ ${(saque.net / 100).toFixed(2)}`);
+  ok(saque.fromPix === 10000 && saque.fromCard === 0,
+     'venda de Pix sai toda pela taxa de Pix, sem misturar com a de cartao');
+
+  // O saque debita o VALOR PEDIDO da carteira: a taxa fica com a plataforma e
+  // o lojista recebe o liquido. Debitar so o liquido daria a taxa de graca.
+  const antesSaque = acc2.wallet.balance;
+  elitepay.debitWithdraw(acc2, 10000);
+  ok(antesSaque - acc2.wallet.balance === 10000,
+     `saiu da carteira o valor pedido: R$ ${((antesSaque - acc2.wallet.balance) / 100).toFixed(2)}`);
+
+  // Com a taxa desligada o saque e integral: o campo em branco desfaz.
+  elitepay.platformCfg().feeOutPercent = 0;
+  const semTaxa = elitepay.computeWithdrawFee(acc2, 10000);
+  ok(semTaxa.fee === 0 && semTaxa.net === 10000, 'com 0% o lojista saca o valor cheio');
+
+  // As duas taxas sao independentes: mexer na saida nao mexe na entrada.
+  elitepay.platformCfg().feeInPercent = 2.5;
+  elitepay.platformCfg().feeOutPercent = 9;
+  ok(elitepay.computeSplit(10000).platformCut === 250, 'PIX In continua 2,5%');
+  ok(elitepay.computeWithdrawFee(acc2, 10000).fee === 900, 'e PIX Out e 9%, cada uma na sua');
+  elitepay.platformCfg().feeInPercent = 0;
+  elitepay.platformCfg().feeOutPercent = 0;
+
   console.log('\n=== 12. AVISO de venda no celular do dono e do admin ===');
   const enviados = [];
   const push = require(R + 'src/push');
@@ -418,23 +435,19 @@ global.fetch = async (u, o) => {
   let d = await saas();
   ok(d.config.gateway === 'simplify', 'o adquirente ativo virou Simplify');
   ok(d.config.simplify.configured === true, 'a tela mostra como configurado');
-  ok(d.config.simplify.splitUsername === 'koonfy', 'guardou o usuário do split');
-  ok(d.config.simplify.splitPercent === 3.5, 'vírgula virou ponto no percentual: ' + d.config.simplify.splitPercent);
+  // O split para terceiros saiu: mandado no corpo, e ignorado, e o que
+  // estava gravado some. A taxa da plataforma nao passa por aqui.
+  ok(d.config.simplify.splitUsername === undefined, 'o usuario do split nao e mais guardado');
+  ok(d.config.simplify.splitPercent === undefined, 'nem o percentual');
   // O segredo nunca pode voltar para o navegador.
   const txt = JSON.stringify(d);
   ok(!txt.includes('SEG_DO_ADMIN'), 'o Client Secret NÃO volta na resposta');
   ok(!txt.includes('CID_DO_ADMIN'), 'nem o Client ID inteiro');
   ok(/^••••/.test(d.config.simplify.clientId), 'o Client ID vem mascarado: ' + d.config.simplify.clientId);
 
-  // Um percentual acima do teto da Simplify não pode ser gravado: a cobrança
-  // inteira seria recusada lá na hora do pagamento.
-  await post('/admin/config', { simplifySplitPct: '150' });
-  d = await saas();
-  ok(d.config.simplify.splitPercent === 90, `150% foi limitado a ${d.config.simplify.splitPercent}%`);
-
-  // Salvar sem mexer nas credenciais não pode apagá-las.
-  await post('/admin/config', { simplifySplitUser: 'outro' });
-  ok(elitepay.gateway().id === 'simplify' && simplify.configured(), 'salvar só o split não derruba as credenciais');
+  // Salvar sem mexer nas credenciais nao pode apaga-las.
+  await post('/admin/config', { pixAutomatic: false });
+  ok(elitepay.gateway().id === 'simplify' && simplify.configured(), 'salvar outra coisa nao derruba as credenciais');
 
   await post('/admin/config', { gateway: 'woovi' });
   ok((await saas()).config.gateway === 'woovi', 'dá para voltar para a Woovi');

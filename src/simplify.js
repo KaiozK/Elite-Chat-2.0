@@ -7,15 +7,16 @@
 //
 //   Woovi   → cada cliente tem uma SUBCONTA; o dinheiro cai direto nela e o
 //             cliente saca de lá.
-//   Simplify→ não há subconta. O depósito cai na conta da PLATAFORMA
-//             (a das credenciais) e o `split` manda uma porcentagem para
-//             OUTROS usuários da Simplify, identificados por `username`.
+//   Simplify→ não há subconta. O depósito cai inteiro na conta da PLATAFORMA
+//             (a das credenciais).
 //
-// O split não serve para repassar a venda ao cliente: o teto é 90% do total, e
-// a parte do cliente é ~97%. Então, com a Simplify, o dinheiro fica na conta da
-// plataforma e quem faz as contas é a CARTEIRA do Koonfy — que já existe: a
-// venda credita o saldo do cliente e ele saca em Pagamentos. O `split` fica
-// para quando a plataforma quiser mandar um pedaço para outra conta.
+// Quem faz as contas é a CARTEIRA do Koonfy: a venda credita ao cliente o
+// LÍQUIDO (valor menos a taxa da plataforma) e ele saca em Pagamentos. Ou
+// seja, a taxa de PIX In fica retida por construção — não passa por split.
+//
+// A Simplify tem um `split` que manda uma fatia para outro usuário dela, mas
+// ele não serve nem para repassar a venda ao cliente (o teto é 90% e a parte
+// do cliente é ~97%) nem para a taxa. Não é usado.
 //
 // LIMITAÇÃO REAL: a Simplify EXIGE nome, e-mail, CPF/CNPJ e telefone do
 // pagador para criar o depósito. A Woovi não exige. Isso significa que uma
@@ -28,7 +29,7 @@ const BASE = 'https://simplifybr.com/api/v1';
 
 function cfg() {
   const p = db.get().platform;
-  if (!p.simplify) p.simplify = { clientId: '', clientSecret: '', splitUsername: '', splitPercent: 0 };
+  if (!p.simplify) p.simplify = { clientId: '', clientSecret: '' };
   return p.simplify;
 }
 

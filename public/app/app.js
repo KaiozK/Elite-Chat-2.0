@@ -8096,7 +8096,7 @@ async function renderAdmin() {
            cartão) e das regras de cobrança. A do MÓDULO, com as subcontas e as
            cobranças dos clientes, é a adm-ep, e as duas ficaram com o mesmo
            nome quando o Elite Pay virou Pagamentos. -->
-      <button data-tab="adm-pay" onclick="showSettingsTab('adm-pay')">Gateways</button>
+      <button data-tab="adm-pay" onclick="showSettingsTab('adm-pay');admFeesPaint()">Gateways</button>
       <button data-tab="adm-wd" onclick="showSettingsTab('adm-wd')">Saques</button>
       <button data-tab="adm-ep" onclick="showSettingsTab('adm-ep');admEpPaint()">Pagamentos</button>
       <button data-tab="adm-int" onclick="showSettingsTab('adm-int');admIntLoad()">Integrações</button>
@@ -8465,18 +8465,12 @@ async function paintAdmin() {
             <label style="flex:1">Client Secret
               <input id="sp-secret" type="password" placeholder="client secret"></label>
           </div>
-          <p class="muted" style="margin:12px 0 6px;font-size:12.5px">
-            <b>Split para outro usuário da Simplify</b> (um sócio, um parceiro). <b>Isto não é a sua taxa</b>:
-            na Simplify o dinheiro cai inteiro na sua conta e a carteira credita ao cliente o líquido, então
-            o PIX In já fica com você. Configure a taxa em <b>Pagamentos, Taxas</b>. Use este campo só para
-            mandar uma fatia para fora. Vazio = não divide. A Simplify aceita de 0,01% a 90%.
-          </p>
+          <!-- O split da Simplify manda uma fatia para OUTRO usuário dela, e não
+               para a plataforma: aqui o depósito já cai inteiro na conta das
+               credenciais. Ficava logo abaixo do Client Secret e era lido como
+               "a sua taxa" — que é outra coisa, e mora no card de taxas. -->
           <div class="row">
-            <label style="flex:1.4">Usuário que recebe o split
-              <input id="sp-user" value="${esc(d.config.simplify.splitUsername || '')}" placeholder="username na Simplify"></label>
-            <label style="flex:.7">Percentual (%)
-              <input id="sp-pct" inputmode="decimal" value="${d.config.simplify.splitPercent || ''}" placeholder="0"></label>
-            <button class="btn primary no-grow" onclick="admSalvarSimplify(this)">Salvar</button>
+            <button class="btn primary no-grow" onclick="admSalvarSimplify(this)">${ico('save', 14)} Salvar credenciais</button>
           </div>
           <p class="muted" style="margin:10px 0 0;font-size:12px">
             ${ico('help', 12)} A Simplify exige <b>nome, CPF/CNPJ, e-mail e telefone do pagador</b> para gerar o Pix.
@@ -8509,6 +8503,12 @@ async function paintAdmin() {
           </div>
         </div>
         ${admCardSection(d.card || {}, null)}
+
+        <!-- TAXAS DA PLATAFORMA. Moram aqui, junto dos gateways: o que se
+             cobra depende de qual gateway está ativo, e ler as duas coisas
+             em telas diferentes era o que confundia. O conteúdo vem de
+             /admin/elitepay, que esta aba não carrega. -->
+        <div id="adm-fees-box">${skel(3)}</div>
         <div class="card">
           <h2>${ico('gear')} Regras de cobrança</h2>
           <div class="row">
@@ -8583,6 +8583,7 @@ async function paintAdmin() {
         <div id="adm-tema-box">${skel(3)}</div>
       </div>`;
     if (activeTab === 'adm-ep') admEpPaint();
+    if (activeTab === 'adm-pay') admFeesPaint();
     if (activeTab === 'adm-int') admIntLoad();
   } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 }
@@ -9341,10 +9342,7 @@ async function admTestarVenda(btn) {
 // As credenciais só sobem quando preenchidas: o campo volta vazio depois de
 // salvo (nunca devolvemos o segredo), e mandar vazio apagaria o que já está lá.
 async function admSalvarSimplify(btn) {
-  const body = {
-    simplifySplitUser: $('#sp-user').value.trim(),
-    simplifySplitPct: $('#sp-pct').value.trim() || 0
-  };
+  const body = {};
   const id = $('#sp-id').value.trim(), seg = $('#sp-secret').value.trim();
   if (id) body.simplifyClientId = id;
   if (seg) body.simplifyClientSecret = seg;
@@ -9884,19 +9882,33 @@ function admFeesSection(cfg, c, t) {
   const isPag = c.provider === 'pagarme';
   const exemplo = 10000;
   const cartaoCut = Math.floor(exemplo * (Number(c.feeCardPercent) || 0) / 100) + (c.feeCardFixed || 0);
+  // O caminho do dinheiro no Pix depende do gateway ligado, e é ele que diz
+  // se a chave Pix do split faz falta ou não faz sentido.
+  const simp = cfg.gateway === 'simplify';
+  const pixCut = Math.floor(exemplo * (Number(cfg.feeInPercent) || 0) / 100);
+  const semChave = !simp && pixCut > 0 && !cfg.splitPixKey;
 
   return `<div class="card">
     <h2>${ico('zap')} Taxas da plataforma</h2>
-    <p class="muted" style="margin:0 0 16px;font-size:13px">
+    <p class="muted" style="margin:0 0 12px;font-size:13px">
       Quanto você retém em cada meio de pagamento, <b>entradas e saídas, Pix e cartão, tudo aqui</b>.
-      A retenção é automática (split): o líquido vai ao lojista e a sua parte vem para você. Com <b>0%</b> e <b>R$ 0,00</b> a taxa fica desativada.
+      Com <b>0%</b> e <b>R$ 0,00</b> a taxa fica desativada.
     </p>
+    <div class="capi-box" style="margin:0 0 16px">
+      <div class="capi-head">${ico('activity', 14)} Como a sua parte chega até você
+        <span class="capi-tag">${simp ? 'Simplify' : 'Woovi'}</span></div>
+      <p class="muted" style="font-size:12.5px;margin:6px 0 0">${simp
+        ? 'Na Simplify <b>não há subconta</b>: o pagamento cai <b>inteiro na sua conta</b>, e a carteira do Koonfy credita ao lojista o líquido. A sua taxa já fica retida na origem, sem split e sem chave Pix — o que o lojista vê como saldo é a venda menos a taxa.'
+        : 'Na Woovi o pagamento cai na <b>subconta do lojista</b>. A sua parte só chega até você por <b>split</b>, e o split precisa da chave Pix abaixo.'}</p>
+      <p class="muted" style="font-size:12.5px;margin:8px 0 0">Venda de ${fmtBRL(exemplo)} com ${esc(String(cfg.feeInPercent || 0).replace(".", ","))}%: <b>${fmtBRL(pixCut)}</b> para você, <b>${fmtBRL(exemplo - pixCut)}</b> para o lojista.</p>
+      ${semChave ? `<p class="muted" style="font-size:12.5px;margin:8px 0 0;color:var(--amber)"><b>A taxa de Pix não está sendo cobrada:</b> sem a chave Pix o split não sai e a Woovi entrega o valor cheio ao lojista.</p>` : ''}
+    </div>
 
     <div class="fee-grid">
       <div class="fee-col">
         <div class="fee-tag in">${ico('arrow-down', 13)} Entrada · Pix</div>
         <label>Taxa PIX In (%)<input id="adm-ep-fee-in" value="${esc(String(cfg.feeInPercent))}" inputmode="decimal" placeholder="0"></label>
-        <p class="hint">Incide sobre cada venda recebida pelo lojista.</p>
+        <p class="hint">${simp ? 'Retida na origem: o depósito é seu e a carteira credita o líquido ao lojista.' : 'Sai por split da subconta do lojista para a sua chave Pix.'}</p>
       </div>
       <div class="fee-col">
         <div class="fee-tag in">${ico('card', 13)} Entrada · Cartão</div>
@@ -9909,7 +9921,7 @@ function admFeesSection(cfg, c, t) {
       <div class="fee-col">
         <div class="fee-tag out">${ico('arrow-up', 13)} Saída · Pix</div>
         <label>Taxa PIX Out (%)<input id="adm-ep-fee-out" value="${esc(String(cfg.feeOutPercent))}" inputmode="decimal" placeholder="0"></label>
-        <p class="hint">Saque de dinheiro que entrou via Pix ou comissão.</p>
+        <p class="hint">Saque de dinheiro que entrou via Pix ou comissão. ${simp ? 'O saque é pago por você, em <b>Saques</b>, já com a taxa descontada.' : 'Retida no pedido de saque.'}</p>
       </div>
       <div class="fee-col">
         <div class="fee-tag out">${ico('card', 13)} Saída · Cartão</div>
@@ -9952,7 +9964,8 @@ function admFeesSection(cfg, c, t) {
     </div>
 
     <div class="row" style="margin-top:16px;align-items:flex-end">
-      <label style="flex:1.6">Chave Pix da plataforma (recebe o split do Pix)<input id="adm-ep-splitkey" value="${esc(cfg.splitPixKey || '')}" placeholder="chave Pix que recebe a comissão"></label>
+      ${simp ? '' : `<label style="flex:1.6">Chave Pix da plataforma (recebe o split do Pix)
+        <input id="adm-ep-splitkey" value="${esc(cfg.splitPixKey || '')}" placeholder="chave Pix que recebe a comissão"></label>`}
       <label style="max-width:190px">Nome na fatura do cartão<input id="adm-card-sd" value="${esc(c.softDescriptor || '')}" maxlength="13" placeholder="KOONFY"></label>
       <label style="max-width:140px">Parcelas máx.<input id="adm-card-inst" value="${esc(String(c.maxInstallments || 1))}" inputmode="numeric"></label>
     </div>
@@ -9989,7 +10002,6 @@ function admFeesSection(cfg, c, t) {
     <p class="hint" style="margin-top:12px">
       Gateway Pix: <b>${esc(cfg.gateway)}</b> · ${cfg.configured ? 'conectado ✅' : '<b style="color:var(--amber)">AppID não configurado</b>'}.
       Adquirente do cartão: <b>${esc(isPag ? 'Pagar.me' : 'Asaas')}</b> · ${c.configured ? 'conectado ✅' : '<b style="color:var(--amber)">credenciais pendentes</b>'}.
-      As <b>credenciais e webhooks</b> ficam em <a href="javascript:showSettingsTab('adm-pay')"><b>Pagamentos</b></a>.
     </p>
   </div>`;
 }
@@ -10098,7 +10110,7 @@ function admCardSection(c, t) {
     </div>
 
     <label class="chk" style="margin-top:16px"><input type="checkbox" ${c.requireApproval ? 'checked' : ''} onchange="admCardSave({requireApproval:this.checked})"> Exigir minha aprovação manual antes do lojista vender no cartão</label>
-    <p class="hint" style="margin-top:12px">${ico('zap', 12)} A <b>taxa que você cobra sobre as vendas no cartão</b> fica junto das taxas de Pix, em <a href="javascript:showSettingsTab('adm-ep')"><b>Pagamentos → Taxas da plataforma</b></a>.</p>
+    <p class="hint" style="margin-top:12px">${ico('zap', 12)} A <b>taxa que você cobra sobre as vendas no cartão</b> fica junto das taxas de Pix, no card <b>Taxas da plataforma</b>, logo abaixo.</p>
 
     ${t ? `<div class="wh-meta" style="margin-top:16px">
       <span class="pill ${t.cardCount ? 'done' : ''}">${fmtN(t.cardCount || 0)} venda(s) no cartão</span>
@@ -10125,6 +10137,16 @@ async function admCardTest(btn) {
   try { const r = await api('/admin/elitepay/card/test'); toast(`Conexão OK, ${r.provider} (${r.ambiente})`); }
   catch (e) { toast(e.message, 'error'); }
   btn.disabled = false; btn.innerHTML = txt;
+}
+
+// O card das taxas vive na aba dos GATEWAYS, que não carrega /admin/elitepay:
+// ela é montada com /admin/config. Então o card busca os próprios dados.
+async function admFeesPaint() {
+  const box = document.getElementById('adm-fees-box'); if (!box) return;
+  try {
+    const d = await api('/admin/elitepay');
+    box.innerHTML = admFeesSection(d.config, d.card || {}, d.totals || {});
+  } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 }
 
 async function admEpPaint() {
@@ -10156,7 +10178,18 @@ async function admEpPaint() {
         <p class="hint" style="margin-top:10px">${ico('shield', 11)} <b>Subconta:</b> cria a subconta com a chave Pix do cliente (a Woovi valida a chave no Banco Central). <b>KYC/KYB:</b> abre a verificação de identidade hospedada da Woovi e libera a conta pelo webhook <code>ACCOUNT_REGISTER_APPROVED</code> (requer BaaS habilitado na sua conta Woovi).</p>
       </div>
 
-      ${admFeesSection(cfg, d.card || {}, t)}
+      <div class="card">
+        <h2>${ico('zap')} Taxas da plataforma</h2>
+        <p class="muted" style="margin:0;font-size:13px">
+          O que você retém em cada venda e em cada saque agora fica junto dos gateways, em
+          <a href="javascript:showSettingsTab('adm-pay')"><b>Gateways</b></a> — a taxa depende de qual
+          gateway está ativo, e ler as duas coisas em telas separadas confundia.
+        </p>
+        <div class="wh-meta" style="margin-top:14px">
+          <span class="pill ${t.fees ? 'done' : ''}">${fmtBRL(t.fees || 0)} em taxas de Pix</span>
+          <span class="pill ${t.cardFees ? 'done' : ''}">${fmtBRL(t.cardFees || 0)} em taxas de cartão</span>
+        </div>
+      </div>
 
       <div class="card">
         <h2>${ico('users')} Subcontas dos clientes</h2>

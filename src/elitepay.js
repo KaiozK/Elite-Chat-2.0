@@ -27,9 +27,12 @@ const DRIVERS = {
   // -------------------------------------------------------------------------
   // SIMPLIFY — https://simplifybr.gitbook.io/documentacao-simplify
   //
-  // Não tem subconta: o depósito cai na conta da PLATAFORMA e a carteira do
-  // Koonfy é quem registra quanto é de cada cliente (a venda credita o saldo,
-  // o cliente saca em Pagamentos). Por isso `createSubaccount` aqui não chama
+  // Não tem subconta: o depósito cai INTEIRO na conta da PLATAFORMA e a
+  // carteira do Koonfy é quem registra quanto é de cada cliente — a venda
+  // credita o LÍQUIDO (valor menos a taxa) e o cliente saca em Pagamentos.
+  // A taxa de PIX In, portanto, já fica retida na origem, sem split nenhum:
+  // é o contrário da Woovi, onde ela só chega à plataforma POR split.
+  // Por isso `createSubaccount` aqui não chama
   // a Simplify — ele apenas confirma o cadastro local, e a conta do cliente
   // nasce ativa em vez de ficar esperando aprovação que não existe.
   // -------------------------------------------------------------------------
@@ -48,7 +51,6 @@ const DRIVERS = {
     },
 
     async createCharge({ correlationID, value, comment, customer, expiresIn, splits }) {
-      const c = simplify.cfg();
       // Os dados do pagador são obrigatórios: sem eles, `dadosDoPagador` levanta
       // um erro que já diz o que falta e onde resolver.
       const payer = simplify.dadosDoPagador({
@@ -80,14 +82,11 @@ const DRIVERS = {
       // plataforma perderia o que acabou de cobrar, e o cliente continuaria
       // recebendo o líquido. Prejuízo dos dois lados.
       //
-      // O `split` fica para o que ele é de fato na Simplify: mandar uma fatia
-      // para OUTRO usuário da Simplify (um sócio, um parceiro), configurado à
-      // mão em Admin → Gateways. Nunca para a própria taxa.
+      // O `split` da Simplify manda uma fatia para OUTRO usuário dela. Não é o
+      // que a plataforma cobra, e não há mais onde configurá-lo: um campo que
+      // parecia ser "a sua taxa", logo abaixo do Client Secret, custava caro
+      // para quem o preenchesse achando isso.
       // -------------------------------------------------------------------
-      const pct = Number(c.splitPercent) || 0;
-      if (c.splitUsername && pct >= 0.01) {
-        body.split = [{ username: c.splitUsername, percentage: Math.min(90, pct) }];
-      }
 
       const d = await simplify.call('POST', '/pix/deposit', body);
       const codigo = d.qrcode || d.qrCode || d.pix || '';
@@ -2168,7 +2167,7 @@ module.exports = {
   cardConfig, cardPublic, payWithCard, payWithBoleto, refreshCardStatus, installmentOptions,
   cardAccount, cardAccountView, cardCapability, cardReady, registerCardAccount, syncCardAccount,
   creditCardSale, creditPixSale, reverterVenda,
-  releaseFor, releaseReceivables, spendWallet, computeWithdrawFee, debitWithdraw,
+  releaseFor, releaseReceivables, spendWallet, computeSplit, computeWithdrawFee, debitWithdraw,
   cardWebhookHandler, cardWebhookToken,
   DRIVERS
 };
