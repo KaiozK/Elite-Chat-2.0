@@ -23,7 +23,11 @@ body{margin:0;background:var(--tela);color:var(--texto);font:400 16px/1.5 var(--
      font-feature-settings:"kern" on,"liga" on;-webkit-font-smoothing:antialiased}
 a{color:inherit}
 .topo{padding:24px;display:flex;align-items:center;gap:12px}
-.marca-nome{display:block;width:104px;height:26px;background:currentColor;
+/* A palavra DESCE 11,5% da própria altura para ficar na linha do ícone: o rabo
+   do y ocupa 22,5% da imagem, e centrar a CAIXA deixa o corpo das letras ACIMA
+   do centro do ícone. Em porcentagem, a correção vale em qualquer
+   tamanho, porque translateY(%) se mede pela altura do elemento. */
+.marca-nome{display:block;width:104px;height:26px;background:currentColor;transform:translateY(11.5%);
   -webkit-mask:url(/assets/koonfy-marca.webp) left center/contain no-repeat;
   mask:url(/assets/koonfy-marca.webp) left center/contain no-repeat}
 .wrap{max-width:960px;margin:0 auto;padding:8px 24px 80px}
@@ -87,7 +91,7 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
 .processa i{width:20px;height:20px;border-radius:6px;flex:none;
             background:url(/assets/koonfy-192.png) center/contain no-repeat}
 /* A palavra entra como máscara, e assim assume a cor do rodapé. */
-.processa b{display:block;width:66px;height:17px;background:currentColor;
+.processa b{display:block;width:66px;height:17px;background:currentColor;transform:translateY(11.5%);
             -webkit-mask:url(/assets/koonfy-marca.webp) center/contain no-repeat;
             mask:url(/assets/koonfy-marca.webp) center/contain no-repeat}
 .oculto{display:none}

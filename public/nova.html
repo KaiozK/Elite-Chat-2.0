@@ -185,7 +185,11 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
    da faixa em que está — branca no escuro, carbono no claro — e continua
    nítida em qualquer tamanho. */
 .marca{display:flex;align-items:center;gap:10px}
-.marca-nome{display:block;width:104px;height:26px;background:currentColor;
+/* A palavra DESCE 11,5% da própria altura para ficar na linha do ícone: o rabo
+   do y ocupa 22,5% da imagem, e centrar a CAIXA deixa o corpo das letras ACIMA
+   do centro do ícone. Em porcentagem, a correção vale em qualquer
+   tamanho, porque translateY(%) se mede pela altura do elemento. */
+.marca-nome{display:block;width:104px;height:26px;background:currentColor;transform:translateY(11.5%);
             -webkit-mask:url(/assets/koonfy-marca.webp) center/contain no-repeat;
             mask:url(/assets/koonfy-marca.webp) center/contain no-repeat}
 
@@ -623,6 +627,16 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 .not{position:absolute;left:0;width:100%;overflow:hidden;opacity:0;
      animation:cair 12s cubic-bezier(.22,1,.36,1) infinite both;animation-delay:calc(var(--i) * 1.5s)}
 .not img{position:absolute;left:0;width:100%;max-width:none}
+/* A LOGO DA NOTIFICAÇÃO É AO VIVO. Ela era pintada dentro da tira, e trocar
+   a marca no Admin não mudava nada aqui — só refazendo a arte no Figma.
+   Agora vem de /marca/logo, a mesma que o painel e o checkout usam, e o
+   lugar de cada uma foi MEDIDO na tira: x 28 de 715 e as linhas 70, 238,
+   414 e 604, num arquivo exibido com 0,7943 da largura do aparelho. */
+.not-ic{position:absolute;left:calc(var(--kf-w) * 0.03111);
+        width:calc(var(--kf-w) * 0.08554);
+        height:calc(var(--kf-w) * 0.08554);
+        border-radius:calc(var(--kf-w) * 0.019);
+        background:url(/marca/logo) center/contain no-repeat}
 @keyframes cair{
   0%{opacity:0;transform:translate3d(0,-40px,0) scale(.94)}
   4%{opacity:1;transform:none}
@@ -792,10 +806,10 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
     <div class="fone">
       <img src="/assets/figma-celular.webp" alt="Notificações da Koonfy na tela de bloqueio do celular">
       <div class="vidro"><div class="nots">
-        <div class="not" style="--i:0;top:calc(var(--kf-w) * .0322);height:calc(var(--kf-w) * .1822)"><img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -.0322)"></div>
-        <div class="not" style="--i:1;top:calc(var(--kf-w) * .2144);height:calc(var(--kf-w) * .1867)"><img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -.2144)"></div>
-        <div class="not" style="--i:2;top:calc(var(--kf-w) * .4011);height:calc(var(--kf-w) * .2044)"><img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -.4011)"></div>
-        <div class="not" style="--i:3;top:calc(var(--kf-w) * .6055);height:calc(var(--kf-w) * .2188)"><img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -.6055)"></div>
+        <div class="not" style="--i:0;top:calc(var(--kf-w) * .0322);height:calc(var(--kf-w) * .1822)"><img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -.0322)"><i class="not-ic" style="top:calc(var(--kf-w) * 0.04556)"></i></div>
+        <div class="not" style="--i:1;top:calc(var(--kf-w) * .2144);height:calc(var(--kf-w) * .1867)"><img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -.2144)"><i class="not-ic" style="top:calc(var(--kf-w) * 0.05000)"></i></div>
+        <div class="not" style="--i:2;top:calc(var(--kf-w) * .4011);height:calc(var(--kf-w) * .2044)"><img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -.4011)"><i class="not-ic" style="top:calc(var(--kf-w) * 0.05882)"></i></div>
+        <div class="not" style="--i:3;top:calc(var(--kf-w) * .6055);height:calc(var(--kf-w) * .2188)"><img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -.6055)"><i class="not-ic" style="top:calc(var(--kf-w) * 0.06549)"></i></div>
       </div></div>
     </div>
 

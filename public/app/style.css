@@ -170,7 +170,12 @@ h3, h4 { font-weight: 500; letter-spacing: -.01em; }
 /* A MARCA ESCRITA é uma imagem-máscara: a palavra assume a cor do lugar
    onde está (clara na barra escura, escura no login claro) e some a
    necessidade de pintar o "fy" à parte. */
+/* A palavra DESCE 11,5% da própria altura para ficar na linha do ícone: o rabo
+   do y ocupa 22,5% da imagem, e centrar a CAIXA deixa o corpo das letras ACIMA
+   do centro do ícone. Em porcentagem, a correção vale em qualquer
+   tamanho, porque translateY(%) se mede pela altura do elemento. */
 .brand-name { display: block; width: 104px; height: 26px; background: currentColor;
+  transform: translateY(11.5%);
   -webkit-mask: url(/assets/koonfy-marca.webp) left center/contain no-repeat;
   mask: url(/assets/koonfy-marca.webp) left center/contain no-repeat; }
 /* O "fy" usa o MESMO verde do Loader (#2ED378 = --verde-esc) e da logo. Já
