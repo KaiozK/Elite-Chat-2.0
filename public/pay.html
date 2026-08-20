@@ -268,6 +268,24 @@
   .fade-in { animation: fi .3s ease; }
   @keyframes fi { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
 
+  /* ---------- quem processa ---------- */
+  /* A marca escrita entra como MÁSCARA: assume a cor do rodapé, então o mesmo
+     arquivo serve o claro e o escuro sem uma segunda versão para manter. */
+  .processa {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line);
+    font-size: 12px; color: var(--mut);
+  }
+  .processa i {
+    width: 20px; height: 20px; border-radius: 6px; flex: none;
+    background: url(/assets/koonfy-192.png) center/contain no-repeat;
+  }
+  .processa b {
+    display: block; width: 66px; height: 17px; background: currentColor;
+    -webkit-mask: url(/assets/koonfy-marca.webp) center/contain no-repeat;
+    mask: url(/assets/koonfy-marca.webp) center/contain no-repeat;
+  }
+
   @media (prefers-reduced-motion: reduce) { .btn { animation: none; background-position: 0 50% } }
 
   @media (max-width: 860px) {
@@ -489,7 +507,14 @@
       '</div>' +
       (ctaHtml ? '<div class="sum-cta">' + ctaHtml + '</div>' : '') +
     '</div>' + badges(ck) +
-    (ck.supportText ? '<div class="sum-note">' + esc(ck.supportText) + '</div>' : '') + '</aside>';
+    (ck.supportText ? '<div class="sum-note">' + esc(ck.supportText) + '</div>' : '') +
+    // Quem chega numa pagina de pagamento de uma loja que nao conhece procura,
+    // no rodape, quem esta por tras da cobranca. E o gesto que decide entre
+    // digitar o cartao e fechar a aba.
+    '<div class="processa"><i aria-hidden="true"></i>' +
+      '<span>Pagamento processado por</span>' +
+      '<b role="img" aria-label="Koonfy"></b></div>' +
+    '</aside>';
   }
 
   function stepsBar(cur) {

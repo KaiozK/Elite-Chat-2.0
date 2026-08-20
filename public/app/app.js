@@ -8468,30 +8468,6 @@ async function paintAdmin() {
 
       <div class="tabpane ${activeTab === 'adm-pay' ? 'show' : ''}" data-pane="adm-pay">
         <div class="card">
-          <h2>${ico('image')} Logo do Koonfy</h2>
-          <p class="muted" style="margin:0 0 12px;font-size:13px">
-            Aparece no painel, na landing, no checkout, nas páginas de Termos e Privacidade, na aba do navegador e no
-            splash. Trocar aqui muda tudo de uma vez. Aceita <b>PNG, WEBP, SVG, JPG e ICO</b>, até 2 MB.
-            de preferência quadrada e com <b>fundo transparente</b>.
-          </p>
-          <div class="marca-linha">
-            <span class="marca-prev" id="mk-prev"><img src="/marca/logo" alt=""></span>
-            <div style="flex:1;min-width:0">
-              <div id="mk-info" class="muted" style="font-size:12.5px">Carregando…</div>
-              <div class="row" style="margin-top:10px">
-                <button class="btn no-grow" onclick="$('#mk-file').click()">${ico('upload', 14)} Escolher arquivo</button>
-                <button class="btn no-grow danger" id="mk-limpar" onclick="admMarcaRemover()" style="display:none">${ico('trash', 13)} Voltar ao padrão</button>
-              </div>
-            </div>
-          </div>
-          <input type="file" id="mk-file" class="hidden" accept="image/png,image/webp,image/svg+xml,image/jpeg,image/x-icon,image/gif,image/avif" onchange="admMarcaEnviar(this)">
-          <p class="muted" style="margin:12px 0 0;font-size:12px">
-            ${ico('help', 12)} O ícone do aplicativo instalado (PWA e lojas) continua vindo dos arquivos em
-            <code>public/assets</code>: as lojas exigem tamanhos exatos declarados no pacote.
-          </p>
-        </div>
-
-        <div class="card">
           <h2>${ico('zap')} Testar notificação de venda</h2>
           <p class="muted" style="margin:0 0 12px;font-size:13px">
             Dispara a notificação de <b>venda aprovada</b> nos aparelhos inscritos nesta conta, com o som de caixa
@@ -9590,6 +9566,48 @@ function admTemaPaint() {
   const funil = ADM_TEMA.tema.funil.length ? ADM_TEMA.tema.funil : ADM_TEMA.padrao.funil;
   box.innerHTML = `
     <div class="card">
+      <h2>${ico('image')} Logo do Koonfy</h2>
+      <p class="muted" style="margin:0 0 12px;font-size:13px">
+        Aparece no painel, na landing, no checkout, nas páginas de Termos e Privacidade, na aba do navegador e no
+        splash. Trocar aqui muda tudo de uma vez. Aceita <b>PNG, WEBP, SVG, JPG e ICO</b>, até 2 MB.
+        de preferência quadrada e com <b>fundo transparente</b>.
+      </p>
+      <div class="marca-linha">
+        <span class="marca-prev" id="mk-prev"><img src="/marca/logo" alt=""></span>
+        <div style="flex:1;min-width:0">
+          <div id="mk-info" class="muted" style="font-size:12.5px">Carregando…</div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn no-grow" onclick="$('#mk-file').click()">${ico('upload', 14)} Escolher arquivo</button>
+            <button class="btn no-grow danger" id="mk-limpar" onclick="admMarcaRemover()" style="display:none">${ico('trash', 13)} Voltar ao padrão</button>
+          </div>
+        </div>
+      </div>
+      <input type="file" id="mk-file" class="hidden" accept="image/png,image/webp,image/svg+xml,image/jpeg,image/x-icon,image/gif,image/avif" onchange="admMarcaEnviar(this)">
+      <p class="muted" style="margin:12px 0 0;font-size:12px">
+        ${ico('help', 12)} O ícone do aplicativo instalado (PWA e lojas) continua vindo dos arquivos em
+        <code>public/assets</code>: as lojas exigem tamanhos exatos declarados no pacote.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>${ico('braces')} Nome e descrição</h2>
+      <p class="muted" style="margin:0 0 14px;font-size:13px">
+        O que aparece na <b>aba do navegador</b>, no atalho salvo no celular e quando alguém compartilha o link.
+        Em branco, vale o padrão do sistema.
+      </p>
+      <div class="row">
+        <label style="flex:1.2">Nome
+          <input id="tm-nome" maxlength="60" placeholder="Koonfy" value="${esc(ADM_TEMA.marca && ADM_TEMA.marca.nome || '')}"></label>
+        <label style="flex:2">Descrição ao lado do nome
+          <input id="tm-descr" maxlength="120" placeholder="CRM de WhatsApp com IA" value="${esc(ADM_TEMA.marca && ADM_TEMA.marca.descricao || '')}"></label>
+      </div>
+      <p class="hint" style="margin-top:10px">${ico('help', 12)} Na aba sai <b>Nome</b> e, se houver descrição, <b>Nome | descrição</b>.</p>
+      <div class="row" style="margin-top:14px;justify-content:flex-end">
+        <button class="btn primary no-grow" onclick="admMarcaNomeSalvar(this)">${ico('check', 14)} Salvar nome</button>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>${ico('sparkles')} Cores da marca</h2>
       <p class="muted" style="margin:0 0 16px;font-size:13px">
         Valem para o painel de todos os clientes, na hora. A página pública tem sistema de cores próprio e não muda por aqui.
@@ -9767,6 +9785,19 @@ async function admBrilhoSalvar(btn) {
     await api('/admin/tema', { method: 'PUT', body: { brilho: corpo } });
     ADM_TEMA.tema.brilho = corpo;
     toast('Botão salvo! Já vale na página pública.');
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; }
+}
+
+// O nome e a descrição da aba do navegador. Ficavam só no bloco de SEO, que
+// ninguém associa a "trocar o nome do produto".
+async function admMarcaNomeSalvar(btn) {
+  btn.disabled = true;
+  try {
+    const corpo = { nome: $('#tm-nome').value.trim(), descricao: $('#tm-descr').value.trim() };
+    await api('/admin/brand/nome', { method: 'PUT', body: corpo });
+    ADM_TEMA.marca = Object.assign({}, ADM_TEMA.marca, corpo);
+    toast('Nome salvo! Recarregue para ver na aba do navegador.');
   } catch (e) { toast(e.message, 'error'); }
   finally { btn.disabled = false; }
 }

@@ -2,7 +2,7 @@
  * Cache do app shell + offline + Push Notifications + clique abre a conversa.
  * Escopo: /app/  (registrado por notifications.js)
  */
-const VERSION = 'koonfy-v7';   // v7: ícone maskable próprio + /marca/logo na rede
+const VERSION = 'koonfy-v8';   // v8: /tema.css na rede. Do cache, as cores do Admin se desfaziam no F5
 const SHELL = 'ec-shell-' + VERSION;
 const RUNTIME = 'ec-runtime-' + VERSION;
 
@@ -127,12 +127,13 @@ self.addEventListener('fetch', (e) => {
 
   // Código do app (app.js/css/notifications): rede primeiro p/ receber updates,
   // cache como fallback offline.
-  // `/marca/logo` entra aqui porque a marca PODE mudar pelo painel do admin.
-  // Na regra genérica lá embaixo ela era servida do cache para sempre: quem
-  // instalasse o app ficaria com a logo antiga, sem jeito de atualizar. O
-  // `voz.js` estava na mesma situação — código do app servido de cache eterno.
+  // `/marca/logo` e `/tema.css` entram aqui porque MUDAM pelo painel do
+  // admin. Na regra genérica lá embaixo eram servidos do cache primeiro, e o
+  // efeito era o mesmo nos dois: o admin salvava a logo (ou a cor), dava F5 e
+  // recebia a versão antiga, como se o salvar não tivesse funcionado. O
+  // `voz.js` estava na mesma situação: código do app servido de cache eterno.
   if (/\/app\/(app\.js|style\.css|notifications\.js|voz\.js)$/.test(url.pathname) ||
-      url.pathname === '/marca/logo') {
+      url.pathname === '/marca/logo' || url.pathname === '/tema.css') {
     e.respondWith(
       fetch(req).then(r => { const cp = r.clone(); caches.open(SHELL).then(c => c.put(req, cp)); return r; })
         .catch(() => caches.match(req))

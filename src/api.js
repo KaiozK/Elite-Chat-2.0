@@ -4148,6 +4148,19 @@ module.exports = function (broadcast, clients) {
     res.json({ ok: true, url: '/marca/logo?v=' + p.marca.updatedAt, bytes });
   });
 
+  // NOME E DESCRIÇÃO da marca: o que sai na aba do navegador e no atalho
+  // salvo no celular. Vazio devolve o padrão do sistema, que é como se
+  // desfaz um nome ruim sem ter de lembrar o original.
+  router.put('/admin/brand/nome', auth, adminOnly, (req, res) => {
+    const p = db.get().platform;
+    if (!p.marca) p.marca = { logo: '', mime: '', nome: '', bytes: 0, updatedAt: 0 };
+    const b = req.body || {};
+    if (b.nome !== undefined) p.marca.nome = String(b.nome).trim().slice(0, 60);
+    if (b.descricao !== undefined) p.marca.descricao = String(b.descricao).trim().slice(0, 120);
+    db.save();
+    res.json({ ok: true, marca: { nome: p.marca.nome, descricao: p.marca.descricao || '' } });
+  });
+
   router.delete('/admin/brand', auth, adminOnly, (req, res) => {
     db.get().platform.marca = { logo: '', mime: '', nome: '', bytes: 0, updatedAt: 0 };
     db.save();
@@ -4181,6 +4194,8 @@ module.exports = function (broadcast, clients) {
         },
         funil: Array.isArray(t.funil) ? t.funil : []
       },
+      // A marca escrita: o mesmo painel que muda as cores muda o nome.
+      marca: { nome: (db.get().platform.marca || {}).nome || '', descricao: (db.get().platform.marca || {}).descricao || '' },
       // O padrão vive no CSS; o painel mostra estes valores como referência do
       // que aparece quando o campo fica vazio.
       padrao: {

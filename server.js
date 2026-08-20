@@ -467,7 +467,13 @@ function landingHtml() {
 function seoEsc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function buildSeoHead(seo, origin) {
   seo = seo || {};
-  const title = seo.title || 'Koonfy, CRM de WhatsApp com IA';
+  // O título da aba nasce do NOME e da DESCRIÇÃO em Personalização. O campo
+  // do bloco de SEO continua valendo e vence, para quem já escreveu um título
+  // pensado para o buscador não perdê-lo.
+  const mk = db.get().platform.marca || {};
+  const nomeMarca = (mk.nome || '').trim() || 'Koonfy';
+  const descrMarca = (mk.descricao || '').trim();
+  const title = seo.title || (descrMarca ? `${nomeMarca} | ${descrMarca}` : nomeMarca);
   const desc = seo.description || 'Automatize o atendimento no WhatsApp, gerencie leads no CRM e dispare campanhas em massa com o Koonfy.';
   const ogTitle = seo.ogTitle || title;
   const ogDesc = seo.ogDescription || desc;

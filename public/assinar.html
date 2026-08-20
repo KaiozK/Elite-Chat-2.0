@@ -80,6 +80,16 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
 .garantias li::before{content:"";position:absolute;left:5px;top:4px;width:5px;height:9px;
                       border:solid var(--sinal);border-width:0 1.8px 1.8px 0;transform:rotate(45deg)}
 .garantias b{color:var(--texto);font-weight:500}
+/* ---------- quem processa ---------- */
+.processa{display:flex;align-items:center;justify-content:center;gap:8px;
+          margin-top:32px;padding-top:20px;border-top:1px solid var(--fio);
+          font-size:12px;color:var(--mudo)}
+.processa i{width:20px;height:20px;border-radius:6px;flex:none;
+            background:url(/assets/koonfy-192.png) center/contain no-repeat}
+/* A palavra entra como máscara, e assim assume a cor do rodapé. */
+.processa b{display:block;width:66px;height:17px;background:currentColor;
+            -webkit-mask:url(/assets/koonfy-marca.webp) center/contain no-repeat;
+            mask:url(/assets/koonfy-marca.webp) center/contain no-repeat}
 .oculto{display:none}
 @media (max-width:820px){
   .grade{grid-template-columns:1fr} h1{font-size:34px} .dupla{grid-template-columns:1fr}
@@ -178,6 +188,14 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
       <li><b>Você no controle.</b> Cancela pelo painel quando quiser, sem ligação.</li>
     </ul>
     </div>
+  </div>
+
+  <!-- Quem chega numa página de pagamento de uma loja que não conhece procura,
+       no rodapé, quem está por trás da cobrança. -->
+  <div class="processa">
+    <i aria-hidden="true"></i>
+    <span>Pagamento processado por</span>
+    <b role="img" aria-label="Koonfy"></b>
   </div>
 </div>
 
