@@ -792,6 +792,19 @@ setInterval(() => {
 }, 60 * 60 * 1000);
 setTimeout(() => { try { elitepayMod.releaseReceivables(broadcast); } catch {} }, 20000);
 
+// Carrinho abandonado da Nuvemshop. Não há webhook para ele: o carrinho vive
+// na API da loja e sai de lá quando vira pedido, então o abandono é o que
+// continua ali depois do tempo que o lojista configurou. Varre a cada 5
+// minutos, que é o menor intervalo configurável — mais rápido só gastaria
+// chamada na loja do cliente.
+const nuvemMod = require('./src/nuvemshop');
+setInterval(async () => {
+  try {
+    const n = await nuvemMod.varrerTodas(app.get('flowDeliver'), broadcast);
+    if (n) console.log(`[nuvemshop] ${n} carrinho(s) abandonado(s) viraram automação`);
+  } catch (e) { console.error('[nuvemshop] erro na varredura de carrinhos:', e.message); }
+}, 5 * 60 * 1000);
+
 // Renovação automática das assinaturas pagas no CARTÃO (tick diário).
 // O Pix recorrente é renovado pela própria Woovi; o cartão é por nossa conta.
 require('./src/saasbilling').startRenewalJob(broadcast);

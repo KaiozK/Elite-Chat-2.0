@@ -1818,6 +1818,7 @@ const views = {
   'campaigns/report': renderCampaignReport, 'campaigns/mapa': renderMapaLeads,
   'elitepay/checkout': renderCheckoutBuilder,
   checkouts: renderCheckoutList,
+  nuvemshop: renderNuvemshop,
   // ---- painel da plataforma (/adm/) ----
   'adm/visao': renderAdmVisao,
   'adm/contatos': renderAdmContatos,
@@ -1858,7 +1859,9 @@ const VIEW_MODULE = {
 };
 // O plano do cliente inclui este módulo? (null = sem restrição de plano)
 // checkouts pertence ao Pagamentos; integrations cobre webhooks/Nuvemshop.
-const VIEW_FEATURE = { checkouts: 'elitepay', webhooks: 'integrations' };
+// A loja faz parte do módulo de Integrações: o plano que libera um libera a
+// outra, e não faz sentido ter a tela da loja sem poder conectá-la.
+const VIEW_FEATURE = { checkouts: 'elitepay', webhooks: 'integrations', nuvemshop: 'integrations' };
 // ---------------------------------------------------------------------------
 // ASSINATURA OBRIGATÓRIA
 //
@@ -2516,6 +2519,228 @@ async function admSuperDesligar(id) {
     toast('Agora é uma conta comum');
     renderAdmSupers();
   } catch (e) { toast(e.message, 'error'); }
+}
+
+// ===========================================================================
+// LOJA NUVEMSHOP
+//
+// Pedidos, carrinhos abandonados e a base de clientes da loja, lidos da API
+// na hora. Nada é copiado para o banco: pedido muda de status o tempo todo,
+// e uma cópia velha dizendo "pago" sobre um pedido cancelado é pior do que
+// não mostrar nada.
+// ===========================================================================
+let NS_TAB = 'pedidos';
+
+async function renderNuvemshop() {
+  $('#view').innerHTML = `<div class="page">
+    <div class="page-head"><h1>Nuvemshop</h1>
+      <p class="muted">Pedidos, carrinhos e a base da sua loja.</p></div>
+    <div id="ns-topo">${skel(2)}</div>
+    <div class="tabs">
+      <button class="${NS_TAB === 'pedidos' ? 'active' : ''}" onclick="nsAba('pedidos')">Pedidos</button>
+      <button class="${NS_TAB === 'carrinhos' ? 'active' : ''}" onclick="nsAba('carrinhos')">Carrinhos abandonados</button>
+      <button class="${NS_TAB === 'clientes' ? 'active' : ''}" onclick="nsAba('clientes')">Clientes</button>
+    </div>
+    <div id="ns-box">${skel(4)}</div>
+  </div>`;
+  nsTopo();
+  nsCarregar();
+}
+
+function nsAba(t) {
+  NS_TAB = t;
+  $$('#view .tabs button').forEach((b, i) => b.classList.toggle('active', ['pedidos', 'carrinhos', 'clientes'][i] === t));
+  nsCarregar();
+}
+
+async function nsTopo() {
+  const box = document.getElementById('ns-topo'); if (!box) return;
+  try {
+    const d = await api('/nuvemshop/summary');
+    if (!d.conectada) {
+      box.innerHTML = `<div class="card"><h2>${ico('cart')} Loja não conectada</h2>
+        <p class="muted" style="margin:0 0 12px;font-size:13px">Conecte a sua Nuvemshop para ver pedidos, recuperar carrinhos e falar com a sua base pelo WhatsApp.</p>
+        <a class="btn primary no-grow" href="#/integrations">Conectar minha loja</a></div>`;
+      return;
+    }
+    box.innerHTML = `<div class="metric-hero">
+      ${admCartao('cart', fmtN(d.pedidos30d), 'Pedidos em 30 dias', true)}
+      ${admCartao('check-circle', fmtN(d.pagos30d), 'Pagos em 30 dias')}
+      ${admCartao('pix', d.receita30d, 'Receita em 30 dias')}
+      ${admCartao('clock', fmtN(d.carrinhosAbertos), 'Carrinhos em aberto')}
+      ${admCartao('users', fmtN(d.contatosDaLoja), 'Contatos vindos da loja')}
+    </div>`;
+  } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+}
+
+function nsCarregar() {
+  if (NS_TAB === 'pedidos') return nsPedidos();
+  if (NS_TAB === 'carrinhos') return nsCarrinhos();
+  return nsClientes();
+}
+
+// Cada status ganha a cor que ele merece: pago é bom, cancelado é ruim, o
+// resto é neutro. Sem isso a tabela é uma parede de texto cinza.
+const NS_PILL = {
+  paid: ['pago', 'done'], pending: ['pendente', 'pending'], abandoned: ['abandonado', ''],
+  authorized: ['autorizado', 'done'], refunded: ['estornado', ''], voided: ['estornado', ''],
+  open: ['aberto', 'pending'], closed: ['fechado', 'done'], cancelled: ['cancelado', ''],
+  unpacked: ['a embalar', 'pending'], unfulfilled: ['a enviar', 'pending'],
+  fulfilled: ['enviado', 'done'], shipped: ['enviado', 'done']
+};
+function nsPill(v) {
+  const m = NS_PILL[String(v || '').toLowerCase()];
+  if (!m) return v ? `<span class="pill">${esc(v)}</span>` : '<span class="muted">-</span>';
+  return `<span class="pill ${m[1]}">${m[0]}</span>`;
+}
+
+async function nsPedidos() {
+  const box = document.getElementById('ns-box'); if (!box) return;
+  box.innerHTML = skel(4);
+  try {
+    const d = await api('/nuvemshop/orders?limit=30');
+    box.innerHTML = `<div class="card">
+      <h2>${ico('cart')} Últimos pedidos</h2>
+      ${d.itens.length ? `<div class="tab-mob-wrap" style="overflow-x:auto"><table class="tab-mob"><thead><tr>
+        <th>Pedido</th><th>Pagamento</th><th>Envio</th><th style="text-align:right">Total</th><th>Quando</th><th></th>
+      </tr></thead><tbody>
+      ${d.itens.map(o => `<tr>
+        <td><b>#${esc(String(o.numero))} · ${esc(o.cliente || 'sem nome')}</b>
+          <div class="muted" style="font-size:11.5px">${esc(o.itens.map(i => i.qtd + 'x ' + i.nome).join(', ').slice(0, 70))}</div></td>
+        <td data-r="Pagamento">${nsPill(o.pagamento)}</td>
+        <td data-r="Envio">${nsPill(o.envio)}</td>
+        <td data-r="Total" style="text-align:right"><b>${esc(o.total)}</b></td>
+        <td data-r="Quando">${timeAgo(Date.parse(o.criadoEm))}</td>
+        <td style="text-align:right">${o.telefone ? `<button class="btn small" onclick="nsFalar('${esc(o.telefone)}')">${ico('message', 13)} Falar</button>` : ''}</td>
+      </tr>`).join('')}
+      </tbody></table></div>` : '<p class="muted">Nenhum pedido ainda.</p>'}
+    </div>`;
+  } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+}
+
+// Abre a conversa com quem comprou. Se o contato ainda não existe no Koonfy,
+// a inbox cria na hora — é o mesmo caminho de quem chega por qualquer canal.
+function nsFalar(telefone) {
+  const wa = String(telefone).replace(/\D/g, '');
+  if (!wa) return toast('Este pedido não tem telefone', 'error');
+  location.hash = '#/inbox';
+  setTimeout(() => openChat(wa), 300);
+}
+
+async function nsCarrinhos() {
+  const box = document.getElementById('ns-box'); if (!box) return;
+  box.innerHTML = skel(4);
+  try {
+    const d = await api('/nuvemshop/carts');
+    const c = d.carrinho || { ligado: false, minutos: 60 };
+    box.innerHTML = `<div class="card">
+      <h2>${ico('refresh')} Recuperação automática</h2>
+      <p class="muted" style="margin:0 0 12px;font-size:13px">
+        A Nuvemshop não avisa quando alguém abandona o carrinho, então o Koonfy consulta a loja de 5 em 5 minutos.
+        Um carrinho parado há mais tempo que o escolhido aciona a automação com o gatilho
+        <b>Loja Nuvemshop → Carrinho abandonado</b>. Cada carrinho é avisado <b>uma vez só</b>.
+      </p>
+      <div class="row" style="align-items:flex-end">
+        <label class="chk" style="flex:1.4"><input type="checkbox" ${c.ligado ? 'checked' : ''} onchange="nsCarrinhoSalvar({ligado:this.checked})">
+          <span><b>Recuperar carrinhos</b><em>Precisa de uma automação com esse gatilho, senão não há o que enviar.</em></span></label>
+        <label style="max-width:200px">Esperar (minutos)
+          <input id="ns-min" inputmode="numeric" value="${esc(String(c.minutos || 60))}"></label>
+        <button class="btn no-grow" onclick="nsCarrinhoSalvar({minutos: ($('#ns-min')||{}).value})">${ico('save', 14)} Salvar</button>
+        <button class="btn no-grow" onclick="nsVarrer(this)">${ico('refresh', 14)} Varrer agora</button>
+      </div>
+      <p class="hint" style="margin-top:10px">${d.ultimaVarredura ? 'Última varredura ' + timeAgo(d.ultimaVarredura) + '.' : 'Ainda não varreu.'}</p>
+    </div>
+
+    <div class="card">
+      <h2>${ico('clock')} Carrinhos em aberto</h2>
+      ${d.itens.length ? `<div class="tab-mob-wrap" style="overflow-x:auto"><table class="tab-mob"><thead><tr>
+        <th>Cliente</th><th style="text-align:right">Total</th><th>Parado há</th><th>Aviso</th><th></th>
+      </tr></thead><tbody>
+      ${d.itens.map(x => `<tr>
+        <td><b>${esc(x.cliente || 'sem nome')}</b>
+          <div class="muted" style="font-size:11.5px">${esc(x.telefone || 'sem telefone')} · ${esc(x.itens.map(i => i.qtd + 'x ' + i.nome).join(', ').slice(0, 60))}</div></td>
+        <td data-r="Total" style="text-align:right"><b>${esc(x.total)}</b></td>
+        <td data-r="Parado há">${timeAgo(Date.parse(x.atualizadoEm || x.criadoEm))}</td>
+        <td data-r="Aviso">${x.avisado ? '<span class="pill done">enviado</span>' : '<span class="muted">não enviado</span>'}</td>
+        <td style="text-align:right">${x.telefone ? `<button class="btn small" onclick="nsFalar('${esc(x.telefone)}')">${ico('message', 13)} Falar</button>` : ''}</td>
+      </tr>`).join('')}
+      </tbody></table></div>` : '<p class="muted">Nenhum carrinho em aberto. Eles aparecem aqui enquanto o cliente não termina a compra.</p>'}
+    </div>`;
+  } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+}
+
+async function nsCarrinhoSalvar(corpo) {
+  try {
+    await api('/nuvemshop/carrinho', { method: 'PUT', body: corpo });
+    toast('Salvo');
+    if (corpo.minutos === undefined) nsCarrinhos();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function nsVarrer(btn) {
+  const txt = btn.innerHTML; btn.disabled = true;
+  try {
+    const r = await api('/nuvemshop/carrinho/varrer', { body: {} });
+    // Três respostas diferentes, porque são três situações diferentes: não há
+    // automação, não há carrinho no ponto, ou saiu mensagem.
+    toast(r.motivo === 'sem_automacao'
+      ? 'Crie uma automação com o gatilho Loja Nuvemshop, Carrinho abandonado — sem ela não há o que enviar'
+      : r.avisados ? `${r.avisados} carrinho(s) entraram na automação` : 'Nenhum carrinho no ponto ainda',
+      r.motivo === 'sem_automacao' ? 'error' : 'ok');
+    nsCarrinhos();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; btn.innerHTML = txt; }
+}
+
+async function nsClientes() {
+  const box = document.getElementById('ns-box'); if (!box) return;
+  box.innerHTML = skel(4);
+  try {
+    const d = await api('/nuvemshop/customers?limit=50');
+    const fora = d.itens.filter(x => x.waId && !x.noKoonfy).length;
+    box.innerHTML = `<div class="card">
+      <h2>${ico('users')} Trazer a base para o Koonfy</h2>
+      <p class="muted" style="margin:0 0 12px;font-size:13px">
+        Cria um contato para cada cliente da loja que tenha telefone, marcado como <b>vindo da Nuvemshop</b>.
+        É o que permite disparar campanha só para eles, em <b>Campanhas → Público</b>.
+        Quem já existe é atualizado, não duplicado.
+      </p>
+      <div class="row">
+        <button class="btn primary no-grow" onclick="nsImportar(this)">${ico('download-circle', 14)} Importar clientes da loja</button>
+      </div>
+      ${fora ? `<p class="hint" style="margin-top:10px">${fora} cliente(s) desta página ainda não estão no Koonfy.</p>` : ''}
+    </div>
+
+    <div class="card">
+      <h2>${ico('cart')} Clientes da loja</h2>
+      ${d.itens.length ? `<div class="tab-mob-wrap" style="overflow-x:auto"><table class="tab-mob"><thead><tr>
+        <th>Cliente</th><th style="text-align:right">Pedidos</th><th style="text-align:right">Gasto</th><th>No Koonfy</th>
+      </tr></thead><tbody>
+      ${d.itens.map(x => `<tr>
+        <td><b>${esc(x.nome || 'sem nome')}</b><div class="muted" style="font-size:11.5px">${esc(x.telefone || 'sem telefone')}${x.email ? ' · ' + esc(x.email) : ''}</div></td>
+        <td data-r="Pedidos" style="text-align:right">${fmtN(x.pedidos)}</td>
+        <td data-r="Gasto" style="text-align:right">${esc(x.gasto)}</td>
+        <td data-r="No Koonfy">${x.noKoonfy ? '<span class="pill done">sim</span>' : (x.waId ? '<span class="muted">não</span>' : '<span class="pill">sem telefone</span>')}</td>
+      </tr>`).join('')}
+      </tbody></table></div>` : '<p class="muted">Nenhum cliente cadastrado na loja ainda.</p>'}
+    </div>`;
+  } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+}
+
+async function nsImportar(btn) {
+  if (!await confirmModal({
+    title: 'Importar a base da loja?',
+    text: 'Cada cliente com telefone vira um contato no Koonfy, marcado como vindo da Nuvemshop. Quem já existe é atualizado, não duplicado.',
+    ok: 'Importar'
+  })) return;
+  const txt = btn.innerHTML; btn.disabled = true; btn.textContent = 'Importando…';
+  try {
+    const r = await api('/nuvemshop/import', { body: {} });
+    toast(`${r.criados} novo(s), ${r.atualizados} atualizado(s)` +
+      (r.semTelefone ? ` · ${r.semTelefone} sem telefone ficaram de fora` : ''));
+    nsClientes(); nsTopo();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; btn.innerHTML = txt; }
 }
 
 // ---------- dashboard ----------
@@ -6542,7 +6767,15 @@ async function renderCampaignNew() {
         </div>
         <div class="card">
           <div class="row" style="align-items:flex-end;gap:12px">
-            <label style="flex:1">Público${ecSelect('cp-aud', [{ value: 'all', label: 'Todos os contatos' }, { value: 'stage', label: 'Etapas do funil' }, { value: 'tag', label: 'Tags' }], 'all', 'campAudChanged()')}</label>
+            <label style="flex:1">Público${ecSelect('cp-aud', [
+              { value: 'all', label: 'Todos os contatos' },
+              { value: 'stage', label: 'Etapas do funil' },
+              { value: 'tag', label: 'Tags' },
+              // A origem se mantém sozinha: cada evento da loja marca o
+              // contato, inclusive quem já existia antes de comprar.
+              { value: 'nuvemshop', label: 'Base da Nuvemshop' },
+              { value: 'nuvemshop_comprou', label: 'Compradores da Nuvemshop' }
+            ], 'all', 'campAudChanged()')}</label>
             <span class="reach-pill" id="cp-reach"></span>
           </div>
           <div id="cp-aud-extra" style="margin-top:11px"></div>
@@ -6668,6 +6901,19 @@ function campAudChanged() {
       ? `<span class="fb-sub">Marque uma ou mais tags</span>
         <div class="aud-chips">${tags.map(([t, n]) => `<button type="button" class="aud-chip" data-v="${esc(t)}" onclick="campAudToggle(this)">${esc(t)} <b>${n}</b></button>`).join('')}</div>`
       : '<p class="muted" style="font-size:12.5px;margin:0">Nenhuma tag ainda, adicione tags aos contatos na aba <a href="#/contacts">Contatos</a>.</p>';
+  } else if (v === 'nuvemshop' || v === 'nuvemshop_comprou') {
+    // Não há o que marcar: o filtro é a própria origem. O que cabe aqui é
+    // dizer QUEM é esse público, senão "Base da Nuvemshop" é um nome sem
+    // conteúdo e ninguém dispara com segurança.
+    const daLoja = contacts.filter(c => (c.ns && c.ns.storeId) || (c.source && c.source.type === 'nuvemshop'));
+    const compradores = contacts.filter(c => c.ns && (c.ns.pedidos || 0) > 0);
+    const alvo = v === 'nuvemshop' ? daLoja : compradores;
+    const quem = v === 'nuvemshop'
+      ? 'Contatos vindos da sua loja: por pedido, por cadastro ou pela importação da base.'
+      : 'Contatos com pelo menos uma compra aprovada na loja.';
+    box.innerHTML = alvo.length
+      ? `<p class="muted" style="font-size:12.5px;margin:0">${quem} <b>${fmtN(alvo.length)}</b> contato(s).</p>`
+      : `<p class="muted" style="font-size:12.5px;margin:0">Nenhum contato da loja ainda. Conecte a loja e importe a base em <a href="#/nuvemshop">Nuvemshop, Clientes</a>.</p>`;
   } else box.innerHTML = '';
   campReach();
 }
@@ -6688,6 +6934,9 @@ function campReach() {
   let n = contacts.length;
   if (v === 'stage') n = sel.length ? contacts.filter(c => sel.includes(c.stage)).length : 0;
   if (v === 'tag') n = sel.length ? contacts.filter(c => (c.tags || []).some(t => sel.includes(t))).length : 0;
+  // Mesma conta que o servidor faz, para o número na tela não mentir.
+  if (v === 'nuvemshop') n = contacts.filter(c => (c.ns && c.ns.storeId) || (c.source && c.source.type === 'nuvemshop')).length;
+  if (v === 'nuvemshop_comprou') n = contacts.filter(c => c.ns && (c.ns.pedidos || 0) > 0).length;
   el.innerHTML = `${ico('users', 13)} Alcance: <b>${fmtN(n)}</b> contato(s)`;
   el.classList.toggle('empty', n === 0);
 }
@@ -6696,10 +6945,14 @@ async function createCampaign() {
   const t = window._campTpls[+ecSelVal('cp-tpl')];
   const audType = ecSelVal('cp-aud');
   const values = [...(window._campSel || [])];
-  if (audType !== 'all' && !values.length) {
+  // Os públicos de ORIGEM não têm o que marcar: o filtro é a própria origem.
+  const porOrigem = audType === 'nuvemshop' || audType === 'nuvemshop_comprou';
+  if (audType !== 'all' && !porOrigem && !values.length) {
     return toast(audType === 'stage' ? 'Marque pelo menos uma etapa do funil' : 'Marque pelo menos uma tag', 'error');
   }
-  const audience = audType === 'all' ? { type: 'all' } : { type: audType, values };
+  const audience = audType === 'all' ? { type: 'all' }
+    : porOrigem ? { type: 'origem', values: [audType] }
+    : { type: audType, values };
   try {
     const r = await api('/campaigns', {
       body: {
@@ -12587,8 +12840,42 @@ const TRIGGERS = {
   link: { icon: 'link', label: 'Link do WhatsApp', color: 'violet', desc: 'Gera um link wa.me com uma frase pronta que aciona o fluxo' },
   webhook: { icon: 'webhook', label: 'Webhook', color: 'blue', desc: 'Dispara via chamada HTTP externa a uma URL exclusiva' },
   button: { icon: 'mousepointer', label: 'Botão clicado', color: 'pink', desc: 'Dispara quando o cliente toca num botão interativo' },
-  list: { icon: 'list', label: 'Item selecionado', color: 'blue', desc: 'Dispara quando o cliente escolhe um item de uma lista' }
+  list: { icon: 'list', label: 'Item selecionado', color: 'blue', desc: 'Dispara quando o cliente escolhe um item de uma lista' },
+  nuvemshop: { icon: 'cart', label: 'Loja Nuvemshop', color: 'blue', desc: 'Dispara num evento da loja: compra aprovada, pedido enviado, carrinho abandonado' }
 };
+
+// OS EVENTOS DA LOJA e o que cada um entrega para a mensagem.
+//
+// A lista de variáveis não é decoração: sem saber que `{{pedido_rastreio}}`
+// existe, ninguém escreve o aviso de envio. Elas aparecem no inspetor do
+// gatilho, prontas para copiar.
+const NS_EVENTOS = [
+  { v: 'order/paid', l: 'Compra aprovada', d: 'O pagamento foi confirmado' },
+  { v: 'order/fulfilled', l: 'Pedido enviado', d: 'Saiu para entrega, com rastreio quando houver' },
+  { v: 'cart/abandoned', l: 'Carrinho abandonado', d: 'Chegou no checkout e não terminou' },
+  { v: 'order/created', l: 'Pedido criado', d: 'Fechou o pedido, ainda sem pagar' },
+  { v: 'order/pending', l: 'Pagamento pendente', d: 'Boleto ou Pix gerado e não pago' },
+  { v: 'order/packed', l: 'Pedido embalado', d: 'A loja separou e embalou' },
+  { v: 'order/cancelled', l: 'Pedido cancelado', d: 'A loja ou o cliente cancelou' },
+  { v: 'order/voided', l: 'Pedido estornado', d: 'O valor foi devolvido' },
+  { v: 'order/updated', l: 'Pedido alterado', d: 'Qualquer mudança no pedido' },
+  { v: 'customer/created', l: 'Cliente novo', d: 'Alguém se cadastrou na loja' }
+];
+// As variáveis mudam conforme o evento: carrinho não tem número de pedido,
+// pedido não tem link de carrinho.
+const NS_VARS_PEDIDO = ['primeiro_nome', 'nome', 'telefone', 'email', 'loja',
+  'pedido_numero', 'pedido_total', 'pedido_itens', 'pedido_qtd', 'pedido_status',
+  'pedido_pagamento', 'pedido_envio', 'pedido_frete', 'pedido_cupom', 'pedido_link',
+  'pedido_rastreio', 'pedido_rastreio_url', 'pedido_transportadora', 'pedido_entrega_previsao'];
+const NS_VARS_CARRINHO = ['primeiro_nome', 'nome', 'telefone', 'email', 'loja',
+  'carrinho_link', 'carrinho_total', 'carrinho_itens', 'carrinho_qtd'];
+const NS_VARS_CLIENTE = ['primeiro_nome', 'nome', 'telefone', 'email', 'loja',
+  'cliente_total_gasto', 'cliente_pedidos'];
+function nsVarsDoEvento(ev) {
+  if (ev === 'cart/abandoned') return NS_VARS_CARRINHO;
+  if (String(ev).startsWith('customer/')) return NS_VARS_CLIENTE;
+  return NS_VARS_PEDIDO;
+}
 
 // Tipos de nó de ação (canvas) — cada um com ícone, rótulo, subtítulo e cor
 const NODE_TYPES = {
@@ -12612,7 +12899,7 @@ const NODE_TYPES = {
   end: { icon: 'square', label: 'Fim', sub: 'Encerrar', color: 'gray', cat: 'logic' }
 };
 const FB_PALETTE = {
-  triggers: { label: 'Gatilhos', items: ['keyword', 'webhook', 'link', 'button', 'list'] },
+  triggers: { label: 'Gatilhos', items: ['keyword', 'nuvemshop', 'webhook', 'link', 'button', 'list'] },
   // "Enviar texto" cobre botões e lista (opcionais). Os nós antigos `buttons` e
   // `list` continuam funcionando em automações já criadas, mas saíram da paleta.
   messages: { label: 'Mensagens', items: ['text', 'media', 'template', 'payment', 'ai', 'sms'] },
@@ -13272,6 +13559,19 @@ function triggerInspector() {
       ${hooks.length ? '' : `<p class="muted" style="font-size:12px;margin-top:6px">Crie um webhook na aba <a href="#/integrations">Integrações</a> e mapeie os campos primeiro.</p>`}
       ${wh ? `<div class="fb-linkbox" style="margin-top:8px"><code>${esc(wh.url)}</code><button class="btn small" onclick="copyText('${esc(wh.url)}')">${ico('copy', 13)}</button></div>` : ''}
       ${varsHtml}`;
+  } else if (tr.type === 'nuvemshop') {
+    const opts = NS_EVENTOS.map(e => ({ value: e.v, label: e.l }));
+    const ev = tr.nsEvent || opts[0].value;
+    const meta = NS_EVENTOS.find(e => e.v === ev);
+    const vars = nsVarsDoEvento(ev);
+    cfg = `<label>Evento da loja${ecSelect('fb-trig-ns', opts, ev, "fbSetTrig('nsEvent',val)")}</label>
+      ${meta ? `<p class="muted" style="font-size:12px;margin:6px 0 0">${esc(meta.d)}.</p>` : ''}
+      ${ev === 'cart/abandoned' ? `<p class="muted" style="font-size:12px;margin:8px 0 0">
+        O tempo de espera antes de considerar o carrinho abandonado fica em
+        <a href="#/nuvemshop">Nuvemshop → Carrinhos</a>.</p>` : ''}
+      <div class="fb-vars"><span class="fb-sub">Variáveis deste evento</span>
+        <div class="fb-var-chips">${vars.map(v => `<code onclick="copyText('{{${v}}}')" title="Copiar">{{${v}}}</code>`).join('')}</div>
+        <p class="muted" style="font-size:11px;margin:6px 0 0">Use em textos, botões e templates. Valor já vem formatado.</p></div>`;
   } else if (tr.type === 'button' || tr.type === 'list') {
     cfg = `<label>Filtrar por texto (opcional)<input value="${esc(tr.keyword || '')}" oninput="fbSetTrig('keyword',this.value)" placeholder="deixe vazio p/ qualquer ${tr.type === 'button' ? 'botão' : 'item'}"></label>`;
   }
@@ -13505,7 +13805,13 @@ function fbSetTrig(k, v) {
 }
 function fbChangeTrigger(type) {
   const cur = flowDraft.trigger;
-  flowDraft.trigger = { type, keyword: cur.keyword || '', match: cur.match || 'contains', phrase: cur.phrase || '', hookToken: cur.hookToken, webhookId: cur.webhookId || '' };
+  flowDraft.trigger = {
+    type, keyword: cur.keyword || '', match: cur.match || 'contains',
+    phrase: cur.phrase || '', hookToken: cur.hookToken, webhookId: cur.webhookId || '',
+    // O evento da loja sobrevive à troca de tipo: quem experimenta outro
+    // gatilho e volta não perde a escolha.
+    nsEvent: cur.nsEvent || 'order/paid'
+  };
   renderNodes(); renderInspector(); scheduleSave();
 }
 

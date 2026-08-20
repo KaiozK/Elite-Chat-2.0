@@ -20,12 +20,33 @@ const API_VERSION = '2025-03';
 const UA = 'Koonfy CRM (suporte@koonfy.com.br)'; // a Nuvemshop exige User-Agent
 
 // Eventos que assinamos na loja do cliente.
+//
+// A lista é a que a Nuvemshop publica para pedidos e clientes. Assinamos
+// todos: o custo de um webhook a mais é zero, e é a automação que escolhe
+// qual evento a interessa. Assinar só alguns significaria voltar aqui e
+// reconectar a loja toda vez que alguém quisesse um aviso novo.
 const EVENTS = [
-  { event: 'order/created', label: 'Pedido criado' },
-  { event: 'order/paid', label: 'Pedido pago' },
-  { event: 'order/cancelled', label: 'Pedido cancelado' },
-  { event: 'customer/created', label: 'Cliente novo' }
+  { event: 'order/created', label: 'Pedido criado', desc: 'Assim que o pedido é fechado, antes do pagamento' },
+  { event: 'order/paid', label: 'Compra aprovada', desc: 'O pagamento foi confirmado' },
+  { event: 'order/packed', label: 'Pedido embalado', desc: 'A loja separou e embalou' },
+  { event: 'order/fulfilled', label: 'Pedido enviado', desc: 'Saiu para entrega, com código de rastreio quando houver' },
+  { event: 'order/cancelled', label: 'Pedido cancelado', desc: 'A loja ou o cliente cancelou' },
+  { event: 'order/pending', label: 'Pagamento pendente', desc: 'Boleto ou Pix gerado e ainda não pago' },
+  { event: 'order/voided', label: 'Pedido estornado', desc: 'O valor foi devolvido ao cliente' },
+  { event: 'order/updated', label: 'Pedido alterado', desc: 'Qualquer mudança no pedido' },
+  { event: 'customer/created', label: 'Cliente novo', desc: 'Alguém se cadastrou na loja' }
 ];
+
+// CARRINHO ABANDONADO não é webhook: a Nuvemshop não publica evento para ele.
+// O carrinho vive em `GET /checkouts` e sai de lá quando vira pedido, então
+// quem quer saber precisa perguntar de tempos em tempos. Ele entra na lista de
+// gatilhos das automações, mas nunca na de webhooks assinados na loja.
+const EVENTO_CARRINHO = 'cart/abandoned';
+const GATILHOS = EVENTS.concat([{
+  event: EVENTO_CARRINHO,
+  label: 'Carrinho abandonado',
+  desc: 'O cliente encheu o carrinho, chegou no checkout e não terminou'
+}]);
 
 // Estado da LOJA conectada (por conta). As credenciais do app são da plataforma.
 function empty() {
@@ -35,7 +56,15 @@ function empty() {
     hooks: [],          // [{ id, event }] registrados na loja
     events: 0, lastEventAt: 0, lastEvent: '',
     tags: [],           // tags aplicadas ao contato criado
-    autoContact: true   // criar/atualizar contato a cada evento
+    autoContact: true,  // criar/atualizar contato a cada evento
+    // RECUPERAÇÃO DE CARRINHO. `minutos` é quanto se espera antes de
+    // considerar o carrinho abandonado: mandar mensagem no minuto seguinte
+    // alcança quem só foi buscar o cartão na carteira.
+    carrinho: { ligado: false, minutos: 60 },
+    // Carrinhos já avisados, para não mandar duas vezes o mesmo. Guarda id e
+    // quando: a lista é podada, senão cresce para sempre.
+    carrinhosVistos: [],
+    ultimaVarredura: 0
   };
 }
 
@@ -69,9 +98,10 @@ function publicCfg(acc, origin) {
     scope: c.scope, connectedAt: c.connectedAt,
     hooks: c.hooks, events: c.events, lastEventAt: c.lastEventAt, lastEvent: c.lastEvent,
     tags: c.tags, autoContact: c.autoContact,
+    carrinho: c.carrinho, ultimaVarredura: c.ultimaVarredura,
     authorizeUrl: p.appId ? `${AUTH_BASE}/${encodeURIComponent(p.appId)}/authorize` : '',
     webhookUrl: origin ? `${origin}/nuvemshop-webhook` : '',
-    availableEvents: EVENTS
+    availableEvents: EVENTS, gatilhos: GATILHOS
   };
 }
 
@@ -215,18 +245,65 @@ function findAccountByStore(storeId) {
   return (data.accounts || []).find(a => a.nuvemshop && String(a.nuvemshop.storeId) === String(storeId)) || null;
 }
 
-// Monta as variáveis do pedido disponíveis nas automações/campanhas.
+// Dinheiro em texto de gente: 1234.5 vira "R$ 1.234,50". O que sai daqui vai
+// direto para uma mensagem de WhatsApp, e "1234.5" ali parece defeito.
+function moeda(v, cur) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return String(v || '');
+  const simbolo = (cur || 'BRL').toUpperCase() === 'BRL' ? 'R$ ' : '';
+  return simbolo + n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Primeiro nome: "Maria Aparecida da Silva" numa saudação soa formulário.
+function primeiroNome(nome) { return String(nome || '').trim().split(/\s+/)[0] || ''; }
+
+// AS VARIÁVEIS DO PEDIDO, do jeito que a mensagem precisa.
+//
+// Cada uma existe porque alguma mensagem a pede: o rastreio é o "cadê meu
+// pedido", o link é o "paga aqui", o primeiro nome é a saudação. Tudo já
+// formatado — a automação não tem onde fazer conta nem trocar ponto por
+// vírgula.
 function orderVars(order) {
   const itens = (order.products || []).map(p => `${p.quantity}x ${p.name}`).join(', ');
+  const env = (order.shipping_tracking_number || order.shipping_tracking_url) ? order : {};
   return {
     pedido_numero: String(order.number || order.id || ''),
-    pedido_total: String(order.total || ''),
+    pedido_total: moeda(order.total, order.currency),
+    pedido_subtotal: moeda(order.subtotal, order.currency),
+    pedido_frete: moeda(order.shipping_cost_customer, order.currency),
     pedido_moeda: String(order.currency || 'BRL'),
     pedido_status: String(order.status || ''),
     pedido_pagamento: String(order.payment_status || ''),
+    pedido_envio: String(order.shipping_status || ''),
     pedido_itens: itens.slice(0, 400),
+    pedido_qtd: String((order.products || []).reduce((a, x) => a + (Number(x.quantity) || 0), 0)),
+    pedido_cupom: String(((order.coupon || [])[0] || {}).code || ''),
     pedido_link: String(order.checkout_enabled === false ? '' : (order.landing_url || '')),
+    // O que o cliente pergunta quando some: onde está e por onde acompanhar.
+    pedido_rastreio: String(env.shipping_tracking_number || ''),
+    pedido_rastreio_url: String(env.shipping_tracking_url || ''),
+    pedido_transportadora: String(order.shipping_option || ''),
+    pedido_entrega_previsao: String(order.shipping_min_days && order.shipping_max_days
+      ? `${order.shipping_min_days} a ${order.shipping_max_days} dias úteis` : ''),
     loja_pedido_url: String(order.admin_url || '')
+  };
+}
+
+// AS VARIÁVEIS DO CARRINHO ABANDONADO.
+//
+// `carrinho_link` é a razão de existir da recuperação: é o endereço que
+// devolve a pessoa ao checkout com tudo dentro. Sem ele, a mensagem manda o
+// cliente começar de novo, e ele não começa.
+function cartVars(cart) {
+  const itens = (cart.products || []).map(p => `${p.quantity}x ${p.name}`).join(', ');
+  return {
+    carrinho_id: String(cart.id || ''),
+    carrinho_total: moeda(cart.total, cart.currency),
+    carrinho_moeda: String(cart.currency || 'BRL'),
+    carrinho_itens: itens.slice(0, 400),
+    carrinho_qtd: String((cart.products || []).reduce((a, x) => a + (Number(x.quantity) || 0), 0)),
+    carrinho_link: String(cart.abandoned_checkout_url || ''),
+    carrinho_criado: String(cart.created_at || '')
   };
 }
 
@@ -268,11 +345,138 @@ async function handleEvent(acc, event, resourceId, broadcast) {
       for (const t of c.tags) if (!contact.tags.includes(t)) contact.tags.push(t);
     }
     contact.lastMessageAt = contact.lastMessageAt || Date.now();
+    // MARCA DA LOJA no contato. `source` só é gravado na criação, então um
+    // contato que já existia (veio pelo WhatsApp antes de comprar) ficava sem
+    // nenhum sinal de que também é cliente da loja — e some do disparo
+    // segmentado, que é justamente onde ele mais importa.
+    contact.ns = Object.assign({}, contact.ns, {
+      storeId: String(c.storeId), loja: c.storeName || '', visto: Date.now()
+    });
+    if (event === 'order/paid') {
+      contact.ns.pedidos = (contact.ns.pedidos || 0) + 1;
+      contact.ns.ultimoPedido = Date.now();
+    }
   }
   db.save();
   store.logEvent({ type: 'nuvemshop_event', accountId: acc.id, event, matched: !!contact, phone: waId || null });
   if (broadcast) broadcast('nuvemshop', { accountId: acc.id, event });
   return { contact, nome, telefone: waId, email, vars };
+}
+
+// ---------------------------------------------------------------------------
+// QUAIS AUTOMAÇÕES RODAM NESTE EVENTO
+//
+// Antes, qualquer evento da loja acionava TODA automação ligada a ela: quem
+// quisesse avisar do envio mandava a mesma mensagem no pedido criado, no pago
+// e no cancelado. Aqui o evento é comparado com o gatilho escolhido.
+//
+// O formato ANTIGO (gatilho `webhook` com `source: nuvemshop`, sem evento)
+// continua valendo e recebe tudo: são automações que alguém montou antes de
+// existir escolha, e desligá-las por causa da mudança seria quebrar o que
+// está no ar.
+// ---------------------------------------------------------------------------
+function fluxosDoEvento(acc, evento) {
+  return (acc.flows || []).filter(f => {
+    if (!f.enabled || !f.trigger) return false;
+    if (f.trigger.type === 'nuvemshop') return f.trigger.nsEvent === evento;
+    return f.trigger.type === 'webhook' && f.trigger.source === 'nuvemshop';
+  });
+}
+
+async function dispararFluxos(acc, evento, dados, deliver) {
+  const flows = require('./flows');
+  const alvo = fluxosDoEvento(acc, evento);
+  if (!alvo.length || !dados.telefone) return 0;
+  let n = 0;
+  for (const flow of alvo) {
+    await flows.runFlow(acc, flow, {
+      to: dados.telefone, contactName: dados.nome || '', text: '',
+      vars: Object.assign({}, dados.vars, {
+        nome: dados.nome, primeiro_nome: primeiroNome(dados.nome),
+        email: dados.email, telefone: dados.telefone,
+        loja: cfg(acc).storeName || ''
+      })
+    }, deliver).then(() => { n++; }).catch(() => {});
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------------------
+// CARRINHO ABANDONADO — por varredura, porque não há webhook
+//
+// A Nuvemshop não publica evento de carrinho abandonado. O carrinho existe em
+// `GET /checkouts` e SAI de lá quando vira pedido, então "abandonado" é o que
+// continua na lista depois de um tempo. A conta é essa: passou dos minutos
+// configurados e ainda está lá.
+//
+// Cada carrinho é avisado UMA vez. A lista de vistos guarda id e data, e é
+// podada em 500 — sem poda ela cresceria para sempre dentro da conta.
+// ---------------------------------------------------------------------------
+const VISTOS_MAX = 500;
+
+async function varrerCarrinhos(acc, deliver, broadcast) {
+  const c = cfg(acc);
+  if (!c.accessToken || !c.carrinho || !c.carrinho.ligado) return { avisados: 0 };
+  // SEM AUTOMAÇÃO NÃO SE VARRE. Varrer marcaria os carrinhos como avisados
+  // sem ter enviado nada, e eles nunca mais entrariam — o lojista montaria o
+  // fluxo no dia seguinte e acharia que a recuperação não funciona.
+  if (!fluxosDoEvento(acc, EVENTO_CARRINHO).length) {
+    return { avisados: 0, motivo: 'sem_automacao' };
+  }
+  const minutos = Math.max(5, Number(c.carrinho.minutos) || 60);
+  const limite = Date.now() - minutos * 60000;
+  // Carrinho velho demais não é recuperação, é incômodo: quem abandonou há
+  // três dias já comprou em outro lugar ou desistiu.
+  const chao = Date.now() - 3 * 86400000;
+
+  let lista = [];
+  try { lista = await apiFetch(acc, '/checkouts?per_page=50') || []; }
+  catch (e) { store.logEvent({ type: 'nuvemshop_erro_carrinho', accountId: acc.id, error: e.message }); return { avisados: 0, erro: e.message }; }
+
+  c.ultimaVarredura = Date.now();
+  c.carrinhosVistos = c.carrinhosVistos || [];
+  const jaVistos = new Set(c.carrinhosVistos.map(v => String(v.id)));
+  let avisados = 0;
+
+  for (const cart of lista) {
+    const id = String(cart.id || '');
+    if (!id || jaVistos.has(id)) continue;
+    const quando = Date.parse(cart.updated_at || cart.created_at || 0) || 0;
+    if (!quando || quando > limite || quando < chao) continue;
+    // Sem telefone não há para quem mandar. O carrinho fica sem marca: se a
+    // pessoa voltar e preencher o telefone, ele entra na próxima varredura.
+    const tel = cart.contact_phone ? store.normalizeWaId(cart.contact_phone) : '';
+    if (!tel) continue;
+
+    const rodou = await dispararFluxos(acc, EVENTO_CARRINHO, {
+      telefone: tel, nome: cart.contact_name || '', email: cart.contact_email || '',
+      vars: cartVars(cart)
+    }, deliver);
+    // Só marca o que de fato virou mensagem. Um fluxo que falhou no meio
+    // volta a ser tentado na próxima varredura, que é o certo: o carrinho
+    // continua lá e o cliente continua sem o recado.
+    if (rodou) { c.carrinhosVistos.push({ id, ts: Date.now() }); avisados++; }
+  }
+
+  if (c.carrinhosVistos.length > VISTOS_MAX) {
+    c.carrinhosVistos = c.carrinhosVistos.slice(-VISTOS_MAX);
+  }
+  db.save();
+  if (avisados && broadcast) broadcast('nuvemshop', { accountId: acc.id, event: EVENTO_CARRINHO });
+  return { avisados, carrinhos: lista.length };
+}
+
+// Roda a varredura em TODAS as contas com a recuperação ligada. Chamado pelo
+// relógio do servidor.
+async function varrerTodas(deliver, broadcast) {
+  const contas = (db.get().accounts || []).filter(a => a.nuvemshop && a.nuvemshop.accessToken
+    && a.nuvemshop.carrinho && a.nuvemshop.carrinho.ligado);
+  let total = 0;
+  for (const acc of contas) {
+    try { const r = await varrerCarrinhos(acc, deliver, broadcast); total += r.avisados || 0; }
+    catch (e) { /* uma loja com problema não pode parar as outras */ }
+  }
+  return total;
 }
 
 // Handler do POST /nuvemshop-webhook — precisa do req.rawBody para o HMAC.
@@ -291,17 +495,10 @@ function webhookHandler(broadcast) {
     // Responde rápido: a Nuvemshop espera 200 em poucos segundos.
     res.json({ ok: true });
     try {
-      const r = await handleEvent(acc, String(body.event || ''), body.id, broadcast);
-      // dispara as automações com gatilho de webhook ligadas à Nuvemshop
-      const flows = require('./flows');
-      const linked = (acc.flows || []).filter(f => f.enabled && f.trigger && f.trigger.type === 'webhook' && f.trigger.source === 'nuvemshop');
-      for (const flow of linked) {
-        if (!r.telefone) continue;
-        await flows.runFlow(acc, flow, {
-          to: r.telefone, contactName: r.nome || '', text: '',
-          vars: { ...r.vars, nome: r.nome, email: r.email, telefone: r.telefone }
-        }, req.app.get('flowDeliver')).catch(() => {});
-      }
+      const evento = String(body.event || '');
+      const r = await handleEvent(acc, evento, body.id, broadcast);
+      // Só as automações que escolheram ESTE evento.
+      await dispararFluxos(acc, evento, r, req.app.get('flowDeliver'));
     } catch (e) {
       store.logEvent({ type: 'nuvemshop_error', accountId: acc.id, error: e.message });
     }
@@ -309,7 +506,9 @@ function webhookHandler(broadcast) {
 }
 
 module.exports = {
-  EVENTS, empty, cfg, platformCfg, isAvailable, publicCfg, adminCfg,
+  EVENTS, GATILHOS, EVENTO_CARRINHO, empty, cfg, platformCfg, isAvailable, publicCfg, adminCfg,
   exchangeCode, apiFetch, fetchStore, registerWebhooks, disconnect,
-  handleEvent, webhookHandler, validSignature
+  handleEvent, webhookHandler, validSignature,
+  orderVars, cartVars, moeda, primeiroNome,
+  fluxosDoEvento, dispararFluxos, varrerCarrinhos, varrerTodas
 };

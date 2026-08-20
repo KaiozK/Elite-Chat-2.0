@@ -3405,6 +3405,17 @@ module.exports = function (broadcast, clients) {
     if (!values.length) return list.map(c => c.waId);
     if (aud.type === 'stage') list = list.filter(c => values.includes(c.stage));
     if (aud.type === 'tag') list = list.filter(c => (c.tags || []).some(t => values.includes(t)));
+    // ORIGEM: disparo só para quem veio de uma integração. Hoje a Nuvemshop.
+    // O contato ganha a marca `ns` a cada evento da loja — inclusive quem já
+    // existia antes de comprar, que é justamente quem mais interessa.
+    if (aud.type === 'origem' && values.includes('nuvemshop')) {
+      list = list.filter(c => (c.ns && c.ns.storeId) ||
+        (c.source && c.source.type === 'nuvemshop'));
+    }
+    // COMPRADORES da loja: quem tem pelo menos um pedido pago.
+    if (aud.type === 'origem' && values.includes('nuvemshop_comprou')) {
+      list = list.filter(c => c.ns && (c.ns.pedidos || 0) > 0);
+    }
     return list.map(c => c.waId);
   }
 
@@ -3671,6 +3682,160 @@ module.exports = function (broadcast, clients) {
       }));
     res.json({ hooks });
   });
+
+  // ============ NUVEMSHOP — pedidos, carrinhos e base da loja ============
+  //
+  // Tudo lido da API da loja NA HORA. Nada é copiado para o banco: pedido
+  // muda de status o tempo todo, e uma cópia velha dizendo "pago" sobre um
+  // pedido cancelado é pior do que não mostrar nada.
+
+  // O que a tela mostra de um pedido. A API devolve muito mais, e mandar o
+  // objeto cru para o navegador leva junto endereço completo e dados de
+  // pagamento que a tela não usa.
+  function pedidoResumo(o) {
+    return {
+      id: o.id, numero: o.number, status: o.status || '',
+      pagamento: o.payment_status || '', envio: o.shipping_status || '',
+      total: nuvem.moeda(o.total, o.currency), totalBruto: Number(o.total) || 0,
+      cliente: o.contact_name || (o.customer && o.customer.name) || '',
+      telefone: o.contact_phone || (o.customer && o.customer.phone) || '',
+      email: o.contact_email || (o.customer && o.customer.email) || '',
+      itens: (o.products || []).map(x => ({ nome: x.name, qtd: x.quantity })),
+      criadoEm: o.created_at, pagoEm: o.paid_at || null,
+      rastreio: o.shipping_tracking_number || '', rastreioUrl: o.shipping_tracking_url || '',
+      link: o.admin_url || ''
+    };
+  }
+
+  router.get('/nuvemshop/orders', auth, h(async (req, res) => {
+    const q = new URLSearchParams({ per_page: String(Math.min(50, Number(req.query.limit) || 30)) });
+    if (req.query.status) q.set('status', String(req.query.status));
+    if (req.query.payment) q.set('payment_status', String(req.query.payment));
+    if (req.query.page) q.set('page', String(req.query.page));
+    const lista = await nuvem.apiFetch(req.acc, '/orders?' + q.toString());
+    res.json({ itens: (lista || []).map(pedidoResumo) });
+  }));
+
+  router.get('/nuvemshop/carts', auth, h(async (req, res) => {
+    const lista = await nuvem.apiFetch(req.acc, '/checkouts?per_page=50');
+    const c = nuvem.cfg(req.acc);
+    const avisados = new Set((c.carrinhosVistos || []).map(v => String(v.id)));
+    res.json({
+      itens: (lista || []).map(x => ({
+        id: x.id,
+        cliente: x.contact_name || '', telefone: x.contact_phone || '', email: x.contact_email || '',
+        total: nuvem.moeda(x.total, x.currency),
+        itens: (x.products || []).map(y => ({ nome: y.name, qtd: y.quantity })),
+        criadoEm: x.created_at, atualizadoEm: x.updated_at,
+        link: x.abandoned_checkout_url || '',
+        avisado: avisados.has(String(x.id))
+      })),
+      carrinho: c.carrinho, ultimaVarredura: c.ultimaVarredura
+    });
+  }));
+
+  // A BASE DA LOJA. Serve para o lojista ver quem tem, e para saber quantos
+  // desses já estão no Koonfy com WhatsApp — que é quem pode receber disparo.
+  router.get('/nuvemshop/customers', auth, h(async (req, res) => {
+    const q = new URLSearchParams({ per_page: String(Math.min(50, Number(req.query.limit) || 30)) });
+    if (req.query.page) q.set('page', String(req.query.page));
+    if (req.query.q) q.set('q', String(req.query.q));
+    const lista = await nuvem.apiFetch(req.acc, '/customers?' + q.toString());
+    const contatos = new Map((req.acc.contacts || []).map(c => [c.waId, c]));
+    res.json({
+      itens: (lista || []).map(x => {
+        const wa = x.phone ? store.normalizeWaId(x.phone) : '';
+        return {
+          id: x.id, nome: x.name || '', email: x.email || '', telefone: x.phone || '',
+          waId: wa, noKoonfy: !!(wa && contatos.has(wa)),
+          pedidos: x.total_orders || 0, gasto: nuvem.moeda(x.total_spent, x.currency),
+          criadoEm: x.created_at
+        };
+      })
+    });
+  }));
+
+  // IMPORTAR A BASE. Cria contato para cada cliente da loja que tenha
+  // telefone — é o que transforma "tenho 4 mil clientes na loja" em "posso
+  // falar com eles". Sem telefone não há contato possível, e o cliente é
+  // contado como pulado em vez de virar uma ficha vazia.
+  router.post('/nuvemshop/import', auth, h(async (req, res) => {
+    let pagina = 1, criados = 0, atualizados = 0, semTelefone = 0, lidos = 0;
+    const c = nuvem.cfg(req.acc);
+    // Teto de páginas: 20 x 50 = mil clientes por chamada. Uma base maior
+    // volta na próxima — melhor do que uma requisição que não termina.
+    while (pagina <= 20) {
+      const lista = await nuvem.apiFetch(req.acc, `/customers?per_page=50&page=${pagina}`);
+      if (!lista || !lista.length) break;
+      lidos += lista.length;
+      for (const cli of lista) {
+        const wa = cli.phone ? store.normalizeWaId(cli.phone) : '';
+        if (!wa) { semTelefone++; continue; }
+        const existia = (req.acc.contacts || []).some(x => x.waId === wa);
+        const contato = store.upsertContact(req.acc, wa, cli.name || undefined, {
+          email: cli.email || '',
+          source: { type: 'nuvemshop', id: c.storeId, headline: c.storeName || 'Nuvemshop', ts: Date.now() }
+        });
+        contato.ns = Object.assign({}, contato.ns, {
+          storeId: String(c.storeId), loja: c.storeName || '', visto: Date.now(),
+          pedidos: Number(cli.total_orders) || contato.ns && contato.ns.pedidos || 0
+        });
+        if (c.tags && c.tags.length) {
+          contato.tags = contato.tags || [];
+          for (const t of c.tags) if (!contato.tags.includes(t)) contato.tags.push(t);
+        }
+        if (existia) atualizados++; else criados++;
+      }
+      if (lista.length < 50) break;
+      pagina++;
+    }
+    db.save();
+    store.logEvent({ type: 'nuvemshop_import', accountId: req.acc.id, criados, atualizados });
+    res.json({ lidos, criados, atualizados, semTelefone });
+  }));
+
+  // A configuração da recuperação de carrinho.
+  router.put('/nuvemshop/carrinho', auth, (req, res) => {
+    const b = req.body || {};
+    const c = nuvem.cfg(req.acc);
+    c.carrinho = c.carrinho || { ligado: false, minutos: 60 };
+    if (b.ligado !== undefined) c.carrinho.ligado = !!b.ligado;
+    if (b.minutos !== undefined) {
+      // Menos de 5 minutos alcança quem só foi buscar o cartão na carteira;
+      // mais de um dia não é recuperação, é lembrança.
+      c.carrinho.minutos = Math.min(1440, Math.max(5, Number(b.minutos) || 60));
+    }
+    db.save();
+    res.json({ carrinho: c.carrinho });
+  });
+
+  // Varrer agora, sem esperar o relógio. É o botão de "testa isso comigo".
+  router.post('/nuvemshop/carrinho/varrer', auth, h(async (req, res) => {
+    const r = await nuvem.varrerCarrinhos(req.acc, req.app.get('flowDeliver'), broadcast);
+    res.json(r);
+  }));
+
+  // RESUMO da loja para o topo da aba.
+  router.get('/nuvemshop/summary', auth, h(async (req, res) => {
+    const c = nuvem.cfg(req.acc);
+    if (!c.accessToken) return res.json({ conectada: false });
+    const desde = new Date(Date.now() - 30 * 86400000).toISOString();
+    const [pedidos, carrinhos] = await Promise.all([
+      nuvem.apiFetch(req.acc, `/orders?per_page=200&created_at_min=${encodeURIComponent(desde)}`).catch(() => []),
+      nuvem.apiFetch(req.acc, '/checkouts?per_page=50').catch(() => [])
+    ]);
+    const pagos = (pedidos || []).filter(o => o.payment_status === 'paid');
+    const daLoja = (req.acc.contacts || []).filter(x => x.ns && x.ns.storeId).length;
+    res.json({
+      conectada: true, loja: c.storeName, storeUrl: c.storeUrl,
+      pedidos30d: (pedidos || []).length,
+      pagos30d: pagos.length,
+      receita30d: nuvem.moeda(pagos.reduce((a, o) => a + (Number(o.total) || 0), 0), 'BRL'),
+      carrinhosAbertos: (carrinhos || []).length,
+      contatosDaLoja: daLoja,
+      carrinho: c.carrinho, ultimaVarredura: c.ultimaVarredura
+    });
+  }));
 
   // ============ LOG DO WEBHOOK ============
 
