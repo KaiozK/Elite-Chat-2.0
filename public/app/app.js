@@ -14431,7 +14431,7 @@ function epkPaintForm() {
       ${cap.ready ? `
       ${linha('credit', 'Cartão de crédito', 'Parcelável, aprovação imediata', cap.credit, 'Crédito não liberado pela plataforma')}
       ${linha('boleto', 'Boleto bancário', 'Compensa em até 2 dias úteis', cap.boleto, 'Boleto não liberado pela plataforma')}` : ''}
-      <p class="hint" style="margin-top:14px">${ico('shield', 12)} O dinheiro do cartão cai direto na <b>sua</b> conta do adquirente, o Koonfy só intermedeia.</p>`;
+      <p class="hint" style="margin-top:14px">${ico('shield', 12)} O dinheiro do cartão cai direto na <b>sua</b> conta, o Koonfy só intermedeia.</p>`;
   } else if (epkSection === 'ordem') {
     body = `
       <p class="muted" style="font-size:13px;margin:0 0 12px">Arraste para reordenar os blocos da página. O bloco <b>Checkout</b> é fixo, mas pode mudar de posição.</p>
@@ -14482,7 +14482,7 @@ function epkPaintForm() {
     body = `
       <div class="epk-flowsteps">
         <div><i>1</i><span><b>Identificação</b>, o cliente preenche nome, CPF/CNPJ, e-mail e WhatsApp</span></div>
-        <div><i>2</i><span><b>Automático</b>, vira <b>cliente na Woovi</b>, <b>contato</b> no Koonfy e entra no <b>funil</b></span></div>
+        <div><i>2</i><span><b>Automático</b>, vira <b>cliente</b>, <b>contato</b> no Koonfy e entra no <b>funil</b></span></div>
         <div><i>3</i><span><b>Pagamento</b>. QR Code + copia e cola; ao pagar, o contato vai para <b>Ganho</b> com a tag <b>Cliente</b></span></div>
       </div>
       <p class="hint" style="margin-top:14px">${ico('shield', 12)} Tudo isso acontece sem você fazer nada, é só enviar o link da cobrança.</p>`;
@@ -15218,15 +15218,9 @@ function epShowCharge(ch, warn) {
           <span class="fb-sub" style="margin-top:10px">Pix copia e cola</span>
           <div class="ep-copy"><input readonly value="${esc(ch.brCode)}" onclick="this.select()">
             <button class="btn small" onclick="epCopy(this.previousElementSibling.value)">${ico('copy', 13)}</button></div>`
-        : ch.status === 'active' ? `
-          <div class="ep-sem-codigo">
-            ${ico('help', 14)}
-            <div><b>O código Pix vem depois.</b> O adquirente
-            ${esc((state.epInfo && state.epInfo.gatewayLabel) || 'atual')} só emite o Pix sabendo quem vai pagar
-            (nome, CPF/CNPJ, e-mail e telefone). <b>Mande o link acima</b>: o cliente preenche na página e o código
-            aparece para ele na hora.<br>
-            Para já sair com o código na mão, preencha o CPF e o e-mail do cliente ao gerar a cobrança.</div>
-          </div>` : ''}
+        /* Sem aviso quando o código ainda não existe: o checkout recolhe os
+           dados obrigatórios e mostra o Pix na própria página. */
+        : ''}
         ${ch.payer ? `
           <span class="fb-sub" style="margin-top:10px">Dados do pagador (checkout)</span>
           <div class="wa-status" style="margin-top:4px">
@@ -15234,7 +15228,7 @@ function epShowCharge(ch, warn) {
             <div class="wa-row"><span>CPF/CNPJ</span><b>${esc(epFmtDoc(ch.payer.taxID))}</b></div>
             <div class="wa-row"><span>E-mail</span><b>${esc(ch.payer.email)}</b></div>
             <div class="wa-row"><span>WhatsApp</span><b>+${esc(ch.payer.phone)}</b></div>
-            ${ch.payerSynced ? '<div class="wa-row"><span>Woovi</span><b>Cliente sincronizado ✅</b></div>' : ''}
+            ${ch.payerSynced ? '<div class="wa-row"><span>Cadastro</span><b>Cliente sincronizado ✅</b></div>' : ''}
           </div>` : ''}
         <p class="muted" style="font-size:12px;margin:12px 0 0">
           Criada ${timeAgo(ch.createdAt)}${ch.byName ? ' por ' + esc(ch.byName) : ''} · origem: ${esc(ch.origin)}<br>

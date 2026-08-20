@@ -4530,12 +4530,6 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 .ep-pagador-erro.show { display: block; }
 /* Aviso no lugar do "Pix copia e cola" quando o código ainda não existe: sem
    ele o espaço ficava vazio e parecia falha da cobrança. */
-.ep-sem-codigo {
-  display: flex; gap: 9px; align-items: flex-start; margin-top: 10px;
-  padding: 12px 13px; border-radius: 12px; font-size: 12.5px; line-height: 1.55;
-  background: var(--amber-bg); border: 1px solid var(--amber-border); color: var(--text2);
-}
-.ep-sem-codigo svg { flex: none; margin-top: 2px; }
 
 /* ---------- Admin → Personalização (cores da marca) ---------- */
 .tema-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px; }
