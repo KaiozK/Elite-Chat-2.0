@@ -6,8 +6,11 @@
 <title>Koonfy | CRM de WhatsApp Profissional</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/koonfy-32.png">
-<link rel="icon" type="image/png" sizes="192x192" href="/assets/koonfy-192.png">
+<!-- O ícone da aba vem de /marca/logo, e não de um arquivo fixo: era por isso
+     que trocar a logo no Admin não mudava nada aqui. A rota serve a arte
+     padrão quando não há upload, e o ETag dela carrega o tamanho e a data do
+     arquivo, então funciona nos dois casos. -->
+<link rel="icon" href="/marca/logo">
 <!-- PWA / WebApp instalável -->
 <link rel="manifest" href="/app/manifest.webmanifest">
 <meta name="theme-color" content="#2ED378">

@@ -828,10 +828,16 @@ async function init() {
 function showLogin() {
   $('#app').classList.add('hidden');
   $('#login').classList.remove('hidden');
-  // Vindo da landing com ?novo=1 (CTAs "Começar agora"/"Assinar"), abre o cadastro
+  // A barra de baixo some junto: ela leva a telas que exigem sessão.
+  const bar = document.getElementById('tabbar');
+  if (bar) bar.classList.add('hidden');
+  document.body.classList.remove('has-tabbar');
+  // Link antigo (/app?novo=1) leva ao checkout: a conta nasce quando o
+  // pagamento é confirmado, e abrir cadastro aqui devolveria o caminho que o
+  // fluxo novo fechou.
   try {
     const p = new URLSearchParams(location.search);
-    if ((p.get('novo') === '1' || p.get('cadastro') === '1') && !registerMode) toggleRegister();
+    if (p.get('novo') === '1' || p.get('cadastro') === '1') location.replace('/assinar');
   } catch {}
 }
 
@@ -974,7 +980,7 @@ function toggleRegister(e) {
   if (!registerMode) $('#auth-btn').textContent = 'Entrar';
   $('#auth-toggle').innerHTML = registerMode
     ? 'Já tem conta? <a href="#" onclick="toggleRegister(event)">Entrar</a>'
-    : 'Não tem conta? <a href="#" onclick="toggleRegister(event)">Criar conta grátis</a>';
+    : 'Ainda não é cliente? <a href="/assinar">Ver os planos</a>';
   // O aceite só aparece no CADASTRO: em quem já tem conta seria ruído.
   $('#auth-legal').classList.toggle('hidden', !registerMode);
   $('#login-err').textContent = '';
@@ -1884,7 +1890,10 @@ function iconeDaView(v) {
 function buildTabbar() {
   const bar = document.getElementById('tabbar');
   if (!bar) return;
-  const mobile = isMobileLayout();
+  // A barra só faz sentido DEPOIS de entrar: todos os destinos dela exigem
+  // sessão, e no login ela aparecia oferecendo caminhos que não abrem.
+  const dentro = !document.getElementById('login') || document.getElementById('login').classList.contains('hidden');
+  const mobile = isMobileLayout() && dentro;
   bar.classList.toggle('hidden', !mobile);
   document.body.classList.toggle('has-tabbar', mobile);
   if (!mobile) { toggleMoreSheet(false); return; }
