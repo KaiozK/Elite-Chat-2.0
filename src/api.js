@@ -296,7 +296,7 @@ module.exports = function (broadcast, clients) {
     const token = newSession('account', acc);
     // já nasce trancado quando a assinatura é obrigatória: a tela leva direto
     // para a escolha do plano em vez de mostrar um app que não abre
-    res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc), pagamentos, planRequired: precisaAssinar({ session: { kind: 'account' }, acc }) });
+    res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc), nsConectada: !!(acc.nuvemshop && acc.nuvemshop.accessToken), pagamentos, planRequired: precisaAssinar({ session: { kind: 'account' }, acc }) });
   }));
 
   // Segundo passo do login: troca o ticket + código pelo token de acesso.
@@ -305,7 +305,7 @@ module.exports = function (broadcast, clients) {
     const acc = account.resolverDesafio(b.ticket, b.code);
     const token = newSession('account', acc);
     agents.log(acc, { agentId: null, name: acc.name }, 'login', 'Entrou como dono da conta (2 etapas)');
-    res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc), permissions: null, planRequired: precisaAssinar({ session: { kind: 'account' }, acc }) });
+    res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc), nsConectada: !!(acc.nuvemshop && acc.nuvemshop.accessToken), permissions: null, planRequired: precisaAssinar({ session: { kind: 'account' }, acc }) });
   }));
 
   // ENTRADA DO ADMIN DA PLATAFORMA — porta própria, /adm/.
@@ -355,7 +355,7 @@ module.exports = function (broadcast, clients) {
       }
       const token = newSession('account', acc);
       agents.log(acc, { agentId: null, name: acc.name }, 'login', 'Entrou como dono da conta');
-      return res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc), permissions: null, planRequired: precisaAssinar({ session: { kind: 'account' }, acc }) });
+      return res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc), nsConectada: !!(acc.nuvemshop && acc.nuvemshop.accessToken), permissions: null, planRequired: precisaAssinar({ session: { kind: 'account' }, acc }) });
     }
 
     // ATENDENTE (login por e-mail próprio)
@@ -485,7 +485,7 @@ module.exports = function (broadcast, clients) {
     // Já entra logado: quem acabou de pagar não deve ter que digitar a senha
     // que criou dois segundos atrás.
     const token = newSession('account', acc);
-    res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc) });
+    res.json({ token, user: acc.name, kind: 'account', accountId: acc.id, wa: waPublic(acc), nsConectada: !!(acc.nuvemshop && acc.nuvemshop.accessToken) });
   }));
 
   router.get('/public/landing', (req, res) => {
@@ -607,6 +607,10 @@ module.exports = function (broadcast, clients) {
       mustChangePassword: ag ? !!ag.mustChangePassword
         : (req.session.kind === 'admin' && db.verifyPassword('admin', p.adminPassHash)),
       planRequired: precisaAssinar(req),   // trava a navegação até assinar
+      // A aba da loja só aparece no menu depois que existe uma loja. Sem
+      // isso ela abre numa tela que só sabe falar com uma Nuvemshop, e o
+      // cartão de erro parece defeito do produto.
+      nsConectada: !!(req.acc.nuvemshop && req.acc.nuvemshop.accessToken),
       wa: waPublic(req.wctx),
       // toggles do plano: o menu esconde o que o plano nao inclui (o backend
       // tambem recusa com 402, o front e so conforto)
@@ -3708,6 +3712,10 @@ module.exports = function (broadcast, clients) {
   }
 
   router.get('/nuvemshop/orders', auth, h(async (req, res) => {
+    // "Sem loja conectada" NÃO é erro: é o estado de quem ainda não integrou.
+    // Respondendo 500, a tela mostra um cartão vermelho para uma situação
+    // perfeitamente normal.
+    if (!(req.acc.nuvemshop && req.acc.nuvemshop.accessToken)) return res.json({ conectada: false, itens: [] });
     const q = new URLSearchParams({ per_page: String(Math.min(50, Number(req.query.limit) || 30)) });
     if (req.query.status) q.set('status', String(req.query.status));
     if (req.query.payment) q.set('payment_status', String(req.query.payment));
@@ -3717,6 +3725,10 @@ module.exports = function (broadcast, clients) {
   }));
 
   router.get('/nuvemshop/carts', auth, h(async (req, res) => {
+    // "Sem loja conectada" NÃO é erro: é o estado de quem ainda não integrou.
+    // Respondendo 500, a tela mostra um cartão vermelho para uma situação
+    // perfeitamente normal.
+    if (!(req.acc.nuvemshop && req.acc.nuvemshop.accessToken)) return res.json({ conectada: false, itens: [] });
     const lista = await nuvem.apiFetch(req.acc, '/checkouts?per_page=50');
     const c = nuvem.cfg(req.acc);
     const avisados = new Set((c.carrinhosVistos || []).map(v => String(v.id)));
@@ -3737,6 +3749,10 @@ module.exports = function (broadcast, clients) {
   // A BASE DA LOJA. Serve para o lojista ver quem tem, e para saber quantos
   // desses já estão no Koonfy com WhatsApp — que é quem pode receber disparo.
   router.get('/nuvemshop/customers', auth, h(async (req, res) => {
+    // "Sem loja conectada" NÃO é erro: é o estado de quem ainda não integrou.
+    // Respondendo 500, a tela mostra um cartão vermelho para uma situação
+    // perfeitamente normal.
+    if (!(req.acc.nuvemshop && req.acc.nuvemshop.accessToken)) return res.json({ conectada: false, itens: [] });
     const q = new URLSearchParams({ per_page: String(Math.min(50, Number(req.query.limit) || 30)) });
     if (req.query.page) q.set('page', String(req.query.page));
     if (req.query.q) q.set('q', String(req.query.q));
@@ -3821,7 +3837,10 @@ module.exports = function (broadcast, clients) {
     if (!c.accessToken) return res.json({ conectada: false });
     const desde = new Date(Date.now() - 30 * 86400000).toISOString();
     const [pedidos, carrinhos] = await Promise.all([
-      nuvem.apiFetch(req.acc, `/orders?per_page=200&created_at_min=${encodeURIComponent(desde)}`).catch(() => []),
+      // 100 e nao 200: o resumo e o primeiro carregamento da aba, e e ele que
+      // a pessoa espera olhando a tela. Uma loja movimentada demora mais que o
+      // prazo da chamada, e ai a aba inteira nao abre.
+      nuvem.apiFetch(req.acc, `/orders?per_page=100&created_at_min=${encodeURIComponent(desde)}`).catch(() => []),
       nuvem.apiFetch(req.acc, '/checkouts?per_page=50').catch(() => [])
     ]);
     const pagos = (pedidos || []).filter(o => o.payment_status === 'paid');

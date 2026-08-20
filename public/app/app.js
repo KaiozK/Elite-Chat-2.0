@@ -830,6 +830,8 @@ async function init() {
       // O SMS só aparece se o provedor estiver ligado na plataforma: o
       // módulo do plano sozinho abria uma tela que não envia nada.
       state.smsPlataforma = me.smsPlataforma !== false;
+      // A loja no menu só depois de conectada, em Integrações.
+      state.nsConectada = !!me.nsConectada;
       state.allowedViews = me.allowedViews || null;
       // O painel da plataforma só abre para o admin. Um token de cliente
       // guardado nesta chave abriria um menu cujas telas respondem 403.
@@ -1240,6 +1242,8 @@ async function doLogin(e) {
     state.agent = r.agent || null;
     state.permissions = r.permissions || null;
     state.allowedViews = r.allowedViews || null;
+    // A aba da loja segue o estado dela desde o primeiro instante da sessão.
+    state.nsConectada = !!r.nsConectada;
     enterApp();
   } catch (err) {
     $('#login-err').textContent = err.message;
@@ -1919,6 +1923,10 @@ function applyNavPermissions() {
     if (state.agent && ownerOnly.has(v)) { n.style.display = 'none'; return; }
     if (precisaAssinar() && !VIEWS_SEM_PLANO.includes(v)) { n.style.display = 'none'; return; }
     if (!planHas(v)) { n.style.display = 'none'; return; }   // fora do plano contratado
+    // A LOJA só entra no menu depois de conectada. A conexão se faz em
+    // Integrações; antes disso a aba abre numa tela que só sabe falar com uma
+    // Nuvemshop, e o erro parece defeito do produto.
+    if (v === 'nuvemshop' && !state.nsConectada) { n.style.display = 'none'; return; }
     const mod = moduleOfView(v);
     n.style.display = (mod === null || can(mod, 'view')) ? '' : 'none';
   });
@@ -2532,6 +2540,22 @@ async function admSuperDesligar(id) {
 let NS_TAB = 'pedidos';
 
 async function renderNuvemshop() {
+  // Chegando aqui sem loja (link antigo, endereço digitado), o lugar certo é
+  // Integrações: é lá que se conecta.
+  if (!state.nsConectada) {
+    $('#view').innerHTML = `<div class="page">
+      <div class="page-head"><h1>Nuvemshop</h1>
+        <p class="muted">Conecte a sua loja para ver pedidos e recuperar carrinhos.</p></div>
+      <div class="card">
+        <h2>${ico('cart')} Nenhuma loja conectada</h2>
+        <p class="muted" style="margin:0 0 14px;font-size:13px">
+          Depois de conectar, esta aba mostra os pedidos, os carrinhos abandonados e a base da loja —
+          e o menu passa a trazer a Nuvemshop sozinho.
+        </p>
+        <a class="btn primary no-grow" href="#/integrations">Conectar minha loja</a>
+      </div></div>`;
+    return;
+  }
   $('#view').innerHTML = `<div class="page">
     <div class="page-head"><h1>Nuvemshop</h1>
       <p class="muted">Pedidos, carrinhos e a base da sua loja.</p></div>
@@ -12699,6 +12723,13 @@ let nsCfg = null;
 async function loadNuvemshop() {
   try { nsCfg = (await api('/integrations/nuvemshop')).nuvemshop; }
   catch (e) { $('#int-body').innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
+  // O menu acompanha na hora: quem acabou de conectar não deveria precisar
+  // recarregar a página para a aba da loja aparecer, nem ficar com ela no
+  // menu depois de desconectar.
+  if (state.nsConectada !== !!nsCfg.connected) {
+    state.nsConectada = !!nsCfg.connected;
+    applyNavPermissions();
+  }
   paintNuvemshop();
 }
 

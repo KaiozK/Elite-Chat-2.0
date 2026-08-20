@@ -151,15 +151,28 @@ async function apiFetch(acc, path, opts = {}) {
   const c = cfg(acc);
   if (!c.accessToken || !c.storeId) throw new Error('Nenhuma loja Nuvemshop conectada');
   const url = `${API_BASE}/${API_VERSION}/${c.storeId}${path}`;
-  const resp = await fetch(url, {
-    ...opts,
-    headers: {
-      'Authentication': `bearer ${c.accessToken}`,
-      'Content-Type': 'application/json',
-      'User-Agent': UA,
-      ...(opts.headers || {})
-    }
-  });
+  // PRAZO. Sem ele, uma loja lenta pendura a requisição até a hospedagem
+  // cortar a conexão, e o navegador mostra "Failed to fetch" — mensagem de
+  // conexão perdida, que não diz nada a quem está olhando a tela.
+  let resp;
+  try {
+    resp = await fetch(url, {
+      ...opts,
+      signal: AbortSignal.timeout(12000),
+      headers: {
+        'Authentication': `bearer ${c.accessToken}`,
+        'Content-Type': 'application/json',
+        'User-Agent': UA,
+        ...(opts.headers || {})
+      }
+    });
+  } catch (e) {
+    const err = new Error(e.name === 'TimeoutError' || e.name === 'AbortError'
+      ? 'A Nuvemshop não respondeu a tempo. Tente de novo em instantes.'
+      : 'Não consegui falar com a Nuvemshop agora: ' + e.message);
+    err.status = 504;
+    throw err;
+  }
   const text = await resp.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
