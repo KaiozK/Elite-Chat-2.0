@@ -2450,7 +2450,7 @@ async function renderDashboard() {
             <span class="legend"><i style="background:#2ED378"></i> Enviadas</span>
             <span class="legend"><i style="background:#53BDEB"></i> Recebidas</span>
           </div>
-          ${chVolume(rep.days, kind)}
+          ${chVolume(rep.days, 'bars')}
         </div>
         <div class="card">
           <h2>Status dos envios</h2>
@@ -5766,6 +5766,18 @@ function dashAgentsCard(a) {
   </div>`;
 }
 
+// A grade vazia: eixo, linhas de apoio e nada em cima. É o que um dia sem
+// movimento deve mostrar — zero é um número, não a ausência de resposta.
+function chVazio(h = 240) {
+  const w = 560, padB = 22;
+  const grid = [0.25, 0.5, 0.75].map(f =>
+    `<line x1="0" y1="${(h - padB) * f}" x2="${w}" y2="${(h - padB) * f}" stroke="#e8f3ec" stroke-dasharray="3 4"/>`).join('');
+  return `<svg class="ch" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Sem movimento no período">
+    ${grid}<line x1="0" y1="${h - padB}" x2="${w}" y2="${h - padB}" stroke="#e8f3ec"/>
+    <text x="${w / 2}" y="${(h - padB) / 2}" text-anchor="middle" dominant-baseline="middle"
+          style="font:600 13px 'Inter Tight'" fill="var(--faint)">Sem movimento no período</text>
+  </svg>`;
+}
 function chLine(days, h = 230) {
   const w = 780, pL = 38, pR = 12, pB = 26, pT = 12;
   const max = Math.max(1, ...days.map(d => Math.max(d.in, d.out)));
@@ -6051,7 +6063,10 @@ function dayBars(series, color = '#2ED378') {
 }
 
 // Volume in/out com 3 tipos de gráfico (linha, barras, área) — escolha do usuário
-function chVolume(days, kind = 'line', h = 240) {
+function chVolume(days, kind = 'bars', h = 240) {
+  // Período sem dia nenhum não é erro, é um dia que ainda não começou: a
+  // grade aparece vazia em vez de o gráfico inteiro sumir.
+  if (!days || !days.length) return chVazio(h);
   if (kind === 'line') return chLine(days, h);
   const w = 560, padB = 22;
   const max = Math.max(1, ...days.map(d => Math.max(d.in, d.out)));
