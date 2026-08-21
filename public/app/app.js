@@ -3060,22 +3060,35 @@ function periodoIntervalo() {
 // ===========================================================================
 const BANNERS = [
   {
-    tag: 'Novidade', cor: ['#1C834A', '#2ED378'],
-    titulo: 'Sua loja Nuvemshop agora fala sozinha',
-    texto: 'Compra aprovada, pedido enviado e carrinho abandonado viram mensagem no WhatsApp.',
-    acao: 'Conectar minha loja', href: '#/nuvemshop'
+    tag: 'Integrações', fundo: 'integracoes',
+    peca: 'balao', selo: '/assets/logos/nuvemshop.webp',
+    titulo: 'Tudo o que você já usa, conversando',
+    texto: 'Nuvemshop, Meta Ads e webhooks: o que acontece nas suas ferramentas vira mensagem no WhatsApp.',
+    acao: 'Ver integrações', href: '#/integrations'
   },
   {
-    tag: 'Receba por Pix', cor: ['#0e5c33', '#1C834A'],
-    titulo: 'Cobre dentro da conversa',
-    texto: 'Gere a cobrança no chat e mande o botão de pagar. O dinheiro cai na sua conta.',
+    tag: 'Ligação', fundo: 'ligacao', peca: 'ic-ligacao',
+    titulo: 'Ligue de dentro da conversa',
+    texto: 'Chamada de voz pelo WhatsApp sem sair do atendimento, com o histórico no mesmo lugar.',
+    acao: 'Abrir Conversas', href: '#/inbox'
+  },
+  {
+    tag: 'Indique e ganhe', fundo: 'indique', peca: 'ic-indique',
+    titulo: 'Indique a Koonfy e receba',
+    texto: 'Comissão automática em toda assinatura de quem você indicar. O link é seu e o saldo cai na carteira.',
+    acao: 'Ver meu link', href: '#/afiliacao'
+  },
+  {
+    tag: 'Vender com a Koonfy', fundo: 'vender', peca: 'ic-vender',
+    titulo: 'Venda dentro do WhatsApp',
+    texto: 'Cobrança por Pix e cartão no chat, checkout próprio e o dinheiro na sua conta.',
     acao: 'Ver Pagamentos', href: '#/elitepay'
   },
   {
-    tag: 'Automação', cor: ['#14532d', '#22a35c'],
-    titulo: 'Um atendente que não dorme',
-    texto: 'Monte a automação uma vez e ela responde, qualifica e cobra enquanto você vende.',
-    acao: 'Abrir o Flow Builder', href: '#/flows'
+    tag: 'Tracking', fundo: 'tracking', peca: 'ic-tracking',
+    titulo: 'Saiba de onde vem cada venda',
+    texto: 'Links rastreáveis e pixels: a campanha que traz cliente aparece no relatório, com nome e número.',
+    acao: 'Abrir Tracking', href: '#/tracking'
   }
 ];
 
@@ -3086,14 +3099,16 @@ function bannersHtml() {
   return `<div class="bnr-wrap" id="bnr-wrap">
     <div class="bnr-janela">
       <div class="bnr-trilho" id="bnr-trilho">
-        ${BANNERS.map(b => `
-          <article class="bnr" style="--bnr-a:${b.cor[0]};--bnr-b:${b.cor[1]}">
-            <div class="bnr-fundo"></div>
-            <!-- A peca 3D: render proprio, com o fundo recortado. E o recorte
-                 que permite ela atravessar a borda do cartao sem carregar um
-                 retangulo junto. -->
-            <img class="bnr-3d mini" src="/assets/banner-balao.webp" alt="" aria-hidden="true">
-            <img class="bnr-3d" src="/assets/banner-balao.webp" alt="" aria-hidden="true">
+        ${BANNERS.map((b, i) => `
+          <article class="bnr">
+            <div class="bnr-fundo">
+              <img class="bnr-bg" src="/assets/banner-bg-${b.fundo}.webp" alt=""
+                   ${i ? 'loading="lazy"' : ''} decoding="async">
+              <span class="bnr-veu"></span>
+            </div>
+            <img class="bnr-3d" src="/assets/banner-${b.peca}.webp" alt="" aria-hidden="true"
+                 ${i ? 'loading="lazy"' : ''} decoding="async">
+            ${b.selo ? `<img class="bnr-selo" src="${b.selo}" alt="" aria-hidden="true" loading="lazy" decoding="async">` : ''}
             <div class="bnr-txt">
               <span class="bnr-tag">${esc(b.tag)}</span>
               <h3>${esc(b.titulo)}</h3>
@@ -3104,7 +3119,7 @@ function bannersHtml() {
       </div>
     </div>
     ${BANNERS.length > 1 ? `<div class="bnr-pontos" id="bnr-pontos">${BANNERS.map((_, i) =>
-      `<button class="${i === 0 ? 'on' : ''}" onclick="bnrIr(${i})" aria-label="Banner ${i + 1}"></button>`
+      `<button class="${i === 0 ? 'on' : ''}" onclick="bnrIr(${i}, true)" aria-label="Banner ${i + 1}"></button>`
     ).join('')}</div>` : ''}
   </div>`;
 }
@@ -3125,7 +3140,9 @@ function bnrRelogio() {
     // não viu nenhum.
     if (document.hidden) return;
     bnrIr(bnrAtual + 1);
-  }, 6000);
+    // 4,5s: seis segundos parecia travado. Tempo suficiente para ler duas
+    // linhas e curto o bastante para a pessoa perceber que há mais.
+  }, 4500);
 }
 
 function bnrLigar() {

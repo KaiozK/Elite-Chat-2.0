@@ -4896,14 +4896,17 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 :root { --bnr-folga: 26px; }
 .bnr-fundo {
   position: absolute; inset: var(--bnr-folga) 0; border-radius: 16px; overflow: hidden;
-  background: linear-gradient(115deg, var(--bnr-a), var(--bnr-b));
+  background: #0b1a12;   /* o que aparece enquanto a arte carrega */
 }
-/* Um brilho suave atrás da peça, para ela não parecer recortada e colada. */
-.bnr-fundo::after {
-  content: ""; position: absolute; right: -6%; top: -60%;
-  width: 52%; aspect-ratio: 1; border-radius: 50%;
-  background: radial-gradient(circle, rgba(255,255,255,.22), transparent 62%);
+.bnr-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* O VÉU. Escurece só o lado do texto, e some antes da metade: a arte fica
+   inteira à direita, onde a peça 3D flutua. */
+.bnr-veu {
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(6,20,13,.88) 0%, rgba(6,20,13,.72) 34%, rgba(6,20,13,0) 68%);
 }
+/* O brilho decorativo saiu: a arte de fundo já traz a própria luz, e dois
+   focos brigando deixavam a direita lavada. */
 .bnr-txt {
   position: absolute; inset: var(--bnr-folga) 0; z-index: 2;
   display: flex; flex-direction: column; justify-content: center; gap: 8px;
@@ -4924,9 +4927,12 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 .bnr-btn:hover { transform: translateY(-1px); }
 
 /* A PEÇA QUE SAI DO CARTÃO. Fora do `.bnr-fundo`, então não é recortada. */
+/* Medida pela ALTURA: cada arte tem uma proporção, e fixar a largura fazia as
+   mais altas passarem da janela — que corta. Assim todas atravessam a borda
+   do cartão e param dentro da janela. */
 .bnr-3d {
-  position: absolute; z-index: 3; right: 4%; top: 6px;
-  width: 196px; height: auto; pointer-events: none;
+  position: absolute; z-index: 3; right: 4%; top: 7px;
+  height: 200px; width: auto; pointer-events: none;
   filter: drop-shadow(0 18px 30px rgba(0,0,0,.38));
   transform: rotate(-8deg);
   animation: bnrFlutua 6s ease-in-out infinite;
@@ -4944,6 +4950,15 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
   50% { translate: 0 -9px; }
 }
 
+/* SELO DA MARCA PARCEIRA (a logo da Nuvemshop, por exemplo). Fica pequeno e
+   no canto: é uma menção, não o assunto do banner. */
+.bnr-selo {
+  position: absolute; z-index: 4; right: 6%; bottom: 10px; width: 46px; height: 46px;
+  border-radius: 12px; box-shadow: 0 10px 22px rgba(0,0,0,.4);
+  background: #fff; padding: 6px;
+}
+@media (max-width: 620px) { .bnr-selo { width: 36px; height: 36px; right: 4%; bottom: 6px; } }
+
 .bnr-pontos { display: flex; gap: 7px; justify-content: center; margin-top: 12px; }
 .bnr-pontos button {
   width: 7px; height: 7px; padding: 0; border: 0; border-radius: 50%;
@@ -4958,7 +4973,7 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
      conteudo passar a ser escrito no Admin, uma frase maior estouraria. */
   .bnr { height: 212px; }
   .bnr-txt { max-width: 66%; }
-  .bnr-3d { width: 150px; right: 3%; }
+  .bnr-3d { height: 198px; width: auto; right: 3%; }
   .bnr-3d.mini { width: 64px; right: 28%; }
 }
 
@@ -4987,7 +5002,7 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
   /* A peça vai para o canto de baixo, onde só existe fundo, e sai um pouco
      pela direita: o corte na borda é o que mantém a sensação de volume numa
      tela onde ela não cabe inteira. */
-  .bnr-3d { width: 148px; right: -10%; top: auto; bottom: -10px; opacity: .85; }
+  .bnr-3d { height: 150px; width: auto; right: -8%; top: auto; bottom: -10px; opacity: .9; }
   .bnr-3d.mini { display: none; }
   .bnr-wrap { margin-bottom: 16px; }
 }
