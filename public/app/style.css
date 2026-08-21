@@ -4866,3 +4866,120 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
   /* Sem largura mínima, o container não precisa rolar. */
   .tab-mob-wrap { overflow-x: visible !important; }
 }
+
+
+/* ============================================================
+   BANNERS DA DASHBOARD (carrossel)
+
+   Uma faixa de avisos no topo da dashboard. A ilusão de 3D vem de uma peça
+   que ATRAVESSA a borda do cartão: o fundo colorido fica num elemento que
+   recorta (para o gradiente respeitar o canto), e a peça fica FORA desse
+   recorte. Sem essa separação, ou o gradiente vaza dos cantos ou a peça é
+   cortada na borda — e aí o objeto parece colado num retângulo.
+   ============================================================ */
+.bnr-wrap { position: relative; margin: 0 0 20px; }
+/* A janela recorta os slides vizinhos, e era ela que decepava a peça 3D. A
+   folga vertical resolve: o cartão colorido encolhe, a peça usa a faixa
+   transparente que sobra, e nada é cortado. */
+.bnr-janela { overflow: hidden; }
+/* O trilho anda de um slide por vez. `translate3d` para a animação não
+   engasgar em celular mais fraco. */
+.bnr-trilho { display: flex; transition: transform .5s cubic-bezier(.22,1,.36,1); }
+.bnr {
+  position: relative; flex: 0 0 100%; min-width: 100%;
+  /* A ALTURA é fixa por faixa de tela: com altura automática o carrossel
+     pula de tamanho a cada troca de slide, porque cada texto tem um
+     comprimento. */
+  height: 214px;
+}
+/* A FOLGA: 26px em cima e embaixo. É por aqui que a peça sai do cartão. */
+:root { --bnr-folga: 26px; }
+.bnr-fundo {
+  position: absolute; inset: var(--bnr-folga) 0; border-radius: 16px; overflow: hidden;
+  background: linear-gradient(115deg, var(--bnr-a), var(--bnr-b));
+}
+/* Um brilho suave atrás da peça, para ela não parecer recortada e colada. */
+.bnr-fundo::after {
+  content: ""; position: absolute; right: -6%; top: -60%;
+  width: 52%; aspect-ratio: 1; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,.22), transparent 62%);
+}
+.bnr-txt {
+  position: absolute; inset: var(--bnr-folga) 0; z-index: 2;
+  display: flex; flex-direction: column; justify-content: center; gap: 8px;
+  padding: 0 clamp(20px, 4vw, 38px); max-width: 62%;
+}
+.bnr-tag {
+  font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: rgba(255,255,255,.82);
+}
+.bnr-txt h3 { margin: 0; font-size: clamp(17px, 2.2vw, 23px); line-height: 1.2; color: #fff; letter-spacing: -.02em; }
+.bnr-txt p { margin: 0; font-size: 13.5px; line-height: 1.45; color: rgba(255,255,255,.86); }
+.bnr-btn {
+  align-self: flex-start; margin-top: 4px; border: 0; cursor: pointer;
+  background: #fff; color: #10241a; font: 600 13px/1 inherit;
+  padding: 10px 16px; border-radius: 9px; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 7px; transition: transform .15s;
+}
+.bnr-btn:hover { transform: translateY(-1px); }
+
+/* A PEÇA QUE SAI DO CARTÃO. Fora do `.bnr-fundo`, então não é recortada. */
+.bnr-3d {
+  position: absolute; z-index: 3; right: 4%; top: 6px;
+  width: 196px; height: auto; pointer-events: none;
+  filter: drop-shadow(0 18px 30px rgba(0,0,0,.38));
+  transform: rotate(-8deg);
+  animation: bnrFlutua 6s ease-in-out infinite;
+}
+/* Uma segunda peça, menor, saindo pelo TOPO: duas alturas diferentes vendem
+   a profundidade melhor que uma só. */
+/* A segunda peça sai pela BASE, no lado oposto: duas alturas e dois sentidos
+   vendem a profundidade melhor que um objeto só. */
+.bnr-3d.mini {
+  right: 30%; top: auto; bottom: 2px; width: 78px;
+  transform: rotate(14deg); animation-delay: -3s; opacity: .92;
+}
+@keyframes bnrFlutua {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -9px; }
+}
+
+.bnr-pontos { display: flex; gap: 7px; justify-content: center; margin-top: 12px; }
+.bnr-pontos button {
+  width: 7px; height: 7px; padding: 0; border: 0; border-radius: 50%;
+  background: var(--border2); cursor: pointer; transition: all .25s;
+}
+.bnr-pontos button.on { width: 22px; border-radius: 4px; background: var(--verde-deep); }
+
+/* ---- TABLET: o texto cede espaço, a peça encolhe ---- */
+@media (max-width: 900px) {
+  :root { --bnr-folga: 20px; }
+  .bnr { height: 190px; }
+  .bnr-txt { max-width: 66%; }
+  .bnr-3d { width: 150px; right: 3%; }
+  .bnr-3d.mini { width: 64px; right: 28%; }
+}
+
+/* ---- CELULAR ----
+   A peça grande sai da direita e vira uma marca d'água no canto: com 375px
+   de largura ela e o texto disputariam o mesmo espaço, e quem perde é o
+   texto, que é o que a pessoa precisa ler. A segunda peça some: duas peças
+   numa tela estreita viram sujeira. */
+@media (max-width: 620px) {
+  :root { --bnr-folga: 16px; }
+  .bnr { height: 208px; }
+  .bnr-txt { max-width: 100%; padding: 0 18px; }
+  .bnr-txt h3 { font-size: 16px; }
+  .bnr-txt p { font-size: 12.5px; }
+  /* Numa tela estreita a peça e o texto disputam o mesmo espaço, e quem
+     perde é o texto — que é o que a pessoa precisa ler. Ela vira marca
+     d'água no canto, e a segunda some: duas peças em 375px viram sujeira. */
+  .bnr-3d { width: 124px; right: -6%; top: auto; bottom: 0; opacity: .5; }
+  .bnr-3d.mini { display: none; }
+  .bnr-wrap { margin-bottom: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bnr-trilho { transition: none; }
+  .bnr-3d { animation: none; }
+}

@@ -3047,6 +3047,111 @@ function periodoIntervalo() {
   closeModal(); periodoAplicar();
 }
 
+// ===========================================================================
+// BANNERS DA DASHBOARD (protótipo)
+//
+// Faixa de avisos no topo: novidade, campanha, chamada para um recurso que o
+// cliente ainda não usa. O conteúdo está aqui no código de propósito — esta
+// versão existe para ver como fica. Se prestar, a lista passa para o Admin.
+//
+// A sensação de 3D vem de uma peça que ATRAVESSA a borda do cartão (ver
+// .bnr-3d no style.css). A peça é a joia, que já é um render com fundo
+// transparente.
+// ===========================================================================
+const BANNERS = [
+  {
+    tag: 'Novidade', cor: ['#1C834A', '#2ED378'],
+    titulo: 'Sua loja Nuvemshop agora fala sozinha',
+    texto: 'Compra aprovada, pedido enviado e carrinho abandonado viram mensagem no WhatsApp.',
+    acao: 'Conectar minha loja', href: '#/nuvemshop'
+  },
+  {
+    tag: 'Receba por Pix', cor: ['#0e5c33', '#1C834A'],
+    titulo: 'Cobre dentro da conversa',
+    texto: 'Gere a cobrança no chat e mande o botão de pagar. O dinheiro cai na sua conta.',
+    acao: 'Ver Pagamentos', href: '#/elitepay'
+  },
+  {
+    tag: 'Automação', cor: ['#14532d', '#22a35c'],
+    titulo: 'Um atendente que não dorme',
+    texto: 'Monte a automação uma vez e ela responde, qualifica e cobra enquanto você vende.',
+    acao: 'Abrir o Flow Builder', href: '#/flows'
+  }
+];
+
+let bnrAtual = 0, bnrTimer = null;
+
+function bannersHtml() {
+  if (!BANNERS.length) return '';
+  return `<div class="bnr-wrap" id="bnr-wrap">
+    <div class="bnr-janela">
+      <div class="bnr-trilho" id="bnr-trilho">
+        ${BANNERS.map(b => `
+          <article class="bnr" style="--bnr-a:${b.cor[0]};--bnr-b:${b.cor[1]}">
+            <div class="bnr-fundo"></div>
+            <img class="bnr-3d mini" src="/assets/koonfy-joia.webp" alt="" aria-hidden="true">
+            <img class="bnr-3d" src="/assets/koonfy-joia.webp" alt="" aria-hidden="true">
+            <div class="bnr-txt">
+              <span class="bnr-tag">${esc(b.tag)}</span>
+              <h3>${esc(b.titulo)}</h3>
+              <p>${esc(b.texto)}</p>
+              <a class="bnr-btn" href="${b.href}">${esc(b.acao)} ${ico('arrowright', 13)}</a>
+            </div>
+          </article>`).join('')}
+      </div>
+    </div>
+    ${BANNERS.length > 1 ? `<div class="bnr-pontos" id="bnr-pontos">${BANNERS.map((_, i) =>
+      `<button class="${i === 0 ? 'on' : ''}" onclick="bnrIr(${i})" aria-label="Banner ${i + 1}"></button>`
+    ).join('')}</div>` : ''}
+  </div>`;
+}
+
+function bnrIr(i, manual) {
+  const trilho = document.getElementById('bnr-trilho'); if (!trilho) return;
+  bnrAtual = (i + BANNERS.length) % BANNERS.length;
+  trilho.style.transform = `translate3d(-${bnrAtual * 100}%, 0, 0)`;
+  document.querySelectorAll('#bnr-pontos button').forEach((b, n) => b.classList.toggle('on', n === bnrAtual));
+  if (manual) bnrRelogio();   // clicou: o tempo do próximo recomeça do zero
+}
+
+function bnrRelogio() {
+  clearInterval(bnrTimer);
+  if (BANNERS.length < 2) return;
+  bnrTimer = setInterval(() => {
+    // Aba escondida não avança: senão a pessoa volta do almoço no slide 7 e
+    // não viu nenhum.
+    if (document.hidden) return;
+    bnrIr(bnrAtual + 1);
+  }, 6000);
+}
+
+function bnrLigar() {
+  const wrap = document.getElementById('bnr-wrap'); if (!wrap) return;
+  bnrAtual = 0;
+  bnrRelogio();
+  // PARA COM O DEDO OU O MOUSE EM CIMA. Trocar no meio da leitura é o jeito
+  // mais rápido de garantir que ninguém leia.
+  wrap.addEventListener('mouseenter', () => clearInterval(bnrTimer));
+  wrap.addEventListener('mouseleave', bnrRelogio);
+
+  // ARRASTAR NO CELULAR: ali ninguém procura setinha, e os pontos são alvos
+  // pequenos demais para o polegar.
+  let x0 = null, y0 = null;
+  wrap.addEventListener('touchstart', e => {
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
+    clearInterval(bnrTimer);
+  }, { passive: true });
+  wrap.addEventListener('touchend', e => {
+    if (x0 === null) return;
+    const dx = e.changedTouches[0].clientX - x0;
+    const dy = e.changedTouches[0].clientY - y0;
+    // Só conta como troca de slide se o dedo andou mais na HORIZONTAL: sem
+    // isso, rolar a página de leve troca o banner sem querer.
+    if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) bnrIr(bnrAtual + (dx < 0 ? 1 : -1));
+    x0 = null; bnrRelogio();
+  }, { passive: true });
+}
+
 async function renderDashboard() {
   const hoje = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
   // Só barras: os três tipos eram três jeitos de olhar o mesmo número, e a
@@ -3062,6 +3167,7 @@ async function renderDashboard() {
         ${periodoSeletor({ hoje: true })}
       </div>
     </div>
+    ${bannersHtml()}
     <div id="missoes-faixa"></div>
     <div class="dash-tiles">
       ${(() => {
@@ -3209,6 +3315,7 @@ async function renderDashboard() {
       ${d.agents ? dashAgentsCard(d.agents) : ''}`;
     loadGeo();
     faixaMissoes();
+    bnrLigar();   // o carrossel do topo comeca a andar
   } catch (e) {
     $('#dash').innerHTML = `<div class="card err">${esc(e.message)}</div>`;
   }
