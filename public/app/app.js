@@ -3089,8 +3089,11 @@ function bannersHtml() {
         ${BANNERS.map(b => `
           <article class="bnr" style="--bnr-a:${b.cor[0]};--bnr-b:${b.cor[1]}">
             <div class="bnr-fundo"></div>
-            <img class="bnr-3d mini" src="/assets/koonfy-joia.webp" alt="" aria-hidden="true">
-            <img class="bnr-3d" src="/assets/koonfy-joia.webp" alt="" aria-hidden="true">
+            <!-- A peca 3D: render proprio, com o fundo recortado. E o recorte
+                 que permite ela atravessar a borda do cartao sem carregar um
+                 retangulo junto. -->
+            <img class="bnr-3d mini" src="/assets/banner-balao.webp" alt="" aria-hidden="true">
+            <img class="bnr-3d" src="/assets/banner-balao.webp" alt="" aria-hidden="true">
             <div class="bnr-txt">
               <span class="bnr-tag">${esc(b.tag)}</span>
               <h3>${esc(b.titulo)}</h3>

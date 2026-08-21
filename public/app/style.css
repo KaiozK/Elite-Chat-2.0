@@ -4954,7 +4954,9 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 /* ---- TABLET: o texto cede espaço, a peça encolhe ---- */
 @media (max-width: 900px) {
   :root { --bnr-folga: 20px; }
-  .bnr { height: 190px; }
+  /* Dois pixels de folga com o texto mais longo dos exemplos e pouco: quando o
+     conteudo passar a ser escrito no Admin, uma frase maior estouraria. */
+  .bnr { height: 212px; }
   .bnr-txt { max-width: 66%; }
   .bnr-3d { width: 150px; right: 3%; }
   .bnr-3d.mini { width: 64px; right: 28%; }
@@ -4967,14 +4969,25 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
    numa tela estreita viram sujeira. */
 @media (max-width: 620px) {
   :root { --bnr-folga: 16px; }
-  .bnr { height: 208px; }
-  .bnr-txt { max-width: 100%; padding: 0 18px; }
+  /* No celular o banner NAO encosta nas bordas da tela: coladas nos cantos as
+     laterais somem e o cartao vira uma faixa presa, sem forma. O respiro
+     tambem separa o carrossel do resto da tela, que rola por baixo dele. */
+  .bnr-wrap { margin-left: 14px; margin-right: 14px; }
+  /* Mais alto no celular: com a largura do texto reduzida para nao bater na
+     peca, a mesma frase ocupa quatro linhas em vez de duas — e o cartao
+     precisa caber o texto, nao o contrario. */
+  .bnr { height: 250px; }
+  /* O texto para antes do canto da peça: um não invade o outro. */
+  .bnr-txt { max-width: 64%; padding: 0 18px; }
   .bnr-txt h3 { font-size: 16px; }
   .bnr-txt p { font-size: 12.5px; }
   /* Numa tela estreita a peça e o texto disputam o mesmo espaço, e quem
      perde é o texto — que é o que a pessoa precisa ler. Ela vira marca
      d'água no canto, e a segunda some: duas peças em 375px viram sujeira. */
-  .bnr-3d { width: 124px; right: -6%; top: auto; bottom: 0; opacity: .5; }
+  /* A peça vai para o canto de baixo, onde só existe fundo, e sai um pouco
+     pela direita: o corte na borda é o que mantém a sensação de volume numa
+     tela onde ela não cabe inteira. */
+  .bnr-3d { width: 148px; right: -10%; top: auto; bottom: -10px; opacity: .85; }
   .bnr-3d.mini { display: none; }
   .bnr-wrap { margin-bottom: 16px; }
 }
