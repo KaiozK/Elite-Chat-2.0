@@ -3081,9 +3081,7 @@ const BANNERS = [
     acao: 'Ver meu link', href: '#/afiliacao'
   },
   {
-    tag: 'Vender com a Koonfy', fundo: 'vender', peca: 'ic-vender', pw: 560, ph: 591,
-    // A tira do Figma: a venda chegando no celular de quem vende.
-    not: 'Nova venda realizada: R$ 1.000,00',
+    tag: 'Vender com a Koonfy', fundo: 'vender', peca: 'ic-vender', pw: 460, ph: 457,
     titulo: 'Venda dentro do WhatsApp',
     texto: 'Cobrança por Pix e cartão no chat, checkout próprio e o dinheiro na sua conta.',
     acao: 'Ver Pagamentos', href: '#/elitepay'
@@ -3104,7 +3102,7 @@ function bannersHtml() {
     <div class="bnr-janela">
       <div class="bnr-trilho" id="bnr-trilho">
         ${BANNERS.map((b, i) => `
-          <article class="bnr${b.not ? ' bnr-com-tira' : ''}">
+          <article class="bnr">
             <div class="bnr-fundo">
               <img class="bnr-bg" src="/assets/banner-bg-${b.fundo}.webp" alt=""
                    ${i ? 'loading="lazy"' : ''} decoding="async">
@@ -3115,11 +3113,6 @@ function bannersHtml() {
             <img class="bnr-3d" src="/assets/banner-${b.peca}.webp" alt="" aria-hidden="true"
                  width="${b.pw}" height="${b.ph}"
                  ${i ? 'loading="lazy"' : ''} decoding="async">
-            ${b.not ? `<div class="bnr-not">
-              <img src="/assets/banner-venda-not.webp" alt="${esc(b.not)}"
-                   width="420" height="96" loading="lazy" decoding="async">
-              <i class="bnr-not-ic" aria-hidden="true"></i>
-            </div>` : ''}
             <div class="bnr-txt">
               <span class="bnr-tag">${esc(b.tag)}</span>
               <h3>${esc(b.titulo)}</h3>
