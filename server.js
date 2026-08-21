@@ -493,7 +493,11 @@ function buildSeoHead(seo, origin) {
   // Imagem do preview quando o link é compartilhado (WhatsApp, redes, buscador).
   // Ficou apontando para a logo antiga depois da troca da marca — e é
   // justamente onde ninguém olha, porque só aparece fora do produto.
-  const ogImg = seo.ogImage || (origin + '/assets/koonfy-512.png');
+  // A ARTE DE COMPARTILHAMENTO. O padrão era o ícone quadrado de 512, que os
+  // aplicativos recortam em 1,91:1 — sobrava a logo cortada nas laterais ou
+  // perdida no meio de um retângulo. Esta é feita na medida (1200x630), com a
+  // joia e a palavra lado a lado sobre o carbono da vitrine.
+  const ogImg = seo.ogImage || (origin + '/assets/koonfy-og.png');
   const url = seo.canonical || origin + '/';
   const theme = seo.themeColor || '#34D399';
   const t = [];
