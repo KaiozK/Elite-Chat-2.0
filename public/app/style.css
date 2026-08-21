@@ -4878,25 +4878,50 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
    cortada na borda — e aí o objeto parece colado num retângulo.
    ============================================================ */
 .bnr-wrap { position: relative; margin: 0 0 20px; }
-/* A janela recorta os slides vizinhos, e era ela que decepava a peça 3D. A
-   folga vertical resolve: o cartão colorido encolhe, a peça usa a faixa
-   transparente que sobra, e nada é cortado. */
-.bnr-janela { overflow: hidden; }
+/* A janela esconde os slides vizinhos — e era ela que serrava a peça 3D numa
+   reta no pé do cartão. `overflow: hidden` recorta os quatro lados; aqui só
+   os DOIS de fora podem recortar. `clip-path` escolhe: fecha nas laterais,
+   onde mora o vizinho, e abre em cima e embaixo, que é por onde a peça
+   atravessa a borda. Os 48px são o teto do transbordo: sem eles a peça
+   subiria por cima do filtro e desceria no cartão de missões. */
+.bnr-janela { clip-path: inset(-48px 0px -48px 0px); }
 /* O trilho anda de um slide por vez. `translate3d` para a animação não
    engasgar em celular mais fraco. */
 .bnr-trilho { display: flex; transition: transform .5s cubic-bezier(.22,1,.36,1); }
 .bnr {
   position: relative; flex: 0 0 100%; min-width: 100%;
+  /* Cada slide também recorta as próprias laterais. A janela sozinha não
+     resolve: a peça do vizinho é girada, e o retângulo dela entrava 2px
+     para dentro do quadro (medido: 30 contra 28). São dois pixels de arte
+     alheia colados na borda esquerda o tempo todo. */
+  clip-path: inset(-48px 0px);
   /* A ALTURA é fixa por faixa de tela: com altura automática o carrossel
      pula de tamanho a cada troca de slide, porque cada texto tem um
      comprimento. */
-  height: 214px;
+  height: 234px;
 }
-/* A FOLGA: 26px em cima e embaixo. É por aqui que a peça sai do cartão. */
-:root { --bnr-folga: 26px; }
+/* A FOLGA é por onde a peça sai do cartão. A de BAIXO é maior: o cartão
+   ganha ar embaixo em vez de terminar numa listra colada, e a peça que sai
+   por ali tem para onde ir. */
+:root { --bnr-folga: 18px; --bnr-folga-base: 42px; }
 .bnr-fundo {
-  position: absolute; inset: var(--bnr-folga) 0; border-radius: 16px; overflow: hidden;
+  position: absolute; inset: var(--bnr-folga) 0 var(--bnr-folga-base); border-radius: 16px; overflow: hidden;
+  /* SEM SOMBRA. Era ela a faixa cinza embaixo do cartão — medida, não
+     suposta: o tom da faixa ficava entre o fundo da página e um cinza de
+     teste. E nenhum outro cartão da Koonfy tem sombra: missões, números e
+     atalhos são chapados com um fio de borda. Um borrão difuso embaixo de um
+     cartão preto, numa página clara e chapada, não lê como profundidade —
+     lê como uma segunda faixa colada. Quem sustenta o cartão aqui é o fio de
+     borda e a peça que atravessa a borda de baixo. */
   background: #0b1a12;   /* o que aparece enquanto a arte carrega */
+}
+/* A BORDA. Um fio claro por cima da arte fecha o contorno do cartão: sem ele
+   a arte escura simplesmente acaba, e o fim de uma imagem parece corte. Vem
+   de um pseudo-elemento porque `box-shadow: inset` ficaria por baixo do
+   <img> de fundo, que é filho. */
+.bnr-fundo::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit;
+  border: 1px solid rgba(255, 255, 255, .10); pointer-events: none;
 }
 .bnr-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 /* O VÉU. Escurece só o lado do texto, e some antes da metade: a arte fica
@@ -4908,7 +4933,7 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 /* O brilho decorativo saiu: a arte de fundo já traz a própria luz, e dois
    focos brigando deixavam a direita lavada. */
 .bnr-txt {
-  position: absolute; inset: var(--bnr-folga) 0; z-index: 2;
+  position: absolute; inset: var(--bnr-folga) 0 var(--bnr-folga-base); z-index: 2;
   display: flex; flex-direction: column; justify-content: center; gap: 8px;
   padding: 0 clamp(20px, 4vw, 38px); max-width: 62%;
 }
@@ -4933,7 +4958,7 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 .bnr-3d {
   position: absolute; z-index: 3; right: 4%; top: 7px;
   height: 200px; width: auto; pointer-events: none;
-  filter: drop-shadow(0 18px 30px rgba(0,0,0,.38));
+  filter: drop-shadow(0 12px 20px rgba(0,0,0,.30));
   transform: rotate(-8deg);
   animation: bnrFlutua 6s ease-in-out infinite;
 }
@@ -4945,6 +4970,30 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
   right: 30%; top: auto; bottom: 2px; width: 78px;
   transform: rotate(14deg); animation-delay: -3s; opacity: .92;
 }
+/* A TIRA DE NOTIFICACAO. Entra pelo TOPO do cartao, no lado da arte: e o
+   lugar onde ela chega de verdade num celular, e onde nao briga com o texto.
+   Atravessa a borda de cima como a peça 3D atravessa a de baixo — os dois
+   objetos saem do cartão em sentidos opostos, que é o que dá o volume. */
+.bnr-not {
+  position: absolute; z-index: 4; right: 23%; top: -12px; width: 244px;
+  transform: rotate(-5deg); pointer-events: none;
+  /* O FUNDO PROPRIO. A tira e o vidro fosco do iOS: quase todo pixel dela e
+     semitransparente, e a metade que atravessa a borda caia na pagina clara
+     e desbotava. Com um fundo escuro do mesmo raio ela le em qualquer
+     lugar, dentro ou fora do cartao. */
+  background: rgba(10, 24, 17, .94); border-radius: 12px;
+  box-shadow: 0 14px 26px rgba(0,0,0,.34), inset 0 0 0 1px rgba(255,255,255,.09);
+  animation: bnrFlutua 6s ease-in-out infinite; animation-delay: -2.5s;
+}
+.bnr-not img { display: block; width: 100%; height: auto; border-radius: inherit; }
+/* O ícone é AO VIVO: a marca do cliente, não a nossa pintada na imagem. As
+   medidas são frações da tira, medidas no arquivo: x 22 e y 33 de 572x131,
+   lado 62. Em porcentagem elas acompanham qualquer largura. */
+.bnr-not-ic {
+  position: absolute; left: 3.85%; top: 25.2%; width: 10.84%; aspect-ratio: 1;
+  border-radius: 22%; background: url(/marca/logo) center/contain no-repeat;
+}
+
 @keyframes bnrFlutua {
   0%, 100% { translate: 0 0; }
   50% { translate: 0 -9px; }
@@ -4959,12 +5008,13 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 
 /* ---- TABLET: o texto cede espaço, a peça encolhe ---- */
 @media (max-width: 900px) {
-  :root { --bnr-folga: 20px; }
+  :root { --bnr-folga: 14px; --bnr-folga-base: 36px; }
   /* Dois pixels de folga com o texto mais longo dos exemplos e pouco: quando o
      conteudo passar a ser escrito no Admin, uma frase maior estouraria. */
-  .bnr { height: 212px; }
+  .bnr { height: 228px; }
   .bnr-txt { max-width: 66%; }
   .bnr-3d { height: 198px; width: auto; right: 3%; }
+  .bnr-not { width: 206px; right: 20%; top: -10px; }
   .bnr-3d.mini { width: 64px; right: 28%; }
 }
 
@@ -4974,7 +5024,7 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
    texto, que é o que a pessoa precisa ler. A segunda peça some: duas peças
    numa tela estreita viram sujeira. */
 @media (max-width: 620px) {
-  :root { --bnr-folga: 16px; }
+  :root { --bnr-folga: 12px; --bnr-folga-base: 32px; }
   /* No celular o banner NAO encosta nas bordas da tela: coladas nos cantos as
      laterais somem e o cartao vira uma faixa presa, sem forma. O respiro
      tambem separa o carrossel do resto da tela, que rola por baixo dele. */
@@ -4982,7 +5032,7 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
   /* Mais alto no celular: com a largura do texto reduzida para nao bater na
      peca, a mesma frase ocupa quatro linhas em vez de duas — e o cartao
      precisa caber o texto, nao o contrario. */
-  .bnr { height: 224px; }
+  .bnr { height: 240px; }
   /* Com a peça menor, o texto recupera largura e a frase volta a caber em
      três linhas em vez de quatro. */
   .bnr-txt { max-width: 72%; padding: 0 18px; }
@@ -4995,7 +5045,20 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
      largura do cartão e virava o assunto do banner. Em 118 ela acompanha o
      texto em vez de disputar com ele, e continua saindo pela direita e por
      baixo — que é o que dá o volume. */
-  .bnr-3d { height: 118px; width: auto; right: -5%; top: auto; bottom: -8px; opacity: .92; }
+  /* DENTRO do slide na horizontal. Num carrossel os slides ficam colados: o
+     que sai pelo lado nao cai no vazio, cai em cima do vizinho. O volume vem
+     de atravessar a borda de BAIXO, que e onde existe folga.
+     Antes ela saia 5% pela direita e o recorte lateral a comia inteira. */
+  .bnr-3d { height: 124px; width: auto; right: 6px; top: auto; bottom: -14px; opacity: .95; }
+  /* UM OBJETO SO. Medido: a tira em 160..339 e a joia em 216..349, uma sobre
+     a outra e as duas por cima dos pontinhos. Num cartao de 319px nao cabem
+     dois. Fica a TIRA, porque num banner sobre vender ela e o argumento e a
+     joia e enfeite — e ela tambem atravessa a borda de baixo, entao o volume
+     continua ali. */
+  .bnr-com-tira .bnr-3d { display: none; }
+  .bnr-not {
+    width: 162px; right: 8px; top: auto; bottom: 0; transform: rotate(-3deg);
+  }
   .bnr-3d.mini { display: none; }
   .bnr-wrap { margin-bottom: 16px; }
 }

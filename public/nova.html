@@ -626,7 +626,11 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 .nots{position:absolute;left:50%;top:calc(var(--kf-w) * .6672);width:calc(var(--kf-w) * .7943);height:calc(var(--kf-w) * .861);transform:translateX(-50%)}
 .not{position:absolute;left:0;width:100%;overflow:hidden;opacity:0;
      animation:cair 12s cubic-bezier(.22,1,.36,1) infinite both;animation-delay:calc(var(--i) * 1.5s)}
-.not img{position:absolute;left:0;width:100%;max-width:none}
+/* ALTURA AUTOMATICA, e nao por acaso: o `height="620"` do HTML e uma
+   declaracao com forca de CSS. Sem esta linha era ele quem definia a
+   altura da tira, e a tira desenhada com o dobro do tamanho mostrava a
+   faixa errada em cada janela. */
+.not img{position:absolute;left:0;width:100%;height:auto;max-width:none}
 /* A LOGO DA NOTIFICAÇÃO É AO VIVO. Ela era pintada dentro da tira, e trocar
    a marca no Admin não mudava nada aqui — só refazendo a arte no Figma.
    Agora vem de /marca/logo, a mesma que o painel e o checkout usam, e o
