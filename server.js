@@ -550,6 +550,8 @@ function serveLanding(req, res) {
 const hosts = require('./src/hosts');
 app.get(['/', '/index.html'], (req, res, next) => {
   if (hosts.ehHostDoPainel(req)) return res.redirect(302, '/app/');
+  // admin.koonfy.com abre direto o painel da plataforma.
+  if (hosts.ehHostDoAdmin(req)) return res.redirect(302, '/adm/');
   // Raiz do domínio de checkout: não há cobrança nenhuma para mostrar, então
   // manda para a vitrine em vez de devolver a landing num endereço que o
   // cliente associa a pagamento.
@@ -561,6 +563,11 @@ app.get(['/', '/index.html'], (req, res, next) => {
   if (hosts.ehHostDaApi(req)) return res.status(404).json({ error: 'Este endereço serve apenas a API' });
   next();
 });
+
+// ATALHO DO PAINEL DA PLATAFORMA. "/adm/" é o endereço real (a pasta), mas
+// ninguém digita "adm" de primeira: escreve "admin" e bate numa página que
+// não existe. O atalho evita isso, e vale em qualquer domínio.
+app.get(['/admin', '/admin/'], (req, res) => res.redirect(301, '/adm/'));
 
 app.get('/', serveLanding);
 app.get('/index.html', serveLanding);
@@ -621,6 +628,44 @@ app.get('/app/manifest.webmanifest', (req, res) => {
   };
   const corpo = JSON.stringify(manifesto);
   const etag = '"mf-' + crypto.createHash('sha1').update(corpo).digest('hex').slice(0, 16) + '"';
+  res.set('ETag', etag);
+  res.set('Content-Type', 'application/manifest+json; charset=utf-8');
+  res.set('Cache-Control', 'public, max-age=0, must-revalidate');
+  if (req.get('if-none-match') === etag) return res.status(304).end();
+  res.send(corpo);
+});
+
+// MANIFESTO DO PAINEL DA PLATAFORMA.
+//
+// O nome carrega "Admin" de propósito: na tela de início do celular os dois
+// atalhos ficam lado a lado, e "Koonfy" duas vezes não diz qual é qual.
+//
+// Sem service worker: o painel só mostra dado ao vivo, e não teria o que
+// mostrar offline. O manifesto sozinho já dá nome e ícone ao atalho.
+app.get('/adm/manifest.webmanifest', (req, res) => {
+  const mk = (db.get().platform && db.get().platform.marca) || {};
+  const nome = String(mk.nome || '').trim() || 'Koonfy';
+  const manifesto = {
+    id: '/adm/',
+    name: nome + ' Admin',
+    short_name: (nome + ' Admin').slice(0, 12),
+    description: 'Painel da plataforma: operação, contas e configuração.',
+    start_url: '/adm/?src=pwa',
+    scope: '/adm/',
+    display: 'standalone',
+    orientation: 'portrait-primary',
+    background_color: '#111111',
+    theme_color: '#111111',
+    lang: 'pt-BR', dir: 'ltr',
+    icons: [
+      { src: '/marca/logo', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/marca/logo', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/assets/koonfy-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+      { src: '/assets/koonfy-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+    ]
+  };
+  const corpo = JSON.stringify(manifesto);
+  const etag = '"adm-' + crypto.createHash('sha1').update(corpo).digest('hex').slice(0, 16) + '"';
   res.set('ETag', etag);
   res.set('Content-Type', 'application/manifest+json; charset=utf-8');
   res.set('Cache-Control', 'public, max-age=0, must-revalidate');

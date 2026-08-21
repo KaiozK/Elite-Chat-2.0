@@ -116,6 +116,11 @@
     <!-- A conta nasce no pagamento, em /assinar. Abrir cadastro aqui criaria
          conta sem plano e sem pagamento, que é o que o fluxo novo resolveu. -->
     <p class="hint" id="auth-toggle">Ainda não é cliente? <a href="/assinar">Ver os planos</a></p>
+    <!-- A credencial da plataforma não entra por aqui, e a recusa vem com a
+         mesma mensagem de senha errada (dizer o contrário confirmaria que o
+         usuário existe). Sem este link, quem administra digita a senha certa,
+         lê "inválidos" e acha que o acesso quebrou. -->
+    <p class="hint" style="margin-top:6px">Administra a plataforma? <a href="/adm/">Painel da plataforma</a></p>
     <!-- O aceite precisa estar VISÍVEL no momento de criar a conta: as duas
          páginas existiam mas não eram linkadas de lugar nenhum, então ninguém
          as encontrava — nem o cliente, nem a revisão do app da Meta, que exige

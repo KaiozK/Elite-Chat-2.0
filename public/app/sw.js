@@ -2,7 +2,7 @@
  * Cache do app shell + offline + Push Notifications + clique abre a conversa.
  * Escopo: /app/  (registrado por notifications.js)
  */
-const VERSION = 'koonfy-v10';  // v10: o icone do iPhone sai de /marca/logo, e o index guardado precisa cair
+const VERSION = 'koonfy-v11';  // v11: o login do app aponta o caminho do painel da plataforma
 const SHELL = 'ec-shell-' + VERSION;
 const RUNTIME = 'ec-runtime-' + VERSION;
 

@@ -4,10 +4,11 @@
 // O Koonfy responde por quatro hosts, todos no MESMO servidor. O que muda é o
 // papel de cada um:
 //
-//   koonfy.com       vitrine (landing)
-//   app.koonfy.com   painel
-//   api.koonfy.com   só a API
-//   pay.koonfy.com   checkout público das cobranças
+//   koonfy.com         vitrine (landing)
+//   app.koonfy.com     painel do cliente
+//   admin.koonfy.com   painel da plataforma (o /adm/)
+//   api.koonfy.com     só a API
+//   pay.koonfy.com     checkout público das cobranças
 //
 // Isso não separa backend de frontend — é organização de endereço. A vantagem
 // real é poder mandar o cliente para `pay.` sem expor o domínio do painel, e
@@ -35,6 +36,7 @@ const semBarra = (u) => String(u || '').trim().replace(/\/+$/, '');
 const PANEL_HOST = env('PANEL_HOST');
 const API_HOST = env('API_HOST');
 const PAY_HOST = env('PAY_HOST');
+const ADMIN_HOST = env('ADMIN_HOST');
 const PUBLIC_URL = semBarra(process.env.PUBLIC_URL);
 const PAY_URL = semBarra(process.env.PAY_URL);
 
@@ -53,6 +55,10 @@ function ehPapel(req, fixo, prefixo) {
 const ehHostDoPainel = (req) => ehPapel(req, PANEL_HOST, 'app.');
 const ehHostDaApi = (req) => ehPapel(req, API_HOST, 'api.');
 const ehHostDoPay = (req) => ehPapel(req, PAY_HOST, 'pay.');
+// O painel da plataforma. Fica fora de `origensDoProduto` de propósito: o
+// admin não precisa que a API o reconheça como origem confiável de
+// navegador — ele fala com o mesmo host de onde foi servido.
+const ehHostDoAdmin = (req) => ehPapel(req, ADMIN_HOST, 'admin.');
 
 // Origem que pode ir num link enviado para fora.
 // Devolve '' quando a requisição chegou por um host interno (painel ou API) e
@@ -61,7 +67,7 @@ const ehHostDoPay = (req) => ehPapel(req, PAY_HOST, 'pay.');
 function origemPublica(req) {
   if (PUBLIC_URL) return PUBLIC_URL;
   if (!req) return '';
-  if (ehHostDoPainel(req) || ehHostDaApi(req)) return '';
+  if (ehHostDoPainel(req) || ehHostDaApi(req) || ehHostDoAdmin(req)) return '';
   return `${req.protocol}://${req.get('host')}`;
 }
 
@@ -104,7 +110,7 @@ function origensDoProduto(req) {
 }
 
 module.exports = {
-  PANEL_HOST, API_HOST, PAY_HOST, PUBLIC_URL, PAY_URL,
-  hostDe, ehHostDoPainel, ehHostDaApi, ehHostDoPay,
+  PANEL_HOST, API_HOST, PAY_HOST, ADMIN_HOST, PUBLIC_URL, PAY_URL,
+  hostDe, ehHostDoPainel, ehHostDaApi, ehHostDoPay, ehHostDoAdmin,
   origemPublica, basePagamento, origensDoProduto
 };

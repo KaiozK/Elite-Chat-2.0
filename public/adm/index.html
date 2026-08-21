@@ -7,11 +7,23 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="icon" href="/marca/logo">
-<!-- SEM manifesto e SEM service worker, de propósito. Este painel não é para
-     instalar no celular, e um SW aqui disputaria escopo com o do /app/, que é
-     o que precisa funcionar offline. Também não é indexável: é a porta dos
-     fundos da plataforma. -->
+<!-- INSTALÁVEL, mas sem service worker.
+
+     O manifesto dá nome e ícone ao atalho na tela de início, que é o que
+     transforma "abrir o navegador e digitar o endereço" em um toque. O SW
+     fica de fora: ele serve para funcionar offline, e um painel que só mostra
+     dado ao vivo não tem o que mostrar sem rede — enquanto disputaria escopo
+     com o do /app/, que precisa do offline de verdade.
+
+     Não é indexável: é a porta dos fundos da plataforma. -->
 <meta name="robots" content="noindex, nofollow">
+<link rel="manifest" href="/adm/manifest.webmanifest">
+<meta name="theme-color" content="#111111">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Koonfy Admin">
+<link rel="apple-touch-icon" href="/marca/logo">
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/app/style.css?v=pipe2">
 <link rel="stylesheet" href="/tema.css">
