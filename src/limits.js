@@ -45,7 +45,10 @@ function extraPrices() {
 // nenhum plano, cai nos limites padrão.
 // Conta interna do dono: sem teto e com todos os módulos. É o mesmo produto,
 // só que sem a camada comercial.
-function isUnlimited(acc) { return !!(acc && acc.unlimited); }
+// A conta do DONO entra aqui junto com as internas: ela é a conta
+// operacional de quem opera a plataforma, e cobrar assinatura de si mesmo
+// (ou barrá-lo por cota) não faz sentido nenhum.
+function isUnlimited(acc) { return !!(acc && (acc.unlimited || acc.isAdmin)); }
 
 function limitOf(acc, key) {
   if (isUnlimited(acc)) return -1;

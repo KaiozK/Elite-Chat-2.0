@@ -167,6 +167,10 @@ module.exports = function (broadcast, clients) {
   // isso que separa as duas autenticações de verdade — sem o escopo, bastaria
   // uma sessão com kind admin, viesse ela de onde viesse.
   function newSession(kind, acc, agent, escopo) {
+    // CARIMBO DO ÚLTIMO ACESSO. Existia só para o atendente, então a ficha da
+    // conta dizia "nunca entrou" sobre todo titular — inclusive os que entram
+    // todo dia. Aqui vale para quem for que abriu a sessão.
+    if (agent) agent.lastLoginAt = Date.now(); else if (acc) acc.lastLoginAt = Date.now();
     const token = crypto.randomBytes(24).toString('hex');
     const sessions = db.get().sessions;
     sessions[token] = {
@@ -335,9 +339,22 @@ module.exports = function (broadcast, clients) {
   router.post('/login', h(async (req, res) => {
     const { user, pass } = req.body || {};
     const p = db.get().platform;
-    // A credencial do admin NÃO abre aqui. A mensagem é a mesma de senha
-    // errada de propósito: um "esta é a porta errada" confirmaria, para quem
-    // está tentando, que o usuário existe.
+    // A CREDENCIAL DA PLATAFORMA ABRE AQUI TAMBÉM, mas só o painel do
+    // cliente. O dono tem uma conta operacional como qualquer outra (com
+    // WhatsApp, contatos, cobranças) e precisa entrar nela.
+    //
+    // O que separa os dois mundos não é a senha, é o ESCOPO: a sessão nasce
+    // como conta comum, com escopo `app`, e as rotas de administração exigem
+    // uma sessão nascida em /adm/. Entrar aqui não administra nada.
+    if (user === p.adminUser && db.verifyPassword(pass || '', p.adminPassHash)) {
+      const acc = db.findAdminAccount();
+      const token = newSession('account', acc, null, 'app');
+      return res.json({ token, user: acc.name, kind: 'account', accountId: acc.id,
+        wa: waPublic(acc), nsConectada: !!(acc.nuvemshop && acc.nuvemshop.accessToken),
+        permissions: null, planRequired: precisaAssinar({ session: { kind: 'account' }, acc }) });
+    }
+    // Usuário do admin com senha errada para pela mesma porta e com a mesma
+    // mensagem: responder diferente confirmaria que o usuário existe.
     if (user === p.adminUser) return res.status(401).json({ error: 'Usuário ou senha inválidos' });
     // conta de cliente (dono — login por e-mail)
     const acc = db.findAccountByEmail(user);
@@ -4324,6 +4341,89 @@ module.exports = function (broadcast, clients) {
     db.save();
     store.logEvent({ type: 'superconta_criada', accountId: acc.id, detail: acc.name });
     res.json({ ok: true, id: acc.id });
+  });
+
+  // FICHA COMPLETA DE UMA CONTA — tudo o que existe sobre ela.
+  //
+  // A lista mostrava nome, plano e carteira. O que a pessoa preencheu no
+  // cadastro (documento, segmento, tamanho, telefone, objetivo) ficava
+  // guardado e invisível: para saber com quem se fala era preciso abrir o
+  // banco.
+  router.get('/adm/accounts/:id', auth, adminOnly, (req, res) => {
+    const data = db.get();
+    const a = db.findAccount(req.params.id);
+    if (!a) return res.status(404).json({ error: 'Conta não encontrada' });
+
+    const perfil = a.profile || {};
+    // DOCUMENTO MASCARADO por padrão: para reconhecer a conta bastam os
+    // últimos dígitos, e um CPF inteiro numa tela aberta o dia todo é
+    // exposição sem motivo. O número inteiro sai só a pedido, e o pedido
+    // fica registrado.
+    const doc = String(perfil.document || '').replace(/\D/g, '');
+    const inteiro = String(req.query.doc || '') === '1';
+    if (inteiro && doc) {
+      store.logEvent({ type: 'adm_documento_visto', accountId: a.id, detail: 'documento completo exibido no painel' });
+    }
+
+    const plano = data.plans.find(x => x.id === a.billing.planId) || null;
+    const canais = (a.channels || []).map(c => ({
+      id: c.id, rotulo: c.label || '', conectado: !!(c.wa && c.wa.connected),
+      numero: (c.wa && c.wa.displayPhoneNumber) || '', verificado: (c.wa && c.wa.verifiedName) || ''
+    }));
+    const agora = Date.now();
+    let msg30 = 0;
+    for (const m of a.messages || []) if (m.timestamp && m.timestamp >= agora - 30 * 86400000) msg30++;
+
+    res.json({
+      cadastro: {
+        id: a.id, nome: a.name, email: a.email, criadaEm: a.createdAt,
+        ultimoAcesso: a.lastLoginAt || 0,
+        tipo: a.isAdmin ? 'Conta do administrador' : a.unlimited ? 'Superconta' : 'Cliente'
+      },
+      perfil: {
+        segmento: perfil.segment || '', colaboradores: perfil.size || '',
+        telefone: perfil.phone || '', pais: perfil.country || '',
+        objetivo: perfil.goal || '',
+        // 11 dígitos é CPF, 14 é CNPJ. Sem os dois não há o que dizer.
+        documentoTipo: doc.length === 14 ? 'CNPJ' : doc.length === 11 ? 'CPF' : '',
+        documento: inteiro ? doc : (doc ? '•••' + doc.slice(-4) : ''),
+        documentoCompleto: !!inteiro,
+        chavePix: perfil.pixKey || '', chavePixTipo: perfil.pixKeyType || ''
+      },
+      assinatura: {
+        status: a.billing.status, plano: plano ? plano.name : '',
+        preco: plano ? plano.price : 0,
+        expiraEm: a.billing.periodEnd || 0, comecouEm: a.billing.startedAt || 0,
+        canceladaEm: a.billing.canceledAt || 0,
+        meio: a.billing.method || '',
+        cartao: a.billing.card && a.billing.card.last4 ? `${a.billing.card.brand || ''} ••••${a.billing.card.last4}` : '',
+        extras: a.billing.extras || {}
+      },
+      carteira: {
+        saldo: a.wallet.balance || 0, aLiberar: a.wallet.pending || 0,
+        deCartao: a.wallet.cardAvailable || 0,
+        movimentos: (a.wallet.transactions || []).length
+      },
+      uso: {
+        contatos: (a.contacts || []).length,
+        mensagens: (a.messages || []).length, mensagens30d: msg30,
+        campanhas: (a.campaigns || []).length,
+        automacoes: (a.flows || []).length,
+        agendamentos: (a.schedules || []).length,
+        atendentes: (a.team || []).length,
+        canais
+      },
+      integracoes: {
+        nuvemshop: !!(a.nuvemshop && a.nuvemshop.accessToken) ? (a.nuvemshop.storeName || 'conectada') : '',
+        webhooks: (a.webhooks || []).length,
+        links: (a.links || []).length
+      },
+      afiliacao: {
+        codigo: a.affiliate.code || '', indicadoPor: a.affiliate.refBy || '',
+        ganhos: a.affiliate.earned || 0,
+        indicados: data.accounts.filter(x => x.affiliate && x.affiliate.refBy === a.affiliate.code).length
+      }
+    });
   });
 
   // ============ ADMIN SaaS (métricas, contas, planos, afiliados, saques) ============

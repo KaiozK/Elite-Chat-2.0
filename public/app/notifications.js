@@ -206,7 +206,10 @@
     // bundle (não há o que cachear) e o push chega pelo canal do sistema.
     if (EC.native) { if (window.ECNative) ECNative.initPush(); return Promise.resolve(null); }
     if (!supported()) return Promise.resolve(null);
-    return navigator.serviceWorker.register('/app/sw.js', { scope: '/app/' })
+    // Cada painel registra no PRÓPRIO caminho: um service worker só controla
+    // o diretório de onde foi servido, e o painel da plataforma vive em /adm/.
+    var raiz = /^\/adm(\/|$)/.test(location.pathname) ? '/adm/' : '/app/';
+    return navigator.serviceWorker.register(raiz + 'sw.js', { scope: raiz })
       .then(function (reg) {
         state.reg = reg;
         navigator.serviceWorker.addEventListener('message', onSwMessage);

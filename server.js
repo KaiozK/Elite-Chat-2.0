@@ -642,6 +642,16 @@ app.get('/app/manifest.webmanifest', (req, res) => {
 //
 // Sem service worker: o painel só mostra dado ao vivo, e não teria o que
 // mostrar offline. O manifesto sozinho já dá nome e ícone ao atalho.
+// O SERVICE WORKER DO PAINEL é o mesmo arquivo do app, servido no caminho
+// dele. Um SW só controla o diretório de onde foi servido: sem esta rota, o
+// painel não teria registro próprio e o push não teria como chegar — push na
+// web depende de um service worker registrado, não há caminho sem ele.
+app.get('/adm/sw.js', (req, res) => {
+  res.set('Content-Type', 'application/javascript; charset=utf-8');
+  res.set('Service-Worker-Allowed', '/adm/');
+  res.sendFile(path.join(__dirname, 'public', 'app', 'sw.js'));
+});
+
 app.get('/adm/manifest.webmanifest', (req, res) => {
   const mk = (db.get().platform && db.get().platform.marca) || {};
   const nome = String(mk.nome || '').trim() || 'Koonfy';

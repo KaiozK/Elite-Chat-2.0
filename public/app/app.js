@@ -1273,6 +1273,13 @@ async function enterApp() {
   // avisar — o resto desta função é o painel do cliente se montando.
   if (ADM) {
     setTheme(currentTheme());
+    // O PUSH ENTRA AQUI. O teste de venda do painel manda para os aparelhos
+    // inscritos NESTA conta, e sem isto o painel nunca inscrevia nenhum: o
+    // botão disparava para ninguém e parecia que o push estava quebrado.
+    if (window.ECNotify) {
+      ECNotify.setHooks({ onChange: paintNotifBell });
+      askNotifPermission();
+    }
     route();
     if (state.mustChangePassword) toast('Troque a senha padrão em Configurações → Segurança', 'error');
     return;
@@ -2797,6 +2804,95 @@ async function nsImportar(btn) {
     nsClientes(); nsTopo();
   } catch (e) { toast(e.message, 'error'); }
   finally { btn.disabled = false; btn.innerHTML = txt; }
+}
+
+// ===========================================================================
+// FICHA DA CONTA (painel da plataforma)
+//
+// Tudo o que existe sobre uma conta, num lugar só. O que a pessoa preencheu
+// no cadastro estava guardado e não aparecia em tela nenhuma.
+// ===========================================================================
+function admLinha(rotulo, valor, destaque) {
+  const v = valor === 0 || valor ? valor : '<span class="muted">-</span>';
+  const cor = destaque ? ' style="color:var(--verde-deep)"' : '';
+  return `<div class="wa-row"><span>${esc(rotulo)}</span><b${cor}>${v}</b></div>`;
+}
+
+async function admFicha(id, comDocumento) {
+  try {
+    const d = await api('/adm/accounts/' + id + (comDocumento ? '?doc=1' : ''));
+    const c = d.cadastro, pf = d.perfil, as = d.assinatura, ca = d.carteira, u = d.uso;
+    const dinheiro = v => fmtBRL(v || 0);
+    openModal(`
+      <h2>${ico('briefcase')} ${esc(c.nome)}</h2>
+      <p class="muted" style="margin:2px 0 0;font-size:13px">${esc(c.email)} · ${esc(c.tipo)}</p>
+
+      <div class="fb-sub" style="margin-top:16px">Cadastro</div>
+      <div class="wa-status">
+        ${admLinha('Criada em', new Date(c.criadaEm).toLocaleString('pt-BR'))}
+        ${admLinha('Último acesso', c.ultimoAcesso ? timeAgo(c.ultimoAcesso) : null)}
+        ${admLinha('ID interno', '<code>' + esc(c.id) + '</code>')}
+      </div>
+
+      <div class="fb-sub" style="margin-top:16px">A empresa</div>
+      <div class="wa-status">
+        ${admLinha(pf.documentoTipo || 'CPF / CNPJ', pf.documento ? esc(pf.documento) +
+          (pf.documentoCompleto ? '' : ` <button class="btn small" style="margin-left:8px" onclick="admFicha('${id}', true)">Ver completo</button>`) : null)}
+        ${admLinha('Segmento', pf.segmento ? esc(pf.segmento) : null)}
+        ${admLinha('Colaboradores', pf.colaboradores ? esc(pf.colaboradores) : null)}
+        ${admLinha('Telefone', pf.telefone ? esc(pf.telefone) : null)}
+        ${admLinha('País', pf.pais ? esc(pf.pais) : null)}
+        ${admLinha('O que quer resolver', pf.objetivo ? esc(pf.objetivo) : null)}
+        ${admLinha('Chave Pix', pf.chavePix ? esc(pf.chavePix) + (pf.chavePixTipo ? ' (' + esc(pf.chavePixTipo) + ')' : '') : null)}
+      </div>
+
+      <div class="fb-sub" style="margin-top:16px">Assinatura</div>
+      <div class="wa-status">
+        ${admLinha('Situação', esc(as.status))}
+        ${admLinha('Plano', as.plano ? esc(as.plano) + ' · ' + dinheiro(as.preco) : null)}
+        ${admLinha('Expira em', as.expiraEm ? new Date(as.expiraEm).toLocaleDateString('pt-BR') : null)}
+        ${admLinha('Cliente desde', as.comecouEm ? new Date(as.comecouEm).toLocaleDateString('pt-BR') : null)}
+        ${admLinha('Meio de pagamento', as.meio ? esc(as.meio) + (as.cartao ? ' · ' + esc(as.cartao) : '') : null)}
+      </div>
+
+      <div class="fb-sub" style="margin-top:16px">Carteira</div>
+      <div class="wa-status">
+        ${admLinha('Saldo', dinheiro(ca.saldo), true)}
+        ${admLinha('A liberar', dinheiro(ca.aLiberar))}
+        ${admLinha('Movimentos', fmtN(ca.movimentos))}
+      </div>
+
+      <div class="fb-sub" style="margin-top:16px">Uso</div>
+      <div class="wa-status">
+        ${admLinha('Contatos', fmtN(u.contatos))}
+        ${admLinha('Mensagens', fmtN(u.mensagens) + ' <span class="muted">(' + fmtN(u.mensagens30d) + ' em 30 dias)</span>')}
+        ${admLinha('Campanhas', fmtN(u.campanhas))}
+        ${admLinha('Automações', fmtN(u.automacoes))}
+        ${admLinha('Agendamentos', fmtN(u.agendamentos))}
+        ${admLinha('Atendentes', fmtN(u.atendentes))}
+      </div>
+
+      <div class="fb-sub" style="margin-top:16px">Conexões de WhatsApp</div>
+      ${u.canais.length ? `<div class="wa-status">${u.canais.map(ch => admLinha(
+        esc(ch.rotulo || 'sem nome'),
+        (ch.numero ? esc(ch.numero) : '<span class="muted">sem número</span>') +
+        (ch.conectado ? ' <span class="pill done">conectada</span>' : ' <span class="pill">fora do ar</span>')
+      )).join('')}</div>` : '<p class="muted" style="font-size:13px">Nenhuma conexão.</p>'}
+
+      <div class="fb-sub" style="margin-top:16px">Integrações e afiliação</div>
+      <div class="wa-status">
+        ${admLinha('Nuvemshop', d.integracoes.nuvemshop ? esc(d.integracoes.nuvemshop) : null)}
+        ${admLinha('Webhooks', fmtN(d.integracoes.webhooks))}
+        ${admLinha('Links rastreáveis', fmtN(d.integracoes.links))}
+        ${admLinha('Código de indicação', '<code>' + esc(d.afiliacao.codigo) + '</code>')}
+        ${admLinha('Indicado por', d.afiliacao.indicadoPor ? '<code>' + esc(d.afiliacao.indicadoPor) + '</code>' : null)}
+        ${admLinha('Indicou', fmtN(d.afiliacao.indicados) + ' conta(s) · ' + dinheiro(d.afiliacao.ganhos))}
+      </div>
+
+      <div class="row" style="margin-top:18px;justify-content:flex-end">
+        <button class="btn primary no-grow" onclick="closeModal()">Fechar</button>
+      </div>`);
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 // ---------- dashboard ----------
@@ -8896,6 +8992,7 @@ async function paintAdmin() {
                 <td>${a.unlimited ? `<span class="pill done">interna</span>`
                   : (a.referrals ? `<b>${a.referrals}</b> · ${fmtBRL(a.affEarned)}` : '-')}</td>
                 <td style="white-space:nowrap">
+                  <button class="btn small" onclick="admFicha('${a.id}')">${ico('search', 12)} Ficha</button>
                   ${a.unlimited ? '' : `<button class="btn small" onclick="admExtend(\'${a.id}\')">+30 dias</button>`}
                   <button class="btn small" onclick="admToggleIlimitada('${a.id}', ${a.unlimited ? 'false' : 'true'})">
                     ${a.unlimited ? 'Tornar cliente' : 'Tornar interna'}</button>

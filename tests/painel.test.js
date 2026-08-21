@@ -89,10 +89,23 @@ const url = (r) => 'http://127.0.0.1:' + porta + r;
   ok(admBom.http === 200 && !!admBom.token, 'o admin entra pela porta dele: ' + admBom.http);
   ok(admBom.escopo === 'adm', 'e a sessão nasce com o escopo do painel: ' + admBom.escopo);
 
+  // A credencial da plataforma TAMBÉM entra pela porta do cliente: o dono tem
+  // uma conta operacional e precisa dela. O que não atravessa é o poder.
   const admNoApp = await entrar('/api/login', { user: 'admin', pass: 'admin' });
-  ok(admNoApp.http === 401, 'a credencial do admin NÃO entra pela porta do cliente: ' + admNoApp.http);
-  ok(admNoApp.error === 'Usuário ou senha inválidos',
-     'e a mensagem é a de senha errada, sem confirmar que o usuário existe');
+  ok(admNoApp.http === 200, 'a credencial da plataforma abre o painel do cliente: ' + admNoApp.http);
+  ok(admNoApp.kind === 'account', 'mas como CONTA, não como admin: ' + admNoApp.kind);
+
+  // A prova do que importa: essa sessão não administra nada.
+  const semPoder = await pegar('/api/adm/overview', admNoApp.token);
+  ok(semPoder.http === 403, 'e ela é recusada nas rotas de administração: ' + semPoder.http);
+  const semPoder2 = await pegar('/api/admin/saas', admNoApp.token);
+  ok(semPoder2.http === 403, 'em todas elas: ' + semPoder2.http);
+
+  // Senha errada continua parando na porta, com a mensagem de sempre.
+  const admRuim = await entrar('/api/login', { user: 'admin', pass: 'chute' });
+  ok(admRuim.http === 401, 'senha errada não entra: ' + admRuim.http);
+  ok(admRuim.error === 'Usuário ou senha inválidos',
+     'com a mesma mensagem de sempre, sem confirmar que o usuário existe');
 
   const clienteNoAdm = await entrar('/api/adm/login', { user: 'ze@padaria.com', pass: 'segredo123' });
   ok(clienteNoAdm.http === 401, 'a credencial do cliente NÃO entra pela porta do admin: ' + clienteNoAdm.http);

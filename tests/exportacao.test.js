@@ -45,15 +45,18 @@ const baixar = async (rota, tok) => {
   const srv = app.listen(porta);
   await new Promise(r => setTimeout(r, 150));
 
-  const login = await (await fetch('http://127.0.0.1:' + porta + '/api/adm/login', {
+  // Uma conta de CLIENTE de verdade: o teto do plano é o que o cliente vê, e
+  // a conta do dono não tem teto nenhum (é dele, como as Supercontas).
+  const acc = db.newAccount({ name: 'Cliente', email: 'cliente@teste.com', pass: 'segredo123' });
+  db.get().accounts.push(acc);
+  db.save();
+
+  const login = await (await fetch('http://127.0.0.1:' + porta + '/api/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user: 'admin', pass: 'admin' })
+    body: JSON.stringify({ user: 'cliente@teste.com', pass: 'segredo123' })
   })).json();
   const tok = login.token;
-  ok(!!tok, 'admin entrou');
-
-  const acc = db.get().accounts[0];
-  acc.unlimited = false;                 // o admin é ilimitado por padrão; aqui ele é um cliente
+  ok(!!tok, 'o cliente entrou');
 
   // Plano de 10 contatos (a escala não muda a regra) e 50 contatos na base.
   db.get().plans = [{ id: 'pl_teste', name: 'Starter', price: 9700, periodDays: 30, limits: { contacts: 10 }, modules: {} }];
