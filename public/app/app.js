@@ -3061,31 +3061,33 @@ function periodoIntervalo() {
 const BANNERS = [
   {
     tag: 'Integrações', fundo: 'integracoes',
-    peca: 'balao', selo: '/assets/logos/nuvemshop.webp',
+    peca: 'balao', pw: 640, ph: 644,
     titulo: 'Tudo o que você já usa, conversando',
-    texto: 'Nuvemshop, Meta Ads e webhooks: o que acontece nas suas ferramentas vira mensagem no WhatsApp.',
+    // A frase mais longa dos cinco estourava o cartao no celular. Banner nao
+    // e lugar de paragrafo: se nao cabe em tres linhas, esta comprida demais.
+    texto: 'Nuvemshop, Meta Ads e webhooks viram mensagem no WhatsApp, sem você fazer nada.',
     acao: 'Ver integrações', href: '#/integrations'
   },
   {
-    tag: 'Ligação', fundo: 'ligacao', peca: 'ic-ligacao',
+    tag: 'Ligação', fundo: 'ligacao', peca: 'ic-ligacao', pw: 560, ph: 677,
     titulo: 'Ligue de dentro da conversa',
     texto: 'Chamada de voz pelo WhatsApp sem sair do atendimento, com o histórico no mesmo lugar.',
     acao: 'Abrir Conversas', href: '#/inbox'
   },
   {
-    tag: 'Indique e ganhe', fundo: 'indique', peca: 'ic-indique',
+    tag: 'Indique e ganhe', fundo: 'indique', peca: 'ic-indique', pw: 560, ph: 594,
     titulo: 'Indique a Koonfy e receba',
     texto: 'Comissão automática em toda assinatura de quem você indicar. O link é seu e o saldo cai na carteira.',
     acao: 'Ver meu link', href: '#/afiliacao'
   },
   {
-    tag: 'Vender com a Koonfy', fundo: 'vender', peca: 'ic-vender',
+    tag: 'Vender com a Koonfy', fundo: 'vender', peca: 'ic-vender', pw: 560, ph: 591,
     titulo: 'Venda dentro do WhatsApp',
     texto: 'Cobrança por Pix e cartão no chat, checkout próprio e o dinheiro na sua conta.',
     acao: 'Ver Pagamentos', href: '#/elitepay'
   },
   {
-    tag: 'Tracking', fundo: 'tracking', peca: 'ic-tracking',
+    tag: 'Tracking', fundo: 'tracking', peca: 'ic-tracking', pw: 560, ph: 588,
     titulo: 'Saiba de onde vem cada venda',
     texto: 'Links rastreáveis e pixels: a campanha que traz cliente aparece no relatório, com nome e número.',
     acao: 'Abrir Tracking', href: '#/tracking'
@@ -3106,9 +3108,11 @@ function bannersHtml() {
                    ${i ? 'loading="lazy"' : ''} decoding="async">
               <span class="bnr-veu"></span>
             </div>
+            <!-- Largura e altura reais: sem elas, uma peça ainda não
+                 carregada nasce sem largura e pula ao chegar. -->
             <img class="bnr-3d" src="/assets/banner-${b.peca}.webp" alt="" aria-hidden="true"
+                 width="${b.pw}" height="${b.ph}"
                  ${i ? 'loading="lazy"' : ''} decoding="async">
-            ${b.selo ? `<img class="bnr-selo" src="${b.selo}" alt="" aria-hidden="true" loading="lazy" decoding="async">` : ''}
             <div class="bnr-txt">
               <span class="bnr-tag">${esc(b.tag)}</span>
               <h3>${esc(b.titulo)}</h3>

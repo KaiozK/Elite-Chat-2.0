@@ -4950,15 +4950,6 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
   50% { translate: 0 -9px; }
 }
 
-/* SELO DA MARCA PARCEIRA (a logo da Nuvemshop, por exemplo). Fica pequeno e
-   no canto: é uma menção, não o assunto do banner. */
-.bnr-selo {
-  position: absolute; z-index: 4; right: 6%; bottom: 10px; width: 46px; height: 46px;
-  border-radius: 12px; box-shadow: 0 10px 22px rgba(0,0,0,.4);
-  background: #fff; padding: 6px;
-}
-@media (max-width: 620px) { .bnr-selo { width: 36px; height: 36px; right: 4%; bottom: 6px; } }
-
 .bnr-pontos { display: flex; gap: 7px; justify-content: center; margin-top: 12px; }
 .bnr-pontos button {
   width: 7px; height: 7px; padding: 0; border: 0; border-radius: 50%;
@@ -4991,18 +4982,20 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
   /* Mais alto no celular: com a largura do texto reduzida para nao bater na
      peca, a mesma frase ocupa quatro linhas em vez de duas — e o cartao
      precisa caber o texto, nao o contrario. */
-  .bnr { height: 250px; }
-  /* O texto para antes do canto da peça: um não invade o outro. */
-  .bnr-txt { max-width: 64%; padding: 0 18px; }
+  .bnr { height: 224px; }
+  /* Com a peça menor, o texto recupera largura e a frase volta a caber em
+     três linhas em vez de quatro. */
+  .bnr-txt { max-width: 72%; padding: 0 18px; }
   .bnr-txt h3 { font-size: 16px; }
   .bnr-txt p { font-size: 12.5px; }
   /* Numa tela estreita a peça e o texto disputam o mesmo espaço, e quem
      perde é o texto — que é o que a pessoa precisa ler. Ela vira marca
      d'água no canto, e a segunda some: duas peças em 375px viram sujeira. */
-  /* A peça vai para o canto de baixo, onde só existe fundo, e sai um pouco
-     pela direita: o corte na borda é o que mantém a sensação de volume numa
-     tela onde ela não cabe inteira. */
-  .bnr-3d { height: 150px; width: auto; right: -8%; top: auto; bottom: -10px; opacity: .9; }
+  /* TEMPERO, NÃO ASSUNTO. Com 150px de altura a peça ocupava metade da
+     largura do cartão e virava o assunto do banner. Em 118 ela acompanha o
+     texto em vez de disputar com ele, e continua saindo pela direita e por
+     baixo — que é o que dá o volume. */
+  .bnr-3d { height: 118px; width: auto; right: -5%; top: auto; bottom: -8px; opacity: .92; }
   .bnr-3d.mini { display: none; }
   .bnr-wrap { margin-bottom: 16px; }
 }
