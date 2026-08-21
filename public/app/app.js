@@ -2552,7 +2552,7 @@ async function renderNuvemshop() {
       <div class="page-head"><h1>Nuvemshop</h1>
         <p class="muted">Conecte a sua loja para ver pedidos e recuperar carrinhos.</p></div>
       <div class="card">
-        <h2>${ico('cart')} Nenhuma loja conectada</h2>
+        <h2>${logoInt('nuvemshop', 20)} Nenhuma loja conectada</h2>
         <p class="muted" style="margin:0 0 14px;font-size:13px">
           Depois de conectar, esta aba mostra os pedidos, os carrinhos abandonados e a base da loja.
           O menu passa a trazer a Nuvemshop sozinho.
@@ -2563,7 +2563,7 @@ async function renderNuvemshop() {
       </div>
 
       <div class="card">
-        <h2>${ico('sparkles')} Ainda não tem loja na Nuvemshop?</h2>
+        <h2>${logoInt('nuvemshop', 20)} Ainda não tem loja na Nuvemshop?</h2>
         <p class="muted" style="margin:0 0 14px;font-size:13px">
           Crie a sua e volte aqui para conectar. É a plataforma de loja virtual que o Koonfy integra:
           os pedidos, os carrinhos e a base de clientes passam a chegar direto no seu WhatsApp.
@@ -12499,6 +12499,15 @@ let whMapDraft = null;   // rascunho do mapeamento sendo editado
 
 // ==================== INTEGRAÇÕES ====================
 // Duas abas: Webhooks (genéricos) e Nuvemshop (loja conectada por OAuth).
+//
+// Cada uma com o LOGO de quem é. Um carrinho de linha não diz "Nuvemshop"
+// para ninguém: marca se reconhece pelo desenho dela. Os arquivos são os
+// mesmos da esteira de integrações da vitrine.
+function logoInt(arq, tam) {
+  const t = tam || 16;
+  return `<img src="/assets/logos/${arq}.webp" alt="" width="${t}" height="${t}"
+    style="border-radius:4px;flex:none" decoding="async">`;
+}
 let intTab = 'webhooks';
 let nsAvailable = null;   // cache: admin liberou a integração Nuvemshop?
 function setIntTab(t) { intTab = t; renderIntegrations(); }
@@ -12508,14 +12517,16 @@ async function renderIntegrations() {
   // nada de "em breve" entregando roadmap para concorrente.
   if (nsAvailable === null) { try { nsAvailable = (await api('/integrations/nuvemshop')).nuvemshop.available; } catch { nsAvailable = false; } }
   if (!nsAvailable && intTab === 'nuvemshop') intTab = 'webhooks';
+  // O webhook fica com o desenho de conexão: ali não há marca, é o encaixe
+  // genérico para qualquer sistema que fale HTTP.
   const tabs = [['webhooks', 'Webhooks', 'webhook']];
-  if (nsAvailable) tabs.push(['nuvemshop', 'Nuvemshop', 'cart']);
+  if (nsAvailable) tabs.push(['nuvemshop', 'Nuvemshop', 'nuvemshop']);
   $('#view').innerHTML = `<div class="page">
     <div class="page-head row" style="align-items:center">
       <div style="flex:1"><h1>Integrações</h1><p>Conecte o Koonfy às ferramentas e à loja que você já usa</p></div>
       ${intTab === 'webhooks' ? `<button class="btn primary no-grow" onclick="createWebhook()">${ico('plus', 14)} Novo webhook</button>` : ''}
     </div>
-    <div class="seg int-tabs">${tabs.map(([k, l, i]) => `<button class="${k === intTab ? 'on' : ''}" onclick="setIntTab('${k}')">${ico(i, 13)} ${l}</button>`).join('')}</div>
+    <div class="seg int-tabs">${tabs.map(([k, l, i]) => `<button class="${k === intTab ? 'on' : ''}" onclick="setIntTab('${k}')">${logoInt(i, 15)} ${l}</button>`).join('')}</div>
     <div id="int-body">${skel(4)}</div>
   </div>`;
   if (intTab === 'nuvemshop') return loadNuvemshop();
@@ -12813,15 +12824,19 @@ function paintNuvemshop() {
   }
 
   // Cabeçalho padrão dos passos: ícone + título/descrição + status.
+  // `icon` pode ser um ícone do sistema ou o nome de um arquivo de logo. Os
+  // dois cabem na mesma caixa de 40px, e é o que permite trocar o carrinho
+  // genérico pela marca sem mexer no layout.
+  const LOGOS_INT = ['nuvemshop', 'webhook'];
   const hd = (icon, num, titulo, desc, pill) => `<div class="ns-hd">
-    <span class="ns-ic">${ico(icon, 18)}</span>
+    <span class="ns-ic">${LOGOS_INT.includes(icon) ? logoInt(icon, 22) : ico(icon, 18)}</span>
     <div class="ns-hd-txt"><b>${num ? num + '. ' : ''}${titulo}</b><span>${desc}</span></div>
     ${pill}
   </div>`;
 
   // Passo 1 — conexão OAuth com a loja (é tudo que o cliente precisa fazer).
   const passo1 = `<div class="card">
-    ${hd(c.connected ? 'check-circle' : 'cart', 1, 'Conectar sua loja',
+    ${hd(c.connected ? 'check-circle' : 'nuvemshop', 1, 'Conectar sua loja',
       c.connected
         ? `Loja <b>${esc(c.storeName || c.storeId)}</b> conectada ${c.connectedAt ? timeAgo(c.connectedAt) : ''}`
         : 'Autorize o Koonfy a ler os pedidos e clientes da sua loja',
@@ -12997,7 +13012,7 @@ const NODE_TYPES = {
   reactivate: { icon: 'refresh', label: 'Reativar contato', sub: 'Consentimento', color: 'blue', cat: 'consent' },
   http: { icon: 'globe', label: 'HTTP Request', sub: 'Integração', color: 'orange', cat: 'logic' },
   payment: { icon: 'pix', label: 'Cobrança Pix', sub: 'Pagamentos', color: 'green', cat: 'messages' },
-  sms: { icon: 'message', label: 'Enviar SMS', sub: 'Integra X', color: 'blue', cat: 'messages' },
+  sms: { icon: 'message', label: 'Enviar SMS', sub: 'Mensagem', color: 'blue', cat: 'messages' },
   end: { icon: 'square', label: 'Fim', sub: 'Encerrar', color: 'gray', cat: 'logic' }
 };
 const FB_PALETTE = {
@@ -13863,7 +13878,7 @@ function nodeInspector(n) {
       ${n.op === 'exists' || n.op === 'empty' ? '' : `<label>Valor<input value="${esc(n.value || '')}" ${set('value')} placeholder="ex.: sim"></label>`}
       <p class="muted" style="font-size:11.5px">Conecte a saída <b>Sim</b> e a saída <b>Não</b> a caminhos diferentes.</p>`;
   } else if (n.type === 'sms') {
-    body = `<p class="fb-insp-desc">Envia um <b>SMS</b> pela Integra X para o mesmo número do contato.
+    body = `<p class="fb-insp-desc">Envia um <b>SMS</b> para o mesmo número do contato.
       Use <code>{{nome}}</code> e as demais variáveis normalmente.</p>
       <label>Mensagem<textarea rows="4" ${set('text')} placeholder="Olá {{nome}}, ...">${esc(n.text || '')}</textarea></label>
       <label>Enviar para outro número <em class="lim-extra">opcional</em>
