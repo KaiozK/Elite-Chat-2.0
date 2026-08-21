@@ -749,7 +749,8 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 </header>
 
 <!-- A joia vive fora das seções: ela atravessa todas. -->
-<img class="joia" id="joia" src="/assets/koonfy-joia.webp" alt="" aria-hidden="true">
+<img class="joia" id="joia" src="/assets/koonfy-joia.webp" alt="" aria-hidden="true"
+     width="480" height="480" fetchpriority="high" decoding="async">
 
 <!-- ===================== HERÓI ===================== -->
 <section class="heroi escura">
@@ -757,8 +758,11 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
        constelação, onde cada um tem nome e função. -->
 
   <div class="wrap">
-    <img class="selo-meta" src="/assets/meta-tech-partner.png"
-         alt="Meta Tech Partner · Powered by WhatsApp Business API">
+    <!-- 840px e não 4025: o selo é exibido com 420 de largura, e o dobro
+         disso já cobre tela retina. O resto era peso puro. -->
+    <img class="selo-meta" src="/assets/meta-tech-partner.webp"
+         alt="Meta Tech Partner · Powered by WhatsApp Business API"
+         width="840" height="35" decoding="async">
 
     <div class="joia-espaco" aria-hidden="true"></div>
     <h1 class="display">Todo o seu atendimento<br>no WhatsApp em<br class="so-largo"> um lugar só</h1>
@@ -804,12 +808,13 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 <section class="faixa escura" id="celular">
   <div class="wrap split invertido">
     <div class="fone">
-      <img src="/assets/figma-celular.webp" alt="Notificações da Koonfy na tela de bloqueio do celular">
+      <img src="/assets/figma-celular.webp" alt="Notificações da Koonfy na tela de bloqueio do celular"
+           width="720" height="1472" loading="lazy" decoding="async">
       <div class="vidro"><div class="nots">
-        <div class="not" style="--i:0;top:calc(var(--kf-w) * .0322);height:calc(var(--kf-w) * .1822)"><img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -.0322)"><i class="not-ic" style="top:calc(var(--kf-w) * 0.04556)"></i></div>
-        <div class="not" style="--i:1;top:calc(var(--kf-w) * .2144);height:calc(var(--kf-w) * .1867)"><img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -.2144)"><i class="not-ic" style="top:calc(var(--kf-w) * 0.05000)"></i></div>
-        <div class="not" style="--i:2;top:calc(var(--kf-w) * .4011);height:calc(var(--kf-w) * .2044)"><img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -.4011)"><i class="not-ic" style="top:calc(var(--kf-w) * 0.05882)"></i></div>
-        <div class="not" style="--i:3;top:calc(var(--kf-w) * .6055);height:calc(var(--kf-w) * .2188)"><img src="/assets/figma-notificacoes.webp" alt="" style="top:calc(var(--kf-w) * -.6055)"><i class="not-ic" style="top:calc(var(--kf-w) * 0.06549)"></i></div>
+        <div class="not" style="--i:0;top:calc(var(--kf-w) * .0322);height:calc(var(--kf-w) * .1822)"><img src="/assets/figma-notificacoes.webp" alt="" width="572" height="620" loading="lazy" decoding="async" style="top:calc(var(--kf-w) * -.0322)"><i class="not-ic" style="top:calc(var(--kf-w) * 0.04556)"></i></div>
+        <div class="not" style="--i:1;top:calc(var(--kf-w) * .2144);height:calc(var(--kf-w) * .1867)"><img src="/assets/figma-notificacoes.webp" alt="" width="572" height="620" loading="lazy" decoding="async" style="top:calc(var(--kf-w) * -.2144)"><i class="not-ic" style="top:calc(var(--kf-w) * 0.05000)"></i></div>
+        <div class="not" style="--i:2;top:calc(var(--kf-w) * .4011);height:calc(var(--kf-w) * .2044)"><img src="/assets/figma-notificacoes.webp" alt="" width="572" height="620" loading="lazy" decoding="async" style="top:calc(var(--kf-w) * -.4011)"><i class="not-ic" style="top:calc(var(--kf-w) * 0.05882)"></i></div>
+        <div class="not" style="--i:3;top:calc(var(--kf-w) * .6055);height:calc(var(--kf-w) * .2188)"><img src="/assets/figma-notificacoes.webp" alt="" width="572" height="620" loading="lazy" decoding="async" style="top:calc(var(--kf-w) * -.6055)"><i class="not-ic" style="top:calc(var(--kf-w) * 0.06549)"></i></div>
       </div></div>
     </div>
 
@@ -1356,7 +1361,7 @@ var LOGOS_KOONFY = [
       var d = document.createElement('div');
       d.className = 'no' + (logo.fundo ? ' cheia' : '');
       d.title = logo.nome;
-      d.innerHTML = '<img src="/assets/logos/' + logo.arq + '.webp" alt="' + logo.nome + '" loading="lazy" decoding="async">';
+      d.innerHTML = '<img src="/assets/logos/' + logo.arq + '.webp" alt="' + logo.nome + '" width="86" height="86" loading="lazy" decoding="async">';
       caixa.appendChild(d);
       return { i: i, linha: l, placa: d };
     });
