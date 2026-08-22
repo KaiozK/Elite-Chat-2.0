@@ -4861,6 +4861,10 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
     display: block; padding-top: 0; padding-bottom: 8px;
     margin-bottom: 6px; border-bottom: 1px solid var(--border);
   }
+  /* E o título não leva etiqueta. Sendo bloco, o rótulo colava no valor
+     ("CONTAPadaria do Zé") — e pôr `data-r` na primeira coluna é o que
+     qualquer um faz, já que todas as outras levam. */
+  .card table.tab-mob td:first-child::before { content: none; }
   /* Célula sem rótulo e sem conteúdo (a coluna dos botões) não vira linha. */
   .card table.tab-mob td:empty { display: none; }
   /* Sem largura mínima, o container não precisa rolar. */
@@ -5048,4 +5052,50 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 @media (prefers-reduced-motion: reduce) {
   .bnr-trilho { transition: none; }
   .bnr-3d { animation: none; }
+}
+
+
+/* ============================================================
+   BI AO VIVO — a lista de campanhas ao lado do relatorio.
+   O relatorio em si mora em /bi.css, compartilhado com a pagina
+   publica do link de acompanhamento.
+   ============================================================ */
+.bi-cols { grid-template-columns: 300px 1fr; align-items: start; gap: 16px; }
+/* Sem isto a coluna do relatório estica até caber o link inteiro numa linha:
+   em grade, `1fr` divide o espaço livre mas o mínimo continua sendo o do
+   conteúdo. Medido: cartão em 1355px numa janela de 1200. */
+.bi-cols > * { min-width: 0; }
+.bi-cols .copy-box code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bi-menu { display: flex; flex-direction: column; gap: 6px; }
+.bi-item {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  padding: 10px 12px; border-radius: 10px; border: 1px solid transparent;
+  background: transparent; color: inherit; font: inherit; transition: background .15s, border-color .15s;
+}
+.bi-item:hover { background: var(--bg2); }
+.bi-item.on { background: var(--bg2); border-color: var(--border2); }
+.bi-item b { display: block; font-size: 13.5px; font-weight: 600; }
+.bi-item em {
+  display: flex; align-items: center; gap: 5px; margin-top: 3px;
+  font-style: normal; font-size: 12px; color: var(--muted);
+}
+/* O ponto verde e a unica coisa que diz, sem texto, que aquela campanha
+   ainda esta saindo. */
+.bi-ponto {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--verde-esc);
+  animation: bnrPisca 1.6s ease-in-out infinite;
+}
+@keyframes bnrPisca { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
+
+@media (max-width: 900px) {
+  /* Coluna fixa de 300px em tela estreita nao deixa espaco para o assunto.
+     A lista vira uma fila horizontal em cima do relatorio. */
+  .bi-cols { grid-template-columns: 1fr; }
+  /* A URL na linha dela. Com os três botões ao lado sobravam 110px para o
+     endereço e aparecia "http://." — um link que não dá para conferir é um
+     link que ninguém copia com confiança. */
+  .bi-cols .copy-box { flex-wrap: wrap; }
+  .bi-cols .copy-box code { flex: 1 0 100%; }
+  .bi-menu { flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
+  .bi-item { flex: 0 0 auto; min-width: 168px; border-color: var(--border); }
 }

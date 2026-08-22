@@ -80,7 +80,12 @@ const clients = new Set();
 function broadcast(event, data) {
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const c of clients) {
-    if (data && data.accountId && !c.isAdmin && c.accountId !== data.accountId) continue;
+    // ESPECTADOR DE LINK PÚBLICO: ouve só os eventos da campanha que o link
+    // dele abre. Sem esta regra ele cairia no filtro de conta abaixo e
+    // receberia tudo o que acontece na conta — mensagens, pagamentos,
+    // presença de atendente —, que não é o que o link concede.
+    if (c.campanha) { if (event !== 'campaign' || !data || data.id !== c.campanha) continue; }
+    else if (data && data.accountId && !c.isAdmin && c.accountId !== data.accountId) continue;
     try { c.res.write(payload); } catch {}
   }
   // Push Notification (WebApp instalado, mesmo com o app fechado)
@@ -406,6 +411,13 @@ st.utm=st.utm||{};['source','medium','campaign','content','term'].forEach(functi
 localStorage.setItem('ec_trk',JSON.stringify(st));
 fetch(new URL('/api/public/track/'+a,document.currentScript.src).href,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'PageView',source:'site',sid:st.sid,url:location.href,fbclid:st.fbclid,gclid:st.gclid,ttclid:st.ttclid,utm:st.utm})});
 }catch(e){}})();`);
+});
+
+// ACOMPANHAMENTO PÚBLICO DE UMA CAMPANHA (/campanha/<token>). Mesma ideia do
+// checkout: página estática que busca tudo em /api/public/campanha/<token>,
+// uma rota sem autenticação. Quem abre não tem conta e não deveria precisar.
+app.get('/campanha/:token', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'campanha.html'));
 });
 
 // Checkout público do Elite Pay — página de pagamento das cobranças (/pay/:id).

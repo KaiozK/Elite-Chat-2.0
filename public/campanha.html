@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Link de acompanhamento é para quem recebeu o endereço, não para o Google. -->
+<meta name="robots" content="noindex, nofollow">
+<title>Acompanhar campanha</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="icon" href="/assets/koonfy-192.png">
+<link rel="stylesheet" href="/bi.css">
+<style>
+  /* =======================================================================
+     ACOMPANHAMENTO PÚBLICO DE UMA CAMPANHA
+     =======================================================================
+     Quem abre esta página não tem conta e não vai criar uma: é o cliente da
+     agência que contratou o disparo. Então aqui não há menu, não há login e
+     não há nada em que clicar além do próprio relatório.
+
+     O DESENHO é o do painel — a folha /bi.css é literalmente a mesma —, e
+     esta página só monta a moldura: fundo, largura de leitura e a assinatura
+     no rodapé. Ela redefine os tokens da marca porque fora do painel não
+     existe tema de cliente para herdar.
+     ======================================================================= */
+  :root {
+    --bg: #fbfdf9;
+    --card: #ffffff;
+    --border: #e6f0ea;
+    --bg2: #f4f7f2;
+    --text: #0f1f15;
+    --muted: #667563;
+    --verde-esc: #2ed378;
+    --verde-deep: #178048;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 400 15px/1.5 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .env { max-width: 1040px; margin: 0 auto; padding: 26px 18px 60px; }
+  .marca { display: flex; align-items: center; gap: 9px; margin-bottom: 22px; }
+  .marca img { width: 26px; height: 26px; border-radius: 7px; }
+  .marca b { font-size: 15px; letter-spacing: -.01em; }
+  .marca span { margin-left: auto; font-size: 12px; color: var(--muted); }
+  .aviso {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 40px 22px; text-align: center; color: var(--muted);
+  }
+  .aviso b { display: block; color: var(--text); font-size: 17px; margin-bottom: 6px; }
+  .rodape { margin-top: 26px; text-align: center; font-size: 12.5px; color: var(--muted); }
+  .rodape a { color: var(--verde-deep); text-decoration: none; font-weight: 600; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0d130f; --card: #141b16; --border: #1f2a22; --bg2: #111815; --text: #eef3ee; --muted: #9aa89b; }
+  }
+</style>
+</head>
+<body>
+  <div class="env">
+    <div class="marca">
+      <img src="/assets/koonfy-192.png" alt="">
+      <b>Koonfy</b>
+      <span id="atualizado"></span>
+    </div>
+    <div id="bi" class="bi"><div class="aviso"><b>Carregando…</b>Buscando os números da campanha.</div></div>
+    <p class="rodape">Acompanhamento em tempo real por <a href="https://koonfy.com" target="_blank" rel="noopener">Koonfy</a></p>
+  </div>
+
+<script src="/bi.js"></script>
+<script>
+/* ===========================================================================
+   O token vem do ENDEREÇO, e nunca de um campo: esta página não tem login e
+   não deve ter. Quem tem o link vê; quem não tem, não.
+
+   AO VIVO POR SSE, e não por pergunta repetida. O painel já transmite um
+   evento a cada destinatário processado; esta página se inscreve na mesma
+   transmissão, restrita à campanha do link. A alternativa — perguntar de
+   três em três segundos — custaria um relatório inteiro por espectador por
+   pergunta, e ainda assim mostraria o número três segundos atrasado.
+
+   E há a rede real: quando a transmissão cai (celular que troca de Wi-Fi
+   para 4G, aba que dormiu), o EventSource reconecta sozinho, mas o que
+   aconteceu no intervalo não volta. Por isso existe uma busca de segurança
+   a cada 30 segundos e outra quando a aba volta a ficar visível.
+   =========================================================================== */
+(function () {
+  var token = (location.pathname.split('/').filter(Boolean).pop() || '').trim();
+  var alvo = document.getElementById('bi');
+  var carimbo = document.getElementById('atualizado');
+  var ultimo = 0, buscando = false;
+
+  function erro(titulo, txt) {
+    alvo.dataset.montado = '';
+    alvo.innerHTML = '<div class="aviso"><b>' + KoonfyBI.esc(titulo) + '</b>' + KoonfyBI.esc(txt) + '</div>';
+  }
+
+  async function buscar() {
+    if (buscando) return;
+    buscando = true;
+    try {
+      var r = await fetch('/api/public/campanha/' + encodeURIComponent(token), { cache: 'no-store' });
+      if (r.status === 404) return erro('Link inválido ou revogado', 'Peça um novo endereço a quem enviou este.');
+      if (!r.ok) throw new Error('http ' + r.status);
+      var rel = await r.json();
+      KoonfyBI.pintar(alvo, rel);
+      ultimo = Date.now();
+      carimbo.textContent = 'atualizado às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch (e) {
+      if (!ultimo) erro('Não deu para carregar', 'Verifique a conexão e recarregue a página.');
+    } finally { buscando = false; }
+  }
+
+  function ouvir() {
+    try {
+      var es = new EventSource('/api/public/campanha/' + encodeURIComponent(token) + '/events');
+      es.addEventListener('campaign', buscar);
+      // Reconexão é do próprio EventSource; o que ele não devolve é o que
+      // passou enquanto esteve fora — quem cobre isso é a busca periódica.
+      es.onerror = function () {};
+    } catch (e) {}
+  }
+
+  if (!token || token.length < 16) return erro('Endereço incompleto', 'O link precisa terminar com o código da campanha.');
+  buscar();
+  ouvir();
+  setInterval(function () { if (!document.hidden) buscar(); }, 30000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) buscar(); });
+})();
+</script>
+</body>
+</html>

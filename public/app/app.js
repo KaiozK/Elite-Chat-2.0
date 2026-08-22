@@ -1678,7 +1678,12 @@ function connectSSE() {
       url: '/app/#/billing', tag: 'com:' + (d.kind || '') + ':' + Date.now()
     });
   });
-  es.addEventListener('campaign', () => { if (state.view === 'campaigns') paintCampaigns(); });
+  es.addEventListener('campaign', () => {
+    if (state.view === 'campaigns') paintCampaigns();
+    // O BI é a tela que existe para ver isto acontecer: ela repinta a cada
+    // destinatário processado, que é de onde vem a sensação de ao vivo.
+    if (state.view === 'bi') biPintar();
+  });
   // opt-in / opt-out (palavra-chave do cliente, flow ou ação manual)
   es.addEventListener('consent', e => {
     const d = JSON.parse(e.data || '{}');
@@ -1831,6 +1836,7 @@ const views = {
   checkouts: renderCheckoutList,
   nuvemshop: renderNuvemshop,
   // ---- painel da plataforma (/adm/) ----
+  bi: renderBI,
   'adm/visao': renderAdmVisao,
   'adm/contatos': renderAdmContatos,
   'adm/usuarios': renderAdmUsuarios,
@@ -1846,6 +1852,10 @@ const VIEW_PADRAO = ADM ? 'adm/visao' : 'dashboard';
 const NAV_OF = {
   'templates/new': 'templates', 'campaigns/new': 'campaigns',
   'links/new': 'links', 'links/edit': 'links', 'links/stats': 'links',
+  // O BI é a mesma coisa que Campanhas: quem pode ver o disparo pode ver o
+  // resultado dele. Sem esta linha ele viraria um módulo próprio, e atendente
+  // sem acesso a campanhas veria a aba.
+  bi: 'campaigns',
   'agents/perf': 'agents', 'agents/logs': 'agents',
   'campaigns/report': 'campaigns', 'campaigns/mapa': 'campaigns',
   'elitepay/checkout': 'checkouts',
@@ -1864,6 +1874,10 @@ function can(moduleKey, action = 'view') {
 const VIEW_MODULE = {
   'templates/new': 'templates', 'campaigns/new': 'campaigns',
   'links/new': 'links', 'links/edit': 'links', 'links/stats': 'links',
+  // O BI é a mesma coisa que Campanhas: quem pode ver o disparo pode ver o
+  // resultado dele. Sem esta linha ele viraria um módulo próprio, e atendente
+  // sem acesso a campanhas veria a aba.
+  bi: 'campaigns',
   'agents/perf': 'agents', 'agents/logs': 'agents',
   'elitepay/checkout': 'elitepay', checkouts: 'elitepay',
   billing: null, admin: null, logs: null   // sempre acessíveis (donos/config próprios)
@@ -1872,7 +1886,7 @@ const VIEW_MODULE = {
 // checkouts pertence ao Pagamentos; integrations cobre webhooks/Nuvemshop.
 // A loja faz parte do módulo de Integrações: o plano que libera um libera a
 // outra, e não faz sentido ter a tela da loja sem poder conectá-la.
-const VIEW_FEATURE = { checkouts: 'elitepay', webhooks: 'integrations', nuvemshop: 'integrations' };
+const VIEW_FEATURE = { checkouts: 'elitepay', webhooks: 'integrations', nuvemshop: 'integrations', bi: 'campaigns' };
 // ---------------------------------------------------------------------------
 // ASSINATURA OBRIGATÓRIA
 //
@@ -1914,7 +1928,11 @@ const MOBILE_VIEWS = new Set([
   // Pagamentos no celular é uma tela PRÓPRIA, enxuta: cobrar na frente do
   // cliente e mandar o Pix. O módulo completo (produtos, checkout, relatórios,
   // saque) continua só no computador — ali é trabalho de mesa.
-  'elitepay'
+  'elitepay',
+  // ACOMPANHAR um disparo é o oposto de montá-lo: é a tela que se olha no
+  // elevador, no carro, no meio da reunião. Um tempo real que só existe no
+  // computador é um tempo real que não está onde a pessoa está.
+  'bi'
 ]);
 // 820px é o mesmo ponto em que a sidebar já vira gaveta (style.css).
 const MOBILE_MQ = window.matchMedia('(max-width: 820px)');
@@ -2340,6 +2358,113 @@ function route() {
 function admCartao(icone, valor, rotulo, destaque) {
   return `<div class="mh-card ${destaque ? 'hi' : ''}"><span class="mh-ic">${ico(icone, 20)}</span>` +
     `<div class="mh-val">${valor}</div><div class="mh-lbl">${esc(rotulo)}</div></div>`;
+}
+
+// ===========================================================================
+// BI AO VIVO DOS DISPAROS
+//
+// Uma lista de campanhas a esquerda, o relatorio da escolhida a direita, e o
+// relatorio se repinta sozinho enquanto o disparo corre.
+//
+// O DESENHO NAO ESTA AQUI. Ele esta em /bi.js, junto com o da pagina publica
+// do link de acompanhamento: sao a mesma tela mostrada para o dono do disparo
+// e para quem contratou o disparo. Se fossem dois codigos, no primeiro ajuste
+// esquecido as duas passariam a mostrar coisas diferentes do mesmo numero.
+// ===========================================================================
+let biAtual = null, biLista = [];
+
+async function renderBI() {
+  $('#view').innerHTML = `<div class="page">
+    <div class="page-head"><h1>BI ao vivo</h1><p>Acompanhe cada disparo enquanto ele acontece, e compartilhe o link com quem contratou.</p></div>
+    <div class="two-col bi-cols">
+      <div class="card" id="bi-lista">${skel(4)}</div>
+      <div id="bi-painel"><div class="card">${skel(6)}</div></div>
+    </div>
+  </div>`;
+  await biCarregarLista();
+}
+
+async function biCarregarLista() {
+  const cx = $('#bi-lista'); if (!cx) return;
+  try {
+    const { campaigns } = await api('/campaigns');
+    biLista = campaigns || [];
+  } catch (e) {
+    cx.innerHTML = `<p class="muted">Não deu para carregar as campanhas: ${esc(e.message)}</p>`;
+    return;
+  }
+  if (!biLista.length) {
+    cx.innerHTML = `<h2 style="margin:0 0 8px">Campanhas</h2><p class="muted" style="font-size:13.5px">Nenhuma campanha ainda. Crie um disparo em <a href="#/campaigns">Campanhas</a> e ele aparece aqui, ao vivo.</p>`;
+    $('#bi-painel').innerHTML = '';
+    return;
+  }
+  // A que esta RODANDO na frente: e a que alguem abriu esta tela para ver.
+  biLista.sort((a, b) => (a.status === 'done' ? 1 : 0) - (b.status === 'done' ? 1 : 0) || (b.createdAt || 0) - (a.createdAt || 0));
+  if (!biAtual || !biLista.some(c => c.id === biAtual)) biAtual = biLista[0].id;
+  cx.innerHTML = `<h2 style="margin:0 0 10px">Campanhas</h2>
+    <div class="bi-menu">${biLista.map(c => {
+      const s = c.stats || {};
+      const rodando = c.status !== 'done';
+      return `<button class="bi-item${c.id === biAtual ? ' on' : ''}" onclick="biAbrir('${c.id}')">
+        <b>${esc(c.name)}</b>
+        <em>${rodando ? '<i class="bi-ponto"></i>ao vivo · ' : ''}${fmtN(s.total || 0)} destinatário${(s.total || 0) === 1 ? '' : 's'}</em>
+      </button>`;
+    }).join('')}</div>`;
+  biAbrir(biAtual);
+}
+
+async function biAbrir(id) {
+  biAtual = id;
+  document.querySelectorAll('.bi-item').forEach(b => b.classList.toggle('on', b.getAttribute('onclick').includes(id)));
+  await biPintar();
+}
+
+async function biPintar() {
+  const cx = $('#bi-painel'); if (!cx || !biAtual) return;
+  let rel;
+  try { rel = await api('/campaigns/' + biAtual + '/report'); }
+  catch (e) { cx.innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; return; }
+  const camp = biLista.find(c => c.id === biAtual) || {};
+  // A barra de compartilhamento fica FORA do desenho compartilhado: ela é a
+  // única coisa desta tela que a pessoa do outro lado do link não pode ver.
+  if (!cx.querySelector('#bi-conteudo')) {
+    cx.innerHTML = `<div class="card" id="bi-share"></div><div id="bi-conteudo"></div>`;
+  }
+  biShare(camp);
+  KoonfyBI.pintar($('#bi-conteudo'), rel);
+}
+
+function biShare(camp) {
+  const cx = $('#bi-share'); if (!cx) return;
+  const sh = camp.share;
+  const url = sh ? location.origin + '/campanha/' + sh.token : '';
+  cx.innerHTML = `
+    <h2 style="margin:0 0 6px">${ico('link')} Link de acompanhamento</h2>
+    <p class="muted" style="margin:0 0 12px;font-size:13px">Um endereço só de leitura desta campanha, ao vivo. Quem abrir não precisa de conta ${sh && sh.telefones ? 'e <b>vê os telefones inteiros</b>' : 'e vê os telefones <b>mascarados</b>'}.</p>
+    ${sh ? `<div class="copy-box"><code id="bi-url">${esc(url)}</code>
+        <button class="btn small" onclick="copyText($('#bi-url').textContent)">Copiar</button>
+        <a class="btn small" href="${esc(url)}" target="_blank" rel="noopener">Abrir</a>
+        <button class="btn small danger" onclick="biRevogar()">Revogar</button></div>` : `
+      <label class="chk" style="margin-bottom:10px"><input type="checkbox" id="bi-fones"> <span>Mostrar os telefones inteiros para quem abrir o link</span></label>
+      <button class="btn primary no-grow" onclick="biGerar()">${ico('link', 14)} Gerar link</button>`}`;
+}
+
+async function biGerar() {
+  const telefones = !!($('#bi-fones') && $('#bi-fones').checked);
+  try {
+    await api('/campaigns/' + biAtual + '/share', { method: 'POST', body: { telefones } });
+    await biCarregarLista();
+    toast('Link criado');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function biRevogar() {
+  if (!confirm('Revogar o link? Quem já tem o endereço deixa de ver a campanha.')) return;
+  try {
+    await api('/campaigns/' + biAtual + '/share', { method: 'DELETE' });
+    await biCarregarLista();
+    toast('Link revogado');
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 async function renderAdmVisao() {
@@ -9015,6 +9140,84 @@ function armazenamentoAviso(a) {
   </div>`;
 }
 
+// ---------------------------------------------------------------------------
+// O QUE OS CLIENTES VENDEM PELA PLATAFORMA
+//
+// A assinatura paga a conta hoje; a taxa das vendas e o que cresce. Sem este
+// bloco o painel respondia "quanto entrou de mensalidade" e nao respondia
+// "vale a pena baixar a mensalidade e subir a taxa?", que e a pergunta que
+// decide o preco do produto.
+//
+// PIX, CARTAO E BOLETO SEPARADOS porque sao tres negocios diferentes: o Pix
+// cai na hora, o cartao tem prazo e chargeback, o boleto tem compensacao.
+// Somados num numero so, ninguem ve qual esta crescendo.
+// ---------------------------------------------------------------------------
+function admVendasHtml(d) {
+  const v = d.vendas || {}, mets = d.metodos || [], S = d.serieMetodo || [], fun = d.funil || [], afs = d.afiliados || [];
+  const maxMet = Math.max(1, ...mets.map(m => m.volume));
+  const maxSerie = Math.max(1, ...S.map(x => x.total));
+  const maxFun = Math.max(1, ...fun.map(f => f.qtd));
+  return `
+  <div class="card">
+    <h2 style="margin:0 0 4px">${ico('card')} Vendas dos clientes</h2>
+    <p class="muted" style="margin:0 0 14px;font-size:13px">Tudo o que passou pelo checkout da plataforma. A coluna que interessa para a Koonfy é a <b>taxa</b>: o volume é dos clientes.</p>
+
+    <div class="kpi-strip" style="margin-bottom:16px">
+      <div class="kpi-mini"><span>Volume transacionado</span><b>${fmtBRL(v.volume || 0)}</b><em>${fmtN(v.pagas || 0)} venda(s) paga(s)</em></div>
+      <div class="kpi-mini"><span>Taxas recebidas</span><b>${fmtBRL(v.taxas || 0)}</b><em>a receita da plataforma</em></div>
+      <div class="kpi-mini"><span>Ticket médio</span><b>${fmtBRL(v.ticket || 0)}</b><em>por venda paga</em></div>
+      <div class="kpi-mini ${(v.conversao || 0) >= 50 ? 'up' : ''}"><span>Conversão do checkout</span><b>${(v.conversao || 0).toLocaleString('pt-BR')}%</b><em>${fmtN(v.pagas || 0)} de ${fmtN(v.criadas || 0)} cobranças</em></div>
+      <div class="kpi-mini"><span>Aguardando</span><b>${fmtN(v.pendentes || 0)}</b><em>cobranças no prazo</em></div>
+      <div class="kpi-mini"><span>Abandonadas</span><b>${fmtN(v.abandonadas || 0)}</b><em>venceram sem pagar</em></div>
+    </div>
+
+    <h3 style="margin:0 0 10px;font-size:14px">Por forma de pagamento</h3>
+    ${mets.some(m => m.qtd) ? mets.map(m => `
+      <div class="ep-volrow"><span>${esc(m.rotulo)} <em style="color:var(--muted);font-weight:600;font-style:normal">· ${fmtN(m.qtd)}</em></span>
+        <div class="ep-volbar"><i style="width:${Math.max(2, Math.round(m.volume / maxMet * 100))}%"></i></div>
+        <b>${fmtBRL(m.volume)}<small style="display:block;font-weight:600;color:var(--muted)">taxa ${fmtBRL(m.taxas)}</small></b></div>`).join('')
+      : '<p class="muted">Nenhuma venda paga ainda.</p>'}
+  </div>
+
+  <div class="two-col even">
+    <div class="card">
+      <div class="row" style="align-items:center;margin-bottom:4px">
+        <h2 style="margin:0;flex:1">${ico('activity')} Vendas. 12 meses</h2>
+        <div class="chart-legend"><span><i class="lg-first"></i>Pix</span><span><i class="lg-renewal"></i>Cartão</span><span><i class="lg-topup"></i>Boleto</span></div>
+      </div>
+      <div class="bar-chart sm">
+        ${S.map(x => `<div class="bar-col" title="${esc(x.label)}: ${fmtBRL(x.total)}&#10;Pix ${fmtBRL(x.pix)} · Cartão ${fmtBRL(x.card)} · Boleto ${fmtBRL(x.boleto)}&#10;Taxa ${fmtBRL(x.taxas)}">
+          <div class="bar-stack">
+            <div class="bar-seg seg-topup" style="height:${Math.round((x.boleto || 0) / maxSerie * 100)}%"></div>
+            <div class="bar-seg seg-renewal" style="height:${Math.round((x.card || 0) / maxSerie * 100)}%"></div>
+            <div class="bar-seg seg-first" style="height:${Math.round((x.pix || 0) / maxSerie * 100)}%"></div>
+          </div><span class="bar-x">${esc(x.label)}</span></div>`).join('')}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin:0 0 4px">${ico('columns')} Funil da conta</h2>
+      <p class="muted" style="margin:0 0 12px;font-size:12.5px">Onde as contas param. Cada degrau perdido é um lugar em que o produto não se sustenta sozinho.</p>
+      ${fun.map(f => `<div class="ep-volrow"><span>${esc(f.etapa)}</span>
+        <div class="ep-volbar"><i style="width:${Math.max(2, Math.round(f.qtd / maxFun * 100))}%"></i></div>
+        <b>${fmtN(f.qtd)}<small style="display:block;font-weight:600;color:var(--muted)">${f.pct.toLocaleString('pt-BR')}%</small></b></div>`).join('')}
+    </div>
+  </div>
+
+  ${afs.length ? `<div class="card">
+    <h2 style="margin:0 0 10px">${ico('users')} Quem indica</h2>
+    <div style="overflow-x:auto"><table class="tab-mob"><thead><tr><th>Conta</th><th>Código</th><th style="text-align:right">Indicados</th><th style="text-align:right">Viraram assinantes</th><th style="text-align:right">Comissão</th></tr></thead><tbody>
+      ${afs.map(a => `<tr>
+        <td data-r="Conta"><b>${esc(a.nome)}</b></td>
+        <td data-r="Código"><span class="pill">${esc(a.codigo)}</span></td>
+        <td data-r="Indicados" style="text-align:right">${fmtN(a.indicados)}</td>
+        <td data-r="Assinantes" style="text-align:right">${fmtN(a.assinantes)}</td>
+        <td data-r="Comissão" style="text-align:right"><b>${fmtBRL(a.ganhou)}</b></td>
+      </tr>`).join('')}
+    </tbody></table></div>
+  </div>` : ''}`;
+}
+
 async function paintAdmin() {
   await admCarregarCheckouts();   // para o seletor de checkout dos planos
   const box = $('#adm-box'); if (!box) return;
@@ -9085,6 +9288,8 @@ async function paintAdmin() {
                 <b>${fmtBRL(p.mrr)}</b></div>`).join(''); })() : '<p class="muted">Nenhum plano com assinantes ativos.</p>'}
           </div>
         </div>
+
+        ${admVendasHtml(d)}
 
         <div class="card">
           <h2>${ico('activity')} Últimos pagamentos</h2>

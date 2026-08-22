@@ -1,0 +1,135 @@
+/* ============================================================
+   BI AO VIVO DE UM DISPARO — folha compartilhada
+   ============================================================
+   A MESMA folha serve duas casas: a aba dentro do painel e a página
+   pública do link de acompanhamento. Por isso toda cor sai de um token
+   COM VALOR PADRÃO: dentro do painel ela pega o tema do cliente (que é
+   editável no Admin), e na página pública, onde não existe tema
+   nenhum, cai no valor da marca.
+
+   Escrever duas folhas parecidas seria a saída fácil e a dívida certa:
+   qualquer ajuste teria de ser feito duas vezes, e na terceira vez
+   alguém esqueceria uma delas — e o cliente veria uma tela no painel e
+   outra no link que mandou para o cliente dele.
+   ============================================================ */
+
+.bi {
+  --bi-sinal: var(--verde-esc, #2ED378);
+  --bi-fundo: var(--verde-deep, #178048);
+  --bi-tinta: var(--text, #0f1f15);
+  --bi-tinta2: var(--muted, #667563);
+  --bi-cartao: var(--card, #ffffff);
+  --bi-borda: var(--border, #e6f0ea);
+  --bi-trilho: var(--bg2, #f4f7f2);
+  --bi-alerta: #d64545;
+  color: var(--bi-tinta);
+}
+
+/* ---------- cabeçalho ---------- */
+.bi-topo { display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+.bi-topo h2 { margin: 0 0 4px; font-size: clamp(19px, 2.4vw, 26px); letter-spacing: -.02em; }
+.bi-topo .bi-sub { margin: 0; color: var(--bi-tinta2); font-size: 13.5px; }
+.bi-topo .bi-dir { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+/* O PULSO. Um número que muda sozinho não avisa que mudou: quem está
+   olhando o gráfico não vê o instante. O ponto piscando é o que diz
+   "isto está acontecendo agora" sem precisar de texto. */
+.bi-vivo {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 12px; border-radius: 999px;
+  background: color-mix(in srgb, var(--bi-sinal) 14%, transparent);
+  color: var(--bi-fundo); font-size: 12px; font-weight: 700;
+  letter-spacing: .04em; text-transform: uppercase;
+}
+.bi-vivo i {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--bi-sinal);
+  animation: biPulso 1.6s ease-in-out infinite;
+}
+.bi-vivo.fim { background: var(--bi-trilho); color: var(--bi-tinta2); }
+.bi-vivo.fim i { background: var(--bi-tinta2); animation: none; }
+@keyframes biPulso {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in srgb, var(--bi-sinal) 60%, transparent); }
+  50% { opacity: .55; box-shadow: 0 0 0 7px transparent; }
+}
+
+/* ---------- números grandes ---------- */
+.bi-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.bi-kpi {
+  background: var(--bi-cartao); border: 1px solid var(--bi-borda);
+  border-radius: 12px; padding: 16px 16px 14px;
+}
+.bi-kpi b { display: block; font-size: clamp(24px, 3.4vw, 34px); line-height: 1.05; letter-spacing: -.03em; }
+.bi-kpi span { display: block; margin-top: 6px; font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--bi-tinta2); }
+.bi-kpi em { display: block; margin-top: 3px; font-style: normal; font-size: 12.5px; color: var(--bi-tinta2); }
+.bi-kpi.destaque { background: var(--bi-fundo); border-color: var(--bi-fundo); color: #fff; }
+.bi-kpi.destaque span, .bi-kpi.destaque em { color: rgba(255,255,255,.78); }
+
+/* ---------- funil ---------- */
+.bi-cartao { background: var(--bi-cartao); border: 1px solid var(--bi-borda); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+.bi-cartao > h3 { margin: 0 0 14px; font-size: 15px; letter-spacing: -.01em; }
+.bi-cartao > h3 small { font-weight: 500; color: var(--bi-tinta2); margin-left: 6px; }
+
+.bi-funil { display: flex; flex-direction: column; gap: 11px; }
+.bi-linha { display: grid; grid-template-columns: 108px 1fr 92px; align-items: center; gap: 12px; }
+.bi-linha > span { font-size: 13px; font-weight: 600; }
+.bi-linha > b { text-align: right; font-size: 14px; font-variant-numeric: tabular-nums; }
+.bi-linha > b small { display: block; font-weight: 600; font-size: 11.5px; color: var(--bi-tinta2); }
+.bi-trilho { height: 12px; border-radius: 999px; background: var(--bi-trilho); overflow: hidden; }
+/* A barra CRESCE ao entrar, e cresce de novo quando o número muda. É a
+   diferença entre um gráfico e um relatório: o movimento é a informação. */
+.bi-trilho i {
+  display: block; height: 100%; width: 0; border-radius: inherit;
+  background: linear-gradient(90deg, var(--bi-fundo), var(--bi-sinal));
+  transition: width .9s cubic-bezier(.22, 1, .36, 1);
+}
+.bi-linha.falha .bi-trilho i { background: linear-gradient(90deg, #a83232, var(--bi-alerta)); }
+
+/* ---------- taxas ---------- */
+.bi-taxas { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.bi-taxa { border: 1px solid var(--bi-borda); border-radius: 10px; padding: 12px 14px; }
+.bi-taxa b { display: block; font-size: 21px; letter-spacing: -.02em; }
+.bi-taxa span { display: block; margin-top: 2px; font-size: 12px; color: var(--bi-tinta2); }
+
+/* ---------- listas (botões, estados) ---------- */
+.bi-barras { display: flex; flex-direction: column; gap: 9px; }
+.bi-barra { display: grid; grid-template-columns: 1fr 2fr auto; align-items: center; gap: 10px; font-size: 13px; }
+.bi-barra .bi-trilho { height: 9px; }
+.bi-barra b { font-variant-numeric: tabular-nums; }
+
+/* ---------- pessoas ---------- */
+.bi-tab { width: 100%; border-collapse: collapse; font-size: 13px; }
+.bi-tab th {
+  text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--bi-borda);
+  font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--bi-tinta2);
+}
+.bi-tab td { padding: 10px; border-bottom: 1px solid var(--bi-borda); vertical-align: top; }
+.bi-tab tr:last-child td { border-bottom: 0; }
+.bi-fone { color: var(--bi-tinta2); font-variant-numeric: tabular-nums; font-size: 12px; }
+.bi-selo {
+  display: inline-block; padding: 3px 9px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 700; background: var(--bi-trilho); color: var(--bi-tinta2);
+}
+.bi-selo.lida { background: color-mix(in srgb, var(--bi-sinal) 18%, transparent); color: var(--bi-fundo); }
+.bi-selo.entregue { background: color-mix(in srgb, var(--bi-sinal) 10%, transparent); color: var(--bi-fundo); }
+.bi-selo.falha { background: color-mix(in srgb, var(--bi-alerta) 14%, transparent); color: var(--bi-alerta); }
+.bi-resp {
+  display: block; margin-top: 4px; padding: 8px 10px; border-radius: 9px 9px 9px 2px;
+  background: var(--bi-trilho); font-size: 12.5px; line-height: 1.4;
+}
+.bi-resp time { display: block; margin-top: 3px; font-size: 11px; color: var(--bi-tinta2); }
+.bi-vazio { color: var(--bi-tinta2); font-size: 13.5px; margin: 0; }
+
+/* No CELULAR a tabela vira cartão: cinco colunas em 375px espremem o
+   nome em uma letra por linha, e a resposta — que é o que interessa —
+   fica ilegível. */
+@media (max-width: 720px) {
+  .bi-linha { grid-template-columns: 92px 1fr 78px; gap: 9px; }
+  .bi-tab, .bi-tab tbody, .bi-tab tr, .bi-tab td { display: block; width: 100%; }
+  .bi-tab thead { display: none; }
+  .bi-tab tr { border: 1px solid var(--bi-borda); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+  .bi-tab td { border: 0; padding: 3px 0; }
+  .bi-tab td[data-r]::before {
+    content: attr(data-r); display: block; font-size: 10.5px; font-weight: 700;
+    letter-spacing: .05em; text-transform: uppercase; color: var(--bi-tinta2); margin-bottom: 2px;
+  }
+}

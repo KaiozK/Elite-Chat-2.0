@@ -3467,8 +3467,42 @@ module.exports = function (broadcast, clients) {
   // responder "onde estão os leads mais quentes" — quente aqui é quem LEU e
   // CLICOU, não quem só recebeu.
   // ---------------------------------------------------------------------------
+  // Primeira mensagem de ENTRADA de cada contato depois de um instante. O
+  // indice e montado uma vez por relatorio: sem ele, procurar a resposta de
+  // cada destinatario varre todas as mensagens da conta, e o relatorio abre a
+  // cada evento ao vivo.
+  function indiceDeEntrada(acc) {
+    const porContato = new Map();
+    for (const m of acc.messages || []) {
+      if (m.direction !== 'in' || !m.waId || !m.timestamp) continue;
+      const lista = porContato.get(m.waId) || [];
+      lista.push(m);
+      porContato.set(m.waId, lista);
+    }
+    for (const lista of porContato.values()) lista.sort((a, b) => a.timestamp - b.timestamp);
+    return porContato;
+  }
+
+  // A RESPOSTA precisa de ancora: e a primeira mensagem que o contato mandou
+  // DEPOIS do disparo, dentro de sete dias. Sem isso qualquer conversa antiga
+  // dele contaria como resposta a campanha.
+  const JANELA_RESPOSTA = 7 * 86400000;
+  function respostaDe(indice, r) {
+    if (!r.sentAt) return null;
+    const lista = indice.get(r.waId);
+    if (!lista) return null;
+    for (const m of lista) {
+      if (m.timestamp < r.sentAt) continue;
+      if (m.timestamp > r.sentAt + JANELA_RESPOSTA) break;
+      return { texto: String(m.text || m.caption || '').slice(0, 240), tipo: m.type || 'text', quando: m.timestamp };
+    }
+    return null;
+  }
+
   function campaignReport(acc, camp) {
-    const vazio = () => ({ total: 0, enviadas: 0, entregues: 0, lidas: 0, cliques: 0, falhas: 0, pendentes: 0 });
+    const vazio = () => ({ total: 0, enviadas: 0, entregues: 0, lidas: 0, cliques: 0, falhas: 0, pendentes: 0, respostas: 0 });
+    const indice = indiceDeEntrada(acc);
+    const pessoas = [];
     const geral = vazio();
     const porUf = {};
     const porBotao = {};
@@ -3478,18 +3512,25 @@ module.exports = function (broadcast, clients) {
       const uf = geo.ufOf(r.waId);
       const bucket = uf ? (porUf[uf] = porUf[uf] || vazio()) : semUf;
       geral.total++; bucket.total++;
+      const contato = store.findContact(acc, r.waId);
+      const linha = {
+        waId: r.waId, nome: (contato && contato.name) || '', uf: uf || '',
+        situacao: 'pendente', clicou: false, botao: '', resposta: null, quando: r.sentAt || 0
+      };
+      pessoas.push(linha);
 
       if (r.status === 'pending') { geral.pendentes++; bucket.pendentes++; continue; }
-      if (r.status === 'failed') { geral.falhas++; bucket.falhas++; continue; }
+      if (r.status === 'failed') { geral.falhas++; bucket.falhas++; linha.situacao = 'falha'; linha.erro = r.error || ''; continue; }
 
       const msg = r.msgId ? acc.messages.find(m => m.id === r.msgId) : null;
       const st = msg ? msg.status : 'sent';
       geral.enviadas++; bucket.enviadas++;
       // "entregue" e "lida" são cumulativos: quem leu também recebeu. Contar
       // exclusivo faria a taxa de entrega cair quando a leitura subisse.
-      if (st === 'read') { geral.lidas++; bucket.lidas++; geral.entregues++; bucket.entregues++; }
-      else if (st === 'delivered') { geral.entregues++; bucket.entregues++; }
-      else if (st === 'failed') { geral.falhas++; bucket.falhas++; geral.enviadas--; bucket.enviadas--; }
+      if (st === 'read') { geral.lidas++; bucket.lidas++; geral.entregues++; bucket.entregues++; linha.situacao = 'lida'; }
+      else if (st === 'delivered') { geral.entregues++; bucket.entregues++; linha.situacao = 'entregue'; }
+      else if (st === 'failed') { geral.falhas++; bucket.falhas++; geral.enviadas--; bucket.enviadas--; linha.situacao = 'falha'; }
+      else linha.situacao = 'enviada';
 
       if (r.clickedAt) {
         geral.cliques++; bucket.cliques++;
@@ -3497,7 +3538,11 @@ module.exports = function (broadcast, clients) {
         porBotao[chave] = porBotao[chave] || { rotulo: chave, cliques: 0, ufs: {} };
         porBotao[chave].cliques++;
         if (uf) porBotao[chave].ufs[uf] = (porBotao[chave].ufs[uf] || 0) + 1;
+        linha.clicou = true; linha.botao = chave;
       }
+
+      const resp = respostaDe(indice, r);
+      if (resp) { geral.respostas++; bucket.respostas++; linha.resposta = resp; }
     }
 
     const taxa = (a, b) => (b > 0 ? Math.round((a / b) * 1000) / 10 : 0);
@@ -3508,7 +3553,10 @@ module.exports = function (broadcast, clients) {
       taxaClique: taxa(s.cliques, s.enviadas),
       // CTR sobre quem LEU: mede a mensagem, não a entrega. É o número que diz
       // se o texto e o botão convencem.
-      ctrSobreLidas: taxa(s.cliques, s.lidas)
+      ctrSobreLidas: taxa(s.cliques, s.lidas),
+      // RESPOSTA sobre quem RECEBEU. É a única métrica aqui que mede conversa
+      // e não entrega: clique é intenção, resposta é gente do outro lado.
+      taxaResposta: taxa(s.respostas, s.entregues)
     });
 
     const estados = Object.entries(porUf)
@@ -3524,9 +3572,115 @@ module.exports = function (broadcast, clients) {
       semUf: semUf.total ? comTaxas(semUf) : null,
       botoes: Object.values(porBotao).sort((a, b) => b.cliques - a.cliques),
       // a leitura depende de o cliente ter confirmação ligada; o relatório avisa
-      leituraParcial: geral.enviadas > 0 && geral.lidas === 0 && geral.entregues > 0
+      leituraParcial: geral.enviadas > 0 && geral.lidas === 0 && geral.entregues > 0,
+      // AS PESSOAS, uma a uma. Ordenadas pelo que interessa a quem lê: quem
+      // respondeu primeiro, depois quem clicou, depois quem leu. Um relatório
+      // em ordem de disparo esconde as três respostas no meio de duas mil
+      // linhas de "entregue".
+      pessoas: pessoas.sort((a, b) => {
+        const peso = x => (x.resposta ? 3 : 0) + (x.clicou ? 2 : 0) + (x.situacao === "lida" ? 1 : 0);
+        return peso(b) - peso(a) || (b.quando || 0) - (a.quando || 0);
+      })
     };
   }
+
+  // -------------------------------------------------------------------------
+  // LINK PUBLICO DE ACOMPANHAMENTO
+  //
+  // Quem dispara para outras empresas precisa mostrar o resultado a quem
+  // contratou, e quem contratou nao tem conta no painel. O link resolve: um
+  // endereco so de leitura, da campanha, ao vivo.
+  //
+  // O TELEFONE SAI MASCARADO por padrao. Um link e um portador: quem tem o
+  // endereco ve. A base de contatos e o ativo do cliente, e um endereco
+  // repassado num grupo vira vazamento. Quem quiser o numero inteiro liga a
+  // opcao ao criar o link, e assume.
+  // -------------------------------------------------------------------------
+  function mascararTelefone(waId) {
+    const n = String(waId || '').replace(/\D/g, '');
+    if (n.length < 6) return '•'.repeat(Math.max(0, n.length));
+    return n.slice(0, 4) + '•'.repeat(n.length - 8) + n.slice(-4);
+  }
+
+  // O endereco do link. A pagina publica mora na VITRINE, e nao no host da
+  // API nem no do painel: quem recebe o link nao tem conta, e mandar essa
+  // pessoa para app.koonfy.com e mandar para uma tela de login.
+  function linkDaCampanha(req, token) {
+    const base = hosts.origemPublica(req) || (req.protocol + '://' + req.get('host'));
+    return base.replace(/\/+$/, '') + '/campanha/' + token;
+  }
+
+  // A campanha de um token, procurada em todas as contas. E uma varredura,
+  // e nao um indice, porque campanha compartilhada e excecao e nao regra:
+  // um indice em memoria teria de ser reconstruido a cada restart e ficaria
+  // fora de sincronia com o banco na primeira falha de gravacao.
+  function campanhaPorToken(token) {
+    if (!token || String(token).length < 16) return null;
+    for (const a of db.get().accounts) {
+      for (const c of a.campaigns || []) {
+        if (c.share && c.share.token === token) return { acc: a, camp: c };
+      }
+    }
+    return null;
+  }
+
+  // O relatorio como o mundo de fora pode ve-lo.
+  function relatorioPublico(acc, camp) {
+    const rel = campaignReport(acc, camp);
+    const mostrarTelefone = !!(camp.share && camp.share.telefones);
+    return {
+      ...rel,
+      conta: acc.name,
+      telefones: mostrarTelefone,
+      pessoas: rel.pessoas.map(x => ({
+        ...x,
+        waId: mostrarTelefone ? x.waId : mascararTelefone(x.waId)
+      }))
+    };
+  }
+
+  router.post('/campaigns/:id/share', auth, can('campaigns'), (req, res) => {
+    const camp = (req.acc.campaigns || []).find(c => c.id === req.params.id);
+    if (!camp) return res.status(404).json({ error: 'Campanha não encontrada' });
+    // Gerar de novo TROCA o token: e assim que se revoga um link que vazou.
+    camp.share = {
+      token: crypto.randomBytes(16).toString('hex'),
+      criadoEm: Date.now(),
+      telefones: !!(req.body && req.body.telefones)
+    };
+    db.save();
+    res.json({ share: camp.share, url: linkDaCampanha(req, camp.share.token) });
+  });
+
+  router.delete('/campaigns/:id/share', auth, can('campaigns'), (req, res) => {
+    const camp = (req.acc.campaigns || []).find(c => c.id === req.params.id);
+    if (!camp) return res.status(404).json({ error: 'Campanha não encontrada' });
+    camp.share = null;
+    db.save();
+    res.json({ ok: true });
+  });
+
+  router.get('/public/campanha/:token', (req, res) => {
+    const achado = campanhaPorToken(req.params.token);
+    if (!achado) return res.status(404).json({ error: 'Link inválido ou revogado' });
+    res.json(relatorioPublico(achado.acc, achado.camp));
+  });
+
+  // O MESMO SSE do painel, com uma inscricao restrita: este espectador so
+  // recebe os eventos DESTA campanha. Sem isso, ou o link so teria dados
+  // parados, ou uma pagina publica ficaria pedindo o relatorio inteiro de
+  // segundo em segundo para todo mundo que abrisse o endereco.
+  router.get('/public/campanha/:token/events', (req, res) => {
+    const achado = campanhaPorToken(req.params.token);
+    if (!achado) return res.status(404).json({ error: 'Link inválido ou revogado' });
+    res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    res.flushHeaders();
+    res.write('event: hello\ndata: {}\n\n');
+    const client = { res, accountId: achado.acc.id, isAdmin: false, campanha: achado.camp.id };
+    clients.add(client);
+    const hb = setInterval(() => { try { res.write(': ping\n\n'); } catch {} }, 25000);
+    req.on('close', () => { clearInterval(hb); clients.delete(client); });
+  });
 
   router.get('/campaigns/:id/report', auth, can('campaigns'), (req, res) => {
     const camp = (req.acc.campaigns || []).find(c => c.id === req.params.id);
@@ -4477,7 +4631,89 @@ module.exports = function (broadcast, clients) {
       walletFloat: accs.reduce((a, x) => a + (x.wallet ? x.wallet.balance : 0), 0)
     };
 
+    // ---- DE ONDE VEM O DINHEIRO QUE NÃO É ASSINATURA ----
+    // A taxa das vendas dos clientes é a outra metade da receita, e ela vive
+    // nas cobranças de cada conta. Pix, cartão e boleto são três negócios
+    // diferentes vestidos de um: prazos, risco e custo distintos. Somados
+    // num número só, ninguém enxerga qual está crescendo.
+    const cobrancas = [];
+    for (const a of data.accounts) {
+      if (!a.elitepay) continue;
+      for (const c of a.elitepay.charges || []) cobrancas.push(c);
+    }
+    const METODOS = ['pix', 'card', 'boleto'];
+    const pagas = cobrancas.filter(c => c.status === 'paid');
+    const metodos = METODOS.map(m => {
+      const doMetodo = pagas.filter(c => (c.method || 'pix') === m);
+      return {
+        metodo: m,
+        rotulo: { pix: 'Pix', card: 'Cartão', boleto: 'Boleto' }[m],
+        volume: doMetodo.reduce((t, c) => t + (c.value || 0), 0),
+        taxas: doMetodo.reduce((t, c) => t + (c.platformCut || 0), 0),
+        qtd: doMetodo.length
+      };
+    });
+
+    // A mesma divisão ao longo de 12 meses, pela data do PAGAMENTO: uma
+    // cobrança criada em março e paga em abril é receita de abril.
+    const serieMetodo = [];
+    for (let i = 11; i >= 0; i--) {
+      const ini = new Date(base.getFullYear(), base.getMonth() - i, 1).getTime();
+      const fim = new Date(base.getFullYear(), base.getMonth() - i + 1, 1).getTime();
+      const doMes = pagas.filter(c => (c.paidAt || c.createdAt || 0) >= ini && (c.paidAt || c.createdAt || 0) < fim);
+      const somaDe = m => doMes.filter(c => (c.method || 'pix') === m).reduce((t, c) => t + (c.value || 0), 0);
+      serieMetodo.push({
+        label: datas.mesCurto(ini),
+        pix: somaDe('pix'), card: somaDe('card'), boleto: somaDe('boleto'),
+        taxas: doMes.reduce((t, c) => t + (c.platformCut || 0), 0),
+        total: doMes.reduce((t, c) => t + (c.value || 0), 0)
+      });
+    }
+
+    // CONVERSÃO DO CHECKOUT. Mede a tela de pagamento, e não o produto: se
+    // este número cai sozinho, quem quebrou foi o checkout.
+    const abandonadas = cobrancas.filter(c => c.status !== 'paid' && (c.status === 'expired' || (c.expiresAt && c.expiresAt < now))).length;
+    const vendas = {
+      criadas: cobrancas.length,
+      pagas: pagas.length,
+      pendentes: cobrancas.filter(c => c.status === 'active' && (!c.expiresAt || c.expiresAt >= now)).length,
+      abandonadas,
+      volume: pagas.reduce((t, c) => t + (c.value || 0), 0),
+      taxas: pagas.reduce((t, c) => t + (c.platformCut || 0), 0),
+      ticket: pagas.length ? Math.round(pagas.reduce((t, c) => t + (c.value || 0), 0) / pagas.length) : 0,
+      conversao: cobrancas.length ? Math.round(pagas.length / cobrancas.length * 1000) / 10 : 0
+    };
+
+    // FUNIL DA CONTA. Cada degrau perdido é um lugar onde o produto não se
+    // sustenta sozinho — e sem o funil ninguém sabe qual degrau é.
+    const temCobranca = a => !!(a.elitepay && (a.elitepay.charges || []).length);
+    const vendeu = a => !!(a.elitepay && (a.elitepay.charges || []).some(c => c.status === 'paid'));
+    const funil = [
+      { etapa: 'Cadastrou', qtd: accs.length },
+      { etapa: 'Conectou o WhatsApp', qtd: accs.filter(a => a.wa && a.wa.connected).length },
+      { etapa: 'Criou cobrança', qtd: accs.filter(temCobranca).length },
+      { etapa: 'Recebeu uma venda', qtd: accs.filter(vendeu).length },
+      { etapa: 'Assinou', qtd: active.length }
+    ].map(e => ({ ...e, pct: accs.length ? Math.round(e.qtd / accs.length * 1000) / 10 : 0 }));
+
+    // AFILIADOS. A comissão já era paga; quem trouxe quanta gente não
+    // aparecia em lugar nenhum.
+    const afiliados = accs.concat(internas)
+      .map(a => {
+        const indicados = data.accounts.filter(x => x.affiliate && x.affiliate.refBy === a.affiliate.code);
+        return {
+          id: a.id, nome: a.name, codigo: a.affiliate.code,
+          indicados: indicados.length,
+          assinantes: indicados.filter(x => x.billing.status === 'active' && x.billing.periodEnd > now).length,
+          ganhou: a.affiliate.earned || 0
+        };
+      })
+      .filter(a => a.indicados > 0 || a.ganhou > 0)
+      .sort((a, b) => b.ganhou - a.ganhou || b.indicados - a.indicados)
+      .slice(0, 15);
+
     res.json({
+      metodos, serieMetodo, vendas, funil, afiliados,
       metrics: {
         accounts: accs.length,
         activeSubs: active.length,
