@@ -317,9 +317,26 @@
 <div class="toast" id="toast"></div>
 <script>
 (function () {
-  var id = location.pathname.split('/').pop();
+  // O ENDEREÇO diz o que esta página é:
+  //   /pay/<id> (ou <dominio>/<id>) → uma COBRANÇA que já existe
+  //   /c/<apelido>                  → o LINK DE UM PRODUTO, sem cobrança ainda
+  //
+  // `id` é variável, e não constante: no link do produto ele nasce depois, no
+  // envio dos dados. Todo o resto do arquivo já falava com `id`, então a
+  // segunda porta não criou um segundo caminho para manter.
+  var partes = location.pathname.split('/').filter(Boolean);
+  var apelidoProduto = partes[0] === 'c' ? decodeURIComponent(partes[1] || '') : '';
+  var id = apelidoProduto ? '' : (partes[partes.length - 1] || '');
   var root = document.getElementById('root');
   var data = null, timer = null, cdTimer = null, offerTimer = null;
+
+  // De onde vem a primeira carga. As duas respostas têm o mesmo formato: a do
+  // produto é a mesma tela sem cobrança, esperando os dados.
+  function enderecoInicial() {
+    return apelidoProduto
+      ? '/api/public/produto/' + encodeURIComponent(apelidoProduto)
+      : '/api/public/pay/' + encodeURIComponent(id);
+  }
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function brl(c) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
@@ -647,12 +664,26 @@
     if (data.demo) { data.needsId = false; data.payerName = f.name; render(); return; }
 
     btn.disabled = true; btn.textContent = 'Gerando seu Pix…';
-    fetch('/api/public/pay/' + encodeURIComponent(id) + '/identify', {
+    // NO LINK DO PRODUTO é aqui que a cobrança nasce. A resposta volta no
+    // formato da cobrança, com o id — daí em diante a página é a de sempre.
+    var rota = apelidoProduto
+      ? '/api/public/produto/' + encodeURIComponent(apelidoProduto) + '/identify'
+      : '/api/public/pay/' + encodeURIComponent(id) + '/identify';
+    fetch(rota, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(f)
     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
         if (!res.ok) throw new Error(res.j.error || 'Não foi possível validar seus dados');
-        data = res.j.view; render(); toast('Dados confirmados! Agora é só pagar');
+        data = res.j.view;
+        // A cobrança acabou de nascer: o resto da página fala por id, e o
+        // endereço da barra passa a ser o dela — recarregar não perde o Pix
+        // gerado, e o link continua servindo para quem abrir depois.
+        if (apelidoProduto && data && data.id) {
+          id = data.id;
+          apelidoProduto = '';
+          try { history.replaceState(null, '', '/pay/' + id); } catch (e) {}
+        }
+        render(); toast('Dados confirmados! Agora é só pagar');
       })
       .catch(function (e) {
         err.textContent = e.message; err.classList.add('show');
@@ -1066,7 +1097,7 @@
   }
 
   function load() {
-    fetch('/api/public/pay/' + encodeURIComponent(id))
+    fetch(enderecoInicial())
       .then(function (r) { if (!r.ok) throw 0; return r.json(); })
       .then(function (d) {
         var st = new URLSearchParams(location.search).get('s');

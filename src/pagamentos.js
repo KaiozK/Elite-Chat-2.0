@@ -250,6 +250,11 @@ function defaultProduct() {
     id: '', name: '', description: '', price: 0,     // price em centavos
     banner: '', bannerMobile: '', logo: '', logoMobile: '',
     checkoutId: '',        // checkout preferido deste produto
+    // O APELIDO DO LINK. É o endereço fixo do produto — o que vai na bio, no
+    // anúncio, no grupo. Nasce do nome e pode ser trocado; o que não pode é
+    // repetir dentro da conta, senão dois produtos disputariam o mesmo
+    // endereço e quem abrisse cairia no que o banco devolvesse primeiro.
+    slug: '', linkOn: true,
     active: true, createdAt: Date.now()
   };
 }
@@ -1337,6 +1342,111 @@ function contatoDaCobranca(acc, ch) {
 // (sem autenticação: expõe SOMENTE o necessário para pagar a cobrança).
 // ---------------------------------------------------------------------------
 function findProduct(acc, id) { return ensure(acc).products.find(p => p.id === id) || null; }
+
+// ---------------------------------------------------------------------------
+// LINK DE CHECKOUT DO PRODUTO
+//
+// Um endereço FIXO por produto, que qualquer pessoa pode abrir — diferente do
+// link de cobrança, que é um por cliente e nasce depois que alguém cobra.
+// ---------------------------------------------------------------------------
+
+// O apelido sai do nome: sem acento, sem espaço, minúsculo. Um endereço que
+// a pessoa consegue ditar no telefone vale mais que um id aleatório.
+function apelidar(nome) {
+  return String(nome || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+}
+
+// Único DENTRO DA CONTA e no mundo: o endereço é global, e dois produtos com
+// o mesmo apelido fariam quem abrisse cair no que o banco devolvesse
+// primeiro. O sufixo só entra quando há colisão de verdade.
+function apelidoLivre(base, ignorarId) {
+  const raiz = apelidar(base) || 'produto';
+  const usado = (slug) => {
+    for (const a of db.get().accounts) {
+      for (const pr of ((a.pagamentos && a.pagamentos.products) || [])) {
+        if (pr.slug === slug && pr.id !== ignorarId) return true;
+      }
+    }
+    return false;
+  };
+  if (!usado(raiz)) return raiz;
+  for (let i = 2; i < 200; i++) { const t = raiz + "-" + i; if (!usado(t)) return t; }
+  return raiz + '-' + crypto.randomBytes(3).toString('hex');
+}
+
+// O endereço do produto. Sai pelo mesmo domínio das cobranças, para o cliente
+// ver sempre o mesmo lugar quando vai pagar.
+function productLink(prod) {
+  if (!prod || !prod.slug || prod.linkOn === false) return '';
+  // SEM PREÇO NÃO HÁ LINK. O endereço leva direto ao pagamento, e produto de
+  // valor combinado não tem o que pagar — devolver um link que abre num 404 é
+  // pior do que não devolver nada: a tela mostraria um endereço para copiar e
+  // o cliente descobriria o problema depois de colá-lo no anúncio.
+  if (!prod.price || prod.price < 100) return '';
+  const { base, curto } = require('./hosts').basePagamento(baseUrl());
+  if (!base) return '';
+  return curto ? `${base}/c/${prod.slug}` : `${base}/c/${prod.slug}`;
+}
+
+// Procura o produto pelo apelido em todas as contas — como as cobranças, o
+// endereço é público e não carrega a conta junto.
+function produtoPorApelido(slug) {
+  const alvo = String(slug || '').toLowerCase();
+  if (!alvo) return null;
+  for (const acc of db.get().accounts) {
+    for (const prod of ((acc.pagamentos && acc.pagamentos.products) || [])) {
+      if (prod.slug === alvo) return { acc, prod };
+    }
+  }
+  return null;
+}
+
+// A vitrine do produto: o mesmo desenho do checkout, sem cobrança ainda.
+// `needsId` é o que faz a página abrir no passo da identificação — e é
+// verdade aqui de um jeito mais forte que numa cobrança: sem os dados não
+// existe cobrança nenhuma para pagar.
+function publicProductView(slug) {
+  const achado = produtoPorApelido(slug);
+  if (!achado) return null;
+  const { acc, prod } = achado;
+  if (prod.linkOn === false || prod.active === false) return null;
+  if (!prod.price || prod.price < 100) return null;   // produto sem preço não vende
+  return {
+    produto: prod.slug, status: 'active', accId: acc.id,
+    value: prod.price, comment: prod.name,
+    brCode: '', qrCodeImage: '', createdAt: Date.now(), paidAt: null, expiresAt: null,
+    needsId: true, prefill: {},
+    payerName: '',
+    card: (() => {
+      const pub = cardPublic();
+      const podeReceber = cardConfig().settleMode === 'wallet' ? true : cardReady(acc).ok;
+      return { ...pub, credit: pub.credit && podeReceber, boleto: pub.boleto && podeReceber,
+               installments: installmentOptions(prod.price) };
+    })(),
+    method: 'pix', paidCard: null,
+    checkout: checkoutBranding(acc, { checkoutId: prod.checkoutId, productId: prod.id })
+  };
+}
+
+// A COBRANÇA NASCE AQUI, e não ao abrir o link: uma cobrança por visita faria
+// o robô que gera a prévia do link no WhatsApp virar uma venda pendente, e a
+// lista do lojista virar lixo em uma semana.
+async function cobrancaDoLink(slug, dados, broadcast) {
+  const achado = produtoPorApelido(slug);
+  if (!achado) { const e = new Error('Produto não encontrado'); e.status = 404; throw e; }
+  const { acc, prod } = achado;
+  if (prod.linkOn === false || prod.active === false) { const e = new Error('Este link não está mais ativo'); e.status = 404; throw e; }
+  const ch = await createCharge(acc, {
+    valueCents: prod.price, comment: prod.name,
+    origin: 'link', productId: prod.id, checkoutId: prod.checkoutId,
+    pagador: dados
+  }, broadcast);
+  await identifyPayer(ch.id, dados, broadcast);
+  return ch.id;
+}
 function findCheckout(acc, id) {
   const ep = ensure(acc);
   return ep.checkouts.find(c => c.id === id) || ep.checkouts.find(c => c.isDefault) || ep.checkouts[0];
@@ -2172,6 +2282,7 @@ module.exports = {
   registerSubaccount, garantirPagamentos, setSubaccountStatus, syncSubaccount, applyAccountApproved,
   createCharge, cancelCharge, findCharge, chargeMessage, chargeButton, computeOutFee,
   isPagamentosCharge, applyPaid, metrics, adminOverview, log, plog, fmtBRL,
+  apelidoLivre, productLink, produtoPorApelido, publicProductView, cobrancaDoLink,
   noteBaseUrl, payLink, publicChargeView, defaultCheckout, defaultProduct, defaultBlocks,
   identifyPayer, fmtCpfCnpj, findProduct, findCheckout, checkoutBranding,
   TPL_ROLES, TPL_VARS, tplValues, roleOf, setTemplateRole, templatesByRole, pickTemplate,

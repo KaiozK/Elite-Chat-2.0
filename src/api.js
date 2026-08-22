@@ -5436,6 +5436,32 @@ module.exports = function (broadcast, clients) {
 
   // Etapa 1 do checkout: pagador preenche os dados → cria o cliente na Woovi,
   // cadastra o contato no Koonfy e registra os eventos na pipeline.
+  // -------------------------------------------------------------------------
+  // LINK DE CHECKOUT DO PRODUTO
+  //
+  // Um endereço FIXO por produto, aberto por qualquer pessoa. Diferente do
+  // link de cobrança, que é um por cliente e nasce depois que alguém cobra.
+  // -------------------------------------------------------------------------
+  router.get('/public/produto/:slug', (req, res) => {
+    const view = pagamentos.publicProductView(req.params.slug);
+    if (!view) return res.status(404).json({ error: 'Produto não encontrado' });
+    // A visão sai SOLTA, e não dentro de um envelope: é o mesmo formato da rota
+    // da cobrança acima, e a página trata as duas com o mesmo código. Um
+    // envelope aqui obrigaria a página a saber por qual porta ela entrou.
+    res.json(view);
+  });
+
+  // A COBRANÇA NASCE AQUI. Criar ao abrir o endereço faria cada visita virar
+  // uma venda pendente — inclusive a do robô que gera a prévia do link no
+  // WhatsApp — e a lista do lojista viraria lixo em uma semana.
+  router.post('/public/produto/:slug/identify', h(async (req, res) => {
+    const b = req.body || {};
+    const id = await pagamentos.cobrancaDoLink(req.params.slug, {
+      name: b.name, taxID: b.taxID, email: b.email, phone: b.phone, trk: b.trk
+    }, broadcast);
+    res.json({ ok: true, view: pagamentos.publicChargeView(id) });
+  }));
+
   router.post('/public/pay/:id/identify', h(async (req, res) => {
     const b = req.body || {};
     await pagamentos.identifyPayer(req.params.id, {
@@ -5960,7 +5986,12 @@ module.exports = function (broadcast, clients) {
   // ---- PRODUTOS (o que é vendido; entra como variável no checkout) ----
   router.get('/pagamentos/products', auth, can('pagamentos'), (req, res) => {
     const ep = pagamentos.ensure(req.acc);
-    res.json({ products: ep.products, checkouts: ep.checkouts.map(c => ({ id: c.id, name: c.name, isDefault: c.isDefault })) });
+    // O LINK vem montado do servidor: quem sabe qual é o domínio de checkout
+    // configurado é ele, e não a tela.
+    res.json({
+      products: ep.products.map(p => ({ ...p, link: pagamentos.productLink(p) })),
+      checkouts: ep.checkouts.map(c => ({ id: c.id, name: c.name, isDefault: c.isDefault }))
+    });
   });
   router.post('/pagamentos/products', auth, can('pagamentos', 'create'), (req, res) => {
     const ep = pagamentos.ensure(req.acc);
@@ -5970,7 +6001,7 @@ module.exports = function (broadcast, clients) {
     applyProduct(p, b, res); if (res.headersSent) return;
     ep.products.unshift(p);
     db.save();
-    res.json({ ok: true, product: p });
+    res.json({ ok: true, product: { ...p, link: pagamentos.productLink(p) } });
   });
   router.put('/pagamentos/products/:id', auth, can('pagamentos', 'edit'), (req, res) => {
     const ep = pagamentos.ensure(req.acc);
@@ -5978,7 +6009,7 @@ module.exports = function (broadcast, clients) {
     if (!p) return res.status(404).json({ error: 'Produto não encontrado' });
     applyProduct(p, req.body || {}, res); if (res.headersSent) return;
     db.save();
-    res.json({ ok: true, product: p });
+    res.json({ ok: true, product: { ...p, link: pagamentos.productLink(p) } });
   });
   router.delete('/pagamentos/products/:id', auth, can('pagamentos', 'edit'), (req, res) => {
     const ep = pagamentos.ensure(req.acc);
@@ -5991,6 +6022,13 @@ module.exports = function (broadcast, clients) {
   function applyProduct(p, b, res) {
     const img = v => (typeof v === 'string' && (/^data:image\/(png|jpe?g|webp);base64,/.test(v) || v === '')) ? v : null;
     if (typeof b.name === 'string') p.name = b.name.slice(0, 80);
+    // O APELIDO DO LINK. Nasce do nome uma vez e NÃO muda sozinho quando o
+    // nome muda: o endereço já pode estar num anúncio, num grupo, na bio — e
+    // trocar o link por baixo derruba a campanha de quem confiou nele. Trocar
+    // é uma decisão explícita, no campo.
+    if (typeof b.slug === 'string' && b.slug.trim()) p.slug = pagamentos.apelidoLivre(b.slug, p.id);
+    else if (!p.slug) p.slug = pagamentos.apelidoLivre(p.name, p.id);
+    if (typeof b.linkOn === 'boolean') p.linkOn = b.linkOn;
     if (typeof b.description === 'string') p.description = b.description.slice(0, 600);
     if (b.price !== undefined) p.price = Math.max(0, Math.round(Number(b.price) || 0));
     if (typeof b.checkoutId === 'string') p.checkoutId = b.checkoutId.slice(0, 40);

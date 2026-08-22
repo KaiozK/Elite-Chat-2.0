@@ -16206,12 +16206,16 @@ async function epPaintProducts(box) {
       </div>
       <p class="muted" style="margin:0 0 14px;font-size:13px">O produto preenche as <b>variáveis</b> do checkout: nome, descrição e imagens. Na cobrança você escolhe o produto e o layout.</p>
       <div id="ep-prod-form"></div>
-      ${d.products.length ? `<div style="overflow-x:auto"><table><thead><tr><th>Produto</th><th>Preço</th><th>Checkout</th><th></th></tr></thead><tbody>
+      ${d.products.length ? `<div style="overflow-x:auto"><table class="tab-mob"><thead><tr><th>Produto</th><th>Preço</th><th>Checkout</th><th>Link de venda</th><th></th></tr></thead><tbody>
         ${d.products.map(p => `<tr>
           <td><div class="cell-user">${p.logo ? `<img class="avatar sm" src="${esc(p.logo)}" style="object-fit:cover">` : `<div class="avatar sm">${esc((p.name || '?').charAt(0).toUpperCase())}</div>`}
             <div><b>${esc(p.name)}</b>${p.description ? `<div class="muted" style="font-size:11.5px">${esc(p.description.slice(0, 46))}</div>` : ''}</div></div></td>
-          <td><b>${p.price ? fmtBRL(p.price) : '<span class="muted">livre</span>'}</b></td>
-          <td class="muted">${esc((d.checkouts.find(c => c.id === p.checkoutId) || {}).name || 'padrão')}</td>
+          <td data-r="Preço"><b>${p.price ? fmtBRL(p.price) : '<span class="muted">livre</span>'}</b></td>
+          <td data-r="Checkout" class="muted">${esc((d.checkouts.find(c => c.id === p.checkoutId) || {}).name || 'padrão')}</td>
+          <td data-r="Link de venda">${p.link
+            ? `<button class="btn small" onclick="epProdCopiarLink('${p.id}')" title="${esc(p.link)}">${ico('copy', 12)} Copiar</button>
+               <a class="btn small" href="${esc(p.link)}" target="_blank" rel="noopener" title="Abrir o checkout">${ico('link', 12)}</a>`
+            : `<span class="muted" style="font-size:12px">${p.price ? 'link desligado' : 'defina um preço'}</span>`}</td>
           <td style="text-align:right;white-space:nowrap">
             <button class="btn small" onclick="epProdForm('${p.id}')">${ico('edit', 13)}</button>
             <button class="btn small danger" onclick="epProdDel('${p.id}')">${ico('trash', 13)}</button>
@@ -16236,6 +16240,22 @@ function epProdForm(id) {
     <label style="margin-top:9px;display:block">Descrição<textarea id="epp-desc" rows="2" maxlength="600" placeholder="O que o cliente recebe">${esc(p.description || '')}</textarea></label>
     ${cks.length ? `<label style="margin-top:9px;display:block">Checkout deste produto
       ${ecSelect('epp-ckt', cks.map(c => ({ value: c.id, label: c.name + (c.isDefault ? ' (padrão)' : '') })), p.checkoutId || (cks.find(c => c.isDefault) || cks[0]).id)}</label>` : ''}
+    ${id ? `<span class="fb-sub" style="margin-top:14px">Link de venda</span>
+      <p class="muted" style="margin:0 0 8px;font-size:12.5px">O endereço fixo deste produto: qualquer pessoa abre, preenche os dados e paga.
+        A cobrança nasce quando ela se identifica — abrir o link não cria venda nenhuma.</p>
+      ${p.price ? `
+        <div class="copy-box"><code id="epp-link">${esc(p.link || '—')}</code>
+          <button class="btn small" onclick="copyText($('#epp-link').textContent)">Copiar</button>
+          ${p.link ? `<a class="btn small" href="${esc(p.link)}" target="_blank" rel="noopener">Abrir</a>` : ''}</div>
+        <div class="row" style="margin-top:9px">
+          <label style="flex:1">Apelido do link <em class="lim-extra">o que aparece depois de /c/</em>
+            <input id="epp-slug" maxlength="48" value="${esc(p.slug || '')}" placeholder="mentoria-mensal"></label>
+          <label class="chk" style="flex:1;align-self:flex-end;margin-bottom:9px"><input type="checkbox" id="epp-linkon" ${p.linkOn === false ? '' : 'checked'}>
+            <span>Link ativo</span></label>
+        </div>
+        <p class="hint">Trocar o apelido troca o endereço: o antigo para de abrir. Se ele já está num anúncio, deixe como está.</p>
+      ` : '<p class="hint">Defina um preço para este produto ganhar um link de venda.</p>'}` : ''}
+
     <span class="fb-sub" style="margin-top:12px">Imagens do produto <span class="muted">(substituem as variáveis do checkout)</span></span>
     <div class="row" style="gap:8px;flex-wrap:wrap">
       ${['logo', 'logoMobile', 'banner', 'bannerMobile'].map(k => `
@@ -16248,6 +16268,15 @@ function epProdForm(id) {
     <input type="file" id="epp-file" accept="image/png,image/jpeg,image/webp" style="display:none">
   </div>`;
 }
+// Copiar da LISTA: o produto já está pronto e a pessoa só quer o endereço
+// para colar no anúncio. Abrir o formulário para isso seria cobrar dois
+// cliques por um.
+function epProdCopiarLink(id) {
+  const p = (state.epProducts || []).find(x => x.id === id);
+  if (!p || !p.link) return toast('Este produto ainda não tem link', 'error');
+  copyText(p.link);
+}
+
 function epProdImg(kind) {
   const inp = $('#epp-file'); if (!inp) return;
   const MAXW = { banner: 1200, bannerMobile: 800, logo: 512, logoMobile: 256 };
@@ -16283,6 +16312,9 @@ async function epProdSave() {
   if (!body.name) return toast('Informe o nome do produto', 'error');
   try {
     const id = window._epProd;
+    const slug = $('#epp-slug'), linkon = $('#epp-linkon');
+    if (slug) body.slug = slug.value.trim();
+    if (linkon) body.linkOn = linkon.checked;
     await api('/pagamentos/products' + (id ? '/' + id : ''), { method: id ? 'PUT' : 'POST', body });
     toast(id ? 'Produto atualizado!' : 'Produto criado!');
     epPaintProducts($('#ep-box'));

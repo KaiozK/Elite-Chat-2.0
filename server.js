@@ -384,6 +384,15 @@ app.get('/campanha/:token', (req, res) => {
 
 // Checkout público do Pagamentos — página de pagamento das cobranças (/pay/:id).
 // A página busca os dados em /api/public/pay/:id (rota sem autenticação).
+// LINK DE CHECKOUT DO PRODUTO (/c/<apelido>). Endereço FIXO, aberto por
+// qualquer pessoa — o que vai na bio, no anúncio, no grupo. A página é a
+// mesma do checkout; a cobrança nasce quando a pessoa se identifica, e não
+// quando abre o link (senão cada visita, inclusive a do robô que gera a
+// prévia no WhatsApp, viraria uma venda pendente na lista do lojista).
+app.get('/c/:slug', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'pay.html'));
+});
+
 app.get('/pay/:id', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'pay.html'));
 });
