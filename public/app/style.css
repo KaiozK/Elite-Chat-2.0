@@ -3012,11 +3012,20 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   .tabs::-webkit-scrollbar { display: none; }
   /* A PÁGINA NÃO ROLA PARA O LADO. Num app de tela cheia isso nunca é
      recurso: é sempre um elemento que passou da largura, e o que a pessoa vê
-     ao deslizar é o branco do fundo. `clip` e não `hidden` de propósito —
-     `hidden` criaria um container de rolagem e quebraria `position: sticky`
-     no topo das tabelas. O que precisa rolar na horizontal (tabela larga,
-     faixa de abas) rola DENTRO do próprio quadro, e isto não encosta nelas. */
+     ao deslizar é o branco do fundo.
+
+     `.page` PRECISA estar aqui, e não só a raiz: ele rola na vertical, e um
+     elemento com `overflow-y: auto` ganha `overflow-x: auto` automaticamente.
+     Foi por isso que o guarda só na raiz não pegou o arrasto do carrossel — o
+     documento estava certinho e quem rolava era o `.page`.
+
+     Isto é uma REDE, não o conserto: quando algo passa da largura, o certo é
+     achar o elemento. `clip` e não `hidden` de propósito — `hidden` criaria
+     um container de rolagem e quebraria `position: sticky` no topo das
+     tabelas. O que precisa rolar de lado (tabela larga, faixa de abas) rola
+     DENTRO do próprio quadro, e isto não encosta nelas. */
   html, body { overflow-x: clip; }
+  .page { overflow-x: clip; }
 }
 /* nada pode estourar a largura da tela */
 #app, .shell, main#view { max-width: 100vw; }
@@ -4970,13 +4979,20 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
    cortada na borda — e aí o objeto parece colado num retângulo.
    ============================================================ */
 .bnr-wrap { position: relative; margin: 0 0 20px; }
-/* A janela esconde os slides vizinhos — e era ela que serrava a peça 3D numa
-   reta no pé do cartão. `overflow: hidden` recorta os quatro lados; aqui só
-   os DOIS de fora podem recortar. `clip-path` escolhe: fecha nas laterais,
-   onde mora o vizinho, e abre em cima e embaixo, que é por onde a peça
-   atravessa a borda. Os 48px são o teto do transbordo: sem eles a peça
-   subiria por cima do filtro e desceria no cartão de missões. */
-.bnr-janela { clip-path: inset(-48px 0px -48px 0px); }
+/* A JANELA PRECISA CONTER O TRILHO — e conter é `overflow`, não `clip-path`.
+
+   Os dois escondem o slide vizinho, mas escondem coisas diferentes:
+   `overflow` contém o LAYOUT, `clip-path` só recorta a PINTURA. Com
+   `clip-path`, o trilho de cinco slides continuava ocupando cinco larguras de
+   tela: a página ficava arrastável para o lado e o que aparecia lá era o
+   fundo, branco, porque a arte dos vizinhos estava recortada. Medido no
+   celular: `.page` com 375 de largura visível e 667 de conteúdo.
+
+   O `overflow: hidden` volta, e a peça 3D continua atravessando a borda do
+   cartão porque o recorte acontece no PADDING BOX: os 48px de padding são a
+   folga por onde ela sai, e a margem negativa do mesmo tamanho devolve o
+   espaço para o carrossel não ficar 96px mais alto do que precisa. */
+.bnr-janela { overflow: hidden; padding: 48px 0; margin: -48px 0; }
 /* O trilho anda de um slide por vez. `translate3d` para a animação não
    engasgar em celular mais fraco. */
 .bnr-trilho { display: flex; transition: transform .5s cubic-bezier(.22,1,.36,1); }
