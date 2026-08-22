@@ -1264,7 +1264,6 @@ async function enterApp() {
   $('#login').classList.add('hidden');
   $('#app').classList.remove('hidden');
   $('#who').textContent = state.user || '';
-  const na = $('#nav-admin'); if (na) na.classList.toggle('hidden', state.kind !== 'admin');
   const av = $('#tb-avatar');
   if (av) av.textContent = (state.user || 'A')[0].toUpperCase();
 
@@ -1818,6 +1817,10 @@ const ADM_ABAS = {
   'adm/banners':        { aba: 'adm-bnr',  titulo: 'Banners',             sub: 'A faixa de avisos no topo da dashboard dos clientes' }
 };
 
+// Tudo que pertence ao painel da plataforma, para o roteador do app do
+// cliente saber o que mandar embora daqui.
+function ehRotaDoAdmin(v) { return v === 'admin' || v.indexOf('adm/') === 0; }
+
 // A aba pedida pela rota. Fora do painel da plataforma, e sem rota de aba,
 // vale a que estiver marcada na barra — o comportamento de antes.
 function admAbaDaRota() {
@@ -1829,7 +1832,7 @@ const views = {
   dashboard: renderDashboard, inbox: renderInbox, contacts: renderContacts,
   funnel: renderFunnel, campaigns: renderCampaigns, templates: renderTemplates, quick: renderQuick,
   logs: renderLogs, settings: renderSettings, team: renderTeam, flows: renderFlows, links: renderLinks,
-  pixels: renderPixels, billing: renderBilling, admin: renderAdmin, sms: renderSms,
+  pixels: renderPixels, billing: renderBilling, sms: renderSms,
   afiliacao: renderAfiliacao, missoes: renderMissoes,
   integrations: renderIntegrations, webhooks: renderIntegrations, // #/webhooks continua funcionando
   pagamentos: renderPagamentos, tracking: renderTracking,
@@ -1942,7 +1945,7 @@ function isMobileLayout() { return API.native || MOBILE_MQ.matches; }
 
 function applyNavPermissions() {
   // Assinatura e Admin são do DONO/admin — atendentes nunca veem
-  const ownerOnly = new Set(['billing', 'admin']);
+  const ownerOnly = new Set(['billing']);
   const mobile = isMobileLayout();
   $$('.nav-item[data-view]').forEach(n => {
     const v = n.dataset.view;
@@ -2318,6 +2321,19 @@ function route() {
   // histórico — senão "voltar" fica preso alternando entre os dois endereços.
   if (/^#\/elitepay(\/|\?|$)/.test(location.hash || '')) {
     location.replace(location.hash.replace('#/elitepay', '#/pagamentos'));
+    return;
+  }
+  // O PAINEL DA PLATAFORMA NÃO ABRE AQUI. Ele é outro endereço, com outra
+  // sessão: /adm/. Endereços antigos (#/admin, e as abas #/adm/...) ainda
+  // chegam por favorito e por notificação já entregue, então em vez de cair
+  // no dashboard sem explicação, atravessam para o painel de verdade.
+  const pedida = (location.hash || '').replace('#/', '').split('?')[0];
+  if (!ADM && ehRotaDoAdmin(pedida)) {
+    // Quem administra a plataforma atravessa para o painel de verdade, na aba
+    // que pediu. Quem é cliente vai para a casa dele: mandá-lo para /adm/ o
+    // deixaria numa tela de login que ele não tem como passar.
+    if (state.kind === 'admin') location.replace('/adm/#/' + (admAbaDaRota() ? pedida : 'adm/visao'));
+    else location.hash = '#/' + VIEW_PADRAO;
     return;
   }
   if (window._fbMove) cleanupBuilder();  // sai do canvas do Flow Builder
@@ -8111,7 +8127,7 @@ async function paintBilling() {
     const cardOn = !!(d.card && d.card.credit);
     BILL_CACHE = d;
     box.innerHTML = `
-      ${d.wooviReady ? '' : `<div class="card warn-card">${ico('alert', 16)} <b>Pagamentos ainda não configurados.</b> ${state.kind === 'admin' ? 'Configure o adquirente em <a href="#/admin">Admin SaaS → Pagamentos</a>.' : 'A plataforma ainda não ativou os pagamentos, fale com o suporte.'}</div>`}
+      ${d.wooviReady ? '' : `<div class="card warn-card">${ico('alert', 16)} <b>Pagamentos ainda não configurados.</b> ${state.kind === 'admin' ? 'Configure o adquirente em <a href="/adm/#/adm/gateways">Admin SaaS → Gateways</a>.' : 'A plataforma ainda não ativou os pagamentos, fale com o suporte.'}</div>`}
 
       <div class="card bill-status">
         <div class="bs-main">

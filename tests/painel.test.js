@@ -19,6 +19,7 @@ const R = 'C:/Users/amand/Desktop/Elite Projects/whatsapp-crm/';
 let falhas = 0;
 const ok = (c, m) => { console.log((c ? '  OK   ' : '  FALHA') + ' ' + m); if (!c) falhas++; };
 const encerrar = require('./_fim');
+const fs = require('fs');
 
 // MySQL falso: o teste não pode encostar no banco de desenvolvimento.
 const tabela = new Map();
@@ -84,7 +85,22 @@ const url = (r) => 'http://127.0.0.1:' + porta + r;
   const pegar = (rota, tok) => fetch(url(rota), { headers: { Authorization: 'Bearer ' + tok } })
     .then(async r => ({ http: r.status, ...(await r.json().catch(() => ({}))) }));
 
-  console.log('=== 1. Duas portas, cada uma com a sua credencial ===');
+  console.log('=== 0. O app do cliente não tem porta para o Admin SaaS ===');
+  // O backend já recusa a sessão de escopo `app` nas rotas de administração —
+  // é o que as seções abaixo provam. Mas a TELA também não pode oferecer o
+  // caminho: um item "Admin SaaS" no menu do cliente convida a trocar de mundo
+  // sem trocar de endereço, e a mesma tela passa a servir a dois donos. Quem
+  // administra a plataforma entra por /adm/, que é outro painel.
+  const casaCliente = fs.readFileSync(R + 'public/app/index.html', 'utf8');
+  const bundle = fs.readFileSync(R + 'public/app/app.js', 'utf8');
+  ok(!casaCliente.includes('id="nav-admin"'), 'nenhum item de Admin SaaS no menu do cliente');
+  ok(!/>Admin SaaS</.test(casaCliente), 'nem o rótulo solto em algum canto da casa');
+  ok(!bundle.includes('admin: renderAdmin'), 'e a rota #/admin não existe mais no app do cliente');
+  ok(bundle.includes('ehRotaDoAdmin'), 'endereço antigo de admin é reconhecido e desviado, em vez de cair no dashboard');
+  const casaAdm = fs.readFileSync(R + 'public/adm/index.html', 'utf8');
+  ok(casaAdm.includes('href="#/adm/vis"'), 'e o painel da plataforma continua com o menu dele, em /adm/');
+
+  console.log('\n=== 1. Duas portas, cada uma com a sua credencial ===');
   const admBom = await entrar('/api/adm/login', { user: 'admin', pass: 'admin' });
   ok(admBom.http === 200 && !!admBom.token, 'o admin entra pela porta dele: ' + admBom.http);
   ok(admBom.escopo === 'adm', 'e a sessão nasce com o escopo do painel: ' + admBom.escopo);
