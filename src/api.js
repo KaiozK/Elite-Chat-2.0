@@ -5030,6 +5030,66 @@ module.exports = function (broadcast, clients) {
     res.json({ sent: enviados || 0, alvo: endpoint ? 'este aparelho' : 'todos os aparelhos', titulo: aviso.title, corpo: aviso.body });
   }));
 
+  // -------------------------------------------------------------------------
+  // BANNERS DA DASHBOARD
+  //
+  // A copy vive na configuração da plataforma, e não no código do painel:
+  // trocar a frase de uma campanha não pode custar um deploy — e o que custa
+  // um deploy ninguém troca.
+  // -------------------------------------------------------------------------
+  const arteBanner = require('./bannersarte');
+
+  // Para o PAINEL DO CLIENTE: só os ativos, na ordem. O que está desligado não
+  // sai daqui — banner desativado é campanha que acabou ou ainda não começou,
+  // e mandar isso para o navegador é vazar plano de marketing por DevTools.
+  router.get('/banners', auth, (req, res) => {
+    const lista = (db.get().platform.banners || [])
+      .filter(b => b.ativo !== false)
+      .sort((a, b) => (a.ordem || 0) - (b.ordem || 0))
+      .map(arteBanner.paraOPainel);
+    res.json({ banners: lista });
+  });
+
+  router.get('/admin/banners', auth, adminOnly, (req, res) => {
+    res.json({
+      banners: (db.get().platform.banners || []).slice().sort((a, b) => (a.ordem || 0) - (b.ordem || 0)),
+      artes: arteBanner.ARTES
+    });
+  });
+
+  // A lista chega INTEIRA, e não um item por vez: a ordem é uma propriedade do
+  // conjunto, e salvar item a item deixaria a tela e o banco discordando no
+  // meio de um arrasto.
+  router.put('/admin/banners', auth, adminOnly, (req, res) => {
+    const entra = Array.isArray((req.body || {}).banners) ? req.body.banners : null;
+    if (!entra) return res.status(400).json({ error: 'Envie a lista de banners' });
+    if (entra.length > 12) return res.status(400).json({ error: 'No máximo 12 banners' });
+
+    const txt = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
+    const limpos = entra.map((b, i) => ({
+      id: txt(b.id, 40) || db.genId('bn'),
+      ativo: b.ativo !== false,
+      ordem: Number(b.ordem) || (i + 1),
+      // Arte inexistente cairia num arquivo 404 e o cartão ficaria preto: o
+      // catálogo decide, e o que não estiver nele vira a primeira arte.
+      arte: arteBanner.arte(txt(b.arte, 40)).id,
+      tag: txt(b.tag, 40),
+      titulo: txt(b.titulo, 80),
+      texto: txt(b.texto, 200),
+      acao: txt(b.acao, 40),
+      // O link é INTERNO. Um `href` livre aqui viraria um jeito de a
+      // plataforma mandar todo cliente para fora do produto — e um endereço
+      // digitado errado vira um botão que não faz nada.
+      href: (() => { const h = txt(b.href, 80); return /^#\//.test(h) ? h : '#/dashboard'; })()
+    }));
+    // Sem título não há banner: um cartão com fundo e sem frase é um buraco
+    // colorido no topo da tela de quem está trabalhando.
+    const validos = limpos.filter(b => b.titulo);
+    db.get().platform.banners = validos;
+    db.save();
+    res.json({ ok: true, banners: validos });
+  });
+
   router.post('/admin/plans', auth, adminOnly, (req, res) => {
     const { name, price, periodDays, features } = req.body || {};
     const cents = Math.round(Number(String(price || '0').replace(',', '.')) * 100);

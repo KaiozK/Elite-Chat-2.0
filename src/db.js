@@ -123,6 +123,36 @@ const DEFAULTS = {
       maxLen: 160, priceCents: 0, lastBalance: null, logs: []
     },
     // % de comissão do afiliado + faixa aceita ao sacar a comissão (centavos).
+  // ---- BANNERS DA DASHBOARD ----
+  // A faixa de avisos no topo da dashboard. Vive aqui, e não no código do
+  // painel, porque trocar a frase de uma campanha não pode custar um deploy
+  // — e o que custa um deploy ninguém troca.
+  //
+  // `arte` aponta para um par de arquivos já desenhados (fundo + peça 3D);
+  // `ordem` é a posição no carrossel; `ativo` desliga sem apagar, que é o
+  // que se quer quando a campanha acaba e pode voltar.
+  banners: [
+    { id: 'bn_integracoes', ativo: true, ordem: 1, arte: 'integracoes',
+      tag: 'Integrações', titulo: 'Tudo o que você já usa, conversando',
+      texto: 'Nuvemshop, Meta Ads e webhooks viram mensagem no WhatsApp, sem você fazer nada.',
+      acao: 'Ver integrações', href: '#/integrations' },
+    { id: 'bn_ligacao', ativo: true, ordem: 2, arte: 'ligacao',
+      tag: 'Ligação', titulo: 'Ligue de dentro da conversa',
+      texto: 'Chamada de voz pelo WhatsApp sem sair do atendimento, com o histórico no mesmo lugar.',
+      acao: 'Abrir Conversas', href: '#/inbox' },
+    { id: 'bn_indique', ativo: true, ordem: 3, arte: 'indique',
+      tag: 'Indique e ganhe', titulo: 'Indique a Koonfy e receba',
+      texto: 'Comissão automática em toda assinatura de quem você indicar. O link é seu e o saldo cai na carteira.',
+      acao: 'Ver meu link', href: '#/afiliacao' },
+    { id: 'bn_vender', ativo: true, ordem: 4, arte: 'vender',
+      tag: 'Vender com a Koonfy', titulo: 'Venda dentro do WhatsApp',
+      texto: 'Cobrança por Pix e cartão no chat, checkout próprio e o dinheiro na sua conta.',
+      acao: 'Ver Pagamentos', href: '#/pagamentos' },
+    { id: 'bn_tracking', ativo: true, ordem: 5, arte: 'tracking',
+      tag: 'Tracking', titulo: 'Saiba de onde vem cada venda',
+      texto: 'Links rastreáveis e pixels: a campanha que traz cliente aparece no relatório, com nome e número.',
+      acao: 'Abrir Tracking', href: '#/tracking' }
+  ],
     affiliate: { percentFirst: 30, percentRenewal: 15, withdraw: { min: 2000, max: 0 } },
     // Verificação em duas etapas do login, ligada pelo admin.
     security: { twoFactor: false },

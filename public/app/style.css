@@ -5196,3 +5196,21 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
   font-size: 12.5px; line-height: 1.45; color: var(--text);
 }
 .bi-resp time { display: block; margin-top: 3px; font-size: 11px; color: var(--muted); }
+
+
+/* ============================================================
+   EDITOR DOS BANNERS (painel da plataforma)
+   Um cartao por banner, na ordem em que aparecem no carrossel.
+   O desligado fica APAGADO e nao escondido: campanha que acabou
+   costuma voltar, e o que some da tela some da cabeca.
+   ============================================================ */
+.bnr-edit {
+  border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px 16px 16px; margin-bottom: 12px; background: var(--card);
+  transition: opacity .2s, border-color .2s;
+}
+.bnr-edit.off { opacity: .55; border-style: dashed; }
+.bnr-edit label { margin-top: 10px; }
+.bnr-edit .row > label { margin-top: 10px; }
+.bnr-edit textarea { resize: vertical; min-height: 54px; }
+

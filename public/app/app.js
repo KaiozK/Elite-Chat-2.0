@@ -1814,7 +1814,8 @@ const ADM_ABAS = {
   'adm/marketing':      { aba: 'adm-mkt',  titulo: 'Marketing',           sub: 'Pixels e rastreamento da vitrine' },
   'adm/seguranca':      { aba: 'adm-sec',  titulo: 'Segurança',           sub: 'Senha, sessões e acesso' },
   'adm/seo':            { aba: 'adm-seo',  titulo: 'SEO',                 sub: 'Como a vitrine aparece no Google' },
-  'adm/personalizacao': { aba: 'adm-tema', titulo: 'Personalização',      sub: 'Logo, nome e cores da marca' }
+  'adm/personalizacao': { aba: 'adm-tema', titulo: 'Personalização',      sub: 'Logo, nome e cores da marca' },
+  'adm/banners':        { aba: 'adm-bnr',  titulo: 'Banners',             sub: 'A faixa de avisos no topo da dashboard dos clientes' }
 };
 
 // A aba pedida pela rota. Fora do painel da plataforma, e sem rota de aba,
@@ -3085,45 +3086,32 @@ function periodoIntervalo() {
 // .bnr-3d no style.css). A peça é a joia, que já é um render com fundo
 // transparente.
 // ===========================================================================
-const BANNERS = [
-  {
-    tag: 'Integrações', fundo: 'integracoes',
-    peca: 'balao', pw: 640, ph: 644,
-    titulo: 'Tudo o que você já usa, conversando',
-    // A frase mais longa dos cinco estourava o cartao no celular. Banner nao
-    // e lugar de paragrafo: se nao cabe em tres linhas, esta comprida demais.
-    texto: 'Nuvemshop, Meta Ads e webhooks viram mensagem no WhatsApp, sem você fazer nada.',
-    acao: 'Ver integrações', href: '#/integrations'
-  },
-  {
-    tag: 'Ligação', fundo: 'ligacao', peca: 'ic-ligacao', pw: 560, ph: 677,
-    titulo: 'Ligue de dentro da conversa',
-    texto: 'Chamada de voz pelo WhatsApp sem sair do atendimento, com o histórico no mesmo lugar.',
-    acao: 'Abrir Conversas', href: '#/inbox'
-  },
-  {
-    tag: 'Indique e ganhe', fundo: 'indique', peca: 'ic-indique', pw: 560, ph: 594,
-    titulo: 'Indique a Koonfy e receba',
-    texto: 'Comissão automática em toda assinatura de quem você indicar. O link é seu e o saldo cai na carteira.',
-    acao: 'Ver meu link', href: '#/afiliacao'
-  },
-  {
-    tag: 'Vender com a Koonfy', fundo: 'vender', peca: 'ic-vender', pw: 460, ph: 457,
-    titulo: 'Venda dentro do WhatsApp',
-    texto: 'Cobrança por Pix e cartão no chat, checkout próprio e o dinheiro na sua conta.',
-    acao: 'Ver Pagamentos', href: '#/pagamentos'
-  },
-  {
-    tag: 'Tracking', fundo: 'tracking', peca: 'ic-tracking', pw: 560, ph: 588,
-    titulo: 'Saiba de onde vem cada venda',
-    texto: 'Links rastreáveis e pixels: a campanha que traz cliente aparece no relatório, com nome e número.',
-    acao: 'Abrir Tracking', href: '#/tracking'
-  }
-];
+// A LISTA VEM DO ADMIN, e não daqui. Enquanto a copy morava no código,
+// trocar a frase de uma campanha custava um deploy — e o que custa um deploy
+// ninguém troca. Nasce vazia: a dashboard é desenhada antes de a resposta
+// chegar.
+let BANNERS = [];
 
 let bnrAtual = 0, bnrTimer = null;
 
+// O carrossel ocupa o lugar dele DESDE O COMEÇO, mesmo vazio: preencher
+// depois empurraria a tela inteira para baixo no meio da leitura de quem já
+// está olhando os números.
 function bannersHtml() {
+  return '<div id="bnr-area">' + bannersCorpo() + '</div>';
+}
+
+async function bannersCarregar() {
+  const area = $('#bnr-area'); if (!area) return;
+  try {
+    const r = await api('/banners');
+    BANNERS = r.banners || [];
+  } catch (e) { BANNERS = []; }
+  area.innerHTML = bannersCorpo();
+  if (BANNERS.length) bnrLigar();
+}
+
+function bannersCorpo() {
   if (!BANNERS.length) return '';
   return `<div class="bnr-wrap" id="bnr-wrap">
     <div class="bnr-janela">
@@ -3366,7 +3354,7 @@ async function renderDashboard() {
       ${d.agents ? dashAgentsCard(d.agents) : ''}`;
     loadGeo();
     faixaMissoes();
-    bnrLigar();   // o carrossel do topo comeca a andar
+    bannersCarregar();   // busca a lista no Admin e liga o carrossel
   } catch (e) {
     $('#dash').innerHTML = `<div class="card err">${esc(e.message)}</div>`;
   }
@@ -9010,6 +8998,7 @@ async function renderAdmin() {
       <button data-tab="adm-sec" onclick="showSettingsTab('adm-sec');admSecLoad()">Segurança</button>
       <button data-tab="adm-seo" onclick="showSettingsTab('adm-seo')">SEO</button>
       <button data-tab="adm-tema" onclick="showSettingsTab('adm-tema');admTemaLoad()">Personalização</button>
+      <button data-tab="adm-bnr" onclick="showSettingsTab('adm-bnr');admBannersLoad()">Banners</button>
     </div>
     <div id="adm-box"><div class="card">${skel(6)}</div></div>
   </div>`;
@@ -9175,6 +9164,123 @@ function admVendasHtml(d) {
       </tr>`).join('')}
     </tbody></table></div>
   </div>` : ''}`;
+}
+
+// ---------------------------------------------------------------------------
+// BANNERS DA DASHBOARD
+//
+// A faixa de avisos que o cliente vê no topo da dashboard. A copy vive na
+// configuração da plataforma: trocar a frase de uma campanha não pode custar
+// um deploy, e o que custa um deploy ninguém troca.
+// ---------------------------------------------------------------------------
+let ADM_BNR = { lista: [], artes: [] };
+
+// Os destinos são as telas do próprio painel. Endereço livre seria um jeito de
+// mandar todo cliente para fora do produto, e um endereço digitado errado vira
+// um botão que não faz nada.
+const BNR_DESTINOS = [
+  ['#/dashboard', 'Dashboard'], ['#/inbox', 'Conversas'], ['#/contacts', 'Contatos'],
+  ['#/campaigns', 'Campanhas'], ['#/flows', 'Flow Builder'], ['#/integrations', 'Integrações'],
+  ['#/nuvemshop', 'Nuvemshop'], ['#/pagamentos', 'Pagamentos'], ['#/checkouts', 'Checkout Builder'],
+  ['#/tracking', 'Tracking'], ['#/links', 'Links'], ['#/afiliacao', 'Indique e ganhe'],
+  ['#/billing', 'Assinatura & Carteira'], ['#/templates', 'Modelos'], ['#/sms', 'SMS'],
+  ['#/settings', 'Configurações']
+];
+
+async function admBannersLoad() {
+  const box = $('#adm-bnr-box'); if (!box) return;
+  try {
+    const r = await api('/admin/banners');
+    ADM_BNR = { lista: r.banners || [], artes: r.artes || [] };
+    admBannersPaint();
+  } catch (e) { box.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+}
+
+function admBannersPaint() {
+  const box = $('#adm-bnr-box'); if (!box) return;
+  const artes = ADM_BNR.artes.map(a => ({ value: a.id, label: a.nome }));
+  box.innerHTML = `
+    <div class="row" style="align-items:center;margin-bottom:6px">
+      <h2 style="margin:0;flex:1">${ico('megaphone')} Banners da dashboard</h2>
+      <button class="btn no-grow" onclick="admBannerNovo()">${ico('plus', 14)} Novo banner</button>
+      <button class="btn primary no-grow" onclick="admBannersSalvar(this)">${ico('save', 14)} Salvar</button>
+    </div>
+    <p class="muted" style="margin:0 0 16px;font-size:13px">
+      É a faixa que o cliente vê no topo da dashboard. Desligar um banner não o apaga —
+      serve para a campanha que acabou e pode voltar. A ordem aqui é a ordem no carrossel.</p>
+
+    ${ADM_BNR.lista.length ? ADM_BNR.lista.map((b, i) => `
+      <div class="bnr-edit ${b.ativo === false ? 'off' : ''}">
+        <div class="row" style="align-items:center;margin-bottom:10px">
+          <label class="chk" style="margin:0;flex:1"><input type="checkbox" ${b.ativo !== false ? 'checked' : ''}
+            onchange="admBannerSet(${i}, 'ativo', this.checked)"> <span>${b.ativo !== false ? 'No ar' : 'Desligado'}</span></label>
+          <button class="btn small no-grow" onclick="admBannerMover(${i}, -1)" ${i === 0 ? 'disabled' : ''} title="Subir">${ico('chevron-up', 13)}</button>
+          <button class="btn small no-grow" onclick="admBannerMover(${i}, 1)" ${i === ADM_BNR.lista.length - 1 ? 'disabled' : ''} title="Descer">${ico('chevron-down', 13)}</button>
+          <button class="btn small danger no-grow" onclick="admBannerRemover(${i})">${ico('trash', 13)}</button>
+        </div>
+        <div class="row">
+          <label style="flex:1">Etiqueta <em class="lim-extra">acima do título</em>
+            <input value="${esc(b.tag)}" maxlength="40" oninput="admBannerSet(${i}, 'tag', this.value)" placeholder="Novidade"></label>
+          <label style="flex:1">Arte${ecSelect('bnr-arte-' + i, artes, b.arte, `admBannerSet(${i}, 'arte', val)`)}</label>
+        </div>
+        <label>Título <em class="lim-extra">até 80 caracteres</em>
+          <input value="${esc(b.titulo)}" maxlength="80" oninput="admBannerSet(${i}, 'titulo', this.value)" placeholder="Venda dentro do WhatsApp"></label>
+        <label>Texto <em class="lim-extra">cabe em três linhas no celular; a quarta estoura o cartão</em>
+          <textarea rows="2" maxlength="200" oninput="admBannerSet(${i}, 'texto', this.value)"
+            placeholder="Cobrança por Pix e cartão no chat, checkout próprio e o dinheiro na sua conta.">${esc(b.texto)}</textarea></label>
+        <div class="row">
+          <label style="flex:1">Texto do botão
+            <input value="${esc(b.acao)}" maxlength="40" oninput="admBannerSet(${i}, 'acao', this.value)" placeholder="Ver Pagamentos"></label>
+          <label style="flex:1">Leva para${ecSelect('bnr-href-' + i, BNR_DESTINOS.map(([v, l]) => ({ value: v, label: l })), b.href, `admBannerSet(${i}, 'href', val)`)}</label>
+        </div>
+      </div>`).join('') : '<p class="muted">Nenhum banner. A faixa não aparece na dashboard dos clientes.</p>'}`;
+}
+
+// A edição é só na memória; o disco só é tocado no Salvar. Gravar a cada tecla
+// deixaria um banner pela metade no ar enquanto a frase está sendo escrita.
+function admBannerSet(i, campo, valor) {
+  if (!ADM_BNR.lista[i]) return;
+  ADM_BNR.lista[i][campo] = valor;
+  if (campo === 'ativo') admBannersPaint();   // muda o rótulo e a opacidade do cartão
+}
+
+function admBannerMover(i, d) {
+  const l = ADM_BNR.lista, k = i + d;
+  if (k < 0 || k >= l.length) return;
+  [l[i], l[k]] = [l[k], l[i]];
+  l.forEach((b, n) => { b.ordem = n + 1; });
+  admBannersPaint();
+}
+
+function admBannerNovo() {
+  ADM_BNR.lista.push({
+    id: '', ativo: false, ordem: ADM_BNR.lista.length + 1,
+    arte: (ADM_BNR.artes[0] || {}).id || 'integracoes',
+    tag: '', titulo: '', texto: '', acao: 'Saiba mais', href: '#/dashboard'
+  });
+  admBannersPaint();
+}
+
+async function admBannerRemover(i) {
+  const b = ADM_BNR.lista[i]; if (!b) return;
+  if (b.titulo && !await confirmModal({ title: 'Excluir banner', text: `Apagar "${b.titulo}"? Se for uma campanha que pode voltar, desligue em vez de apagar.`, ok: 'Excluir', danger: true })) return;
+  ADM_BNR.lista.splice(i, 1);
+  ADM_BNR.lista.forEach((x, n) => { x.ordem = n + 1; });
+  admBannersPaint();
+}
+
+async function admBannersSalvar(btn) {
+  const semTitulo = ADM_BNR.lista.filter(b => !String(b.titulo || '').trim()).length;
+  if (semTitulo) return toast('Banner sem título não vai para o ar. Preencha ou remova.', 'error');
+  const txt = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Salvando…';
+  try {
+    const r = await api('/admin/banners', { method: 'PUT', body: { banners: ADM_BNR.lista } });
+    ADM_BNR.lista = r.banners || [];
+    admBannersPaint();
+    toast('Banners salvos. Os clientes veem na próxima vez que abrirem a dashboard.');
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; btn.innerHTML = txt; }
 }
 
 async function paintAdmin() {
@@ -9512,6 +9618,10 @@ async function paintAdmin() {
         </div>
       </div>
 
+      <div class="tabpane ${activeTab === 'adm-bnr' ? 'show' : ''}" data-pane="adm-bnr">
+        <div class="card" id="adm-bnr-box">${skel(4)}</div>
+      </div>
+
       <div class="tabpane ${activeTab === 'adm-notif' ? 'show' : ''}" data-pane="adm-notif">
         <div class="card">
           <h2>${ico('zap')} Testar notificação de venda</h2>
@@ -9596,6 +9706,7 @@ async function paintAdmin() {
     if (activeTab === 'adm-mkt') admMktLoad();
     if (activeTab === 'adm-sec') admSecLoad();
     if (activeTab === 'adm-tema') admTemaLoad();
+    if (activeTab === 'adm-bnr') admBannersLoad();
   } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 }
 
