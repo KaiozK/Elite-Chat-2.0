@@ -1359,9 +1359,18 @@ function apelidar(nome) {
     .slice(0, 48);
 }
 
-// Único DENTRO DA CONTA e no mundo: o endereço é global, e dois produtos com
-// o mesmo apelido fariam quem abrisse cair no que o banco devolvesse
-// primeiro. O sufixo só entra quando há colisão de verdade.
+// O APELIDO É GERADO, e nunca escolhido. O endereço é GLOBAL: um só espaço de
+// nomes para todas as contas. Com o campo aberto, o primeiro cliente a chegar
+// leva "curso", "mentoria", "black-friday" — e leva também "koonfy",
+// "pagamento-seguro", "suporte-oficial", e aí o endereço da plataforma passa a
+// hospedar uma página de cobrança que qualquer um pode ter escrito. Nenhuma
+// lista de palavras proibidas resolve: sempre falta uma, e a que falta é a que
+// vai ser usada.
+//
+// Nome do produto + quatro caracteres aleatórios. Continua legível e ditável no
+// telefone — que é o motivo de não ser só um id —, e o sufixo tira a disputa:
+// ninguém escolhe, ninguém toma o do outro, e não dá para montar de propósito
+// um endereço parecido com o de outra pessoa.
 function apelidoLivre(base, ignorarId) {
   const raiz = apelidar(base) || 'produto';
   const usado = (slug) => {
@@ -1372,9 +1381,13 @@ function apelidoLivre(base, ignorarId) {
     }
     return false;
   };
-  if (!usado(raiz)) return raiz;
-  for (let i = 2; i < 200; i++) { const t = raiz + "-" + i; if (!usado(t)) return t; }
-  return raiz + '-' + crypto.randomBytes(3).toString('hex');
+  // Vinte tentativas antes de desistir do nome: com 4 caracteres em base 36 são
+  // 1,6 milhão de combinações por raiz, então a segunda colisão já é folclore.
+  for (let i = 0; i < 20; i++) {
+    const t = raiz + '-' + crypto.randomBytes(3).toString('hex').slice(0, 4);
+    if (!usado(t)) return t;
+  }
+  return raiz + '-' + crypto.randomBytes(6).toString('hex');
 }
 
 // O endereço do produto. Sai pelo mesmo domínio das cobranças, para o cliente

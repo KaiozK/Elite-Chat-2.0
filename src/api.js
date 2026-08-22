@@ -6033,12 +6033,16 @@ module.exports = function (broadcast, clients) {
   function applyProduct(p, b, res) {
     const img = v => (typeof v === 'string' && (/^data:image\/(png|jpe?g|webp);base64,/.test(v) || v === '')) ? v : null;
     if (typeof b.name === 'string') p.name = b.name.slice(0, 80);
-    // O APELIDO DO LINK. Nasce do nome uma vez e NÃO muda sozinho quando o
-    // nome muda: o endereço já pode estar num anúncio, num grupo, na bio — e
-    // trocar o link por baixo derruba a campanha de quem confiou nele. Trocar
-    // é uma decisão explícita, no campo.
-    if (typeof b.slug === 'string' && b.slug.trim()) p.slug = pagamentos.apelidoLivre(b.slug, p.id);
-    else if (!p.slug) p.slug = pagamentos.apelidoLivre(p.name, p.id);
+    // O APELIDO DO LINK é GERADO, e o cliente não escolhe: o endereço é global
+    // para toda a plataforma, e um campo aberto vira corrida por "curso" e
+    // "mentoria" — e por "koonfy" e "pagamento-seguro", que é o problema sério.
+    // Nenhuma lista de palavras proibidas resolve isso: sempre falta uma, e a
+    // que falta é a que vai ser usada.
+    //
+    // Nasce UMA vez, do nome do produto, e não muda quando o nome muda: o
+    // endereço já pode estar num anúncio, e trocá-lo por baixo derruba a
+    // campanha de quem confiou nele.
+    if (!p.slug) p.slug = pagamentos.apelidoLivre(p.name, p.id);
     if (typeof b.linkOn === 'boolean') p.linkOn = b.linkOn;
     if (typeof b.description === 'string') p.description = b.description.slice(0, 600);
     if (b.price !== undefined) p.price = Math.max(0, Math.round(Number(b.price) || 0));

@@ -16247,13 +16247,9 @@ function epProdForm(id) {
         <div class="copy-box"><code id="epp-link">${esc(p.link || '—')}</code>
           <button class="btn small" onclick="copyText($('#epp-link').textContent)">Copiar</button>
           ${p.link ? `<a class="btn small" href="${esc(p.link)}" target="_blank" rel="noopener">Abrir</a>` : ''}</div>
-        <div class="row" style="margin-top:9px">
-          <label style="flex:1">Apelido do link <em class="lim-extra">o que aparece depois de /c/</em>
-            <input id="epp-slug" maxlength="48" value="${esc(p.slug || '')}" placeholder="mentoria-mensal"></label>
-          <label class="chk" style="flex:1;align-self:flex-end;margin-bottom:9px"><input type="checkbox" id="epp-linkon" ${p.linkOn === false ? '' : 'checked'}>
-            <span>Link ativo</span></label>
-        </div>
-        <p class="hint">Trocar o apelido troca o endereço: o antigo para de abrir. Se ele já está num anúncio, deixe como está.</p>
+        <label class="chk" style="margin-top:10px"><input type="checkbox" id="epp-linkon" ${p.linkOn === false ? '' : 'checked'}>
+          <span>Link ativo</span></label>
+        <p class="hint">O endereço é gerado a partir do nome do produto e não muda depois: se ele já está num anúncio, continua valendo.</p>
       ` : '<p class="hint">Defina um preço para este produto ganhar um link de venda.</p>'}` : ''}
 
     <span class="fb-sub" style="margin-top:12px">Imagens do produto <span class="muted">(substituem as variáveis do checkout)</span></span>
@@ -16312,8 +16308,10 @@ async function epProdSave() {
   if (!body.name) return toast('Informe o nome do produto', 'error');
   try {
     const id = window._epProd;
-    const slug = $('#epp-slug'), linkon = $('#epp-linkon');
-    if (slug) body.slug = slug.value.trim();
+    // O apelido do link não vem daqui: quem gera é o servidor. O endereço é
+    // global para toda a plataforma, e um campo aberto vira corrida pelas
+    // palavras boas — e pelas perigosas.
+    const linkon = $('#epp-linkon');
     if (linkon) body.linkOn = linkon.checked;
     await api('/pagamentos/products' + (id ? '/' + id : ''), { method: id ? 'PUT' : 'POST', body });
     toast(id ? 'Produto atualizado!' : 'Produto criado!');
@@ -16772,13 +16770,17 @@ function trkTab(t) { trkState.tab = t; $$('.tabs button').forEach(b => b.classLi
 
 async function trkPaintTab() {
   const box = $('#trk-box'); if (!box) return;
+  // O `await` nao e enfeite: sem ele o `return` devolve a promessa e o catch
+  // abaixo nunca ve a falha — quem espera passa a ser o chamador. O efeito era
+  // uma aba do Tracking em branco, sem a mensagem de erro que este catch
+  // existe para mostrar, e um "unhandled rejection" no console.
   try {
-    if (trkState.tab === 'overview') return trkPaintOverview(box);
-    if (trkState.tab === 'conn') return trkPaintConn(box);
-    if (trkState.tab === 'camp') return trkPaintCamp(box);
-    if (trkState.tab === 'funnel') return trkPaintFunnel(box);
-    if (trkState.tab === 'events') return trkPaintEvents(box);
-    return trkPaintAlerts(box);
+    if (trkState.tab === 'overview') return await trkPaintOverview(box);
+    if (trkState.tab === 'conn') return await trkPaintConn(box);
+    if (trkState.tab === 'camp') return await trkPaintCamp(box);
+    if (trkState.tab === 'funnel') return await trkPaintFunnel(box);
+    if (trkState.tab === 'events') return await trkPaintEvents(box);
+    return await trkPaintAlerts(box);
   } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 }
 

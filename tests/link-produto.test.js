@@ -88,8 +88,9 @@ const BASE = 'http://127.0.0.1:3981';
     body: JSON.stringify({ name: 'Mentoria Élite · Plano Mensal', price: 19700, description: 'Encontro semanal' })
   })).json();
   const prod = criado.product;
-  ok(prod.slug === 'mentoria-elite-plano-mensal', `sem acento e sem espaço: ${prod.slug}`);
-  ok(/\/c\/mentoria-elite-plano-mensal$/.test(prod.link || ''), `e o link vem pronto: ${prod.link}`);
+  ok(/^mentoria-elite-plano-mensal-[0-9a-f]{4}$/.test(prod.slug || ''),
+     `nasce do nome, sem acento e sem espaço, com sufixo gerado: ${prod.slug}`);
+  ok(prod.link.endsWith('/c/' + prod.slug), `e o link vem pronto: ${prod.link}`);
 
   console.log('\n=== 2. Abrir o link NÃO cria cobrança ===');
   // É a decisão central: cada visita virando cobrança encheria a lista do
@@ -129,17 +130,22 @@ const BASE = 'http://127.0.0.1:3981';
   })).json();
   ok(renomeado.product.slug === prod.slug, `o link continua o mesmo: ${renomeado.product.slug}`);
 
-  // Mas trocar de propósito funciona.
-  const trocado = await (await fetch(BASE + '/api/pagamentos/products/' + prod.id, {
-    method: 'PUT', headers: aut, body: JSON.stringify({ slug: 'Plano ANUAL!!' })
+  // E o cliente NÃO escolhe: mandar um apelido no corpo não muda nada. O
+  // endereço é global para toda a plataforma, e um campo aberto vira corrida por
+  // "curso" e "mentoria" — e por "koonfy" e "pagamento-seguro", que é o grave.
+  // Nenhuma lista de palavras proibidas resolve: sempre falta uma, e a que
+  // falta é a que vai ser usada.
+  const tentativa = await (await fetch(BASE + '/api/pagamentos/products/' + prod.id, {
+    method: 'PUT', headers: aut, body: JSON.stringify({ slug: 'koonfy-oficial' })
   })).json();
-  ok(trocado.product.slug === 'plano-anual', `e trocar de propósito limpa o apelido: ${trocado.product.slug}`);
+  ok(tentativa.product.slug === prod.slug, `apelido mandado pelo cliente e ignorado: ${tentativa.product.slug}`);
 
   console.log('\n=== 5. Dois produtos não disputam o mesmo endereço ===');
   const outro = await (await fetch(BASE + '/api/pagamentos/products', {
     method: 'POST', headers: aut, body: JSON.stringify({ name: 'Plano Anual', price: 99700 })
   })).json();
-  ok(outro.product.slug !== 'plano-anual', `o segundo ganha sufixo: ${outro.product.slug}`);
+  ok(outro.product.slug !== renomeado.product.slug, `nomes iguais, endereços diferentes: ${outro.product.slug}`);
+  ok(/^plano-anual-[0-9a-f]{4}$/.test(outro.product.slug), `e o segundo também é gerado: ${outro.product.slug}`);
 
   console.log('\n=== 6. Link desligado e produto sem preço não abrem ===');
   await fetch(BASE + '/api/pagamentos/products/' + outro.product.id, {
