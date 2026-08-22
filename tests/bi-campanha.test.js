@@ -124,6 +124,16 @@ const j = async (r) => ({ status: r.status, corpo: await r.json().catch(() => ({
   ok(pubP1 && pubP1.waId.endsWith('0001'), 'com o final visível, que é o que identifica sem expor');
   ok(pubP1 && /Quero sim/.test(pubP1.resposta.texto), 'a resposta continua legível, que é o motivo do link');
 
+  console.log('\n=== 3b. O convite leva o link de AFILIADO de quem compartilhou ===');
+  // Quem manda o link está fazendo marketing da Koonfy de graça: se alguém
+  // assinar por causa disso, a comissão é dele. Sem o código, o convite seria a
+  // plataforma usando a base do cliente para vender sozinha — e o cliente
+  // descobriria, e pararia de compartilhar.
+  ok(!!pub.convite && !!pub.convite.link, 'o convite vem junto no relatório público');
+  ok(pub.convite && pub.convite.link.includes('ref=' + acc.affiliate.code),
+     `com o código do afiliado dono da campanha: ${pub.convite && pub.convite.link}`);
+  ok(pub.convite && pub.convite.por === acc.name, 'e o nome de quem compartilhou');
+
   console.log('\n=== 4. Quem quiser mostrar o telefone inteiro, mostra de propósito ===');
   const aberto = (await j(await fetch(BASE + '/api/campaigns/camp_bi/share', {
     method: 'POST', headers: { ...aut, 'Content-Type': 'application/json' },

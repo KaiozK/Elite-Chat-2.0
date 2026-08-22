@@ -3026,6 +3026,11 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
      DENTRO do próprio quadro, e isto não encosta nelas. */
   html, body { overflow-x: clip; }
   .page { overflow-x: clip; }
+  /* E o `main#view` junto, que é o único container por onde TODA tela passa.
+     O guarda estava só no `.page`, e nem toda tela usa `.page` — a Conversas
+     monta direto num `.inbox`. Cobrindo o pai, fica coberta também a tela que
+     ainda não existe. */
+  main#view { overflow-x: clip; }
 }
 /* nada pode estourar a largura da tela */
 #app, .shell, main#view { max-width: 100vw; }

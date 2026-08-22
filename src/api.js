@@ -3642,13 +3642,24 @@ module.exports = function (broadcast, clients) {
   }
 
   // O relatorio como o mundo de fora pode ve-lo.
-  function relatorioPublico(acc, camp) {
+  function relatorioPublico(acc, camp, req) {
     const rel = campaignReport(acc, camp);
     const mostrarTelefone = !!(camp.share && camp.share.telefones);
     return {
       ...rel,
       conta: acc.name,
       telefones: mostrarTelefone,
+      // O CONVITE, com o link de AFILIADO de quem compartilhou. Quem manda o
+      // link está fazendo marketing da Koonfy de graça — se alguém assinar
+      // por causa disso, a comissão é dele. Sem isso, o convite seria a
+      // plataforma usando a base do cliente para vender sozinha, e o cliente
+      // descobriria e pararia de compartilhar.
+      convite: (() => {
+        const base = (hosts.origemPublica(req) || (req ? req.protocol + '://' + req.get('host') : '')).replace(/\/+$/, '');
+        const codigo = (acc.affiliate && acc.affiliate.code) || '';
+        if (!base) return null;
+        return { link: base + '/app/?ref=' + encodeURIComponent(codigo), por: acc.name };
+      })(),
       pessoas: rel.pessoas.map(x => ({
         ...x,
         waId: mostrarTelefone ? x.waId : mascararTelefone(x.waId)
@@ -3680,7 +3691,7 @@ module.exports = function (broadcast, clients) {
   router.get('/public/campanha/:token', (req, res) => {
     const achado = campanhaPorToken(req.params.token);
     if (!achado) return res.status(404).json({ error: 'Link inválido ou revogado' });
-    res.json(relatorioPublico(achado.acc, achado.camp));
+    res.json(relatorioPublico(achado.acc, achado.camp, req));
   });
 
   // O MESMO SSE do painel, com uma inscricao restrita: este espectador so

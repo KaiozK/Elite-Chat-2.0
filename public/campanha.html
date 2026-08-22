@@ -29,6 +29,47 @@
   .pub-topo span { margin-left: auto; font-size: 12px; color: var(--muted); }
   .pub-vazio { text-align: center; padding: 46px 22px; color: var(--muted); }
   .pub-vazio b { display: block; color: var(--text); font-size: 17px; margin-bottom: 6px; }
+  /* ---- CONVITE ----
+     Mesmo desenho do banner da dashboard: fundo escuro com a arte à direita,
+     texto à esquerda. Quem clica cai no produto e vê a mesma arte — é o que
+     faz esta página parecer parte da Koonfy, e não um anúncio colado nela. */
+  .convite {
+    position: relative; overflow: hidden; border-radius: 16px;
+    margin-top: 26px; min-height: 190px; display: flex; align-items: center;
+    background: #0b1a12; color: #fff;
+  }
+  .convite-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  /* O véu escurece o lado do texto e some antes da metade: a arte fica
+     inteira à direita, onde a peça 3D aparece. */
+  .convite-veu {
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, rgba(6,20,13,.92) 0%, rgba(6,20,13,.76) 36%, rgba(6,20,13,0) 72%);
+  }
+  .convite-peca {
+    position: absolute; right: 4%; top: 50%; transform: translateY(-50%) rotate(-8deg);
+    height: 150px; width: auto; pointer-events: none;
+    filter: drop-shadow(0 12px 22px rgba(0,0,0,.4));
+  }
+  .convite-txt { position: relative; z-index: 2; padding: 22px 24px; max-width: 64%; }
+  .convite-tag {
+    font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: rgba(255,255,255,.8);
+  }
+  .convite-txt h2 { margin: 6px 0 0; font-size: clamp(17px, 2.4vw, 23px); letter-spacing: -.02em; color: #fff; }
+  .convite-txt p { margin: 7px 0 0; font-size: 13.5px; line-height: 1.45; color: rgba(255,255,255,.86); }
+  .convite-btn {
+    display: inline-flex; align-items: center; gap: 7px; margin-top: 14px;
+    background: #fff; color: #10241a; font: 600 13px/1 inherit;
+    padding: 11px 17px; border-radius: 9px; text-decoration: none;
+  }
+  /* No celular a peça sai do caminho do texto: em 375px as duas coisas
+     disputam a mesma faixa, e quem perde é a frase. */
+  @media (max-width: 620px) {
+    .convite { min-height: 0; }
+    .convite-txt { max-width: 100%; padding: 20px; }
+    .convite-peca { height: 96px; right: -14px; opacity: .5; }
+  }
+
   .pub-pe { margin-top: 26px; text-align: center; font-size: 12.5px; color: var(--muted); }
   .pub-pe a { color: var(--verde-deep); text-decoration: none; font-weight: 600; }
 </style>
@@ -50,7 +91,8 @@
     </div>
 
     <div id="bi"><div class="card"><div class="pub-vazio"><b>Carregando…</b>Buscando os números da campanha.</div></div></div>
-    <p class="pub-pe">Acompanhamento em tempo real por <a href="https://koonfy.com" target="_blank" rel="noopener">Koonfy</a></p>
+    <div id="convite"></div>
+    <p class="pub-pe">Acompanhamento em tempo real por Koonfy</p>
   </div>
 
 <script src="/bi.js?v=2"></script>
@@ -82,6 +124,26 @@
     document.getElementById('selo').style.display = 'none';
   }
 
+  // O convite é desenhado UMA vez: ele não muda com os números, e refazê-lo a
+  // cada atualização faria a imagem piscar a cada destinatário processado.
+  var convitePronto = false;
+  function convite(rel) {
+    if (convitePronto || !rel.convite || !rel.convite.link) return;
+    convitePronto = true;
+    document.getElementById('convite').innerHTML =
+      '<a class="convite" href="' + KoonfyBI.esc(rel.convite.link) + '" target="_blank" rel="noopener" style="text-decoration:none">' +
+        '<img class="convite-bg" src="/assets/banner-bg-indique.webp" alt="" aria-hidden="true" loading="lazy" decoding="async">' +
+        '<span class="convite-veu"></span>' +
+        '<img class="convite-peca" src="/assets/banner-ic-indique.webp" alt="" aria-hidden="true" width="560" height="594" loading="lazy" decoding="async">' +
+        '<span class="convite-txt">' +
+          '<span class="convite-tag">Feito com a Koonfy</span>' +
+          '<h2>Seus disparos com este relatório</h2>' +
+          '<p>Campanha no WhatsApp com entrega, leitura, clique e resposta ao vivo — e um link como este para mandar a quem contratou.</p>' +
+          '<span class="convite-btn">Conhecer a Koonfy →</span>' +
+        '</span>' +
+      '</a>';
+  }
+
   function cabecalho(rel) {
     document.getElementById('tit').textContent = rel.nome || 'Campanha';
     document.getElementById('sub').textContent = [
@@ -105,6 +167,7 @@
       if (!r.ok) throw new Error('http ' + r.status);
       var rel = await r.json();
       cabecalho(rel);
+      convite(rel);
       // `estados: true` porque aqui não há o mapa do painel: a tabela por
       // estado é o que responde "de onde vieram os leads" sem ele.
       KoonfyBI.pintar(alvo, rel, { estados: true });
