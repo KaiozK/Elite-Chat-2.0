@@ -190,7 +190,10 @@ h3, h4 { font-weight: 500; letter-spacing: -.01em; }
   background: linear-gradient(180deg, var(--bg) 0%, var(--brand-bg) 100%);
 }
 .login-card {
-  width: 400px; padding: 40px 38px 30px; display: flex; flex-direction: column; gap: 13px;
+  /* `max-width` porque 400px fixos só cabem em tela grande. Hoje o cartão
+     encolhe por ser item de flex, mas basta um filho com largura mínima para
+     a conta estourar e sobrar branco ao lado. */
+  width: 400px; max-width: 100%; padding: 40px 38px 30px; display: flex; flex-direction: column; gap: 13px;
   background: var(--card); border: 1px solid var(--border2); border-radius: 26px;
   box-shadow: 0 30px 80px rgba(20, 60, 20, .16);
   animation: cardIn .5s var(--ease) both;
@@ -2941,9 +2944,17 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   .modal { max-width: calc(100vw - 24px); }
   .tabs { overflow-x: auto; scrollbar-width: none; }
   .tabs::-webkit-scrollbar { display: none; }
+  /* A PÁGINA NÃO ROLA PARA O LADO. Num app de tela cheia isso nunca é
+     recurso: é sempre um elemento que passou da largura, e o que a pessoa vê
+     ao deslizar é o branco do fundo. `clip` e não `hidden` de propósito —
+     `hidden` criaria um container de rolagem e quebraria `position: sticky`
+     no topo das tabelas. O que precisa rolar na horizontal (tabela larga,
+     faixa de abas) rola DENTRO do próprio quadro, e isto não encosta nelas. */
+  html, body { overflow-x: clip; }
 }
 /* nada pode estourar a largura da tela */
 #app, .shell, main#view { max-width: 100vw; }
+.login-wrap { max-width: 100%; overflow-x: clip; }
 .shell, main#view { min-width: 0; }
 
 /* ============================================================
@@ -3358,8 +3369,17 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
      porque o `style="flex:1"` inline dele venceria um flex-basis daqui) e os
      botões dividem a seguinte. Em coluna, um flex-basis viraria ALTURA. */
   .page-head.row { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
-  .page-head.row > div:first-child { min-width: 100%; }
+  /* `> div` e não `> div:first-child`: em toda tela que tem "Voltar" o
+     primeiro filho é o botão, o seletor não casava, e o título dividia a
+     linha com ele — uma palavra por linha, por cima do botão. A div de
+     título é a única div direta destes cabeçalhos. */
+  .page-head.row > div { min-width: 100%; }
   .page-head.row > .btn, .page-head.row > .btn.primary { flex: 1 1 140px; width: auto; min-width: 0; }
+  /* A URL na linha dela. Com os botões ao lado sobravam 110px para o
+     endereço e aparecia "http:// 12" — um link que não dá para conferir é um
+     link que ninguém copia com confiança. */
+  .copy-box { flex-wrap: wrap; }
+  .copy-box code { flex: 1 0 100%; overflow: hidden; text-overflow: ellipsis; }
   .modal { padding: 18px 16px; }
   .metric-hero { grid-template-columns: 1fr 1fr; }
   .dash-kpis { grid-template-columns: 1fr 1fr; }
@@ -4221,7 +4241,11 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
 }
 
 /* ===================== RELATÓRIO DA CAMPANHA ===================== */
-.rc-funil { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 14px; }
+/* Seis etapas: enviadas, entregues, lidas, clicaram, responderam, falhas.
+   `auto-fit` e não uma contagem fixa — com cinco colunas travadas a sexta
+   caía sozinha numa segunda linha, e a órfã era "Falhas", que passava a
+   parecer um bloco à parte em vez do fim do funil. */
+.rc-funil { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 12px; margin-bottom: 14px; }
 .rc-et {
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 15px 17px; display: flex; flex-direction: column; gap: 2px; position: relative;
@@ -5055,47 +5079,40 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 }
 
 
-/* ============================================================
-   BI AO VIVO — a lista de campanhas ao lado do relatorio.
-   O relatorio em si mora em /bi.css, compartilhado com a pagina
-   publica do link de acompanhamento.
-   ============================================================ */
-.bi-cols { grid-template-columns: 300px 1fr; align-items: start; gap: 16px; }
-/* Sem isto a coluna do relatório estica até caber o link inteiro numa linha:
-   em grade, `1fr` divide o espaço livre mas o mínimo continua sendo o do
-   conteúdo. Medido: cartão em 1355px numa janela de 1200. */
-.bi-cols > * { min-width: 0; }
-.bi-cols .copy-box code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bi-menu { display: flex; flex-direction: column; gap: 6px; }
-.bi-item {
-  display: block; width: 100%; text-align: left; cursor: pointer;
-  padding: 10px 12px; border-radius: 10px; border: 1px solid transparent;
-  background: transparent; color: inherit; font: inherit; transition: background .15s, border-color .15s;
-}
-.bi-item:hover { background: var(--bg2); }
-.bi-item.on { background: var(--bg2); border-color: var(--border2); }
-.bi-item b { display: block; font-size: 13.5px; font-weight: 600; }
-.bi-item em {
-  display: flex; align-items: center; gap: 5px; margin-top: 3px;
-  font-style: normal; font-size: 12px; color: var(--muted);
-}
-/* O ponto verde e a unica coisa que diz, sem texto, que aquela campanha
-   ainda esta saindo. */
-.bi-ponto {
-  width: 7px; height: 7px; border-radius: 50%; background: var(--verde-esc);
-  animation: bnrPisca 1.6s ease-in-out infinite;
-}
-@keyframes bnrPisca { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
 
-@media (max-width: 900px) {
-  /* Coluna fixa de 300px em tela estreita nao deixa espaco para o assunto.
-     A lista vira uma fila horizontal em cima do relatorio. */
-  .bi-cols { grid-template-columns: 1fr; }
-  /* A URL na linha dela. Com os três botões ao lado sobravam 110px para o
-     endereço e aparecia "http://." — um link que não dá para conferir é um
-     link que ninguém copia com confiança. */
-  .bi-cols .copy-box { flex-wrap: wrap; }
-  .bi-cols .copy-box code { flex: 1 0 100%; }
-  .bi-menu { flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
-  .bi-item { flex: 0 0 auto; min-width: 168px; border-color: var(--border); }
+
+/* ============================================================
+   RELATORIO AO VIVO DO DISPARO — as duas pecas que o app ainda
+   nao tinha. O resto do relatorio usa os componentes de sempre.
+   Ficam AQUI, e nao numa folha propria, porque a pagina publica
+   do link de acompanhamento carrega esta folha: assim ela sai
+   identica ao painel, com o mesmo tema claro e escuro.
+   ============================================================ */
+
+/* O SELO AO VIVO. Um numero que muda sozinho nao avisa que mudou: quem esta
+   olhando o relatorio nao ve o instante. O ponto piscando diz "isto esta
+   acontecendo agora" sem precisar de texto. */
+.bi-vivo {
+  display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0;
+  padding: 6px 12px; border-radius: 999px;
+  background: var(--brand-bg); color: var(--verde-deep);
+  font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
 }
+.bi-vivo i { width: 8px; height: 8px; border-radius: 50%; background: var(--verde-esc); animation: biPulso 1.6s ease-in-out infinite; }
+.bi-vivo.fim { background: var(--bg2); color: var(--muted); }
+.bi-vivo.fim i { background: var(--muted); animation: none; }
+@keyframes biPulso {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(46, 211, 120, .5); }
+  50% { opacity: .55; box-shadow: 0 0 0 7px rgba(46, 211, 120, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .bi-vivo i { animation: none } }
+
+/* O BALAO DA RESPOSTA. E fala do cliente, e no app inteiro fala de cliente
+   tem forma de balao — no chat, na previa do template, no checkout. Uma
+   celula de tabela com texto solto aqui pareceria outro produto. */
+.bi-resp {
+  display: block; max-width: 420px; padding: 8px 11px;
+  border-radius: 12px 12px 12px 3px; background: var(--bg2);
+  font-size: 12.5px; line-height: 1.45; color: var(--text);
+}
+.bi-resp time { display: block; margin-top: 3px; font-size: 11px; color: var(--muted); }

@@ -2252,9 +2252,14 @@ module.exports = function (broadcast, clients) {
     if (req.session.kind === 'admin') return next();
     // Conta interna do dono: não tem plano para expirar nem cota para estourar.
     if (limits.isUnlimited(req.acc)) return next();
-    // Cota de DISPAROS do plano — vale sempre (conta as saídas do ciclo vigente).
-    const lim = limits.check(req.acc, 'sends');
-    if (lim) return res.status(402).json({ error: lim, code: 'limit', resource: 'sends' });
+    // COTA DE DISPAROS: só vale para quem dispara. Disparo é TEMPLATE — envio
+    // avulso de template e criação de campanha. Barrar uma resposta de chat
+    // porque a cota de campanha acabou é o mesmo erro que contá-la como
+    // disparo, só que do outro lado: a pessoa fica sem conseguir atender.
+    if (/^\/(send\/template|campaigns)$/.test(req.path)) {
+      const lim = limits.check(req.acc, 'sends');
+      if (lim) return res.status(402).json({ error: lim, code: 'limit', resource: 'sends' });
+    }
     if (!p.enforce) return next();
     const b = req.acc.billing || {};
     const ok = (b.status === 'trial' || b.status === 'active' || b.status === 'canceled') && b.periodEnd > Date.now();
@@ -3685,7 +3690,10 @@ module.exports = function (broadcast, clients) {
   router.get('/campaigns/:id/report', auth, can('campaigns'), (req, res) => {
     const camp = (req.acc.campaigns || []).find(c => c.id === req.params.id);
     if (!camp) return res.status(404).json({ error: 'Campanha não encontrada' });
-    res.json(campaignReport(req.acc, camp));
+    // O `share` vai junto para a tela saber se já existe link e qual é. Ele NÃO
+    // entra no relatório público: o token é a chave do próprio endereço, e
+    // devolvê-lo ali seria imprimir a chave na porta.
+    res.json({ ...campaignReport(req.acc, camp), share: camp.share || null });
   });
 
   // Mapa de leads consolidado: junta TODAS as campanhas do período, para

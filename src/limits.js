@@ -84,7 +84,14 @@ function cycleStart(acc) {
 function usage(acc) {
   const t0 = cycleStart(acc);
   return {
-    sends: acc.messages.filter(m => m.direction === 'out' && m.timestamp >= t0).length,
+    // DISPARO É TEMPLATE ENVIADO — campanha, envio avulso de template ou
+    // template disparado por um fluxo. Antes esta linha contava toda
+    // mensagem de saída: resposta do atendente, encerramento do
+    // atendimento, mídia, confirmação de pagamento. Quem atendia bem
+    // gastava o plano atendendo, e o teto que existe para limitar campanha
+    // castigava justamente quem conversa. Mensagem dentro da janela de 24h
+    // é atendimento, não disparo.
+    sends: acc.messages.filter(m => m.direction === 'out' && m.type === 'template' && m.timestamp >= t0).length,
     // CAMPANHAS criadas no ciclo. Conta a criação, não o envio: uma campanha
     // agendada ou pausada já ocupou a vaga do mês.
     campaigns: (acc.campaigns || []).filter(c => (c.createdAt || 0) >= t0).length,

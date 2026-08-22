@@ -1680,9 +1680,9 @@ function connectSSE() {
   });
   es.addEventListener('campaign', () => {
     if (state.view === 'campaigns') paintCampaigns();
-    // O BI é a tela que existe para ver isto acontecer: ela repinta a cada
+    // O relatório é a tela que existe para ver isto acontecer: repinta a cada
     // destinatário processado, que é de onde vem a sensação de ao vivo.
-    if (state.view === 'bi') biPintar();
+    if (state.view === 'campaigns/report') rcAoVivo();
   });
   // opt-in / opt-out (palavra-chave do cliente, flow ou ação manual)
   es.addEventListener('consent', e => {
@@ -1836,7 +1836,6 @@ const views = {
   checkouts: renderCheckoutList,
   nuvemshop: renderNuvemshop,
   // ---- painel da plataforma (/adm/) ----
-  bi: renderBI,
   'adm/visao': renderAdmVisao,
   'adm/contatos': renderAdmContatos,
   'adm/usuarios': renderAdmUsuarios,
@@ -1852,10 +1851,7 @@ const VIEW_PADRAO = ADM ? 'adm/visao' : 'dashboard';
 const NAV_OF = {
   'templates/new': 'templates', 'campaigns/new': 'campaigns',
   'links/new': 'links', 'links/edit': 'links', 'links/stats': 'links',
-  // O BI é a mesma coisa que Campanhas: quem pode ver o disparo pode ver o
-  // resultado dele. Sem esta linha ele viraria um módulo próprio, e atendente
-  // sem acesso a campanhas veria a aba.
-  bi: 'campaigns',
+
   'agents/perf': 'agents', 'agents/logs': 'agents',
   'campaigns/report': 'campaigns', 'campaigns/mapa': 'campaigns',
   'elitepay/checkout': 'checkouts',
@@ -1874,10 +1870,7 @@ function can(moduleKey, action = 'view') {
 const VIEW_MODULE = {
   'templates/new': 'templates', 'campaigns/new': 'campaigns',
   'links/new': 'links', 'links/edit': 'links', 'links/stats': 'links',
-  // O BI é a mesma coisa que Campanhas: quem pode ver o disparo pode ver o
-  // resultado dele. Sem esta linha ele viraria um módulo próprio, e atendente
-  // sem acesso a campanhas veria a aba.
-  bi: 'campaigns',
+
   'agents/perf': 'agents', 'agents/logs': 'agents',
   'elitepay/checkout': 'elitepay', checkouts: 'elitepay',
   billing: null, admin: null, logs: null   // sempre acessíveis (donos/config próprios)
@@ -1886,7 +1879,7 @@ const VIEW_MODULE = {
 // checkouts pertence ao Pagamentos; integrations cobre webhooks/Nuvemshop.
 // A loja faz parte do módulo de Integrações: o plano que libera um libera a
 // outra, e não faz sentido ter a tela da loja sem poder conectá-la.
-const VIEW_FEATURE = { checkouts: 'elitepay', webhooks: 'integrations', nuvemshop: 'integrations', bi: 'campaigns' };
+const VIEW_FEATURE = { checkouts: 'elitepay', webhooks: 'integrations', nuvemshop: 'integrations' };
 // ---------------------------------------------------------------------------
 // ASSINATURA OBRIGATÓRIA
 //
@@ -1931,8 +1924,9 @@ const MOBILE_VIEWS = new Set([
   'elitepay',
   // ACOMPANHAR um disparo é o oposto de montá-lo: é a tela que se olha no
   // elevador, no carro, no meio da reunião. Um tempo real que só existe no
-  // computador é um tempo real que não está onde a pessoa está.
-  'bi'
+  // computador é um tempo real que não está onde a pessoa está. Montar a
+  // campanha continua sendo trabalho de mesa; ver o resultado, não.
+  'campaigns/report'
 ]);
 // 820px é o mesmo ponto em que a sidebar já vira gaveta (style.css).
 const MOBILE_MQ = window.matchMedia('(max-width: 820px)');
@@ -2358,113 +2352,6 @@ function route() {
 function admCartao(icone, valor, rotulo, destaque) {
   return `<div class="mh-card ${destaque ? 'hi' : ''}"><span class="mh-ic">${ico(icone, 20)}</span>` +
     `<div class="mh-val">${valor}</div><div class="mh-lbl">${esc(rotulo)}</div></div>`;
-}
-
-// ===========================================================================
-// BI AO VIVO DOS DISPAROS
-//
-// Uma lista de campanhas a esquerda, o relatorio da escolhida a direita, e o
-// relatorio se repinta sozinho enquanto o disparo corre.
-//
-// O DESENHO NAO ESTA AQUI. Ele esta em /bi.js, junto com o da pagina publica
-// do link de acompanhamento: sao a mesma tela mostrada para o dono do disparo
-// e para quem contratou o disparo. Se fossem dois codigos, no primeiro ajuste
-// esquecido as duas passariam a mostrar coisas diferentes do mesmo numero.
-// ===========================================================================
-let biAtual = null, biLista = [];
-
-async function renderBI() {
-  $('#view').innerHTML = `<div class="page">
-    <div class="page-head"><h1>BI ao vivo</h1><p>Acompanhe cada disparo enquanto ele acontece, e compartilhe o link com quem contratou.</p></div>
-    <div class="two-col bi-cols">
-      <div class="card" id="bi-lista">${skel(4)}</div>
-      <div id="bi-painel"><div class="card">${skel(6)}</div></div>
-    </div>
-  </div>`;
-  await biCarregarLista();
-}
-
-async function biCarregarLista() {
-  const cx = $('#bi-lista'); if (!cx) return;
-  try {
-    const { campaigns } = await api('/campaigns');
-    biLista = campaigns || [];
-  } catch (e) {
-    cx.innerHTML = `<p class="muted">Não deu para carregar as campanhas: ${esc(e.message)}</p>`;
-    return;
-  }
-  if (!biLista.length) {
-    cx.innerHTML = `<h2 style="margin:0 0 8px">Campanhas</h2><p class="muted" style="font-size:13.5px">Nenhuma campanha ainda. Crie um disparo em <a href="#/campaigns">Campanhas</a> e ele aparece aqui, ao vivo.</p>`;
-    $('#bi-painel').innerHTML = '';
-    return;
-  }
-  // A que esta RODANDO na frente: e a que alguem abriu esta tela para ver.
-  biLista.sort((a, b) => (a.status === 'done' ? 1 : 0) - (b.status === 'done' ? 1 : 0) || (b.createdAt || 0) - (a.createdAt || 0));
-  if (!biAtual || !biLista.some(c => c.id === biAtual)) biAtual = biLista[0].id;
-  cx.innerHTML = `<h2 style="margin:0 0 10px">Campanhas</h2>
-    <div class="bi-menu">${biLista.map(c => {
-      const s = c.stats || {};
-      const rodando = c.status !== 'done';
-      return `<button class="bi-item${c.id === biAtual ? ' on' : ''}" onclick="biAbrir('${c.id}')">
-        <b>${esc(c.name)}</b>
-        <em>${rodando ? '<i class="bi-ponto"></i>ao vivo · ' : ''}${fmtN(s.total || 0)} destinatário${(s.total || 0) === 1 ? '' : 's'}</em>
-      </button>`;
-    }).join('')}</div>`;
-  biAbrir(biAtual);
-}
-
-async function biAbrir(id) {
-  biAtual = id;
-  document.querySelectorAll('.bi-item').forEach(b => b.classList.toggle('on', b.getAttribute('onclick').includes(id)));
-  await biPintar();
-}
-
-async function biPintar() {
-  const cx = $('#bi-painel'); if (!cx || !biAtual) return;
-  let rel;
-  try { rel = await api('/campaigns/' + biAtual + '/report'); }
-  catch (e) { cx.innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; return; }
-  const camp = biLista.find(c => c.id === biAtual) || {};
-  // A barra de compartilhamento fica FORA do desenho compartilhado: ela é a
-  // única coisa desta tela que a pessoa do outro lado do link não pode ver.
-  if (!cx.querySelector('#bi-conteudo')) {
-    cx.innerHTML = `<div class="card" id="bi-share"></div><div id="bi-conteudo"></div>`;
-  }
-  biShare(camp);
-  KoonfyBI.pintar($('#bi-conteudo'), rel);
-}
-
-function biShare(camp) {
-  const cx = $('#bi-share'); if (!cx) return;
-  const sh = camp.share;
-  const url = sh ? location.origin + '/campanha/' + sh.token : '';
-  cx.innerHTML = `
-    <h2 style="margin:0 0 6px">${ico('link')} Link de acompanhamento</h2>
-    <p class="muted" style="margin:0 0 12px;font-size:13px">Um endereço só de leitura desta campanha, ao vivo. Quem abrir não precisa de conta ${sh && sh.telefones ? 'e <b>vê os telefones inteiros</b>' : 'e vê os telefones <b>mascarados</b>'}.</p>
-    ${sh ? `<div class="copy-box"><code id="bi-url">${esc(url)}</code>
-        <button class="btn small" onclick="copyText($('#bi-url').textContent)">Copiar</button>
-        <a class="btn small" href="${esc(url)}" target="_blank" rel="noopener">Abrir</a>
-        <button class="btn small danger" onclick="biRevogar()">Revogar</button></div>` : `
-      <label class="chk" style="margin-bottom:10px"><input type="checkbox" id="bi-fones"> <span>Mostrar os telefones inteiros para quem abrir o link</span></label>
-      <button class="btn primary no-grow" onclick="biGerar()">${ico('link', 14)} Gerar link</button>`}`;
-}
-
-async function biGerar() {
-  const telefones = !!($('#bi-fones') && $('#bi-fones').checked);
-  try {
-    await api('/campaigns/' + biAtual + '/share', { method: 'POST', body: { telefones } });
-    await biCarregarLista();
-    toast('Link criado');
-  } catch (e) { toast(e.message, 'err'); }
-}
-
-async function biRevogar() {
-  if (!confirm('Revogar o link? Quem já tem o endereço deixa de ver a campanha.')) return;
-  try {
-    await api('/campaigns/' + biAtual + '/share', { method: 'DELETE' });
-    await biCarregarLista();
-    toast('Link revogado');
-  } catch (e) { toast(e.message, 'err'); }
 }
 
 async function renderAdmVisao() {
@@ -7386,7 +7273,7 @@ async function createCampaign() {
 // recebeu — é quem LEU e CLICOU; por isso o mapa é pintado pela métrica que se
 // escolhe, e não sempre pelo volume, que só mostra onde há mais gente.
 // ===========================================================================
-let RC = { rel: null, metrica: 'cliques', ordem: 'total', filtro: '' };
+let RC = { id: null, rel: null, metrica: 'cliques', ordem: 'total', filtro: '' };
 
 const RC_METRICAS = [
   ['total', 'Leads (enviadas)'],
@@ -7403,6 +7290,7 @@ const rcVal = (e, k) => (RC_PCT.has(k) ? e[k] + '%' : fmtN(e[k]));
 async function renderCampaignReport() {
   const id = new URLSearchParams((location.hash.split('?')[1] || '')).get('c');
   if (!id) { location.hash = '#/campaigns'; return; }
+  RC.id = id;
   $('#view').innerHTML = `<div class="page"><div class="card">${skel(6)}</div></div>`;
   try {
     RC.rel = await api('/campaigns/' + id + '/report');
@@ -7413,52 +7301,59 @@ async function renderCampaignReport() {
   }
 }
 
+// AO VIVO. Chega um evento por destinatário processado; aqui só os números
+// são atualizados. Remontar a tela a cada evento apagaria o filtro digitado,
+// devolveria a rolagem ao topo e mataria a animação — 2 mil vezes num disparo
+// de 2 mil contatos.
+async function rcAoVivo() {
+  if (!RC.id || !document.getElementById('rc-core')) return;
+  if (RC._buscando) return;
+  RC._buscando = true;
+  try { RC.rel = await api('/campaigns/' + RC.id + '/report'); } catch (e) { RC._buscando = false; return; }
+  RC._buscando = false;
+  rcAtualizar();
+}
+
+function rcAtualizar() {
+  const r = RC.rel;
+  KoonfyBI.pintar($('#rc-core'), r);
+  const selo = $('#rc-selo');
+  if (selo) selo.outerHTML = rcSelo(r);
+  const tab = $('#rc-tabela'); if (tab) tab.innerHTML = rcTabela();
+  // O MAPA só é redesenhado quando os números mudam de verdade: ele monta um
+  // SVG inteiro, e refazê-lo a cada evento pisca a tela sem dizer nada novo.
+  const mapa = $('#rc-mapa');
+  const chave = JSON.stringify(rcMapaCounts());
+  if (mapa && mapa.dataset.chave !== chave) {
+    mapa.dataset.chave = chave;
+    mapa.innerHTML = brazilMap3D({ states: rcMapaCounts(), soMapa: true });
+  }
+}
+
+// Enquanto o disparo corre, o selo pulsa; terminado, ele só informa.
+function rcSelo(r) {
+  const rodando = r.status !== 'done';
+  return `<span class="bi-vivo${rodando ? '' : ' fim'}" id="rc-selo"><i></i>${rodando ? 'ao vivo' : 'concluída'}</span>`;
+}
+
 function pintarRelatorio() {
-  const r = RC.rel, g = r.geral;
+  const r = RC.rel;
   $('#view').innerHTML = `<div class="page">
     <div class="page-head row" style="align-items:center">
       <a class="btn no-grow" href="#/campaigns">${ico('arrowleft', 14)} Voltar</a>
       <div style="flex:1">
         <h1>${esc(r.nome)}</h1>
-        <p>Modelo <code>${esc(r.template)}</code>${r.canal ? ' · ' + esc(r.canal) : ''} · ${fmtDataHora(r.criadaEm)}
-        · <span class="pill ${r.status}">${r.status === 'running' ? 'Enviando' : 'Concluída'}</span></p>
+        <p>Modelo <code>${esc(r.template)}</code>${r.canal ? ' · ' + esc(r.canal) : ''} · ${fmtDataHora(r.criadaEm)}</p>
       </div>
+      ${rcSelo(r)}
     </div>
 
-    <div class="rc-funil">
-      ${rcEtapa('Enviadas', g.enviadas, null, 'send')}
-      ${rcEtapa('Entregues', g.entregues, g.taxaEntrega, 'check-circle')}
-      ${rcEtapa('Lidas', g.lidas, g.taxaLeitura, 'eye')}
-      ${rcEtapa('Clicaram', g.cliques, g.taxaClique, 'zap')}
-      ${rcEtapa('Falhas', g.falhas, null, 'alert', g.falhas > 0)}
-    </div>
+    <div class="card" id="rc-share"></div>
 
-    ${r.leituraParcial ? `<div class="card" style="border-color:var(--amber-border);background:var(--amber-bg)">
-      <b>${ico('help', 14)} Nenhuma leitura confirmada</b>
-      <p class="muted" style="margin:5px 0 0;font-size:13px">As mensagens foram entregues, mas ninguém apareceu como "lida".
-      A Meta só informa a leitura quando o cliente mantém a <b>confirmação de leitura ligada</b> no WhatsApp dele. Quem desliga
-      conta apenas como entregue. O número aqui é o piso real, não o total de quem leu.</p></div>` : ''}
-
-    <div class="card">
-      <h2>${ico('buttons')} Botões</h2>
-      ${r.botoes.length ? `
-        <p class="muted" style="margin:0 0 10px;font-size:12.5px">Quantas pessoas tocaram em cada botão. Conta uma vez por pessoa,
-        quem clica duas vezes continua sendo um lead.</p>
-        <table><thead><tr><th>Botão</th><th style="text-align:right">Cliques</th><th style="text-align:right">Sobre enviadas</th><th style="text-align:right">Sobre quem leu</th><th>Onde mais clicaram</th></tr></thead><tbody>
-        ${r.botoes.map(b => {
-          const topo = Object.entries(b.ufs).sort((x, y) => y[1] - x[1]).slice(0, 3);
-          return `<tr>
-            <td><b>${esc(b.rotulo)}</b></td>
-            <td style="text-align:right"><b>${fmtN(b.cliques)}</b></td>
-            <td style="text-align:right">${g.enviadas ? (Math.round(b.cliques / g.enviadas * 1000) / 10) : 0}%</td>
-            <td style="text-align:right">${g.lidas ? (Math.round(b.cliques / g.lidas * 1000) / 10) : 0}%</td>
-            <td class="muted">${topo.length ? topo.map(([uf, n]) => `${uf} (${n})`).join(', ') : '-'}</td>
-          </tr>`;
-        }).join('')}</tbody></table>`
-        : `<p class="muted" style="margin:0;font-size:13px">Este modelo não tem botões, ou ninguém tocou ainda.
-           Botões de <b>resposta rápida</b> são contados aqui; botões de <b>link</b> saem do WhatsApp e a Meta não avisa o toque,
-           para medir link, use um link rastreável do Koonfy dentro do template.</p>`}
-    </div>
+    <!-- O MIOLO. Desenhado por /bi.js, o mesmo arquivo que desenha a página
+         pública do link de acompanhamento: quem dispara precisa saber
+         exatamente o que o cliente dele está vendo. -->
+    <div id="rc-core"></div>
 
     <div class="card">
       <div class="row" style="align-items:center;margin-bottom:12px">
@@ -7469,7 +7364,7 @@ function pintarRelatorio() {
       </div>
       <p class="muted" style="margin:0 0 10px;font-size:12.5px">Quanto mais escuro, maior o valor da métrica escolhida.
       Passe o mouse num estado para ver o número exato.</p>
-      ${brazilMap3D({ states: rcMapaCounts(), soMapa: true })}
+      <div id="rc-mapa">${brazilMap3D({ states: rcMapaCounts(), soMapa: true })}</div>
     </div>
 
     <div class="card">
@@ -7485,20 +7380,57 @@ function pintarRelatorio() {
       (número de fora do Brasil ou sem DDD reconhecível) ficam fora do mapa.</p>` : ''}
     </div>
   </div>`;
+  $('#rc-mapa').dataset.chave = JSON.stringify(rcMapaCounts());
+  KoonfyBI.pintar($('#rc-core'), r);
+  rcShare();
 }
 
-function rcEtapa(rotulo, valor, pct, icone, alerta) {
-  return `<div class="rc-et${alerta ? ' bad' : ''}">
-    <span class="rc-et-ic">${ico(icone, 15)}</span>
-    <b>${fmtN(valor)}</b>
-    <span class="rc-et-lb">${rotulo}</span>
-    ${pct === null || pct === undefined ? '' : `<span class="rc-et-pc">${pct}%</span>`}
-  </div>`;
+// ---------------------------------------------------------------------------
+// LINK DE ACOMPANHAMENTO
+//
+// Quem dispara para outras empresas precisa mostrar o resultado a quem
+// contratou, e quem contratou não tem conta no painel. O link é um endereço
+// só de leitura desta campanha, ao vivo.
+//
+// O TELEFONE SAI MASCARADO por padrão. Um link é um portador: quem tem o
+// endereço vê. A base de contatos é o ativo do cliente, e um endereço
+// repassado num grupo vira vazamento. Quem quiser mostrar o número inteiro
+// liga a opção aqui, e assume.
+// ---------------------------------------------------------------------------
+function rcShare() {
+  const cx = $('#rc-share'); if (!cx) return;
+  const sh = RC.rel.share;
+  const url = sh ? location.origin + '/campanha/' + sh.token : '';
+  cx.innerHTML = `
+    <h2 style="margin:0 0 6px">${ico('link')} Link de acompanhamento</h2>
+    <p class="muted" style="margin:0 0 12px;font-size:13px">Um endereço só de leitura desta campanha, ao vivo, para mandar a quem contratou o disparo. Quem abrir não precisa de conta e vê os telefones ${sh && sh.telefones ? '<b>inteiros</b>' : '<b>mascarados</b>'}.</p>
+    ${sh ? `<div class="copy-box"><code id="rc-url">${esc(url)}</code>
+        <button class="btn small" onclick="copyText($('#rc-url').textContent)">Copiar</button>
+        <a class="btn small" href="${esc(url)}" target="_blank" rel="noopener">Abrir</a>
+        <button class="btn small danger" onclick="rcRevogar()">Revogar</button></div>` : `
+      <label class="chk" style="margin-bottom:10px"><input type="checkbox" id="rc-fones"> <span>Mostrar os telefones inteiros para quem abrir o link</span></label>
+      <button class="btn primary no-grow" onclick="rcGerarLink()">${ico('link', 14)} Gerar link</button>`}`;
 }
 
-// O mapa é pintado pela métrica escolhida. Em porcentagem, estados com pouquíssimos
-// envios distorceriam a escala (1 de 1 = 100%), então abaixo de 5 enviadas o
-// estado não colore — o dado existe na tabela, mas não manda no mapa.
+async function rcGerarLink() {
+  const telefones = !!($('#rc-fones') && $('#rc-fones').checked);
+  try {
+    const r = await api('/campaigns/' + RC.id + '/share', { method: 'POST', body: { telefones } });
+    RC.rel.share = r.share;
+    rcShare();
+    toast('Link criado');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function rcRevogar() {
+  if (!await confirmModal({ title: 'Revogar link', text: 'Quem já tem o endereço deixa de ver esta campanha. Você pode gerar um novo depois.', ok: 'Revogar', danger: true })) return;
+  try {
+    await api('/campaigns/' + RC.id + '/share', { method: 'DELETE' });
+    RC.rel.share = null;
+    rcShare();
+    toast('Link revogado');
+  } catch (e) { toast(e.message, 'err'); }
+}
 function rcMapaCounts() {
   const out = {};
   for (const e of RC.rel.estados) {
@@ -7533,7 +7465,14 @@ function rcTabela() {
   </tbody></table>`;
 }
 
-function rcSetMetrica(v) { RC.metrica = v; pintarRelatorio(); }
+// Trocar a métrica repinta SÓ o mapa: remontar a tela apagaria o filtro
+// digitado ao lado e devolveria a rolagem ao topo.
+function rcSetMetrica(v) {
+  RC.metrica = v;
+  const mapa = $('#rc-mapa'); if (!mapa) return;
+  mapa.dataset.chave = JSON.stringify(rcMapaCounts());
+  mapa.innerHTML = brazilMap3D({ states: rcMapaCounts(), soMapa: true });
+}
 function rcSetOrdem(v) { RC.ordem = v; const t = $('#rc-tabela'); if (t) t.innerHTML = rcTabela(); }
 function rcFiltrar(v) { RC.filtro = v; const t = $('#rc-tabela'); if (t) t.innerHTML = rcTabela(); }
 
