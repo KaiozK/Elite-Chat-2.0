@@ -17,7 +17,7 @@
 // Faltando algum, o erro diz onde completar.
 // ============================================================================
 const db = require('./db');
-const elitepay = require('./elitepay');
+const pagamentos = require('./pagamentos');
 const documento = require('./documento');
 
 function erro(msg, status = 400) { const e = new Error(msg); e.status = status; return e; }
@@ -29,7 +29,7 @@ function erro(msg, status = 400) { const e = new Error(msg); e.status = status; 
 // lugares aqui e o que permite a tela de recarga ser so "valor e pagar".
 function pagadorDaConta(acc) {
   const p = acc.profile || {};
-  const sub = (acc.elitepay && acc.elitepay.subaccount) || {};
+  const sub = (acc.pagamentos && acc.pagamentos.subaccount) || {};
   const so = v => String(v || '').replace(/D/g, '');
   const doc = so(p.document) || so(sub.document);
   const canal = (acc.channels || []).map(c => so(c.phoneNumber || c.displayPhoneNumber)).find(Boolean) || '';
@@ -52,7 +52,7 @@ function fixarNoCadastro(acc) {
 
 // O que falta para o adquirente aceitar. Lista vazia = pode cobrar.
 function faltando(acc) {
-  const g = elitepay.gateway();
+  const g = pagamentos.gateway();
   fixarNoCadastro(acc);
   if (!g.requiresPayer) return [];
   const p = pagadorDaConta(acc);
@@ -71,9 +71,9 @@ function faltando(acc) {
 //   { brCode, qrCodeImage, paymentLinkUrl, gatewayId, expiresAt }
 // ---------------------------------------------------------------------------
 async function criarCobranca(acc, { correlationID, valueCents, comment }) {
-  if (!elitepay.configured()) throw erro('Pix indisponível no momento');
+  if (!pagamentos.configured()) throw erro('Pix indisponível no momento');
 
-  const g = elitepay.gateway();
+  const g = pagamentos.gateway();
   const pendencias = faltando(acc);
   if (pendencias.length) {
     throw erro(

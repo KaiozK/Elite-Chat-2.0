@@ -58,7 +58,7 @@ const get = (rota) => fetch('http://127.0.0.1:' + porta + '/api' + rota).then(as
 (async () => {
   const db = require(R + 'src/db');
   await db.loadAsync();
-  const elitepay = require(R + 'src/elitepay');
+  const pagamentos = require(R + 'src/pagamentos');
   const woovi = require(R + 'src/woovi');
   const express = require('express');
   const app = express();
@@ -70,7 +70,7 @@ const get = (rota) => fetch('http://127.0.0.1:' + porta + '/api' + rota).then(as
   const d = db.get();
   d.platform.woovi.appId = 'APPID';
   d.platform.baseUrl = 'https://koonfy.com';
-  elitepay.platformCfg().gateway = 'woovi';
+  pagamentos.platformCfg().gateway = 'woovi';
   const plano = { id: 'p_premium', name: 'Premium', price: 19700, periodDays: 30, limits: {}, features: ['3 números'] };
   d.plans.push(plano);
   const contasAntes = d.accounts.length;

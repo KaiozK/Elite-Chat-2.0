@@ -50,7 +50,7 @@ global.fetch = async (u, o) => {
 };
 
 const db = require(R + 'src/db');
-const elitepay = require(R + 'src/elitepay');
+const pagamentos = require(R + 'src/pagamentos');
 const saaspix = require(R + 'src/saaspix');
 const saas = require(R + 'src/saasbilling');
 
@@ -70,7 +70,7 @@ const saas = require(R + 'src/saasbilling');
   db.get().revenue = [];
 
   console.log('=== 1. Com a SIMPLIFY ativa, a recarga vai para a Simplify ===');
-  elitepay.platformCfg().gateway = 'simplify';
+  pagamentos.platformCfg().gateway = 'simplify';
   chamadas = [];
   let r = await saaspix.criarCobranca(acc, { correlationID: 'topup-' + acc.id + '-abc', valueCents: 5000, comment: 'recarga' });
   ok(chamadas.length === 1 && chamadas[0].quem === 'simplify', 'quem recebeu a cobrança: ' + (chamadas[0] || {}).quem);
@@ -79,7 +79,7 @@ const saas = require(R + 'src/saasbilling');
   ok(chamadas[0].corpo.payer.phone === '82981440676', 'e o telefone sem o DDI: ' + chamadas[0].corpo.payer.phone);
 
   console.log('\n=== 2. Com a WOOVI ativa, vai para a Woovi ===');
-  elitepay.platformCfg().gateway = 'woovi';
+  pagamentos.platformCfg().gateway = 'woovi';
   p.woovi.appId = 'APPID';
   chamadas = [];
   r = await saaspix.criarCobranca(acc, { correlationID: 'topup-' + acc.id + '-def', valueCents: 5000, comment: 'recarga' });
@@ -87,7 +87,7 @@ const saas = require(R + 'src/saasbilling');
   ok(r.brCode === '00020126-WOOVI', 'e o Pix veio de lá: ' + r.brCode);
 
   console.log('\n=== 3. CONEXÃO EXTRA e LINK também seguem o adquirente ===');
-  elitepay.platformCfg().gateway = 'simplify';
+  pagamentos.platformCfg().gateway = 'simplify';
   for (const [chave, rot] of [['whatsapps', 'conexão'], ['links', 'link rastreável']]) {
     chamadas = [];
     const resp = await saas.buyExtra(acc, chave, 2, { pay: 'pix' }, null);
@@ -135,12 +135,12 @@ const saas = require(R + 'src/saasbilling');
 
   console.log('\n=== 8. Na WOOVI o cadastro incompleto não atrapalha ===');
   // Ela não exige o pagador; travar ali seria inventar uma regra que não existe.
-  elitepay.platformCfg().gateway = 'woovi';
+  pagamentos.platformCfg().gateway = 'woovi';
   acc.profile.document = '';
   chamadas = [];
   r = await saaspix.criarCobranca(acc, { correlationID: 'topup-' + acc.id + '-w2', valueCents: 5000, comment: 'x' });
   ok(chamadas.length === 1 && chamadas[0].quem === 'woovi', 'cobrança criada normalmente na Woovi');
 
-  elitepay.platformCfg().gateway = 'woovi';
+  pagamentos.platformCfg().gateway = 'woovi';
   await encerrar(null, falhas);
 })().catch(e => { console.error(e); process.exit(1); });

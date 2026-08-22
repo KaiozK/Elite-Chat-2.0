@@ -38,7 +38,7 @@ process.env.DB_DRIVER = 'mysql';
 process.env.DATABASE_URL = 'mysql://u:p@localhost/koonfy';
 
 const db = require(R + 'src/db');
-const ep = require(R + 'src/elitepay');
+const ep = require(R + 'src/pagamentos');
 const cards = require(R + 'src/cardgateways');
 
 // Conta limpa só para este teste, para não sujar a carteira de ninguém.

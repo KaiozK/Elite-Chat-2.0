@@ -289,15 +289,15 @@ async function execNode(acc, node, ctx, deliver, flow) {
     }
     return { ok: true, detail: 'opt-out registrado' };
   }
-  // ---- ELITE PAY: gerar cobrança Pix e enviar na conversa ----
+  // ---- PAGAMENTOS: gerar cobrança Pix e enviar na conversa ----
   // Disponibiliza as variáveis {{pagamento.link}}, {{pagamento.valor}},
   // {{pagamento.codigo}} e {{pagamento.id}} para os nós seguintes do fluxo.
   if (node.type === 'payment') {
     need();
-    const elitepay = require('./elitepay');
+    const pagamentos = require('./pagamentos');
     const reais = Number(String(interpolate(String(node.value || ''), ctx)).replace(/[^\d,.]/g, '').replace(',', '.')) || 0;
     const c = store.findContact(acc, to);
-    const ch = await elitepay.createCharge(acc, {
+    const ch = await pagamentos.createCharge(acc, {
       valueCents: Math.round(reais * 100),
       comment: interpolate(node.description || '', ctx),
       waId: to, contactName: (c && c.name) || ctx.contactName || '',
@@ -305,7 +305,7 @@ async function execNode(acc, node, ctx, deliver, flow) {
     });
     ctx.vars = {
       ...(ctx.vars || {}),
-      'pagamento.link': ch.payUrl || ch.paymentLinkUrl, 'pagamento.valor': elitepay.fmtBRL(ch.value),
+      'pagamento.link': ch.payUrl || ch.paymentLinkUrl, 'pagamento.valor': pagamentos.fmtBRL(ch.value),
       'pagamento.codigo': ch.brCode, 'pagamento.id': ch.id,
       'pagamento.qrcode': ch.qrCodeImage || ''   // imagem do QR Code Pix (URL) p/ um nó de mídia
     };
@@ -313,14 +313,14 @@ async function execNode(acc, node, ctx, deliver, flow) {
       // Botão de pagamento: abre o Checkout, onde o cliente informa o
       // CPF/CNPJ que o adquirente pede e escolhe como pagar. Se a Meta
       // recusar o interativo, o texto com o link vai no lugar.
-      const btn = elitepay.chargeButton(acc, ch);
+      const btn = pagamentos.chargeButton(acc, ch);
       try {
         const r = await wa.sendInteractive(acc, to, btn.interactive);
         // Estruturado, como no envio manual: a conversa mostra o botão de
         // pagar, e não o rótulo dele colado no fim da mensagem.
         if (deliver) deliver(acc, to, { type: 'interactive', text: btn.body, buttons: [{ id: 'checkout', title: btn.displayText }] }, r);
       } catch (e) {
-        const text = elitepay.chargeMessage(acc, ch, { semCodigo: true });
+        const text = pagamentos.chargeMessage(acc, ch, { semCodigo: true });
         const r = await wa.sendText(acc, to, text);
         if (deliver) deliver(acc, to, { type: 'text', text }, r);
       }
@@ -332,7 +332,7 @@ async function execNode(acc, node, ctx, deliver, flow) {
         if (deliver) deliver(acc, to, { type: 'image', text: '[QR Code Pix]', media: { link: ch.qrCodeImage, caption: 'Escaneie o QR Code para pagar' } }, r2);
       } catch (e) { /* segue mesmo se a imagem falhar */ }
     }
-    return { ok: true, detail: `cobrança ${elitepay.fmtBRL(ch.value)}` };
+    return { ok: true, detail: `cobrança ${pagamentos.fmtBRL(ch.value)}` };
   }
   if (node.type === 'ai') {
     // Este nó era um placeholder que não fazia nada. Agora usa o Agente de IA

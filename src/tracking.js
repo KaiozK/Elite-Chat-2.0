@@ -2,7 +2,7 @@
 // TRACKING — atribuição de vendas + métricas de marketing (estilo UTMify).
 //
 // Multi-tenant por construção: TUDO vive dentro de acc.trk (workspace próprio,
-// nada compartilhado entre contas). Integra com o Elite Pay: cada pagamento é
+// nada compartilhado entre contas). Integra com o Pagamentos: cada pagamento é
 // atribuído à campanha de origem e reenviado às plataformas de anúncio.
 // ============================================================================
 const https = require('https');
@@ -275,12 +275,12 @@ async function sendConversions(acc, ch) {
   return results;
 }
 
-// Chamado pelo Elite Pay quando o webhook confirma o pagamento
+// Chamado pelo Pagamentos quando o webhook confirma o pagamento
 function onPaid(acc, ch, broadcast) {
   const t = ensure(acc);
   ch.attribution = attribute(acc, ch);
   log(acc, {
-    name: 'Purchase', source: 'elitepay', sid: (ch.attribution && ch.attribution.sid) || '',
+    name: 'Purchase', source: 'pagamentos', sid: (ch.attribution && ch.attribution.sid) || '',
     pixel: '', payload: { value: ch.value / 100, campaign: ch.attribution ? ch.attribution.campaign : '', method: ch.attribution ? ch.attribution.method : 'sem origem' }
   });
   db.save();
@@ -357,7 +357,7 @@ function adClicks(acc) {
 // ---------------------------------------------------------------------------
 // MÉTRICAS — dashboard financeiro/marketing calculado dos dados reais
 // ---------------------------------------------------------------------------
-function charges(acc) { return (acc.elitepay && acc.elitepay.charges) || []; }
+function charges(acc) { return (acc.pagamentos && acc.pagamentos.charges) || []; }
 function paidIn(acc, from, to) { return charges(acc).filter(c => c.status === 'paid' && c.paidAt >= from && (!to || c.paidAt < to)); }
 const sum = a => a.reduce((s, c) => s + c.value, 0);
 

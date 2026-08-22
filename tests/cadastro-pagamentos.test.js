@@ -75,8 +75,8 @@ const cadastro = (email, receb) => ({
   plat.woovi = plat.woovi || {};
   plat.woovi.appId = 'APPID-DE-TESTE';
   plat.woovi.sandbox = true;
-  plat.elitepay = plat.elitepay || {};
-  plat.elitepay.onboardingMode = 'subaccount';
+  plat.pagamentos = plat.pagamentos || {};
+  plat.pagamentos.onboardingMode = 'subaccount';
   db.save();
 
   console.log('=== 1. Cadastro COM os dados de recebimento ===');
@@ -87,15 +87,15 @@ const cadastro = (email, receb) => ({
   ok(!!r.token, 'e já entrou');
   const acc1 = db.get().accounts.find(a => a.email === 'com@teste.com');
   ok(!!acc1, 'a conta existe no banco');
-  ok(!!(acc1 && acc1.elitepay && acc1.elitepay.subaccount),
+  ok(!!(acc1 && acc1.pagamentos && acc1.pagamentos.subaccount),
     'a SUBCONTA de Pagamentos nasceu junto com o cadastro');
   ok(!!(acc1 && acc1.profile.document === '52795162000167'),
     'o documento ficou guardado na conta: ' + (acc1 && acc1.profile.document));
 
   // O 402 de 'escolha um plano' é outra história: aqui se testa o Pagamentos.
   acc1.unlimited = true; db.save();
-  r = await chamar('GET', '/api/elitepay', null, r.token);
-  ok(r.http === 200, '/elitepay responde: ' + r.http + ' ' + (r.error||''));
+  r = await chamar('GET', '/api/pagamentos', null, r.token);
+  ok(r.http === 200, '/pagamentos responde: ' + r.http + ' ' + (r.error||''));
   ok(!!(r.conta && r.conta.name && r.conta.email),
     'e devolve os dados da conta para o formulário nascer preenchido');
   ok(r.conta && r.conta.document === '52795162000167', 'inclusive o CPF/CNPJ');
@@ -114,9 +114,9 @@ const cadastro = (email, receb) => ({
 
   acc2.unlimited = true; db.save();
   const r2 = await chamar('POST', '/api/login', { user: 'falha@teste.com', pass: 'senha123' });
-  const info = await chamar('GET', '/api/elitepay', null, r2.token);
+  const info = await chamar('GET', '/api/pagamentos', null, r2.token);
   ok(info.conta && info.conta.document === '11144477735',
-    'e voltam no /elitepay, então ele NÃO redigita nada em Pagamentos');
+    'e voltam no /pagamentos, então ele NÃO redigita nada em Pagamentos');
   quebrado = false;
 
   console.log('\n=== 3. Cadastro sem os dados (pulou a etapa) ===');

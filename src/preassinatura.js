@@ -20,7 +20,7 @@ const store = require('./store');
 const documento = require('./documento');
 const paises = require('./paises');
 const saaspix = require('./saaspix');
-const elitepay = require('./elitepay');
+const pagamentos = require('./pagamentos');
 
 function erro(msg, status = 400) { const e = new Error(msg); e.status = status; return e; }
 
@@ -143,7 +143,7 @@ function confirmar(cid, valorPago, broadcast) {
 
   // A conta de Pagamentos nasce do mesmo dado que pagou. Não trava nada se o
   // adquirente estiver fora do ar.
-  try { elitepay.garantirPagamentos(acc).catch(() => {}); } catch {}
+  try { pagamentos.garantirPagamentos(acc).catch(() => {}); } catch {}
 
   store.logEvent({ type: 'preassinatura_paga', preId: pre.id, accountId: acc.id, valor: valorPago });
   if (broadcast) broadcast('billing', { accountId: acc.id });

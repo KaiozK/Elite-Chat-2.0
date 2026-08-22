@@ -501,7 +501,7 @@ details.log summary .ic { color: var(--muted); }
   transition: box-shadow .25s var(--ease), transform .25s var(--ease), border-color .25s;
 }
 .stat:hover { box-shadow: var(--shadow); transform: translateY(-4px); border-color: var(--border2); }
-/* KPIs de venda são clicáveis (levam ao Elite Pay) sem parecer link */
+/* KPIs de venda são clicáveis (levam ao Pagamentos) sem parecer link */
 a.stat { text-decoration: none; color: inherit; }
 .stat-ico {
   position: absolute; top: 16px; right: 16px;
@@ -1205,7 +1205,7 @@ details.adv[open] summary::after { content: '–'; }
 .ecsel.sm .ecsel-opt { padding: 7px 10px; font-size: 12.5px; }
 
 /* ---------- editor de template/campanha (página) + preview celular ---------- */
-/* páginas com preview (Modelos, Campanhas, Elite Pay) usam a TELA INTEIRA,
+/* páginas com preview (Modelos, Campanhas, Pagamentos) usam a TELA INTEIRA,
    como as demais abas — o preview lateral ganha mais espaço */
 .editor-page { max-width: none; }
 .tpl-editor { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 28px; align-items: start; }
@@ -2512,7 +2512,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 /* hover da lista de conversas: #f4faf4 é quase branco e piscava no escuro */
 :root[data-theme="dark"] .conv-item:hover { background: var(--sidebar-hover); }
 
-/* ===================== Elite Pay ===================== */
+/* ===================== Pagamentos ===================== */
 /* gráfico de recebimentos (14 dias) */
 .ep-chart { display: flex; align-items: flex-end; gap: 6px; height: 150px; padding-top: 8px; }
 .ep-bar-w { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; height: 100%; justify-content: flex-end; min-width: 0; }
@@ -2527,7 +2527,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .ep-copy input { flex: 1; min-width: 0; font-size: 12px; padding: 8px 10px; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 620px) { .ep-detail { flex-direction: column; align-items: center; } }
 
-/* ---------- Checkout Builder (aba Checkout do Elite Pay) ---------- */
+/* ---------- Checkout Builder (aba Checkout do Pagamentos) ---------- */
 .epk-grid { display: grid; grid-template-columns: minmax(0, 1fr) 460px; gap: 22px; align-items: start; }
 @media (max-width: 900px) { .epk-grid { grid-template-columns: 1fr; } .epk-prevwrap { max-width: 380px; margin: 0 auto; width: 100%; } }
 
@@ -2682,7 +2682,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .var-chip b { color: var(--verde-deep); font-weight: 500; }
 :root[data-theme="dark"] .var-chip b, :root[data-theme="dark"] .var-chip:hover { color: var(--verde); }
 
-/* ---- Escolha do modelo enviado (Elite Pay → Mensagens) ---- */
+/* ---- Escolha do modelo enviado (Pagamentos → Mensagens) ---- */
 .tplpick { padding: 13px; margin-bottom: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; }
 .tplpick:last-child { margin-bottom: 0; }
 .tplpick.vazio { border-style: dashed; }
@@ -2888,7 +2888,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .lg-renewal { background: #2c9fd6; }
 .lg-topup { background: #e79009; }
 
-/* ===================== Elite Pay — editor do modelo de cobrança ===================== */
+/* ===================== Pagamentos — editor do modelo de cobrança ===================== */
 .ep-varchips { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 9px; }
 .ep-chip {
   display: inline-flex; align-items: center; gap: 6px; background: var(--brand-bg);

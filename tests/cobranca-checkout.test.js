@@ -38,7 +38,7 @@ const porta = 3991;
 (async () => {
   const db = require(R + 'src/db');
   await db.loadAsync();
-  const elitepay = require(R + 'src/elitepay');
+  const pagamentos = require(R + 'src/pagamentos');
   const saaspix = require(R + 'src/saaspix');
   const express = require('express');
   const app = express();
@@ -66,7 +66,7 @@ const porta = 3991;
 
   console.log('=== 1. A cobrança sai como BOTÃO para o Checkout, sem código Pix ===');
   const ch = { id: 'epc_1', value: 12900, contactName: 'Maria', comment: 'Consultoria', brCode: '', payUrl: '' };
-  const btn = elitepay.chargeButton(acc, ch);
+  const btn = pagamentos.chargeButton(acc, ch);
   ok(/^https?:/.test(btn.url), 'o botão aponta para uma URL: ' + btn.url.slice(0, 40));
   ok(btn.url.includes('/pay/'), 'que é a página pública de pagamento');
   ok(btn.interactive.type === 'cta_url', 'no formato que a Meta aceita: ' + btn.interactive.type);
@@ -79,9 +79,9 @@ const porta = 3991;
 
   console.log('\n=== 2. Com o código já emitido, o texto continua servindo de reserva ===');
   const ch2 = { ...ch, brCode: '00020126-CODIGO' };
-  const txt = elitepay.chargeMessage(acc, ch2);
+  const txt = pagamentos.chargeMessage(acc, ch2);
   ok(txt.includes('00020126-CODIGO'), 'com código, o copia-e-cola vai no texto');
-  const semCod = elitepay.chargeMessage(acc, ch2, { semCodigo: true });
+  const semCod = pagamentos.chargeMessage(acc, ch2, { semCodigo: true });
   ok(!semCod.includes('00020126-CODIGO'), 'pedindo sem código, ele sai');
   ok(!/copia e cola/i.test(semCod), 'junto com a linha que o apresentava');
   ok(semCod.includes('/pay/'), 'e o link fica, que é para onde a pessoa vai');
@@ -110,7 +110,7 @@ const porta = 3991;
   // cadastro. Procurar antes de reclamar é o que deixa a recarga ser só
   // "valor e pagar".
   acc.profile = { phone: '', document: '', country: 'BR' };
-  elitepay.ensure(acc).subaccount = { document: '84748914009', phone: '5582981440676', status: 'active' };
+  pagamentos.ensure(acc).subaccount = { document: '84748914009', phone: '5582981440676', status: 'active' };
   const pag = saaspix.pagadorDaConta(acc);
   ok(pag.document === '84748914009', 'achou o CPF/CNPJ guardado: ' + pag.document);
   ok(pag.phone === '5582981440676', 'e o telefone: ' + pag.phone);
@@ -124,10 +124,10 @@ const porta = 3991;
   acc2.profile.pixKey = 'nova@teste.com';
   acc2.profile.pixKeyType = 'email';
   db.get().accounts.push(acc2);
-  const sub = await elitepay.garantirPagamentos(acc2);
+  const sub = await pagamentos.garantirPagamentos(acc2);
   ok(!!sub, 'criada sem formulário nenhum');
   ok(sub && sub.document === '84748914009', 'com o documento do cadastro: ' + (sub && sub.document));
-  const denovo = await elitepay.garantirPagamentos(acc2);
+  const denovo = await pagamentos.garantirPagamentos(acc2);
   ok(denovo && denovo.createdAt === sub.createdAt, 'chamar de novo não cria uma segunda');
 
   console.log('\n=== 8. Cadastro sem chave Pix não inventa uma ===');
@@ -137,8 +137,8 @@ const porta = 3991;
   acc3.profile.document = '84748914009';
   acc3.profile.phone = '5582981440676';
   db.get().accounts.push(acc3);
-  ok((await elitepay.garantirPagamentos(acc3)) === null, 'devolve null em vez de criar torto');
-  ok(!(acc3.elitepay && acc3.elitepay.subaccount), 'e nada de subconta pela metade');
+  ok((await pagamentos.garantirPagamentos(acc3)) === null, 'devolve null em vez de criar torto');
+  ok(!(acc3.pagamentos && acc3.pagamentos.subaccount), 'e nada de subconta pela metade');
 
   await encerrar(srv, falhas);
 })().catch(e => { console.error(e); process.exit(1); });

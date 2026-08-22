@@ -181,7 +181,7 @@ const pagarme = {
   },
 
   // ---- RECEBEDOR (KYC) ----
-  // Cada cliente do Elite Pay vira um "recipient" com dados cadastrais e conta
+  // Cada cliente do Pagamentos vira um "recipient" com dados cadastrais e conta
   // bancária própria. Obrigatório desde a circular 3.978/20 do Banco Central.
   async createRecipient({ cfg, f, code }) {
     const pf = f.docType !== 'company';
@@ -515,7 +515,7 @@ function mapAsaas(s) {
 
 const DRIVERS = { pagarme, asaas };
 
-// Config padrão do bloco de cartão (fica em platform.elitepay.card).
+// Config padrão do bloco de cartão (fica em platform.pagamentos.card).
 // ---------------------------------------------------------------------------
 // PRAZO DE LIQUIDAÇÃO — exatamente a regra que cada adquirente pratica.
 // Não é configurável: quem define é a adquirente, então o Koonfy só reproduz.
@@ -593,7 +593,7 @@ function settleSchedule(card, kind, netCents, installments, from) {
 
 function emptyCard() {
   return {
-    enabled: false,             // cartão ligado/desligado no Elite Pay
+    enabled: false,             // cartão ligado/desligado no Pagamentos
     provider: 'pagarme',        // pagarme | asaas
     credit: true,               // aceita cartão de crédito
     boleto: false,              // aceita boleto bancário
@@ -693,7 +693,7 @@ function isConfigured(card) { return driver(card).configured(creds(card)); }
 function isAvailable(card) { return !!(card.enabled && isConfigured(card) && (card.credit || card.boleto)); }
 
 // Taxa da PLATAFORMA sobre a venda no cartão (o que o admin cobra do cliente
-// Elite Pay, por cima do que o adquirente já cobra) — espelha o modelo do Pix.
+// Pagamentos, por cima do que o adquirente já cobra) — espelha o modelo do Pix.
 function computeCardFee(card, valueCents) {
   const pct = Number(card.feeCardPercent) || 0;
   const fixo = Math.max(0, Math.round(Number(card.feeCardFixed) || 0));

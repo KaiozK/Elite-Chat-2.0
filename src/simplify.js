@@ -152,7 +152,7 @@ function webhookHandler(broadcast) {
 
       // COBRANÇA DO PRÓPRIO KOONFY (assinatura, recarga da carteira, conexão
       // extra, link rastreável). Elas não são venda de cliente e não vivem em
-      // `elitepay.charges` — são reconhecidas pelo prefixo do external_id e
+      // `pagamentos.charges` — são reconhecidas pelo prefixo do external_id e
       // liquidadas pela mesma regra de faturamento de sempre.
       //
       // Sem isto, com a Simplify como adquirente o cliente pagava a recarga e o
@@ -165,8 +165,8 @@ function webhookHandler(broadcast) {
         return;
       }
 
-      const elitepay = require('./elitepay');
-      const achado = elitepay.findChargeAnywhere(externo);
+      const pagamentos = require('./pagamentos');
+      const achado = pagamentos.findChargeAnywhere(externo);
       if (!achado) {
         store.logEvent({ type: 'simplify_unmatched', external_id: externo });
         return;
@@ -184,7 +184,7 @@ function webhookHandler(broadcast) {
         return;
       }
 
-      elitepay.markPaidFromGateway(acc, charge, broadcast);
+      pagamentos.markPaidFromGateway(acc, charge, broadcast);
     } catch (e) {
       store.logEvent({ type: 'simplify_webhook_erro', error: e.message });
     }

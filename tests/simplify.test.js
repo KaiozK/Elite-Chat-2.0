@@ -30,7 +30,7 @@ process.env.DATABASE_URL = 'mysql://u:p@localhost/koonfy';
 
 const db = require(R + 'src/db');
 const simplify = require(R + 'src/simplify');
-const elitepay = require(R + 'src/elitepay');
+const pagamentos = require(R + 'src/pagamentos');
 const documento = require(R + 'src/documento');
 
 // A API da Simplify é simulada: o que se testa é o CAMINHO do Koonfy até ela.
@@ -55,18 +55,18 @@ global.fetch = async (u, o) => {
   const p = db.get().platform;
   p.simplify = { clientId: 'CID_TESTE', clientSecret: 'SEG_TESTE', splitUsername: '', splitPercent: 0 };
   p.baseUrl = 'https://koonfy.com';
-  elitepay.platformCfg().gateway = 'simplify';
+  pagamentos.platformCfg().gateway = 'simplify';
 
   console.log('=== 1. O driver ativo é a Simplify ===');
-  ok(elitepay.gateway().id === 'simplify', 'gateway selecionado: ' + elitepay.gateway().id);
-  ok(elitepay.configured() === true, 'reconhece as credenciais como configuradas');
+  ok(pagamentos.gateway().id === 'simplify', 'gateway selecionado: ' + pagamentos.gateway().id);
+  ok(pagamentos.configured() === true, 'reconhece as credenciais como configuradas');
 
   console.log('\n=== 2. Sem CPF do pagador, NÃO cria a cobrança ===');
   // Inventar um CPF passaria na validação de formato e quebraria a conciliação
   // do cliente depois. É melhor recusar com um erro que diz o que fazer.
   let erro = null;
   try {
-    await elitepay.gateway().createCharge({
+    await pagamentos.gateway().createCharge({
       correlationID: 'ep-1', value: 9700, comment: 'Teste',
       customer: { name: 'Maria', phone: '5511988887777' }
     });
@@ -76,7 +76,7 @@ global.fetch = async (u, o) => {
   ok(erro && erro.code === 'payer_required', 'marcado como falta de dado do pagador, não erro do gateway');
 
   console.log('\n=== 3. Com os dados completos, o corpo sai no formato da Simplify ===');
-  const r = await elitepay.gateway().createCharge({
+  const r = await pagamentos.gateway().createCharge({
     correlationID: 'ep-abc123', value: 10050, comment: 'Consultoria',
     customer: { name: 'João Silva', phone: '5582981440676',
       payer: { name: 'João Silva', email: 'joao@exemplo.com', document: '847.489.140-09', phone: '5582981440676' } }
@@ -103,7 +103,7 @@ global.fetch = async (u, o) => {
   // e o cliente continuaria recebendo o líquido. Prejuízo dos dois lados.
   p.simplify.splitUsername = '';
   p.simplify.splitPercent = 0;
-  await elitepay.gateway().createCharge({
+  await pagamentos.gateway().createCharge({
     correlationID: 'ep-2', value: 10000, splits: [{ pixKey: 'x', value: 250 }],   // taxa de 2,5%
     customer: { payer: { name: 'A', email: 'a@a.com', document: '11144477735', phone: '11999999999' } }
   });
@@ -116,7 +116,7 @@ global.fetch = async (u, o) => {
   // Quem o preenchesse por engano mandava para fora uma fatia de cada venda.
   p.simplify.splitUsername = 'socio_antigo';   // resquicio de quem preencheu
   p.simplify.splitPercent = 30;
-  await elitepay.gateway().createCharge({
+  await pagamentos.gateway().createCharge({
     correlationID: 'ep-3', value: 10000, splits: [{ pixKey: 'x', value: 250 }],
     customer: { payer: { name: 'A', email: 'a@a.com', document: '11144477735', phone: '11999999999' } }
   });
@@ -127,7 +127,7 @@ global.fetch = async (u, o) => {
   devolverErro = 'CPF do pagador inválido';
   let e2 = null;
   try {
-    await elitepay.gateway().createCharge({
+    await pagamentos.gateway().createCharge({
       correlationID: 'ep-5', value: 5000,
       customer: { payer: { name: 'A', email: 'a@a.com', document: '11144477735', phone: '11999999999' } }
     });
@@ -139,7 +139,7 @@ global.fetch = async (u, o) => {
   const acc = { id: 'acc_sp', name: 'Loja do Teste', email: 'sp@teste.com', contacts: [], channels: [],
     messages: [], campaigns: [], billing: { status: 'trial', planId: '', periodEnd: 0 } };
   db.get().accounts.push(acc);
-  const ep = elitepay.ensure(acc);
+  const ep = pagamentos.ensure(acc);
   const cobranca = { id: 'epc_sp1', correlationID: 'epc_sp1', value: 10050, status: 'active',
     method: 'pix', platformCut: 250, contactName: 'João', waId: '5582981440676' };
   ep.charges.unshift(cobranca);
@@ -171,9 +171,9 @@ global.fetch = async (u, o) => {
   // cliente se identifica no checkout.
   const acc2 = db.get().accounts.find(a => a.id === 'acc_sp');
   // Com a Simplify a subconta é só o cadastro local (não há subconta lá).
-  elitepay.ensure(acc2).subaccount = { status: 'active', pixKey: '82981440676', name: 'Loja do Teste' };
+  pagamentos.ensure(acc2).subaccount = { status: 'active', pixKey: '82981440676', name: 'Loja do Teste' };
   ultimaChamada = null;
-  const doChat = await elitepay.createCharge(acc2, {
+  const doChat = await pagamentos.createCharge(acc2, {
     valueCents: 19700, comment: 'Consultoria', waId: '5582981440676',
     contactName: 'João Silva', origin: 'chat'
   });
@@ -182,13 +182,13 @@ global.fetch = async (u, o) => {
   ok(!!doChat.payUrl, 'mas já tem o link do checkout para mandar ao cliente: ' + !!doChat.payUrl);
 
   // A mensagem enviada no WhatsApp não pode ficar com "Pix copia e cola:" e nada embaixo.
-  const msg = elitepay.chargeMessage(acc2, doChat);
+  const msg = pagamentos.chargeMessage(acc2, doChat);
   ok(!/copia e cola/i.test(msg), 'a mensagem NÃO oferece um Pix que ainda não existe');
   ok(msg.includes(doChat.payUrl), 'e manda o link, que é onde o cliente preenche');
 
   console.log('\n=== 10. O cliente se identifica e AÍ o Pix é gerado ===');
   respostaFalsa = { internal_id: 'TXN_DEPOIS', status: 'pending', qrcode: '00020126...PIX-GERADO-DEPOIS' };
-  const idOk = await elitepay.identifyPayer(doChat.id, {
+  const idOk = await pagamentos.identifyPayer(doChat.id, {
     name: 'João Silva', taxID: '847.489.140-09', email: 'joao@exemplo.com', phone: '82981440676'
   }, () => {});
   ok(!!idOk, 'identificação aceita');
@@ -201,11 +201,11 @@ global.fetch = async (u, o) => {
   // A primeira compra criou o contato com nome, telefone, e-mail e CPF. Pedir
   // tudo de novo na compra seguinte é atrito puro — e atrito no checkout é
   // carrinho abandonado.
-  const segunda = await elitepay.createCharge(acc2, {
+  const segunda = await pagamentos.createCharge(acc2, {
     valueCents: 4900, comment: 'Segundo produto', waId: '5582981440676',
     contactName: 'João Silva', origin: 'chat'
   });
-  const vista = elitepay.publicChargeView(segunda.id);
+  const vista = pagamentos.publicChargeView(segunda.id);
   ok(!!vista, 'a página da nova cobrança abre');
   ok(vista.needsId === true, 'ainda pede confirmação dos dados (não pula a etapa)');
   ok(vista.prefill.name === 'João Silva', 'nome preenchido: ' + vista.prefill.name);
@@ -215,11 +215,11 @@ global.fetch = async (u, o) => {
   ok(vista.prefill.conhecido === true, 'e a tela sabe que é cliente conhecido, para dizer de onde vieram os dados');
 
   // Cliente NOVO não pode receber dado de ninguém.
-  const deOutro = await elitepay.createCharge(acc2, {
+  const deOutro = await pagamentos.createCharge(acc2, {
     valueCents: 4900, comment: 'Outro cliente', waId: '5511900000000',
     contactName: 'Alguém Novo', origin: 'chat'
   });
-  const v2 = elitepay.publicChargeView(deOutro.id);
+  const v2 = pagamentos.publicChargeView(deOutro.id);
   ok(!v2.prefill.email && !v2.prefill.taxID, 'quem nunca comprou chega com os campos vazios');
   ok(v2.prefill.conhecido === false, 'e sem a mensagem de "te ver de novo"');
 
@@ -228,11 +228,11 @@ global.fetch = async (u, o) => {
   // o celular de outro jeito. Só pelo telefone nascia uma SEGUNDA ficha: a
   // compra ia para a nova e o histórico ficava na antiga.
   const antesDeTudo = acc2.contacts.length;
-  const cobrancaAvulsa = await elitepay.createCharge(acc2, {
+  const cobrancaAvulsa = await pagamentos.createCharge(acc2, {
     valueCents: 3300, comment: 'Compra por fora', origin: 'manual'
   });
   // MESMA pessoa: mesmo CPF, e o telefone digitado sem o 9 e sem o DDI.
-  await elitepay.identifyPayer(cobrancaAvulsa.id, {
+  await pagamentos.identifyPayer(cobrancaAvulsa.id, {
     name: 'João S.', taxID: '84748914009', email: 'joao@exemplo.com', phone: '8281440676'
   }, () => {});
   ok(acc2.contacts.length === antesDeTudo, `nenhum contato novo: ${antesDeTudo} → ${acc2.contacts.length}`);
@@ -243,21 +243,21 @@ global.fetch = async (u, o) => {
   console.log('\n=== 10d. A ETAPA de destino é escolhida pelo cliente ===');
   acc2.stages = ['Novo', 'Conversando', 'Proposta', 'Comprou', 'Sumiu'];
   joao.stage = 'Novo';
-  const ep2 = elitepay.ensure(acc2);
+  const ep2 = pagamentos.ensure(acc2);
   // Sem configurar, o Koonfy procura a etapa que PARECE de fechamento.
   ep2.settings.paidStage = '';
-  elitepay.markPaidFromGateway(acc2, cobrancaAvulsa, () => {});
+  pagamentos.markPaidFromGateway(acc2, cobrancaAvulsa, () => {});
   ok(joao.stage === 'Comprou', `sem configurar, achou a etapa de fechamento: ${joao.stage}`);
 
   // Configurada, manda ela — mesmo que não pareça de fechamento.
-  const outraCobranca = await elitepay.createCharge(acc2, {
+  const outraCobranca = await pagamentos.createCharge(acc2, {
     valueCents: 3300, comment: 'Outra', waId: '5582981440676', contactName: 'João Silva', origin: 'chat',
     pagador: { name: 'João Silva', document: '84748914009', email: 'joao@exemplo.com', phone: '5582981440676' }
   });
   ep2.settings.paidStage = 'Proposta';
   ep2.settings.paidTag = 'VIP';
   joao.stage = 'Novo';
-  elitepay.markPaidFromGateway(acc2, outraCobranca, () => {});
+  pagamentos.markPaidFromGateway(acc2, outraCobranca, () => {});
   ok(joao.stage === 'Proposta', `foi para a etapa configurada: ${joao.stage}`);
   ok(joao.tags.includes('VIP'), 'com a etiqueta configurada');
 
@@ -265,22 +265,22 @@ global.fetch = async (u, o) => {
   acc2.stages = ['Um', 'Dois', 'Três'];
   ep2.settings.paidStage = '';
   joao.stage = 'Um';
-  const terceira = await elitepay.createCharge(acc2, {
+  const terceira = await pagamentos.createCharge(acc2, {
     valueCents: 3300, comment: '3ª', waId: '5582981440676', contactName: 'João Silva', origin: 'chat',
     pagador: { name: 'João Silva', document: '84748914009', email: 'joao@exemplo.com', phone: '5582981440676' }
   });
-  elitepay.markPaidFromGateway(acc2, terceira, () => {});
+  pagamentos.markPaidFromGateway(acc2, terceira, () => {});
   ok(joao.stage === 'Um', `sem etapa de fechamento no funil, o contato fica onde está: ${joao.stage}`);
   acc2.stages = ['Novo', 'Em atendimento', 'Qualificado', 'Negociação', 'Ganho', 'Perdido'];
   ep2.settings.paidStage = ''; ep2.settings.paidTag = 'Cliente';
 
   console.log('\n=== 11. CPF INVENTADO é barrado antes de virar cobrança ===');
-  const outraCob = await elitepay.createCharge(acc2, {
+  const outraCob = await pagamentos.createCharge(acc2, {
     valueCents: 5000, comment: 'Teste', waId: '5582988887777', contactName: 'Maria', origin: 'chat'
   });
   let eCpf = null;
   try {
-    await elitepay.identifyPayer(outraCob.id, {
+    await pagamentos.identifyPayer(outraCob.id, {
       name: 'Maria Souza', taxID: '123.456.789-01', email: 'maria@exemplo.com', phone: '82988887777'
     }, () => {});
   } catch (e) { eCpf = e; }
@@ -301,7 +301,7 @@ global.fetch = async (u, o) => {
   // anterior —, não há motivo para adiar: o código sai junto com a cobrança.
   respostaFalsa = { internal_id: 'TXN_NA_HORA', status: 'pending', qrcode: '00020126...PIX-NA-HORA' };
   ultimaChamada = null;
-  const jaComDados = await elitepay.createCharge(acc2, {
+  const jaComDados = await pagamentos.createCharge(acc2, {
     valueCents: 8800, comment: 'Mentoria', waId: '5582981440676', contactName: 'João Silva', origin: 'manual',
     pagador: { name: 'João Silva', document: '84748914009', email: 'joao@exemplo.com', phone: '5582981440676' }
   });
@@ -311,7 +311,7 @@ global.fetch = async (u, o) => {
   // Documento que não fecha a conta NÃO pode ir para o gateway: melhor adiar o
   // Pix do que derrubar a criação da cobrança inteira.
   ultimaChamada = null;
-  const docRuim = await elitepay.createCharge(acc2, {
+  const docRuim = await pagamentos.createCharge(acc2, {
     valueCents: 8800, comment: 'Mentoria', waId: '5582981440676', contactName: 'João', origin: 'manual',
     pagador: { name: 'João', document: '12345678901', email: 'joao@exemplo.com', phone: '5582981440676' }
   });
@@ -322,27 +322,27 @@ global.fetch = async (u, o) => {
   // É daqui que sai o lucro da plataforma. Na Simplify o depósito inteiro cai
   // na conta dela; a carteira do cliente recebe o LÍQUIDO, e a diferença é a
   // taxa. Se esta conta estiver errada, o erro é em dinheiro de verdade.
-  elitepay.platformCfg().feeInPercent = 2.5;
+  pagamentos.platformCfg().feeInPercent = 2.5;
   acc2.wallet = { balance: 0, transactions: [] };
-  const vendaTaxa = await elitepay.createCharge(acc2, {
+  const vendaTaxa = await pagamentos.createCharge(acc2, {
     valueCents: 19700, comment: 'Venda', waId: '5582981440676', contactName: 'Cliente', origin: 'chat'
   });
   ok(vendaTaxa.feePercent === 2.5, `a cobrança guarda a taxa aplicada: ${vendaTaxa.feePercent}%`);
   ok(vendaTaxa.platformCut === 492, `2,5% de R$ 197,00 = R$ 4,92 (${vendaTaxa.platformCut} centavos)`);
 
-  elitepay.markPaidFromGateway(acc2, vendaTaxa, () => {});
+  pagamentos.markPaidFromGateway(acc2, vendaTaxa, () => {});
   ok(acc2.wallet.balance === 19208,
     `o cliente recebe o líquido na carteira: R$ ${(acc2.wallet.balance / 100).toFixed(2)}`);
   ok(19700 - acc2.wallet.balance === vendaTaxa.platformCut,
     'e a diferença é exatamente a taxa, que ficou na conta da plataforma');
-  elitepay.platformCfg().feeInPercent = 0;
+  pagamentos.platformCfg().feeInPercent = 0;
 
   console.log('\n=== 11c. PIX OUT: a taxa do saque ===');
   // O espelho da entrada. O dinheiro ficou na conta da plataforma, entao o
   // saque do lojista e um Pix que ela paga; a taxa de PIX Out sai descontada
   // do valor pedido, e o que a tela de Saques mostra ao admin e o LIQUIDO.
-  elitepay.platformCfg().feeOutPercent = 1.5;
-  const saque = elitepay.computeWithdrawFee(acc2, 10000);
+  pagamentos.platformCfg().feeOutPercent = 1.5;
+  const saque = pagamentos.computeWithdrawFee(acc2, 10000);
   ok(saque.fee === 150, `1,5% de R$ 100,00 = R$ 1,50 (${saque.fee} centavos)`);
   ok(saque.net === 9850, `o lojista recebe o liquido: R$ ${(saque.net / 100).toFixed(2)}`);
   ok(saque.fromPix === 10000 && saque.fromCard === 0,
@@ -351,22 +351,22 @@ global.fetch = async (u, o) => {
   // O saque debita o VALOR PEDIDO da carteira: a taxa fica com a plataforma e
   // o lojista recebe o liquido. Debitar so o liquido daria a taxa de graca.
   const antesSaque = acc2.wallet.balance;
-  elitepay.debitWithdraw(acc2, 10000);
+  pagamentos.debitWithdraw(acc2, 10000);
   ok(antesSaque - acc2.wallet.balance === 10000,
      `saiu da carteira o valor pedido: R$ ${((antesSaque - acc2.wallet.balance) / 100).toFixed(2)}`);
 
   // Com a taxa desligada o saque e integral: o campo em branco desfaz.
-  elitepay.platformCfg().feeOutPercent = 0;
-  const semTaxa = elitepay.computeWithdrawFee(acc2, 10000);
+  pagamentos.platformCfg().feeOutPercent = 0;
+  const semTaxa = pagamentos.computeWithdrawFee(acc2, 10000);
   ok(semTaxa.fee === 0 && semTaxa.net === 10000, 'com 0% o lojista saca o valor cheio');
 
   // As duas taxas sao independentes: mexer na saida nao mexe na entrada.
-  elitepay.platformCfg().feeInPercent = 2.5;
-  elitepay.platformCfg().feeOutPercent = 9;
-  ok(elitepay.computeSplit(10000).platformCut === 250, 'PIX In continua 2,5%');
-  ok(elitepay.computeWithdrawFee(acc2, 10000).fee === 900, 'e PIX Out e 9%, cada uma na sua');
-  elitepay.platformCfg().feeInPercent = 0;
-  elitepay.platformCfg().feeOutPercent = 0;
+  pagamentos.platformCfg().feeInPercent = 2.5;
+  pagamentos.platformCfg().feeOutPercent = 9;
+  ok(pagamentos.computeSplit(10000).platformCut === 250, 'PIX In continua 2,5%');
+  ok(pagamentos.computeWithdrawFee(acc2, 10000).fee === 900, 'e PIX Out e 9%, cada uma na sua');
+  pagamentos.platformCfg().feeInPercent = 0;
+  pagamentos.platformCfg().feeOutPercent = 0;
 
   console.log('\n=== 12. AVISO de venda no celular do dono e do admin ===');
   const enviados = [];
@@ -380,8 +380,8 @@ global.fetch = async (u, o) => {
 
   const venda = { id: 'epc_av1', correlationID: 'epc_av1', value: 19700, status: 'active',
     method: 'pix', platformCut: 490, contactName: 'João Silva' };
-  elitepay.ensure(acc2).charges.unshift(venda);
-  elitepay.markPaidFromGateway(acc2, venda, () => {});
+  pagamentos.ensure(acc2).charges.unshift(venda);
+  pagamentos.markPaidFromGateway(acc2, venda, () => {});
   await new Promise(r => setTimeout(r, 60));
 
   const aoDono = enviados.find(e => e.conta === acc2.id && e.tipo === 'sale');
@@ -454,7 +454,7 @@ global.fetch = async (u, o) => {
 
   // Salvar sem mexer nas credenciais nao pode apaga-las.
   await post('/admin/config', { pixAutomatic: false });
-  ok(elitepay.gateway().id === 'simplify' && simplify.configured(), 'salvar outra coisa nao derruba as credenciais');
+  ok(pagamentos.gateway().id === 'simplify' && simplify.configured(), 'salvar outra coisa nao derruba as credenciais');
 
   await post('/admin/config', { gateway: 'woovi' });
   ok((await saas()).config.gateway === 'woovi', 'dá para voltar para a Woovi');

@@ -14,7 +14,7 @@ const store = require('./store');
 const cards = require('./cardgateways');
 const limits = require('./limits');
 
-function cardCfg() { return require('./elitepay').cardConfig(); }
+function cardCfg() { return require('./pagamentos').cardConfig(); }
 
 // O cartão só está disponível para assinar planos se o admin ligou e configurou.
 function available() {
@@ -223,7 +223,7 @@ async function checkBoleto(acc, broadcast) {
 // cliente abate o próprio plano.
 // ---------------------------------------------------------------------------
 function subscribeWallet(acc, plan, broadcast) {
-  const ep = require('./elitepay');
+  const ep = require('./pagamentos');
   const total = plan.price + limits.extrasCost(acc);
   const cid = `wallet-sub-${acc.id}-${plan.id}-${Date.now().toString(36)}`;
 
@@ -298,7 +298,7 @@ async function buyExtra(acc, key, qty, body, broadcast) {
   // lançar direto num cartão novo.
   let r = { gatewayId: '' };
   if (body.pay === 'wallet') {
-    require('./elitepay').spendWallet(acc, total, `${n}x ${limits.LABEL[key]}`, broadcast);
+    require('./pagamentos').spendWallet(acc, total, `${n}x ${limits.LABEL[key]}`, broadcast);
   } else {
     r = await charge({
       acc, valueCents: total, body,
@@ -382,7 +382,7 @@ function renewWallet(acc, broadcast) {
     const rotulo = socorro
       ? `Renovação ${plan.name} pelo saldo (Pix Automático não ativado)`
       : `Renovação ${plan.name}`;
-    require('./elitepay').spendWallet(acc, total, rotulo, broadcast);
+    require('./pagamentos').spendWallet(acc, total, rotulo, broadcast);
     require('./woovi').applyPayment({ correlationID: cid, value: total }, broadcast);
     store.logEvent({ type: 'saas_wallet_renewed', accountId: acc.id, value: total, fallbackPix: socorro });
     return { ok: true, amount: total };

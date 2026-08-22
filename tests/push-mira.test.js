@@ -88,7 +88,7 @@ const BASE = 'http://127.0.0.1:3989';
   ];
   // Sem taxa configurada a comissão do aviso da plataforma é zero — e um teste
   // que confere "R$ 0,00" não confere nada.
-  const ep = require(R + 'src/elitepay');
+  const ep = require(R + 'src/pagamentos');
   ep.platformCfg().feeInPercent = 5;
   db.save();
 
@@ -117,7 +117,7 @@ const BASE = 'http://127.0.0.1:3989';
     body: JSON.stringify({ amount: 100000, kind: 'venda', endpoint: 'https://push.exemplo/celular' })
   })).json();
   ok(doLojista.titulo === 'Venda Aprovada', `título do lojista: "${doLojista.titulo}"`);
-  //  usa espaço NÃO separável depois do R$; comparar com um
+  // `toLocaleString` usa espaço NÃO separável depois do R$; comparar com um
   // espaço comum falharia sem nada estar errado.
   const semNbsp = t => String(t || '').replace(/ /g, ' ');
   ok(semNbsp(doLojista.corpo) === 'Valor: R$ 1.000,00', `corpo do lojista: "${doLojista.corpo}"`);

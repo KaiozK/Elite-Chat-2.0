@@ -107,23 +107,23 @@ function maybePush(event, data) {
   } else if (event === 'attendance' && data.status === 'open' && data.reason === 'inbound') {
     type = 'attendance';
     payload = { title: 'Novo atendimento', body: (data.name || 'Cliente') + ' iniciou uma conversa', tag: 'att:' + data.waId, data: { type, waId: data.waId, url } };
-  } else if (event === 'elitepay' && data.status === 'paid') {
-    // VENDA APROVADA no Elite Pay. O dinheiro entrou: é a notificação que o
+  } else if (event === 'pagamentos' && data.status === 'paid') {
+    // VENDA APROVADA no Pagamentos. O dinheiro entrou: é a notificação que o
     // lojista mais espera, e era a única do fluxo de venda que não existia.
-    const fmt = require('./src/elitepay').fmtBRL;
+    const fmt = require('./src/pagamentos').fmtBRL;
     type = 'sale';
     payload = {
       title: 'Venda aprovada ✅',
       body: fmt(data.amount || 0) + (data.contactName ? ' · ' + data.contactName : ''),
       tag: 'sale:' + (data.chargeId || Date.now()),
-      data: { type, waId: data.waId || null, url: '/app/#/elitepay' }
+      data: { type, waId: data.waId || null, url: '/app/#/pagamentos' }
     };
   } else if (event === 'commission') {
     // Venda do indicado aprovada — o afiliado recebe o valor da comissão.
     type = 'commission';
     payload = {
       title: 'Venda Aprovada✅',
-      body: 'Sua comissão: ' + require('./src/elitepay').fmtBRL(data.amount || 0),
+      body: 'Sua comissão: ' + require('./src/pagamentos').fmtBRL(data.amount || 0),
       tag: 'com:' + (data.accountId || '') + ':' + Date.now(),
       data: { type, url: '/app/#/billing' }
     };
@@ -420,7 +420,7 @@ app.get('/campanha/:token', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'campanha.html'));
 });
 
-// Checkout público do Elite Pay — página de pagamento das cobranças (/pay/:id).
+// Checkout público do Pagamentos — página de pagamento das cobranças (/pay/:id).
 // A página busca os dados em /api/public/pay/:id (rota sem autenticação).
 app.get('/pay/:id', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'pay.html'));
@@ -448,7 +448,7 @@ app.post('/simplify-webhook', require('./src/simplify').webhookHandler(broadcast
 
 // Eventos do adquirente de cartão (Pagar.me / Asaas): pagamento confirmado,
 // estorno e aprovação do recebedor. Autenticado + reconferido na API.
-app.post('/card-webhook', require('./src/elitepay').cardWebhookHandler(broadcast));
+app.post('/card-webhook', require('./src/pagamentos').cardWebhookHandler(broadcast));
 
 // Status de entrega dos SMS (DLR da Integra X). Informe esta URL no campo
 // "callback" do Admin SaaS → SMS: <SEU_DOMINIO>/sms-webhook
@@ -473,7 +473,17 @@ app.post('/nuvemshop/lgpd/customers-redact', nsLgpd.lgpdHandler('customers/redac
 app.post('/nuvemshop/lgpd/customers-data-request', nsLgpd.lgpdHandler('customers/data_request'));
 
 app.use(require('./src/webhook')(broadcast));
-app.use('/api', require('./src/api')(broadcast, clients));
+const rotasApi = require('./src/api')(broadcast, clients);
+app.use('/api', rotasApi);
+// O CAMINHO ANTIGO CONTINUA RESPONDENDO. O módulo de Pagamentos se chamava
+// outra coisa, e o app das lojas é um pacote com a versão do dia em que foi
+// publicado: ele chama `/api/elitepay/...` até a loja aprovar a atualização, e
+// abas abertas desde antes também. É o MESMO router montado duas vezes — não há
+// uma segunda cópia para sair de sincronia, só o caminho muda.
+app.use('/api/elitepay', (req, res, next) => {
+  req.url = '/pagamentos' + req.url;
+  rotasApi(req, res, next);
+});
 
 // ---------- SEO da página de marketing (personalizável no Admin SaaS) ----------
 // Injeta as meta tags no <head> do HTML inicial (o que os buscadores leem),
@@ -869,12 +879,12 @@ setInterval(() => {
 
 // Liberação dos recebíveis de cartão: a venda entra como "a liberar" e vira
 // saldo sacável quando vence o prazo do adquirente (D+30/D+32). Tick de 1h.
-const elitepayMod = require('./src/elitepay');
+const pagamentosMod = require('./src/pagamentos');
 setInterval(() => {
-  try { elitepayMod.releaseReceivables(broadcast); }
+  try { pagamentosMod.releaseReceivables(broadcast); }
   catch (e) { console.error('[carteira] erro ao liberar recebíveis:', e.message); }
 }, 60 * 60 * 1000);
-setTimeout(() => { try { elitepayMod.releaseReceivables(broadcast); } catch {} }, 20000);
+setTimeout(() => { try { pagamentosMod.releaseReceivables(broadcast); } catch {} }, 20000);
 
 // Carrinho abandonado da Nuvemshop. Não há webhook para ele: o carrinho vive
 // na API da loja e sai de lá quando vira pedido, então o abandono é o que

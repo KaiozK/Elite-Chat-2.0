@@ -19,7 +19,7 @@
 
 const db = require('./db');
 const woovi = require('./woovi');
-const elitepay = require('./elitepay');
+const pagamentos = require('./pagamentos');
 
 function erro(msg, status = 400) { const e = new Error(msg); e.status = status; return e; }
 
@@ -30,8 +30,8 @@ function validarValor(cents) {
   const d = faixa();
   const v = Math.round(Number(cents) || 0);
   if (!v || v < 0) throw erro('Informe um valor');
-  if (v < d.min) throw erro(`Depósito mínimo: ${elitepay.fmtBRL(d.min)}`);
-  if (d.max > 0 && v > d.max) throw erro(`Depósito máximo: ${elitepay.fmtBRL(d.max)}`);
+  if (v < d.min) throw erro(`Depósito mínimo: ${pagamentos.fmtBRL(d.min)}`);
+  if (d.max > 0 && v > d.max) throw erro(`Depósito máximo: ${pagamentos.fmtBRL(d.max)}`);
   return v;
 }
 

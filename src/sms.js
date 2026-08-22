@@ -240,7 +240,7 @@ function precoDe(qtdSegmentos) {
 function cobrar(acc, qtdSegmentos, label) {
   const total = precoDe(qtdSegmentos);
   if (!total) return 0;
-  require('./elitepay').spendWallet(acc, total, label);
+  require('./pagamentos').spendWallet(acc, total, label);
   return total;
 }
 

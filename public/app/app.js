@@ -1709,7 +1709,7 @@ function connectSSE() {
   // ligações (Calling API) — tela de chamada estilo WhatsApp
   es.addEventListener('call', e => onCallEvent(JSON.parse(e.data || '{}')));
   // Pagamentos — status das cobranças em tempo real (pago/cancelado/subconta)
-  es.addEventListener('elitepay', e => {
+  es.addEventListener('pagamentos', e => {
     const d = JSON.parse(e.data || '{}');
     if (d.status === 'paid' && window.ECNotify) {
       ECNotify.notify({
@@ -1717,10 +1717,10 @@ function connectSSE() {
         // dar para reconhecer uma venda sem olhar a tela.
         type: 'sale', title: '💸 Pagamento recebido!',
         body: `${fmtBRL(d.amount || 0)}${d.contactName ? ', ' + d.contactName : ''}`,
-        waId: d.waId || null, url: '/app/#/elitepay', tag: 'ep:' + (d.chargeId || '')
+        waId: d.waId || null, url: '/app/#/pagamentos', tag: 'ep:' + (d.chargeId || '')
       });
     }
-    if (state.view === 'elitepay') { epPaintTab(); }
+    if (state.view === 'pagamentos') { epPaintTab(); }
     if (state.view === 'admin') { const p = $('[data-pane="adm-ep"]'); if (p && p.classList.contains('show')) admEpPaint(); }
   });
   // Tracking: vendas atribuídas / sync de campanhas atualizam o painel ao vivo
@@ -1824,7 +1824,7 @@ const views = {
   pixels: renderPixels, billing: renderBilling, admin: renderAdmin, sms: renderSms,
   afiliacao: renderAfiliacao, missoes: renderMissoes,
   integrations: renderIntegrations, webhooks: renderIntegrations, // #/webhooks continua funcionando
-  elitepay: renderElitePay, tracking: renderTracking,
+  pagamentos: renderPagamentos, tracking: renderTracking,
   consent: renderConsent, agents: renderAgents, 'agents/perf': renderAgentPerf,
   ia: renderIA,
   'agents/logs': renderAgentLogs, schedule: renderSchedule,
@@ -1832,7 +1832,7 @@ const views = {
   'templates/new': renderTemplateNew, 'campaigns/new': renderCampaignNew,
   'links/new': renderLinkForm, 'links/edit': renderLinkForm, 'links/stats': renderLinkStats,
   'campaigns/report': renderCampaignReport, 'campaigns/mapa': renderMapaLeads,
-  'elitepay/checkout': renderCheckoutBuilder,
+  'pagamentos/checkout': renderCheckoutBuilder,
   checkouts: renderCheckoutList,
   nuvemshop: renderNuvemshop,
   // ---- painel da plataforma (/adm/) ----
@@ -1854,7 +1854,7 @@ const NAV_OF = {
 
   'agents/perf': 'agents', 'agents/logs': 'agents',
   'campaigns/report': 'campaigns', 'campaigns/mapa': 'campaigns',
-  'elitepay/checkout': 'checkouts',
+  'pagamentos/checkout': 'checkouts',
   // Pixels virou aba de Tracking: a rota continua, o menu é o mesmo.
   pixels: 'tracking'
 };
@@ -1872,14 +1872,14 @@ const VIEW_MODULE = {
   'links/new': 'links', 'links/edit': 'links', 'links/stats': 'links',
 
   'agents/perf': 'agents', 'agents/logs': 'agents',
-  'elitepay/checkout': 'elitepay', checkouts: 'elitepay',
+  'pagamentos/checkout': 'pagamentos', checkouts: 'pagamentos',
   billing: null, admin: null, logs: null   // sempre acessíveis (donos/config próprios)
 };
 // O plano do cliente inclui este módulo? (null = sem restrição de plano)
 // checkouts pertence ao Pagamentos; integrations cobre webhooks/Nuvemshop.
 // A loja faz parte do módulo de Integrações: o plano que libera um libera a
 // outra, e não faz sentido ter a tela da loja sem poder conectá-la.
-const VIEW_FEATURE = { checkouts: 'elitepay', webhooks: 'integrations', nuvemshop: 'integrations' };
+const VIEW_FEATURE = { checkouts: 'pagamentos', webhooks: 'integrations', nuvemshop: 'integrations' };
 // ---------------------------------------------------------------------------
 // ASSINATURA OBRIGATÓRIA
 //
@@ -1921,7 +1921,7 @@ const MOBILE_VIEWS = new Set([
   // Pagamentos no celular é uma tela PRÓPRIA, enxuta: cobrar na frente do
   // cliente e mandar o Pix. O módulo completo (produtos, checkout, relatórios,
   // saque) continua só no computador — ali é trabalho de mesa.
-  'elitepay',
+  'pagamentos',
   // ACOMPANHAR um disparo é o oposto de montá-lo: é a tela que se olha no
   // elevador, no carro, no meio da reunião. Um tempo real que só existe no
   // computador é um tempo real que não está onde a pessoa está. Montar a
@@ -1972,9 +1972,9 @@ function applyNavPermissions() {
 //
 // Os ícones são clonados da própria sidebar — assim a barra nunca diverge
 // visualmente do menu e não existe um segundo conjunto de ícones para manter.
-const TABBAR_VIEWS = ['dashboard', 'inbox', 'contacts', 'elitepay'];
+const TABBAR_VIEWS = ['dashboard', 'inbox', 'contacts', 'pagamentos'];
 const TABBAR_LABEL = {
-  dashboard: 'Início', inbox: 'Conversas', contacts: 'Contatos', elitepay: 'Cobrar',
+  dashboard: 'Início', inbox: 'Conversas', contacts: 'Contatos', pagamentos: 'Cobrar',
   schedule: 'Agenda',
   team: 'Chat interno', funnel: 'Funil', quick: 'Respostas', billing: 'Assinatura',
   afiliacao: 'Afiliação', missoes: 'Primeiros passos', settings: 'Ajustes'
@@ -2304,8 +2304,16 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') toggleNav(fa
 window.addEventListener('hashchange', route);
 function route() {
   if (!TOKEN) return;
+  // O MÓDULO DE PAGAMENTOS SE CHAMAVA OUTRA COISA, e endereços antigos ainda
+  // chegam: notificações push já entregues carregam `#/elitepay` no payload,
+  // e há favoritos e abas abertas desde antes. `replace` para não empilhar no
+  // histórico — senão "voltar" fica preso alternando entre os dois endereços.
+  if (/^#\/elitepay(\/|\?|$)/.test(location.hash || '')) {
+    location.replace(location.hash.replace('#/elitepay', '#/pagamentos'));
+    return;
+  }
   if (window._fbMove) cleanupBuilder();  // sai do canvas do Flow Builder
-  // o hash pode trazer query (#/elitepay/checkout?c=<id>) — ela NÃO faz parte
+  // o hash pode trazer query (#/pagamentos/checkout?c=<id>) — ela NÃO faz parte
   // do nome da view; sem separar, a rota não é encontrada e cai no dashboard.
   const v = ((location.hash || '#/' + VIEW_PADRAO).replace('#/', '') || VIEW_PADRAO).split('?')[0];
   let target = views[v] ? v : VIEW_PADRAO;
@@ -2332,7 +2340,7 @@ function route() {
   state.view = target;
   // O Checkout Builder é uma página FOCADA: esconde a sidebar e o topo do app
   const appEl = document.getElementById('app');
-  if (appEl) appEl.classList.toggle('builder-mode', target === 'elitepay/checkout');
+  if (appEl) appEl.classList.toggle('builder-mode', target === 'pagamentos/checkout');
   const navKey = NAV_OF[state.view] || state.view;
   $$('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === navKey));
   updateTopbar();
@@ -3096,7 +3104,7 @@ const BANNERS = [
     tag: 'Vender com a Koonfy', fundo: 'vender', peca: 'ic-vender', pw: 460, ph: 457,
     titulo: 'Venda dentro do WhatsApp',
     texto: 'Cobrança por Pix e cartão no chat, checkout próprio e o dinheiro na sua conta.',
-    acao: 'Ver Pagamentos', href: '#/elitepay'
+    acao: 'Ver Pagamentos', href: '#/pagamentos'
   },
   {
     tag: 'Tracking', fundo: 'tracking', peca: 'ic-tracking', pw: 560, ph: 588,
@@ -3215,7 +3223,7 @@ async function renderDashboard() {
           ['schedule', 'calendar', 'Agendamento'],
           ['campaigns', 'megaphone', 'Campanha'],
           ['tracking', 'trend', 'Tracking'],
-          ['elitepay', 'pix', 'Pagamentos']
+          ['pagamentos', 'pix', 'Pagamentos']
         ];
         const mobile = isMobileLayout();
         return atalhos
@@ -3245,9 +3253,9 @@ async function renderDashboard() {
     $('#dash').innerHTML = `
       <div class="dash-kpis">
         <div class="stat"><span class="stat-ico">${ico('users', 17)}</span>${kpiNum(fmtNk(d.contacts), fmtN(d.contacts))}<div class="lbl">Contatos</div></div>
-        <a class="stat" href="#/elitepay"><span class="stat-ico">${ico('zap', 17)}</span>${kpiNum(fmtBRLk(sl.todayValue), fmtBRL(sl.todayValue))}<div class="lbl">Vendas hoje${sl.todayCount ? ` · ${fmtN(sl.todayCount)} venda${sl.todayCount > 1 ? 's' : ''}` : ''}</div></a>
-        <a class="stat" href="#/elitepay"><span class="stat-ico">${ico('card', 17)}</span>${kpiNum(fmtBRLk(sl.totalValue), fmtBRL(sl.totalValue))}<div class="lbl">Total em vendas</div></a>
-        <a class="stat" href="#/elitepay"><span class="stat-ico">${ico('activity', 17)}</span>${kpiNum(fmtNk(sl.totalCount), fmtN(sl.totalCount))}<div class="lbl">Quantidade de vendas</div></a>
+        <a class="stat" href="#/pagamentos"><span class="stat-ico">${ico('zap', 17)}</span>${kpiNum(fmtBRLk(sl.todayValue), fmtBRL(sl.todayValue))}<div class="lbl">Vendas hoje${sl.todayCount ? ` · ${fmtN(sl.todayCount)} venda${sl.todayCount > 1 ? 's' : ''}` : ''}</div></a>
+        <a class="stat" href="#/pagamentos"><span class="stat-ico">${ico('card', 17)}</span>${kpiNum(fmtBRLk(sl.totalValue), fmtBRL(sl.totalValue))}<div class="lbl">Total em vendas</div></a>
+        <a class="stat" href="#/pagamentos"><span class="stat-ico">${ico('activity', 17)}</span>${kpiNum(fmtNk(sl.totalCount), fmtN(sl.totalCount))}<div class="lbl">Quantidade de vendas</div></a>
       </div>
       <div class="two-col">
         <div class="card chart-card">
@@ -4740,7 +4748,7 @@ async function paintTemplates(sync) {
       <p class="hint" style="margin-top:12px;text-align:left">${ico('info', 12)}
         Um modelo é <b>cobrança</b> ou <b>confirmação de pagamento</b>, nunca os dois.
         Sem papel, ele é um modelo comum de campanha. Com mais de um do mesmo papel,
-        você escolhe qual é enviado em <a href="#/elitepay">Pagamentos → Mensagens</a>.</p>`
+        você escolhe qual é enviado em <a href="#/pagamentos">Pagamentos → Mensagens</a>.</p>`
       : '<p class="muted">Nenhum modelo. Clique em Sincronizar (exige WABA ID + token) ou crie um novo.</p>';
   } catch (e) {
     $('#tpl-table').innerHTML = `<p class="err">${esc(e.message)}</p><p class="muted">Verifique WABA ID e Access Token em Configurações.</p>`;
@@ -6409,7 +6417,7 @@ const TITLES = {
   quick: 'Respostas rápidas', logs: 'Webhook & Logs', settings: 'Configurações',
   team: 'Chat interno', flows: 'Flow Builder', links: 'Links rastreáveis',
   integrations: 'Integrações', webhooks: 'Integrações',
-  elitepay: 'Pagamentos', 'elitepay/checkout': 'Checkout Builder', checkouts: 'Checkout Builder', tracking: 'Tracking',
+  pagamentos: 'Pagamentos', 'pagamentos/checkout': 'Checkout Builder', checkouts: 'Checkout Builder', tracking: 'Tracking',
   schedule: 'Agendamentos', consent: 'Opt-in & Opt-out', pixels: 'Tracking',
   agents: 'Atendentes', billing: 'Assinatura & Carteira', admin: 'Admin SaaS', sms: 'Disparos de SMS',
   'templates/new': 'Criar modelo', 'campaigns/new': 'Nova campanha'
@@ -8985,7 +8993,7 @@ async function renderAdmin() {
       <!-- "Gateways" e não "Pagamentos": esta aba é a dos provedores (Woovi,
            cartão) e das regras de cobrança. A do MÓDULO, com as subcontas e as
            cobranças dos clientes, é a adm-ep, e as duas ficaram com o mesmo
-           nome quando o Elite Pay virou Pagamentos. -->
+           nome quando o Pagamentos virou Pagamentos. -->
       <button data-tab="adm-pay" onclick="showSettingsTab('adm-pay');admFeesPaint()">Gateways</button>
       <button data-tab="adm-wd" onclick="showSettingsTab('adm-wd')">Saques</button>
       <button data-tab="adm-ep" onclick="showSettingsTab('adm-ep');admEpPaint()">Pagamentos</button>
@@ -9466,7 +9474,7 @@ async function paintAdmin() {
         <!-- TAXAS DA PLATAFORMA. Moram aqui, junto dos gateways: o que se
              cobra depende de qual gateway está ativo, e ler as duas coisas
              em telas diferentes era o que confundia. O conteúdo vem de
-             /admin/elitepay, que esta aba não carrega. -->
+             /admin/pagamentos, que esta aba não carrega. -->
         <div id="adm-fees-box">${skel(3)}</div>
         <div class="card">
           <h2>${ico('gear')} Regras de cobrança</h2>
@@ -9595,7 +9603,7 @@ const FEATURE_META = [
   { key: 'schedule',     label: 'Agendamentos' },
   { key: 'team',         label: 'Chat interno' },
   { key: 'agents',       label: 'Atendentes (equipe)' },
-  { key: 'elitepay',     label: 'Pagamentos (cobranças)' },
+  { key: 'pagamentos',     label: 'Pagamentos (cobranças)' },
   { key: 'links',        label: 'Links rastreáveis' },
   { key: 'pixels',       label: 'Pixels de rastreamento' },
   { key: 'tracking',     label: 'Tracking (atribuição)' },
@@ -9652,7 +9660,7 @@ function planCheckoutField(scope, atual) {
 
 // Carregada uma vez, ao abrir o Admin: os checkouts mudam pouco.
 async function admCarregarCheckouts() {
-  try { ADM_CHECKOUTS = (await api('/elitepay/checkouts')).checkouts || []; }
+  try { ADM_CHECKOUTS = (await api('/pagamentos/checkouts')).checkouts || []; }
   catch { ADM_CHECKOUTS = []; }
 }
 
@@ -11059,7 +11067,7 @@ async function admSaveAllFees(btn) {
   const txt = btn.innerHTML; btn.disabled = true; btn.textContent = 'Salvando…';
   const num = id => { const el = $(id); return el ? el.value : undefined; };
   try {
-    await api('/admin/elitepay/config', {
+    await api('/admin/pagamentos/config', {
       method: 'PUT',
       body: {
         feeInPercent: num('#adm-ep-fee-in'),
@@ -11082,7 +11090,7 @@ async function admSaveAllFees(btn) {
     if (prid) card.platformRecipientId = prid.value;
     const wal = $('#adm-card-wallet');
     if (wal) card.asaas = { walletId: wal.value.trim() };
-    await api('/admin/elitepay/card', { method: 'PUT', body: card });
+    await api('/admin/pagamentos/card', { method: 'PUT', body: card });
     toast('Taxas de Pix e cartão salvas');
     admEpPaint();
   } catch (e) { toast(e.message, 'error'); btn.disabled = false; btn.innerHTML = txt; }
@@ -11170,7 +11178,7 @@ function admCardSection(c, t) {
 
 async function admCardSave(body) {
   // a config vive na aba Pagamentos (paintAdmin); refaz esse painel, não o Pagamentos
-  try { await api('/admin/elitepay/card', { method: 'PUT', body }); toast('Cartão atualizado'); paintAdmin(); }
+  try { await api('/admin/pagamentos/card', { method: 'PUT', body }); toast('Cartão atualizado'); paintAdmin(); }
   catch (e) { toast(e.message, 'error'); }
 }
 function admCardSaveKeys() {
@@ -11182,17 +11190,17 @@ function admCardSaveKeys() {
 }
 async function admCardTest(btn) {
   const txt = btn.innerHTML; btn.disabled = true; btn.textContent = 'Testando…';
-  try { const r = await api('/admin/elitepay/card/test'); toast(`Conexão OK, ${r.provider} (${r.ambiente})`); }
+  try { const r = await api('/admin/pagamentos/card/test'); toast(`Conexão OK, ${r.provider} (${r.ambiente})`); }
   catch (e) { toast(e.message, 'error'); }
   btn.disabled = false; btn.innerHTML = txt;
 }
 
-// O card das taxas vive na aba dos GATEWAYS, que não carrega /admin/elitepay:
+// O card das taxas vive na aba dos GATEWAYS, que não carrega /admin/pagamentos:
 // ela é montada com /admin/config. Então o card busca os próprios dados.
 async function admFeesPaint() {
   const box = document.getElementById('adm-fees-box'); if (!box) return;
   try {
-    const d = await api('/admin/elitepay');
+    const d = await api('/admin/pagamentos');
     box.innerHTML = admFeesSection(d.config, d.card || {}, d.totals || {});
   } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 }
@@ -11200,7 +11208,7 @@ async function admFeesPaint() {
 async function admEpPaint() {
   const box = $('#adm-ep-box'); if (!box) return;
   try {
-    const d = await api('/admin/elitepay');
+    const d = await api('/admin/pagamentos');
     const t = d.totals, cfg = d.config;
     box.innerHTML = `
       <div class="metric-hero">
@@ -11291,14 +11299,14 @@ async function admEpSaveCfg() {
     if ($('#adm-ep-fee-out')) body.feeOutPercent = $('#adm-ep-fee-out').value;
     if ($('#adm-ep-splitkey')) body.splitPixKey = $('#adm-ep-splitkey').value;
     if ($('#adm-ep-approval')) body.requireApproval = $('#adm-ep-approval').checked;
-    await api('/admin/elitepay/config', { method: 'PUT', body });
+    await api('/admin/pagamentos/config', { method: 'PUT', body });
     toast('Configuração do Pagamentos salva');
   } catch (e) { toast(e.message, 'error'); }
 }
 async function admEpSubStatus(accId, status) {
   const lbl = { active: 'aprovar/reativar', suspended: 'suspender', rejected: 'rejeitar' }[status] || status;
   if (status !== 'active' && !confirm(`Tem certeza que deseja ${lbl} esta subconta?`)) return;
-  try { await api('/admin/elitepay/subaccounts/' + accId, { method: 'PUT', body: { status } }); toast('Subconta atualizada'); admEpPaint(); }
+  try { await api('/admin/pagamentos/subaccounts/' + accId, { method: 'PUT', body: { status } }); toast('Subconta atualizada'); admEpPaint(); }
   catch (e) { toast(e.message, 'error'); }
 }
 
@@ -14601,7 +14609,7 @@ async function connectWhatsApp() {
   if (!pop) esFail('Popup bloqueado pelo navegador. Libere popups para este site.');
 }
 
-// ==================== ELITE PAY — pagamentos Pix do cliente ====================
+// ==================== PAGAMENTOS — pagamentos Pix do cliente ====================
 // Subconta própria por cliente (gateway Woovi via plataforma), cobranças Pix com
 // QR Code + copia e cola + link, histórico com filtros e integração com o chat.
 let epState = { tab: 'dash', q: '', status: '' };
@@ -14692,7 +14700,7 @@ async function epCelGerar() {
   const btn = $('#cel-btn'); btn.disabled = true;
   const txt = btn.innerHTML; btn.textContent = 'Gerando…';
   try {
-    const r = await api('/elitepay/charges', {
+    const r = await api('/pagamentos/charges', {
       body: { valueCents: cents, comment: $('#cel-desc').value, origin: 'mobile' }
     });
     epCel = { charge: r.charge };
@@ -14751,17 +14759,17 @@ function epCelNova() {
   $('#cel-val').focus();
 }
 
-async function renderElitePay() {
+async function renderPagamentos() {
   $('#view').innerHTML = `<div class="page"><div class="card">${skel(6)}</div></div>`;
   let d;
-  try { d = await api('/elitepay'); } catch (e) { $('#view').innerHTML = `<div class="page"><div class="card err">${esc(e.message)}</div></div>`; return; }
+  try { d = await api('/pagamentos'); } catch (e) { $('#view').innerHTML = `<div class="page"><div class="card err">${esc(e.message)}</div></div>`; return; }
   state.epInfo = d;
   // No CELULAR o módulo inteiro não cabe nem faz sentido: abas de produtos,
   // checkout, relatórios e saque são trabalho de mesa. Do telefone se faz uma
   // coisa — cobrar na frente do cliente e mandar o Pix.
   if (isMobileLayout()) return epRenderCobrarNoCelular(d);
   // A aba Cartão só existe se a plataforma habilitou o adquirente.
-  try { epCardTabVisible = (await api('/elitepay/card-account')).account.available; } catch { epCardTabVisible = false; }
+  try { epCardTabVisible = (await api('/pagamentos/card-account')).account.available; } catch { epCardTabVisible = false; }
   if (!epCardTabVisible && epState.tab === 'card') epState.tab = 'dash';
 
   // ---- Sem subconta → fluxo de cadastro (onboarding) ----
@@ -14869,11 +14877,11 @@ async function epSubmitOnboarding() {
       pixKey: $('#ep-ob-pix').value, pixKeyType: ecVal('ep-ob-pixtype') || 'cpf'
     };
     if ($('#ep-ob-repname')) { body.repName = $('#ep-ob-repname').value; body.repDocument = $('#ep-ob-repdoc').value; }
-    const r = await api('/elitepay/subaccount', { body });
+    const r = await api('/pagamentos/subaccount', { body });
     // Modo KYC: abre a verificação hospedada da Woovi em nova aba
     if (r.onboardingUrl) { openExternal(r.onboardingUrl); toast('Conclua a verificação KYC na aba que abriu'); }
     else toast(r.subaccount.status === 'active' ? 'Conta Pagamentos criada e ativada! 🎉' : 'Conta criada, aguardando aprovação');
-    renderElitePay();
+    renderPagamentos();
   } catch (e) { const el = $('#ep-ob-err'); if (el) el.textContent = e.message; toast(e.message, 'error'); }
   finally { if ($('#ep-ob-btn')) $('#ep-ob-btn').disabled = false; }
 }
@@ -14902,7 +14910,7 @@ let epSaldo = null;
 
 async function epPaintSaque(box) {
   box.innerHTML = `<div class="card">${skel(5)}</div>`;
-  try { epSaldo = await api('/elitepay/saldo'); }
+  try { epSaldo = await api('/pagamentos/saldo'); }
   catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
   const d = epSaldo;
   const devendo = d.disponivel < 0;
@@ -15018,7 +15026,7 @@ let epCardAcc = null;
 
 async function epPaintCard(box) {
   box.innerHTML = skel(4);
-  try { epCardAcc = (await api('/elitepay/card-account')).account; }
+  try { epCardAcc = (await api('/pagamentos/card-account')).account; }
   catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
   const a = epCardAcc;
 
@@ -15155,7 +15163,7 @@ async function epCardSubmit() {
   const btn = $('#ep-c-go'); const txt = btn.innerHTML;
   btn.disabled = true; btn.textContent = 'Enviando…';
   try {
-    await api('/elitepay/card-account', {
+    await api('/pagamentos/card-account', {
       body: {
         ...f,
         docType: f.docType,
@@ -15173,7 +15181,7 @@ async function epCardSubmit() {
 
 async function epPaintDash(box) {
   try {
-    const { metrics: m, recent, logs } = await api('/elitepay/dashboard');
+    const { metrics: m, recent, logs } = await api('/pagamentos/dashboard');
     const maxV = Math.max(1, ...m.series.map(s => s.value));
     box.innerHTML = `
       <div class="metric-hero">
@@ -15233,7 +15241,7 @@ function epDebounceList() { clearTimeout(epListTimer); epListTimer = setTimeout(
 async function epListCharges() {
   const el = $('#ep-list'); if (!el) return;
   try {
-    const { charges, total } = await api(`/elitepay/charges?q=${encodeURIComponent(epState.q)}&status=${encodeURIComponent(epState.status)}`);
+    const { charges, total } = await api(`/pagamentos/charges?q=${encodeURIComponent(epState.q)}&status=${encodeURIComponent(epState.status)}`);
     el.innerHTML = charges.length
       ? `<p class="muted" style="font-size:12px;margin:0 0 8px">${total} cobrança(s)</p>` + epChargesTable(charges)
       : '<p class="muted">Nenhuma cobrança com esses filtros.</p>';
@@ -15327,7 +15335,7 @@ function epTplPicker(role, label, icone, lista, atual) {
 async function epPickTpl(role, name) {
   const campo = role === 'cobranca' ? 'chargeTemplateName' : 'confirmTemplateName';
   try {
-    const r = await api('/elitepay/settings', { method: 'PUT', body: { [campo]: name } });
+    const r = await api('/pagamentos/settings', { method: 'PUT', body: { [campo]: name } });
     if (state.epInfo) state.epInfo[campo] = r[campo];
     toast(`Modelo de ${role === 'cobranca' ? 'cobrança' : 'confirmação'}: ${name}`);
     epPaintCfg($('#ep-box'));
@@ -15371,13 +15379,13 @@ async function epSaveCfg() {
       paidTag: ($('#ep-cfg-tag') && $('#ep-cfg-tag').value) || ''
     };
     if ($('#ep-cfg-msg')) body.autoMessage = $('#ep-cfg-msg').value;   // só se o editor estiver presente
-    const r = await api('/elitepay/settings', { method: 'PUT', body });
+    const r = await api('/pagamentos/settings', { method: 'PUT', body });
     state.epInfo.settings = r.settings;
     toast('Preferências de cobrança salvas');
   } catch (e) { toast(e.message, 'error'); }
 }
 
-// ---- CHECKOUT BUILDER: página dedicada (#/elitepay/checkout) ----
+// ---- CHECKOUT BUILDER: página dedicada (#/pagamentos/checkout) ----
 let epkState = null;
 let epkPrevStep = 1;   // etapa exibida na prévia: 1 dados · 2 pix
 const EPK_COLORS = ['#2ed378', '#2563eb', '#7c3aed', '#db2777', '#ea580c', '#0891b2', '#111827'];
@@ -15385,15 +15393,15 @@ const EPK_COLORS = ['#2ed378', '#2563eb', '#7c3aed', '#db2777', '#ea580c', '#089
 async function renderCheckoutBuilder() {
   $('#view').innerHTML = `<div class="page"><div class="card">${skel(6)}</div></div>`;
   if (!state.epInfo) {
-    try { state.epInfo = await api('/elitepay'); }
+    try { state.epInfo = await api('/pagamentos'); }
     catch (e) { $('#view').innerHTML = `<div class="page"><div class="card err">${esc(e.message)}</div></div>`; return; }
   }
-  if (!state.epInfo.subaccount || state.epInfo.subaccount.status !== 'active') { location.hash = '#/elitepay'; return; }
+  if (!state.epInfo.subaccount || state.epInfo.subaccount.status !== 'active') { location.hash = '#/pagamentos'; return; }
   // ?c=<id> abre um template específico; sem isso, o padrão
   const wanted = new URLSearchParams((location.hash.split('?')[1] || '')).get('c');
   let ck = state.epInfo.checkout || {};
   if (wanted) {
-    try { const r = await api('/elitepay/checkouts'); ck = r.checkouts.find(c => c.id === wanted) || ck; } catch {}
+    try { const r = await api('/pagamentos/checkouts'); ck = r.checkouts.find(c => c.id === wanted) || ck; } catch {}
   }
   epkCheckoutId = ck.id || '';
   epkCheckoutName = ck.name || 'Checkout padrão';
@@ -15426,7 +15434,7 @@ async function renderCheckoutBuilder() {
   // sendo montada + painel DIREITO com abas Componentes/Configurações.
   $('#view').innerHTML = `<div class="ckb">
     <header class="ckb-top">
-      <button class="icon-btn" title="Voltar ao Pagamentos" onclick="location.hash='#/elitepay'">${ico('arrowleft', 17)}</button>
+      <button class="icon-btn" title="Voltar ao Pagamentos" onclick="location.hash='#/pagamentos'">${ico('arrowleft', 17)}</button>
       <div class="brand ckb-brand">
         <span class="brand-mark"><img src="/marca/logo" alt="Checkout Builder"></span>
         <div><b class="ckb-titulo">Checkout<i> Builder</i></b>
@@ -15528,7 +15536,7 @@ function epkPaintSide() {
           <span class="ic">${ico(s.icon, 20)}</span><b>${s.label}</b>
         </button>`;
       }).join('')}</div>
-      ${epkTab === 'cfg' ? `<a class="card link-card" style="margin-top:14px" href="#/elitepay">
+      ${epkTab === 'cfg' ? `<a class="card link-card" style="margin-top:14px" href="#/pagamentos">
         <span class="lc-ic">${ico('gear', 18)}</span>
         <div style="flex:1"><h2 style="margin:0 0 2px;font-size:13.5px">Preferências de cobrança</h2>
         <p class="muted" style="margin:0;font-size:12px">Validade do Pix e confirmação automática</p></div>
@@ -16032,7 +16040,7 @@ function epkPrev() {
 async function epkSave() {
   const btn = $('#epk-save'); if (btn) btn.disabled = true;
   try {
-    const r = await api('/elitepay/checkout', { method: 'PUT', body: { ...epkState, id: epkCheckoutId, name: epkCheckoutName } });
+    const r = await api('/pagamentos/checkout', { method: 'PUT', body: { ...epkState, id: epkCheckoutId, name: epkCheckoutName } });
     state.epInfo.checkout = r.checkout;
     const s = $('#epk-saved');
     if (s) { s.innerHTML = '<i></i> ✓ Salvo agora'; setTimeout(() => { if ($('#epk-saved')) $('#epk-saved').innerHTML = '<i></i> Tudo certo!'; }, 2600); }
@@ -16045,7 +16053,7 @@ async function epkSave() {
 async function epPaintProducts(box) {
   box.innerHTML = skel(4);
   let d;
-  try { d = await api('/elitepay/products'); } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
+  try { d = await api('/pagamentos/products'); } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
   state.epProducts = d.products; state.epCheckouts = d.checkouts;
   box.innerHTML = `
     <div class="card">
@@ -16132,14 +16140,14 @@ async function epProdSave() {
   if (!body.name) return toast('Informe o nome do produto', 'error');
   try {
     const id = window._epProd;
-    await api('/elitepay/products' + (id ? '/' + id : ''), { method: id ? 'PUT' : 'POST', body });
+    await api('/pagamentos/products' + (id ? '/' + id : ''), { method: id ? 'PUT' : 'POST', body });
     toast(id ? 'Produto atualizado!' : 'Produto criado!');
     epPaintProducts($('#ep-box'));
   } catch (e) { toast(e.message, 'error'); }
 }
 async function epProdDel(id) {
   if (!await confirmModal('Excluir este produto?', 'As cobranças já criadas continuam válidas.')) return;
-  try { await api('/elitepay/products/' + id, { method: 'DELETE' }); toast('Produto excluído'); epPaintProducts($('#ep-box')); }
+  try { await api('/pagamentos/products/' + id, { method: 'DELETE' }); toast('Produto excluído'); epPaintProducts($('#ep-box')); }
   catch (e) { toast(e.message, 'error'); }
 }
 
@@ -16147,9 +16155,9 @@ async function epProdDel(id) {
 async function renderCheckoutList() {
   $('#view').innerHTML = `<div class="page"><div class="card">${skel(4)}</div></div>`;
   let d;
-  try { d = await api('/elitepay'); } catch (e) { $('#view').innerHTML = `<div class="page"><div class="card err">${esc(e.message)}</div></div>`; return; }
+  try { d = await api('/pagamentos'); } catch (e) { $('#view').innerHTML = `<div class="page"><div class="card err">${esc(e.message)}</div></div>`; return; }
   state.epInfo = d;
-  if (!d.subaccount || d.subaccount.status !== 'active') { location.hash = '#/elitepay'; return; }
+  if (!d.subaccount || d.subaccount.status !== 'active') { location.hash = '#/pagamentos'; return; }
   const cks = d.checkouts || [];
   $('#view').innerHTML = `<div class="page">
     <div class="page-head row">
@@ -16170,23 +16178,23 @@ async function renderCheckoutList() {
       </tbody></table></div>
       <p class="hint" style="margin-top:12px">${ico('shield', 12)} Na hora de gerar a cobrança no Pagamentos você escolhe o <b>produto</b> e qual destes <b>checkouts</b> usar.</p>
     </div>
-    <a class="card link-card" href="#/elitepay">
+    <a class="card link-card" href="#/pagamentos">
       <span class="lc-ic">${ico('sparkles', 20)}</span>
       <div style="flex:1"><h2 style="margin:0 0 3px">Produtos</h2>
         <p class="muted" style="margin:0;font-size:13px">Cadastre nome, preço e imagens em <b>Pagamentos → Produtos</b>, eles preenchem as variáveis do checkout.</p></div>
       <span class="lc-arrow">${ico('arrowright', 18)}</span></a>
   </div>`;
 }
-function ckEdit(id) { window.open('/app/#/elitepay/checkout?c=' + encodeURIComponent(id), '_blank', 'noopener'); }
+function ckEdit(id) { window.open('/app/#/pagamentos/checkout?c=' + encodeURIComponent(id), '_blank', 'noopener'); }
 async function ckNew() {
   const name = prompt('Nome do novo checkout:', 'Checkout promocional');
   if (!name) return;
-  try { const r = await api('/elitepay/checkouts', { body: { name } }); toast('Checkout criado!'); ckEdit(r.checkout.id); renderCheckoutList(); }
+  try { const r = await api('/pagamentos/checkouts', { body: { name } }); toast('Checkout criado!'); ckEdit(r.checkout.id); renderCheckoutList(); }
   catch (e) { toast(e.message, 'error'); }
 }
 async function ckDel(id) {
   if (!await confirmModal('Excluir este checkout?', 'As cobranças que já usam ele passam a exibir o checkout padrão.')) return;
-  try { await api('/elitepay/checkouts/' + id, { method: 'DELETE' }); toast('Checkout excluído'); renderCheckoutList(); }
+  try { await api('/pagamentos/checkouts/' + id, { method: 'DELETE' }); toast('Checkout excluído'); renderCheckoutList(); }
   catch (e) { toast(e.message, 'error'); }
 }
 
@@ -16371,7 +16379,7 @@ async function epCreateCharge() {
   const btn = $('#ep-nc-btn'); btn.disabled = true;
   try {
     const waId = ($('#ep-nc-waid') && $('#ep-nc-waid').value) || ($('#ep-nc-phone') && $('#ep-nc-phone').value.replace(/\D/g, '')) || null;
-    const r = await api('/elitepay/charges', { body: {
+    const r = await api('/pagamentos/charges', { body: {
       valueCents: epParseReais($('#ep-nc-val').value),
       comment: $('#ep-nc-desc').value,
       productId: ecVal('ep-nc-prod') || '', checkoutId: ecVal('ep-nc-ckt') || '',
@@ -16387,7 +16395,7 @@ async function epCreateCharge() {
     else if (r.sendError) toast('Cobrança gerada, mas NÃO enviada: ' + r.sendError, 'error');
     else toast('Cobrança gerada!');
     epShowCharge(r.charge, r.sendError);
-    if (state.view === 'elitepay') epPaintTab();
+    if (state.view === 'pagamentos') epPaintTab();
   } catch (e) { toast(e.message, 'error'); }
   finally { if ($('#ep-nc-btn')) $('#ep-nc-btn').disabled = false; }
 }
@@ -16395,7 +16403,7 @@ async function epCreateCharge() {
 // ---- Detalhe da cobrança: QR Code, copia e cola, link e ações ----
 async function epChargeDetail(id) {
   try {
-    const { charges } = await api('/elitepay/charges?q=' + encodeURIComponent(id));
+    const { charges } = await api('/pagamentos/charges?q=' + encodeURIComponent(id));
     const ch = charges.find(c => c.id === id);
     if (!ch) return toast('Cobrança não encontrada', 'error');
     epShowCharge(ch);
@@ -16451,13 +16459,13 @@ function epFmtDoc(d) {
 }
 async function epCancel(id) {
   if (!confirm('Cancelar esta cobrança? O cliente não conseguirá mais pagar por ela.')) return;
-  try { await api(`/elitepay/charges/${id}/cancel`, { method: 'POST', body: {} }); toast('Cobrança cancelada'); if (state.view === 'elitepay') epPaintTab(); } catch (e) { toast(e.message, 'error'); }
+  try { await api(`/pagamentos/charges/${id}/cancel`, { method: 'POST', body: {} }); toast('Cobrança cancelada'); if (state.view === 'pagamentos') epPaintTab(); } catch (e) { toast(e.message, 'error'); }
 }
 async function epResend(id) {
-  try { await api(`/elitepay/charges/${id}/resend`, { method: 'POST', body: {} }); toast('Cobrança reenviada na conversa 📨'); } catch (e) { toast(e.message, 'error'); }
+  try { await api(`/pagamentos/charges/${id}/resend`, { method: 'POST', body: {} }); toast('Cobrança reenviada na conversa 📨'); } catch (e) { toast(e.message, 'error'); }
 }
 async function epDuplicate(id) {
-  try { const r = await api(`/elitepay/charges/${id}/duplicate`, { method: 'POST', body: {} }); toast('Cobrança duplicada'); epShowCharge(r.charge); if (state.view === 'elitepay') epPaintTab(); } catch (e) { toast(e.message, 'error'); }
+  try { const r = await api(`/pagamentos/charges/${id}/duplicate`, { method: 'POST', body: {} }); toast('Cobrança duplicada'); epShowCharge(r.charge); if (state.view === 'pagamentos') epPaintTab(); } catch (e) { toast(e.message, 'error'); }
 }
 
 // Botão "Cobrança" dentro da conversa (composer do inbox)
@@ -16467,7 +16475,7 @@ async function chatChargeModal(waId) {
   // chat, produtos, checkouts e a mensagem padrão da conta vinham vazios —
   // justamente onde a cobrança é mais usada.
   if (!state.epInfo) {
-    try { state.epInfo = await api('/elitepay'); }
+    try { state.epInfo = await api('/pagamentos'); }
     catch (e) { return toast(e.message, 'error'); }
   }
   // Sem conta de recebimento ativa, a cobrança seria montada inteira só para
@@ -16476,7 +16484,7 @@ async function chatChargeModal(waId) {
   // sabe. Nada de pop-up no meio do caminho.
   const sub = state.epInfo.subaccount;
   if (!sub || sub.status !== 'active') {
-    location.hash = '#/elitepay';
+    location.hash = '#/pagamentos';
     return;
   }
   epNewChargeModal(waId, c ? c.name : null);

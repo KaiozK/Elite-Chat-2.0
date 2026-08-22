@@ -38,7 +38,7 @@ module.exports = function (broadcast, clients) {
     // Registra a URL pública da instalação (usada no link do checkout /pay/:id)
     // Vazio quando a requisicao chegou pelo host do PAINEL: gravar o
     // subdominio aqui faria todo link de pagamento sair apontando para ele.
-    try { const o = hosts.origemPublica(req); if (o) require('./elitepay').noteBaseUrl(o); } catch {}
+    try { const o = hosts.origemPublica(req); if (o) require('./pagamentos').noteBaseUrl(o); } catch {}
     const token = ((req.get('authorization') || '').replace(/^Bearer\s+/i, '')) || req.query.token;
     const sess = token && db.get().sessions[token];
     if (!sess) return res.status(401).json({ error: 'Não autenticado' });
@@ -279,9 +279,9 @@ module.exports = function (broadcast, clients) {
       acc.profile.pixKeyType = String(receb.pixKeyType || '').slice(0, 20);
     }
     let pagamentos = null;
-    // require inline: o `elitepay` do escopo só é vinculado mais abaixo, e
+    // require inline: o `pagamentos` do escopo só é vinculado mais abaixo, e
     // tocá-lo aqui cairia na zona morta do const.
-    const pag = require('./elitepay');
+    const pag = require('./pagamentos');
     // Um caminho só: `garantirPagamentos` confere o que está gravado na conta e
     // cria a subconta (Woovi) ou o cadastro local (Simplify). Faltando dado, ele
     // devolve null e o cliente termina depois pelo painel, com o formulário já
@@ -554,7 +554,7 @@ module.exports = function (broadcast, clients) {
     //   · plano      — pelo menos um plano publicado inclui o módulo. Um
     //                  recurso que nenhum plano vende não é vitrine, é isca.
     // -----------------------------------------------------------------------
-    const card = elitepay.cardConfig();
+    const card = pagamentos.cardConfig();
     const cardOn = !!(card.enabled && require('./cardgateways').isConfigured(card));
     // Sem plano publicado nenhum, o padrão do sistema é o que vale (é o mesmo
     // critério que `limits.featuresOf` usa para quem está em teste).
@@ -563,15 +563,15 @@ module.exports = function (broadcast, clients) {
       if (!pubs.length) return !!db.defaultFeatures()[chave];
       return pubs.some(pl => db.normFeatures(pl.modules, pl.modules)[chave]);
     };
-    const pix = elitepay.configured();
+    const pix = pagamentos.configured();
     const cartao = cardOn && !!card.credit;
     const boleto = cardOn && !!card.boleto;
     const recursos = {
       pix, cartao, boleto,
-      pixAutomatico: (elitepay.platformCfg().gateway || 'woovi') === 'woovi' && !!p.woovi.pixAutomatic,
+      pixAutomatico: (pagamentos.platformCfg().gateway || 'woovi') === 'woovi' && !!p.woovi.pixAutomatic,
       // Sem NENHUM meio de pagamento configurado não há o que vender: a seção
       // inteira sai, em vez de anunciar uma cobrança que não pode ser gerada.
-      pagamentos: emAlgumPlano('elitepay') && (pix || cartao || boleto),
+      pagamentos: emAlgumPlano('pagamentos') && (pix || cartao || boleto),
       // `isAvailable`/`configured` são as MESMAS funções que decidem se o
       // cliente vê a integração dentro do app. Ligar o interruptor sem
       // preencher as credenciais não faz a Nuvemshop existir — e era assim que
@@ -1666,11 +1666,11 @@ module.exports = function (broadcast, clients) {
         avgFirstResponseMs: avg(fr), avgHandleTimeMs: avg(ht)
       };
     })() : null;
-    // Elite Pay no dashboard: vendas de hoje + acumulado (Pix e cartão juntos).
-    const pagas = ((acc.elitepay && acc.elitepay.charges) || []).filter(c => c.status === 'paid');
+    // Pagamentos no dashboard: vendas de hoje + acumulado (Pix e cartão juntos).
+    const pagas = ((acc.pagamentos && acc.pagamentos.charges) || []).filter(c => c.status === 'paid');
     const hoje = pagas.filter(c => (c.paidAt || 0) >= t0);
     const sales = {
-      enabled: !!(acc.elitepay && acc.elitepay.subaccount),
+      enabled: !!(acc.pagamentos && acc.pagamentos.subaccount),
       todayCount: hoje.length,
       todayValue: hoje.reduce((s, c) => s + (c.value || 0), 0),
       totalCount: pagas.length,
@@ -2168,7 +2168,7 @@ module.exports = function (broadcast, clients) {
     if (cortados) {
       res.set('X-Koonfy-Limite', String(teto));
       res.set('X-Koonfy-Cortados', String(cortados));
-      elitepay.plog({ type: 'export_limitado', accountId: req.acc.id, accountName: req.acc.name, detail: `Exportou ${lista.length} de ${(req.acc.contacts || []).length} (teto do plano: ${teto})` });
+      pagamentos.plog({ type: 'export_limitado', accountId: req.acc.id, accountName: req.acc.name, detail: `Exportou ${lista.length} de ${(req.acc.contacts || []).length} (teto do plano: ${teto})` });
     }
     const lines = ['nome;telefone_e164;etapa;tags;criado_em;ultima_atividade'];
     for (const c of lista) {
@@ -2463,12 +2463,12 @@ module.exports = function (broadcast, clients) {
       cache.fetchedAt = Date.now();
       db.save();
     }
-    const ep = elitepay.ensure(acc);
+    const ep = pagamentos.ensure(acc);
     res.json({
       templates: cache.list.map(t => ({ ...t, purpose: (ep.templateRoles || {})[t.name] || '' })),
       fetchedAt: cache.fetchedAt,
       // variáveis disponíveis por papel — a tela de criação monta os botões com isso
-      roleVars: elitepay.TPL_VARS,
+      roleVars: pagamentos.TPL_VARS,
       selected: { cobranca: ep.chargeTemplateName || '', confirmacao: ep.confirmTemplateName || '' }
     });
   }));
@@ -2480,9 +2480,9 @@ module.exports = function (broadcast, clients) {
     const existe = (req.wctx.templatesCache.list || []).some(t => t.name === nome);
     if (!existe) return res.status(404).json({ error: 'Modelo não encontrado' });
     const role = String((req.body || {}).purpose || '');
-    if (role && !elitepay.TPL_ROLES.includes(role)) return res.status(400).json({ error: 'Papel inválido' });
+    if (role && !pagamentos.TPL_ROLES.includes(role)) return res.status(400).json({ error: 'Papel inválido' });
     const tpl = (req.wctx.templatesCache.list || []).find(t => t.name === nome);
-    elitepay.setTemplateRole(req.acc, nome, role, tpl.language || 'pt_BR');
+    pagamentos.setTemplateRole(req.acc, nome, role, tpl.language || 'pt_BR');
     res.json({ ok: true, name: nome, purpose: role });
   });
 
@@ -2575,11 +2575,11 @@ module.exports = function (broadcast, clients) {
     }
     const r = await wa.createTemplate(req.wctx, payload);
     req.wctx.templatesCache.fetchedAt = 0; // força re-sync do canal ativo
-    // PAPEL do modelo no Elite Pay: cobrança OU confirmação de pagamento
+    // PAPEL do modelo no Pagamentos: cobrança OU confirmação de pagamento
     // (nunca os dois) — vazio significa modelo comum, só para campanhas.
     // `chargeTemplate: true` é o formato antigo do painel; segue aceito.
     const purpose = req.body.chargeTemplate ? 'cobranca' : String(req.body.purpose || '');
-    if (purpose) require('./elitepay').setTemplateRole(req.acc, payload.name, purpose, payload.language || 'pt_BR');
+    if (purpose) require('./pagamentos').setTemplateRole(req.acc, payload.name, purpose, payload.language || 'pt_BR');
     db.save();
     res.json({ ...r, purpose: purpose || '' });
   }));
@@ -2588,8 +2588,8 @@ module.exports = function (broadcast, clients) {
     const r = await wa.deleteTemplate(req.wctx, req.params.name);
     const cache = req.wctx.templatesCache;
     cache.list = cache.list.filter(t => t.name !== req.params.name);
-    // some também do Elite Pay — se era o modelo selecionado, a seleção é limpa
-    elitepay.setTemplateRole(req.acc, req.params.name, '');
+    // some também do Pagamentos — se era o modelo selecionado, a seleção é limpa
+    pagamentos.setTemplateRole(req.acc, req.params.name, '');
     db.save();
     res.json(r);
   }));
@@ -4106,7 +4106,7 @@ module.exports = function (broadcast, clients) {
             .map(r => ({ amount: r.amount, at: r.availableAt, kind: r.kind, installment: r.installment, installments: r.installments }))
         };
       })(),
-      cardAccount: elitepay.cardCapability(req.acc),   // modo (carteira/split) + prazos
+      cardAccount: pagamentos.cardCapability(req.acc),   // modo (carteira/split) + prazos
       // meios de pagamento do PRÓPRIO Koonfy (Pix + cartão), uso x limites e
       // preço das unidades extras — tudo que a tela de Assinatura precisa.
       card: saas.methods(),
@@ -4135,7 +4135,7 @@ module.exports = function (broadcast, clients) {
     const plan = db.get().plans.find(p => p.id === (req.body || {}).planId && !p.archived);
     if (!plan) return res.status(400).json({ error: 'Plano não encontrado' });
     const admin = db.findAdminAccount();
-    const ch = await elitepay.createCharge(admin, {
+    const ch = await pagamentos.createCharge(admin, {
       valueCents: plan.price,
       comment: 'Koonfy: ' + plan.name,
       contactName: req.acc.name,
@@ -4197,7 +4197,7 @@ module.exports = function (broadcast, clients) {
     // a recorrência na Woovi deixaria a assinatura de um lado e as cobranças do
     // outro. A Simplify não tem produto recorrente; ali a renovação segue pelo
     // débito da carteira, que já existe (ver saasbilling.runRenewals).
-    if (elitepay.gateway().id === 'woovi' && db.get().platform.woovi.pixAutomatic) {
+    if (pagamentos.gateway().id === 'woovi' && db.get().platform.woovi.pixAutomatic) {
       try {
         const sub = await woovi.createSubscription({
           correlationID: cid, value: total, customer,
@@ -4237,10 +4237,10 @@ module.exports = function (broadcast, clients) {
     // Faixa definida pelo admin em Admin SaaS → Pagamentos.
     const dep = db.get().platform.billing.deposit;
     if (!amount || amount < dep.min) {
-      return res.status(400).json({ error: `Depósito mínimo: ${elitepay.fmtBRL(dep.min)}` });
+      return res.status(400).json({ error: `Depósito mínimo: ${pagamentos.fmtBRL(dep.min)}` });
     }
     if (dep.max > 0 && amount > dep.max) {
-      return res.status(400).json({ error: `Depósito máximo: ${elitepay.fmtBRL(dep.max)}` });
+      return res.status(400).json({ error: `Depósito máximo: ${pagamentos.fmtBRL(dep.max)}` });
     }
     const cid = `topup-${req.acc.id}-${Date.now().toString(36)}`;
     // Pelo adquirente ATIVO (Admin → Gateways), e não fixo na Woovi: com a
@@ -4309,18 +4309,18 @@ module.exports = function (broadcast, clients) {
     // Faixa definida pelo admin em Admin SaaS → Afiliados.
     const wd = db.get().platform.affiliate.withdraw;
     if (!amount || amount < wd.min) {
-      return res.status(400).json({ error: `Saque mínimo: ${elitepay.fmtBRL(wd.min)}` });
+      return res.status(400).json({ error: `Saque mínimo: ${pagamentos.fmtBRL(wd.min)}` });
     }
     if (wd.max > 0 && amount > wd.max) {
-      return res.status(400).json({ error: `Saque máximo por vez: ${elitepay.fmtBRL(wd.max)}` });
+      return res.status(400).json({ error: `Saque máximo por vez: ${pagamentos.fmtBRL(wd.max)}` });
     }
     if (amount > req.acc.wallet.balance) return res.status(400).json({ error: 'Saldo insuficiente' });
     // A taxa depende da ORIGEM do dinheiro: venda no cartão tem taxa própria,
     // o resto (Pix, comissões) usa a taxa de PIX Out.
-    const f = elitepay.computeWithdrawFee(req.acc, amount);
-    elitepay.debitWithdraw(req.acc, amount);
+    const f = pagamentos.computeWithdrawFee(req.acc, amount);
+    pagamentos.debitWithdraw(req.acc, amount);
     const detalhe = f.fee
-      ? ` · taxa ${elitepay.fmtBRL(f.fee)}${f.fromCard ? ` (cartão ${elitepay.fmtBRL(f.cardFee)}` + (f.pixFee ? ` + Pix ${elitepay.fmtBRL(f.pixFee)})` : ')') : ''}`
+      ? ` · taxa ${pagamentos.fmtBRL(f.fee)}${f.fromCard ? ` (cartão ${pagamentos.fmtBRL(f.cardFee)}` + (f.pixFee ? ` + Pix ${pagamentos.fmtBRL(f.pixFee)})` : ')') : ''}`
       : '';
     req.acc.wallet.transactions.push({
       id: db.genId('tx'), ts: Date.now(), amount: -amount, type: 'withdraw',
@@ -4359,7 +4359,7 @@ module.exports = function (broadcast, clients) {
   router.get('/wallet/withdraw/quote', auth, ownerOnly, (req, res) => {
     const amount = Math.round(Number(String(req.query.amount || '0').replace(',', '.')) * 100);
     if (!amount || amount < 0) return res.json({ amount: 0, fee: 0, net: 0 });
-    res.json({ amount, ...elitepay.computeWithdrawFee(req.acc, amount) });
+    res.json({ amount, ...pagamentos.computeWithdrawFee(req.acc, amount) });
   });
 
   // ============ PAINEL DA PLATAFORMA — a operação de todas as contas ============
@@ -4651,8 +4651,8 @@ module.exports = function (broadcast, clients) {
     // num número só, ninguém enxerga qual está crescendo.
     const cobrancas = [];
     for (const a of data.accounts) {
-      if (!a.elitepay) continue;
-      for (const c of a.elitepay.charges || []) cobrancas.push(c);
+      if (!a.pagamentos) continue;
+      for (const c of a.pagamentos.charges || []) cobrancas.push(c);
     }
     const METODOS = ['pix', 'card', 'boleto'];
     const pagas = cobrancas.filter(c => c.status === 'paid');
@@ -4699,8 +4699,8 @@ module.exports = function (broadcast, clients) {
 
     // FUNIL DA CONTA. Cada degrau perdido é um lugar onde o produto não se
     // sustenta sozinho — e sem o funil ninguém sabe qual degrau é.
-    const temCobranca = a => !!(a.elitepay && (a.elitepay.charges || []).length);
-    const vendeu = a => !!(a.elitepay && (a.elitepay.charges || []).some(c => c.status === 'paid'));
+    const temCobranca = a => !!(a.pagamentos && (a.pagamentos.charges || []).length);
+    const vendeu = a => !!(a.pagamentos && (a.pagamentos.charges || []).some(c => c.status === 'paid'));
     const funil = [
       { etapa: 'Cadastrou', qtd: accs.length },
       { etapa: 'Conectou o WhatsApp', qtd: accs.filter(a => a.wa && a.wa.connected).length },
@@ -4762,7 +4762,7 @@ module.exports = function (broadcast, clients) {
       revenue: data.revenue.slice(-100).reverse(),
       config: {
         // O adquirente ATIVO do Pix: é ele que cria as próximas cobranças.
-        gateway: elitepay.platformCfg().gateway || 'woovi',
+        gateway: pagamentos.platformCfg().gateway || 'woovi',
         woovi: { appId: data.platform.woovi.appId ? '••••' + data.platform.woovi.appId.slice(-6) : '', configured: woovi.configured(), pixAutomatic: data.platform.woovi.pixAutomatic, sandbox: !!data.platform.woovi.sandbox, base: woovi.base() },
         // As credenciais nunca voltam inteiras — só o suficiente para o admin
         // reconhecer qual está gravada.
@@ -4786,9 +4786,9 @@ module.exports = function (broadcast, clients) {
       manual: { accessToken: req.wctx.wa.accessToken || '', wabaId: req.wctx.wa.wabaId || '', phoneNumberId: req.wctx.wa.phoneNumberId || '' },
       // adquirente de cartão — configurável aqui na aba Pagamentos
       card: {
-        ...require('./cardgateways').adminCard(elitepay.cardConfig()),
+        ...require('./cardgateways').adminCard(pagamentos.cardConfig()),
         webhookUrl: `${req.protocol}://${req.get('host')}/card-webhook`,
-        webhookToken: elitepay.cardWebhookToken()
+        webhookToken: pagamentos.cardWebhookToken()
       },
       seo: data.platform.seo || {}
     });
@@ -4972,7 +4972,7 @@ module.exports = function (broadcast, clients) {
     }
     db.save();
     store.logEvent({ type: 'tema_atualizado' });
-    elitepay.plog({ type: 'tema_atualizado', detail: 'Cores da marca alteradas no Admin' });
+    pagamentos.plog({ type: 'tema_atualizado', detail: 'Cores da marca alteradas no Admin' });
     res.json({ ok: true, tema: p.tema });
   });
 
@@ -4997,19 +4997,19 @@ module.exports = function (broadcast, clients) {
     const b = req.body || {};
     const cents = Math.round(Number(b.amount) || 0);
     if (cents < 1) return res.status(400).json({ error: 'Informe o valor da venda' });
-    const valor = elitepay.fmtBRL(cents);
+    const valor = pagamentos.fmtBRL(cents);
     const paraPlataforma = String(b.kind || 'venda') === 'comissao';
 
     // A comissão da plataforma sobre uma venda daquele tamanho, pela taxa
     // configurada — testar com um número inventado esconderia justamente o
     // erro de arredondamento que o aviso mostraria.
     const taxa = paraPlataforma
-      ? elitepay.computeSplit(cents).platformCut
+      ? pagamentos.computeSplit(cents).platformCut
       : 0;
 
     const aviso = paraPlataforma
-      ? { title: 'Venda aprovada', body: `Sua comissão: ${elitepay.fmtBRL(taxa)}`, url: '/app/#/admin' }
-      : { title: 'Venda Aprovada', body: `Valor: ${valor}`, url: '/app/#/elitepay' };
+      ? { title: 'Venda aprovada', body: `Sua comissão: ${pagamentos.fmtBRL(taxa)}`, url: '/app/#/admin' }
+      : { title: 'Venda Aprovada', body: `Valor: ${valor}`, url: '/app/#/pagamentos' };
 
     const endpoint = String(b.endpoint || '').trim();
     const token = String(b.token || '').trim();
@@ -5096,7 +5096,7 @@ module.exports = function (broadcast, clients) {
     // cobranças; as já emitidas continuam sendo confirmadas pelo gateway que
     // as criou, porque cada uma guarda o seu.
     if (b.gateway !== undefined && ['woovi', 'simplify'].includes(String(b.gateway))) {
-      elitepay.platformCfg().gateway = String(b.gateway);
+      pagamentos.platformCfg().gateway = String(b.gateway);
     }
     if (b.trialDays !== undefined) p.billing.trialDays = Math.max(0, Number(b.trialDays) || 0);
     if (b.enforce !== undefined) p.billing.enforce = !!b.enforce;
@@ -5345,22 +5345,22 @@ module.exports = function (broadcast, clients) {
 
   // ============ SSE (atualizações em tempo real no painel) ============
 
-  // ==================== ELITE PAY — pagamentos Pix do cliente ====================
-  const elitepay = require('./elitepay');
+  // ==================== PAGAMENTOS — pagamentos Pix do cliente ====================
+  const pagamentos = require('./pagamentos');
 
   // Captura a URL pública (usada para montar o link do checkout /pay/:id,
   // inclusive em cobranças criadas por Flows, onde não há request).
   router.use((req, res, next) => {
-    try { elitepay.noteBaseUrl(`${req.protocol}://${req.get('host')}`); } catch {}
+    try { pagamentos.noteBaseUrl(`${req.protocol}://${req.get('host')}`); } catch {}
     next();
   });
 
   // ---- CHECKOUT PÚBLICO (sem autenticação): dados da cobrança p/ a página /pay/:id ----
   router.get('/public/pay/:id', (req, res) => {
-    const view = elitepay.publicChargeView(req.params.id);
+    const view = pagamentos.publicChargeView(req.params.id);
     if (!view) return res.status(404).json({ error: 'Cobrança não encontrada' });
     // tags de navegador do lojista, para o checkout marcar InitiateCheckout
-    const dono = elitepay.findChargeAnywhere ? elitepay.findChargeAnywhere(req.params.id) : null;
+    const dono = pagamentos.findChargeAnywhere ? pagamentos.findChargeAnywhere(req.params.id) : null;
     if (dono && dono.acc) {
       try { view.tags = require('./tracking').clientTags(dono.acc, { event: 'InitiateCheckout' }); } catch {}
     }
@@ -5371,30 +5371,30 @@ module.exports = function (broadcast, clients) {
   // cadastra o contato no Koonfy e registra os eventos na pipeline.
   router.post('/public/pay/:id/identify', h(async (req, res) => {
     const b = req.body || {};
-    await elitepay.identifyPayer(req.params.id, {
+    await pagamentos.identifyPayer(req.params.id, {
       name: b.name, taxID: b.taxID, email: b.email, phone: b.phone, trk: b.trk
     }, broadcast);
-    res.json({ ok: true, view: elitepay.publicChargeView(req.params.id) });
+    res.json({ ok: true, view: pagamentos.publicChargeView(req.params.id) });
   }));
 
   // Pagamento com CARTÃO DE CRÉDITO da cobrança, quando o admin habilitou.
   // Os dados do cartão só transitam: nada de número completo ou CVV é gravado.
   router.post('/public/pay/:id/card', h(async (req, res) => {
-    const r = await elitepay.payWithCard(req.params.id, req.body || {}, broadcast);
+    const r = await pagamentos.payWithCard(req.params.id, req.body || {}, broadcast);
     res.json(r);
   }));
 
   // Emissão de BOLETO da cobrança. Assíncrono: a confirmação chega pelo webhook
   // do adquirente quando o banco compensa.
   router.post('/public/pay/:id/boleto', h(async (req, res) => {
-    const r = await elitepay.payWithBoleto(req.params.id, req.body || {}, broadcast);
+    const r = await pagamentos.payWithBoleto(req.params.id, req.body || {}, broadcast);
     res.json(r);
   }));
 
   // Reconsulta o adquirente quando o pagamento ficou em análise.
   router.get('/public/pay/:id/card-status', h(async (req, res) => {
-    const status = await elitepay.refreshCardStatus(req.params.id, broadcast);
-    res.json({ status, view: elitepay.publicChargeView(req.params.id) });
+    const status = await pagamentos.refreshCardStatus(req.params.id, broadcast);
+    res.json({ status, view: pagamentos.publicChargeView(req.params.id) });
   }));
 
   // ==================== TRACKING — atribuição + métricas de marketing ====================
@@ -5540,20 +5540,20 @@ module.exports = function (broadcast, clients) {
   // Fora dela (ou atendimento finalizado), o envio é bloqueado e o motivo é informado.
   async function sendChargeMessage(acc, ch, waId, stamp) {
     const to = store.normalizeWaId(waId);
-    const ep = acc.elitepay || {};
+    const ep = acc.pagamentos || {};
 
     // 1) Modelo de COBRANÇA selecionado e APROVADO → envia como template Meta
     //    (funciona inclusive fora da janela de 24h).
     //    Variáveis: {{1}} nome · {{2}} valor · {{3}} link · {{4}} Pix copia e cola
     //               {{5}} descrição · {{6}} vencimento
-    const tpl = elitepay.pickTemplate(acc, 'cobranca');
+    const tpl = pagamentos.pickTemplate(acc, 'cobranca');
     if (tpl) {
       const nVars = tpl.vars.length;
-      const vals = elitepay.tplValues(acc, ch, 'cobranca');
+      const vals = pagamentos.tplValues(acc, ch, 'cobranca');
       const components = nVars ? [{ type: 'body', parameters: vals.slice(0, nVars).map(t => ({ type: 'text', text: String(t || '-') })) }] : [];
       const r = await wa.sendTemplate(acc, to, tpl.name, tpl.language || ep.chargeTemplateLang || 'pt_BR', components);
-      storeOutbound(acc, to, { type: 'template', text: `📋 Cobrança (${tpl.name}) · ${elitepay.fmtBRL(ch.value)}` }, r, stamp);
-      elitepay.log(acc, { type: 'charge_sent', chargeId: ch.id, amount: ch.value, detail: `Cobrança enviada via template "${tpl.name}"` });
+      storeOutbound(acc, to, { type: 'template', text: `📋 Cobrança (${tpl.name}) · ${pagamentos.fmtBRL(ch.value)}` }, r, stamp);
+      pagamentos.log(acc, { type: 'charge_sent', chargeId: ch.id, amount: ch.value, detail: `Cobrança enviada via template "${tpl.name}"` });
       db.save();
       return;
     }
@@ -5564,7 +5564,7 @@ module.exports = function (broadcast, clients) {
     if (!check.allowed) {
       const e = new Error(check.error || 'A janela de 24h expirou, marque um Template de Cobrança em Modelos para enviar a qualquer momento.');
       e.status = 409; e.code = check.code || 'window_closed';
-      elitepay.log(acc, { type: 'send_blocked', chargeId: ch.id, amount: ch.value, detail: '24h: ' + e.message });
+      pagamentos.log(acc, { type: 'send_blocked', chargeId: ch.id, amount: ch.value, detail: '24h: ' + e.message });
       db.save();
       throw e;
     }
@@ -5572,7 +5572,7 @@ module.exports = function (broadcast, clients) {
     // o CPF/CNPJ que o adquirente exige e escolhe Pix, cartão ou boleto ali.
     // Se a Meta recusar o interativo por qualquer motivo, o texto com o link
     // ainda sai — não vale perder a cobrança por causa do formato.
-    const btn = elitepay.chargeButton(acc, ch);
+    const btn = pagamentos.chargeButton(acc, ch);
     let r, msg;
     try {
       r = await wa.sendInteractive(acc, to, btn.interactive);
@@ -5581,31 +5581,31 @@ module.exports = function (broadcast, clients) {
       // grudado no fim do texto.
       msg = { type: 'interactive', text: btn.body, buttons: [{ id: 'checkout', title: btn.displayText }] };
     } catch (e) {
-      elitepay.log(acc, { type: 'charge_button_fallback', chargeId: ch.id, detail: 'Botão recusado, indo por texto: ' + e.message });
-      const text = elitepay.chargeMessage(acc, ch, { semCodigo: true });
+      pagamentos.log(acc, { type: 'charge_button_fallback', chargeId: ch.id, detail: 'Botão recusado, indo por texto: ' + e.message });
+      const text = pagamentos.chargeMessage(acc, ch, { semCodigo: true });
       r = await wa.sendText(acc, to, text);
       msg = { type: 'text', text };
     }
     storeOutbound(acc, to, msg, r, stamp);
-    elitepay.log(acc, { type: 'charge_sent', chargeId: ch.id, amount: ch.value, detail: 'Cobrança enviada no WhatsApp para +' + to });
+    pagamentos.log(acc, { type: 'charge_sent', chargeId: ch.id, amount: ch.value, detail: 'Cobrança enviada no WhatsApp para +' + to });
     db.save();
   }
 
   // Status geral do módulo (gate de onboarding do front)
-  router.get('/elitepay', auth, can('elitepay'), (req, res) => {
-    const ep = elitepay.ensure(req.acc);
-    const cfg = elitepay.platformCfg();
+  router.get('/pagamentos', auth, can('pagamentos'), (req, res) => {
+    const ep = pagamentos.ensure(req.acc);
+    const cfg = pagamentos.platformCfg();
     res.json({
-      configured: elitepay.configured(),
+      configured: pagamentos.configured(),
       // O adquirente ativo exige os dados do pagador para emitir o Pix? A
       // cobrança não pede mais esses dados no painel — quem paga preenche no
       // checkout —, mas o servidor ainda usa a informação para decidir se o
       // código Pix sai junto da mensagem ou só o botão.
-      exigePagador: !!elitepay.gateway().requiresPayer,
+      exigePagador: !!pagamentos.gateway().requiresPayer,
       // O rótulo padrão do botão de pagar, para a tela de cobrança mostrar
       // como marca-d'água e na prévia.
       buttonText: (ep.settings && ep.settings.buttonText) || '',
-      gatewayLabel: elitepay.gateway().label || '',
+      gatewayLabel: pagamentos.gateway().label || '',
       subaccount: ep.subaccount,
       // O Koonfy já sabe nome, e-mail e telefone de quem cadastrou. Mandar o
       // dono digitar tudo de novo no formulário do Pagamentos é pedir o mesmo
@@ -5622,19 +5622,19 @@ module.exports = function (broadcast, clients) {
       checkout: ep.checkouts.find(c => c.isDefault) || ep.checkouts[0],   // layout padrão
       checkouts: ep.checkouts.map(c => ({ id: c.id, name: c.name, isDefault: c.isDefault })),
       products: ep.products.filter(p => p.active).map(p => ({ id: p.id, name: p.name, price: p.price, checkoutId: p.checkoutId })),
-      // ---- MODELOS de mensagem do Elite Pay ----
+      // ---- MODELOS de mensagem do Pagamentos ----
       // Quando existe mais de um modelo do mesmo papel, o usuário escolhe qual
       // é enviado; com um só, ele já é o padrão.
       chargeTemplateName: ep.chargeTemplateName || '',
       confirmTemplateName: ep.confirmTemplateName || '',
-      chargeTemplates: elitepay.templatesByRole(req.acc, 'cobranca'),
-      confirmTemplates: elitepay.templatesByRole(req.acc, 'confirmacao'),
-      roleVars: elitepay.TPL_VARS,
+      chargeTemplates: pagamentos.templatesByRole(req.acc, 'cobranca'),
+      confirmTemplates: pagamentos.templatesByRole(req.acc, 'confirmacao'),
+      roleVars: pagamentos.TPL_VARS,
       feeInPercent: cfg.feeInPercent,       // taxa PIX In (por venda)
       feeOutPercent: cfg.feeOutPercent,     // taxa PIX Out (por saque)
       onboardingMode: cfg.onboardingMode,   // 'subaccount' | 'kyc'
-      gateway: elitepay.gateway().label,
-      card: elitepay.cardCapability(req.acc)   // {ready, credit, debit} p/ o Checkout Builder
+      gateway: pagamentos.gateway().label,
+      card: pagamentos.cardCapability(req.acc)   // {ready, credit, debit} p/ o Checkout Builder
     });
   });
 
@@ -5642,9 +5642,9 @@ module.exports = function (broadcast, clients) {
   // O Pix cai disponível na hora; a venda no cartão fica pendente até o prazo
   // do adquirente. A tela mostra os dois, e as contestações do período, porque
   // um chargeback tira dinheiro da carteira e a pessoa precisa saber por quê.
-  router.get('/elitepay/saldo', auth, ownerOnly, (req, res) => {
+  router.get('/pagamentos/saldo', auth, ownerOnly, (req, res) => {
     const w = req.acc.wallet;
-    const ep = elitepay.ensure(req.acc);
+    const ep = pagamentos.ensure(req.acc);
     const aLiberar = (w.receivables || []).filter(r => !r.released);
     const prox = [...aLiberar].sort((a, b) => a.availableAt - b.availableAt)[0] || null;
     const contestadas = (ep.charges || [])
@@ -5671,23 +5671,23 @@ module.exports = function (broadcast, clients) {
   });
 
   // Onboarding — cria a subconta do cliente (via API do gateway, sem sair do Koonfy)
-  router.post('/elitepay/subaccount', auth, can('elitepay', 'create'), h(async (req, res) => {
+  router.post('/pagamentos/subaccount', auth, can('pagamentos', 'create'), h(async (req, res) => {
     // redirectUrl: para onde a Woovi devolve o cliente após concluir o KYC hospedado
-    const redirectUrl = `${req.protocol}://${req.get('host')}/app/#/elitepay`;
-    const sub = await elitepay.registerSubaccount(req.acc, { ...(req.body || {}), redirectUrl });
-    broadcast('elitepay', { accountId: req.acc.id, kind: 'subaccount', status: sub.status });
+    const redirectUrl = `${req.protocol}://${req.get('host')}/app/#/pagamentos`;
+    const sub = await pagamentos.registerSubaccount(req.acc, { ...(req.body || {}), redirectUrl });
+    broadcast('pagamentos', { accountId: req.acc.id, kind: 'subaccount', status: sub.status });
     res.json({ ok: true, subaccount: sub, onboardingUrl: sub.kyc ? sub.kyc.onboardingUrl : '' });
   }));
 
   // Dashboard financeiro do cliente
-  router.get('/elitepay/dashboard', auth, can('elitepay'), (req, res) => {
-    const ep = elitepay.ensure(req.acc);
-    res.json({ metrics: elitepay.metrics(req.acc), recent: ep.charges.slice(0, 8), logs: ep.logs.slice(0, 20) });
+  router.get('/pagamentos/dashboard', auth, can('pagamentos'), (req, res) => {
+    const ep = pagamentos.ensure(req.acc);
+    res.json({ metrics: pagamentos.metrics(req.acc), recent: ep.charges.slice(0, 8), logs: ep.logs.slice(0, 20) });
   });
 
   // Histórico de cobranças com pesquisa e filtros
-  router.get('/elitepay/charges', auth, can('elitepay'), (req, res) => {
-    const ep = elitepay.ensure(req.acc);
+  router.get('/pagamentos/charges', auth, can('pagamentos'), (req, res) => {
+    const ep = pagamentos.ensure(req.acc);
     const q = String(req.query.q || '').toLowerCase();
     const status = String(req.query.status || '');
     let list = ep.charges;
@@ -5701,7 +5701,7 @@ module.exports = function (broadcast, clients) {
   });
 
   // Nova cobrança (Pix + link + QR + copia e cola) — opcionalmente já envia no chat
-  router.post('/elitepay/charges', auth, feat('elitepay'), can('elitepay', 'create'), h(async (req, res) => {
+  router.post('/pagamentos/charges', auth, feat('pagamentos'), can('pagamentos', 'create'), h(async (req, res) => {
     const b = req.body || {};
     const contact = b.waId ? store.findContact(req.wctx, store.normalizeWaId(b.waId)) : null;
     // DADOS DO PAGADOR — só fazem falta em gateway que os exige (Simplify).
@@ -5722,7 +5722,7 @@ module.exports = function (broadcast, clients) {
       email: String(pg.email || (contact && contact.email) || '').trim(),
       phone: String(pg.phone || (contact && contact.waId) || b.waId || '').replace(/\D/g, '')
     };
-    const ch = await elitepay.createCharge(req.acc, {
+    const ch = await pagamentos.createCharge(req.acc, {
       valueCents: b.valueCents, comment: b.comment,
       waId: contact ? contact.waId : (b.waId || null),
       contactName: contact ? contact.name : (b.contactName || null),
@@ -5734,7 +5734,7 @@ module.exports = function (broadcast, clients) {
     });
     // "Usar como padrão nas próximas": grava o texto no modelo da conta.
     if (b.saveAsDefault && b.message) {
-      const ep = elitepay.ensure(req.acc);
+      const ep = pagamentos.ensure(req.acc);
       ep.settings.autoMessage = String(b.message).slice(0, 1500);
       ep.settings.chargeTemplateEnabled = true;
       db.save();
@@ -5742,27 +5742,27 @@ module.exports = function (broadcast, clients) {
     // O rótulo do botão vira padrão junto: quem escreveu "Garantir vaga" uma
     // vez raramente quer "Pagar agora" na próxima.
     if (b.saveAsDefault && typeof b.buttonText === 'string') {
-      elitepay.ensure(req.acc).settings.buttonText =
+      pagamentos.ensure(req.acc).settings.buttonText =
         String(b.buttonText).replace(/[\r\n\t]+/g, ' ').trim().slice(0, 20);
       db.save();
     }
     let sent = false, sendError = null;
     if (b.send && ch.waId) {
       try { await sendChargeMessage(req.wctx, ch, ch.waId, { agentId: req.who.agentId, agentName: req.who.name }); sent = true; }
-      catch (e) { sendError = e.message; if (e.code !== 'window_closed' && e.code !== 'attendance_finished') { elitepay.log(req.acc, { type: 'send_error', chargeId: ch.id, detail: e.message }); db.save(); } }
+      catch (e) { sendError = e.message; if (e.code !== 'window_closed' && e.code !== 'attendance_finished') { pagamentos.log(req.acc, { type: 'send_error', chargeId: ch.id, detail: e.message }); db.save(); } }
     }
-    broadcast('elitepay', { accountId: req.acc.id, kind: 'charge', chargeId: ch.id, status: ch.status });
+    broadcast('pagamentos', { accountId: req.acc.id, kind: 'charge', chargeId: ch.id, status: ch.status });
     res.json({ ok: true, charge: ch, sent, sendError });
   }));
 
-  router.post('/elitepay/charges/:id/cancel', auth, can('elitepay', 'edit'), h(async (req, res) => {
-    const ch = await elitepay.cancelCharge(req.acc, req.params.id);
-    broadcast('elitepay', { accountId: req.acc.id, kind: 'charge', chargeId: ch.id, status: 'cancelled' });
+  router.post('/pagamentos/charges/:id/cancel', auth, can('pagamentos', 'edit'), h(async (req, res) => {
+    const ch = await pagamentos.cancelCharge(req.acc, req.params.id);
+    broadcast('pagamentos', { accountId: req.acc.id, kind: 'charge', chargeId: ch.id, status: 'cancelled' });
     res.json({ ok: true, charge: ch });
   }));
 
-  router.post('/elitepay/charges/:id/resend', auth, can('elitepay'), h(async (req, res) => {
-    const ch = elitepay.findCharge(req.acc, req.params.id);
+  router.post('/pagamentos/charges/:id/resend', auth, can('pagamentos'), h(async (req, res) => {
+    const ch = pagamentos.findCharge(req.acc, req.params.id);
     if (!ch) return res.status(404).json({ error: 'Cobrança não encontrada' });
     const waId = req.body.waId || ch.waId;
     if (!waId) return res.status(400).json({ error: 'Cobrança sem contato vinculado, informe o destinatário' });
@@ -5770,19 +5770,19 @@ module.exports = function (broadcast, clients) {
     res.json({ ok: true });
   }));
 
-  router.post('/elitepay/charges/:id/duplicate', auth, can('elitepay', 'create'), h(async (req, res) => {
-    const old = elitepay.findCharge(req.acc, req.params.id);
+  router.post('/pagamentos/charges/:id/duplicate', auth, can('pagamentos', 'create'), h(async (req, res) => {
+    const old = pagamentos.findCharge(req.acc, req.params.id);
     if (!old) return res.status(404).json({ error: 'Cobrança não encontrada' });
-    const ch = await elitepay.createCharge(req.acc, {
+    const ch = await pagamentos.createCharge(req.acc, {
       valueCents: old.value, comment: old.comment, waId: old.waId, contactName: old.contactName,
       origin: 'manual', byName: req.who.name
     });
-    broadcast('elitepay', { accountId: req.acc.id, kind: 'charge', chargeId: ch.id, status: ch.status });
+    broadcast('pagamentos', { accountId: req.acc.id, kind: 'charge', chargeId: ch.id, status: ch.status });
     res.json({ ok: true, charge: ch });
   }));
 
-  router.put('/elitepay/settings', auth, can('elitepay', 'edit'), (req, res) => {
-    const ep = elitepay.ensure(req.acc);
+  router.put('/pagamentos/settings', auth, can('pagamentos', 'edit'), (req, res) => {
+    const ep = pagamentos.ensure(req.acc);
     const b = req.body || {};
     if (typeof b.autoMessage === 'string') ep.settings.autoMessage = b.autoMessage.slice(0, 1200);
     if (b.expiresMin !== undefined) ep.settings.expiresMin = Math.max(5, Math.min(43200, Number(b.expiresMin) || 1440));
@@ -5804,7 +5804,7 @@ module.exports = function (broadcast, clients) {
       if (typeof b[campo] !== 'string') continue;
       const nome = b[campo].trim();
       if (!nome) { ep[campo] = ''; continue; }
-      const t = elitepay.templatesByRole(req.acc, role).find(x => x.name === nome);
+      const t = pagamentos.templatesByRole(req.acc, role).find(x => x.name === nome);
       if (!t) return res.status(400).json({ error: `"${nome}" não é um modelo de ${role === 'cobranca' ? 'cobrança' : 'confirmação de pagamento'}` });
       ep[campo] = nome;
       ep[role === 'cobranca' ? 'chargeTemplateLang' : 'confirmTemplateLang'] = t.language || 'pt_BR';
@@ -5817,8 +5817,8 @@ module.exports = function (broadcast, clients) {
   });
 
   // ---- Checkout Builder: personalização da página pública de pagamento ----
-  router.put('/elitepay/checkout', auth, can('elitepay', 'edit'), (req, res) => {
-    const ep = elitepay.ensure(req.acc);
+  router.put('/pagamentos/checkout', auth, can('pagamentos', 'edit'), (req, res) => {
+    const ep = pagamentos.ensure(req.acc);
     const b = req.body || {};
     // salva no template escolhido (ou no padrão, quando não vier id)
     const ck = (b.id && ep.checkouts.find(c => c.id === b.id)) || ep.checkouts.find(c => c.isDefault) || ep.checkouts[0];
@@ -5886,35 +5886,35 @@ module.exports = function (broadcast, clients) {
     if (typeof b.successMsg === 'string') ck.successMsg = b.successMsg.slice(0, 300);
     if (typeof b.supportText === 'string') ck.supportText = b.supportText.slice(0, 200);
     db.save();
-    elitepay.log(req.acc, { type: 'checkout_updated', detail: 'Checkout personalizado atualizado' });
+    pagamentos.log(req.acc, { type: 'checkout_updated', detail: 'Checkout personalizado atualizado' });
     res.json({ ok: true, checkout: ck });
   });
 
   // ---- PRODUTOS (o que é vendido; entra como variável no checkout) ----
-  router.get('/elitepay/products', auth, can('elitepay'), (req, res) => {
-    const ep = elitepay.ensure(req.acc);
+  router.get('/pagamentos/products', auth, can('pagamentos'), (req, res) => {
+    const ep = pagamentos.ensure(req.acc);
     res.json({ products: ep.products, checkouts: ep.checkouts.map(c => ({ id: c.id, name: c.name, isDefault: c.isDefault })) });
   });
-  router.post('/elitepay/products', auth, can('elitepay', 'create'), (req, res) => {
-    const ep = elitepay.ensure(req.acc);
+  router.post('/pagamentos/products', auth, can('pagamentos', 'create'), (req, res) => {
+    const ep = pagamentos.ensure(req.acc);
     const b = req.body || {};
     if (!String(b.name || '').trim()) return res.status(400).json({ error: 'Informe o nome do produto' });
-    const p = { ...elitepay.defaultProduct(), id: db.genId('prd'), createdAt: Date.now() };
+    const p = { ...pagamentos.defaultProduct(), id: db.genId('prd'), createdAt: Date.now() };
     applyProduct(p, b, res); if (res.headersSent) return;
     ep.products.unshift(p);
     db.save();
     res.json({ ok: true, product: p });
   });
-  router.put('/elitepay/products/:id', auth, can('elitepay', 'edit'), (req, res) => {
-    const ep = elitepay.ensure(req.acc);
+  router.put('/pagamentos/products/:id', auth, can('pagamentos', 'edit'), (req, res) => {
+    const ep = pagamentos.ensure(req.acc);
     const p = ep.products.find(x => x.id === req.params.id);
     if (!p) return res.status(404).json({ error: 'Produto não encontrado' });
     applyProduct(p, req.body || {}, res); if (res.headersSent) return;
     db.save();
     res.json({ ok: true, product: p });
   });
-  router.delete('/elitepay/products/:id', auth, can('elitepay', 'edit'), (req, res) => {
-    const ep = elitepay.ensure(req.acc);
+  router.delete('/pagamentos/products/:id', auth, can('pagamentos', 'edit'), (req, res) => {
+    const ep = pagamentos.ensure(req.acc);
     const i = ep.products.findIndex(x => x.id === req.params.id);
     if (i < 0) return res.status(404).json({ error: 'Produto não encontrado' });
     ep.products.splice(i, 1);
@@ -5936,12 +5936,12 @@ module.exports = function (broadcast, clients) {
   }
 
   // ---- CHECKOUTS (templates de layout) ----
-  router.get('/elitepay/checkouts', auth, can('elitepay'), (req, res) => {
-    res.json({ checkouts: elitepay.ensure(req.acc).checkouts });
+  router.get('/pagamentos/checkouts', auth, can('pagamentos'), (req, res) => {
+    res.json({ checkouts: pagamentos.ensure(req.acc).checkouts });
   });
-  router.post('/elitepay/checkouts', auth, can('elitepay', 'create'), (req, res) => {
-    const ep = elitepay.ensure(req.acc);
-    const base = ep.checkouts.find(c => c.isDefault) || ep.checkouts[0] || elitepay.defaultCheckout();
+  router.post('/pagamentos/checkouts', auth, can('pagamentos', 'create'), (req, res) => {
+    const ep = pagamentos.ensure(req.acc);
+    const base = ep.checkouts.find(c => c.isDefault) || ep.checkouts[0] || pagamentos.defaultCheckout();
     const c = JSON.parse(JSON.stringify(base));        // duplica o layout atual
     c.id = db.genId('ckt');
     c.name = String((req.body || {}).name || 'Novo checkout').slice(0, 60);
@@ -5950,8 +5950,8 @@ module.exports = function (broadcast, clients) {
     db.save();
     res.json({ ok: true, checkout: c });
   });
-  router.delete('/elitepay/checkouts/:id', auth, can('elitepay', 'edit'), (req, res) => {
-    const ep = elitepay.ensure(req.acc);
+  router.delete('/pagamentos/checkouts/:id', auth, can('pagamentos', 'edit'), (req, res) => {
+    const ep = pagamentos.ensure(req.acc);
     if (ep.checkouts.length <= 1) return res.status(400).json({ error: 'É preciso manter ao menos um checkout' });
     const i = ep.checkouts.findIndex(c => c.id === req.params.id);
     if (i < 0) return res.status(404).json({ error: 'Checkout não encontrado' });
@@ -5962,17 +5962,17 @@ module.exports = function (broadcast, clients) {
     res.json({ ok: true });
   });
 
-  router.get('/elitepay/logs', auth, can('elitepay'), (req, res) => {
-    res.json({ logs: elitepay.ensure(req.acc).logs.slice(0, 200) });
+  router.get('/pagamentos/logs', auth, can('pagamentos'), (req, res) => {
+    res.json({ logs: pagamentos.ensure(req.acc).logs.slice(0, 200) });
   });
 
   // ---- Admin SaaS: gestão financeira da plataforma ----
-  router.get('/admin/elitepay', auth, adminOnly, (req, res) => {
+  router.get('/admin/pagamentos', auth, adminOnly, (req, res) => {
     // `card` vem junto porque as taxas de Pix e de CARTÃO moram no mesmo painel
-    res.json({ ...elitepay.adminOverview(), card: require('./cardgateways').adminCard(elitepay.cardConfig()) });
+    res.json({ ...pagamentos.adminOverview(), card: require('./cardgateways').adminCard(pagamentos.cardConfig()) });
   });
-  router.put('/admin/elitepay/config', auth, adminOnly, (req, res) => {
-    const cfg = elitepay.platformCfg();
+  router.put('/admin/pagamentos/config', auth, adminOnly, (req, res) => {
+    const cfg = pagamentos.platformCfg();
     const b = req.body || {};
     const pct = v => Math.max(0, Math.min(50, Number(String(v).replace(',', '.')) || 0));
     if (b.feeInPercent !== undefined) cfg.feeInPercent = pct(b.feeInPercent);
@@ -5981,38 +5981,38 @@ module.exports = function (broadcast, clients) {
     if (typeof b.requireApproval === 'boolean') cfg.requireApproval = b.requireApproval;
     if (b.onboardingMode === 'kyc' || b.onboardingMode === 'subaccount') cfg.onboardingMode = b.onboardingMode;
     db.save();
-    elitepay.plog({ type: 'config_updated', detail: `Modo ${cfg.onboardingMode} · PIX In ${cfg.feeInPercent}% · PIX Out ${cfg.feeOutPercent}% · aprovação ${cfg.requireApproval ? 'manual' : 'automática'}` });
+    pagamentos.plog({ type: 'config_updated', detail: `Modo ${cfg.onboardingMode} · PIX In ${cfg.feeInPercent}% · PIX Out ${cfg.feeOutPercent}% · aprovação ${cfg.requireApproval ? 'manual' : 'automática'}` });
     res.json({ ok: true, config: cfg });
   });
 
   // ---- Conta de recebimento no cartão (recebedor/subconta do CLIENTE) ----
-  router.get('/elitepay/card-account', auth, h(async (req, res) => {
+  router.get('/pagamentos/card-account', auth, h(async (req, res) => {
     // reconsulta o adquirente quando ainda está em análise
-    if (elitepay.cardAccount(req.acc).status === 'pending') await elitepay.syncCardAccount(req.acc);
-    res.json({ account: elitepay.cardAccountView(req.acc) });
+    if (pagamentos.cardAccount(req.acc).status === 'pending') await pagamentos.syncCardAccount(req.acc);
+    res.json({ account: pagamentos.cardAccountView(req.acc) });
   }));
 
-  router.post('/elitepay/card-account', auth, h(async (req, res) => {
-    await elitepay.registerCardAccount(req.acc, req.body || {});
-    res.json({ account: elitepay.cardAccountView(req.acc) });
+  router.post('/pagamentos/card-account', auth, h(async (req, res) => {
+    await pagamentos.registerCardAccount(req.acc, req.body || {});
+    res.json({ account: pagamentos.cardAccountView(req.acc) });
   }));
 
   // ---- Adquirente de cartão (Pagar.me / Asaas) ----
   const cards = require('./cardgateways');
 
-  router.get('/admin/elitepay/card', auth, adminOnly, (req, res) => {
+  router.get('/admin/pagamentos/card', auth, adminOnly, (req, res) => {
     const origin = `${req.protocol}://${req.get('host')}`;
     res.json({
       card: {
-        ...cards.adminCard(elitepay.cardConfig()),
+        ...cards.adminCard(pagamentos.cardConfig()),
         webhookUrl: `${origin}/card-webhook`,
-        webhookToken: elitepay.cardWebhookToken()   // o admin precisa colar no painel do adquirente
+        webhookToken: pagamentos.cardWebhookToken()   // o admin precisa colar no painel do adquirente
       }
     });
   });
 
-  router.put('/admin/elitepay/card', auth, adminOnly, (req, res) => {
-    const card = elitepay.cardConfig();
+  router.put('/admin/pagamentos/card', auth, adminOnly, (req, res) => {
+    const card = pagamentos.cardConfig();
     const b = req.body || {};
     const pct = v => Math.max(0, Math.min(50, Number(String(v).replace(',', '.')) || 0));
 
@@ -6051,13 +6051,13 @@ module.exports = function (broadcast, clients) {
     // O Asaas não processa débito — evita config impossível.
     if (card.provider === 'asaas') card.debit = false;
     db.save();
-    elitepay.plog({ type: 'card_config', detail: `Cartão ${card.enabled ? 'ON' : 'OFF'} · ${card.provider} · taxa ${card.feeCardPercent}% + ${elitepay.fmtBRL(card.feeCardFixed)}` });
+    pagamentos.plog({ type: 'card_config', detail: `Cartão ${card.enabled ? 'ON' : 'OFF'} · ${card.provider} · taxa ${card.feeCardPercent}% + ${pagamentos.fmtBRL(card.feeCardFixed)}` });
     res.json({ card: cards.adminCard(card) });
   });
 
   // Testa as credenciais do adquirente ativo com uma chamada real de leitura.
-  router.get('/admin/elitepay/card/test', auth, adminOnly, h(async (req, res) => {
-    const card = elitepay.cardConfig();
+  router.get('/admin/pagamentos/card/test', auth, adminOnly, h(async (req, res) => {
+    const card = pagamentos.cardConfig();
     if (!cards.isConfigured(card)) return res.status(400).json({ error: 'Informe a chave do adquirente antes de testar' });
     const cfg = cards.creds(card);
     if (card.provider === 'pagarme') {
@@ -6067,13 +6067,13 @@ module.exports = function (broadcast, clients) {
     await cards.DRIVERS.asaas.call(cfg, 'GET', '/customers?limit=1');
     res.json({ ok: true, provider: 'asaas', ambiente: cfg.sandbox ? 'sandbox' : 'produção' });
   }));
-  router.put('/admin/elitepay/subaccounts/:accId', auth, adminOnly, h(async (req, res) => {
+  router.put('/admin/pagamentos/subaccounts/:accId', auth, adminOnly, h(async (req, res) => {
     const acc = db.findAccount(req.params.accId);
     if (!acc) return res.status(404).json({ error: 'Conta não encontrada' });
     const status = ['active', 'suspended', 'pending', 'rejected'].includes(req.body.status) ? req.body.status : null;
     if (!status) return res.status(400).json({ error: 'Status inválido' });
-    const sub = await elitepay.setSubaccountStatus(acc, status);
-    broadcast('elitepay', { accountId: acc.id, kind: 'subaccount', status: sub.status });
+    const sub = await pagamentos.setSubaccountStatus(acc, status);
+    broadcast('pagamentos', { accountId: acc.id, kind: 'subaccount', status: sub.status });
     res.json({ ok: true, subaccount: sub });
   }));
 

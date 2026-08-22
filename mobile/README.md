@@ -264,7 +264,7 @@ escritório:
 | Chat interno | Integrações |
 | Agendamentos | Campanhas |
 | Contatos | Modelos de mensagem |
-| Funil de vendas | Elite Pay · Checkout Builder |
+| Funil de vendas | Pagamentos · Checkout Builder |
 | Respostas rápidas | Links · Tracking · Pixels |
 | Assinatura | Atendentes |
 | Configurações (inclui Conexão & API) | Webhook & Logs · Admin SaaS |

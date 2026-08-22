@@ -181,7 +181,7 @@ function defaultLimits() {
 // aqui é booleano: desligado, o módulo some do menu do cliente e as rotas
 // recusam com 402. Módulos essenciais (conversas, contatos, funil, modelos,
 // LGPD) não entram na lista: fazem parte de qualquer plano.
-const FEATURE_KEYS = ['campaigns', 'flows', 'schedule', 'team', 'agents', 'elitepay', 'links', 'pixels', 'tracking', 'integrations', 'sms'];
+const FEATURE_KEYS = ['campaigns', 'flows', 'schedule', 'team', 'agents', 'pagamentos', 'links', 'pixels', 'tracking', 'integrations', 'sms'];
 function defaultFeatures() {
   const o = {};
   for (const k of FEATURE_KEYS) o[k] = true;   // plano sem config libera tudo
@@ -437,8 +437,50 @@ function load() {
 
 // Tudo que o load fazia depois de ler o arquivo: defaults novos, limpeza de
 // campos mortos e o formato das contas. Vale para os dois motores.
+// ---------------------------------------------------------------------------
+// O MÓDULO DE PAGAMENTOS TROCOU DE NOME NO DISCO
+//
+// Ele se chamava `elitepay`, do produto anterior. O nome saiu do código; aqui
+// os DADOS acompanham. Sem esta função a renomeação não daria erro — daria
+// SILÊNCIO: o módulo de cada conta nasceria vazio (sem subconta, sem
+// cobranças, sem carteira), o plano deixaria de liberar a tela e o atendente
+// perderia a permissão de cobrar. Tudo sem um log, porque para o código novo
+// essas contas simplesmente nunca teriam tido nada.
+//
+// Roda uma vez e apaga a chave antiga; rodar de novo não faz nada.
+// ---------------------------------------------------------------------------
+function renomearModuloDePagamentos(d) {
+  const mover = (o, de, para) => {
+    if (!o || typeof o !== 'object') return false;
+    if (o[de] === undefined) return false;
+    if (o[para] === undefined) o[para] = o[de];
+    delete o[de];
+    return true;
+  };
+  let n = 0;
+  if (mover(d.platform, 'elitepay', 'pagamentos')) n++;
+  for (const a of d.accounts || []) {
+    if (mover(a, 'elitepay', 'pagamentos')) n++;
+    for (const ag of a.team || []) if (mover(ag.permissions, 'elitepay', 'pagamentos')) n++;
+  }
+  for (const pl of d.plans || []) if (mover(pl.modules, 'elitepay', 'pagamentos')) n++;
+  if (n) {
+    console.log('[db] módulo de Pagamentos renomeado em ' + n + ' lugar(es)');
+    // GRAVA. Sem isto a troca acontece só na memória, o disco continua com o
+    // nome antigo e a migração roda de novo a cada partida do processo —
+    // barulho no log e trabalho repetido para sempre. O agendamento do save
+    // é o normal (250ms), então não há gravação síncrona no meio da carga.
+    save();
+  }
+  return n;
+}
+
 function migrar() {
   if (!db) db = JSON.parse(JSON.stringify(DEFAULTS));
+  // ANTES de qualquer outra coisa: o resto de migrar() completa objetos com os
+  // padrões, e completar `pagamentos` vazio antes de mover apagaria o que a
+  // conta já tem.
+  renomearModuloDePagamentos(db);
   for (const k of Object.keys(DEFAULTS)) if (db[k] === undefined) db[k] = JSON.parse(JSON.stringify(DEFAULTS[k]));
   for (const k of Object.keys(DEFAULTS.platform)) if (db.platform[k] === undefined) db.platform[k] = JSON.parse(JSON.stringify(DEFAULTS.platform[k]));
   // merge raso dos sub-objetos da plataforma (woovi/billing/affiliate ganham chaves novas).

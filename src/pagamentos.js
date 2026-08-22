@@ -1,9 +1,9 @@
 // ============================================================================
-// ELITE PAY — pagamentos Pix por cliente (SaaS) via SUBCONTAS do gateway.
+// PAGAMENTOS — pagamentos Pix por cliente (SaaS) via SUBCONTAS do gateway.
 //
 // Arquitetura DESACOPLADA: toda chamada externa passa pelo "driver" do gateway
 // ativo (hoje: Woovi). Para adicionar outro gateway no futuro, basta criar um
-// novo driver com a mesma interface — nada do Elite Pay muda.
+// novo driver com a mesma interface — nada do Pagamentos muda.
 //
 // SPLIT-READY: cada cobrança já calcula e registra a comissão da plataforma
 // (platformCut). Quando o admin configurar feeInPercent + splitPixKey, o split
@@ -188,10 +188,10 @@ const DRIVERS = {
 
 function platformCfg() {
   const p = db.get().platform;
-  if (!p.elitepay) {
-    p.elitepay = { gateway: 'woovi', onboardingMode: 'subaccount', feeInPercent: 0, feeOutPercent: 0, splitPixKey: '', requireApproval: false, logs: [] };
+  if (!p.pagamentos) {
+    p.pagamentos = { gateway: 'woovi', onboardingMode: 'subaccount', feeInPercent: 0, feeOutPercent: 0, splitPixKey: '', requireApproval: false, logs: [] };
   }
-  const ep = p.elitepay;
+  const ep = p.pagamentos;
   // onboardingMode: 'subaccount' (chave Pix, KYC via DICT) | 'kyc' (BaaS com KYC/KYB completo)
   if (!ep.onboardingMode) ep.onboardingMode = 'subaccount';
   // Taxas separadas: PIX In (split sobre vendas recebidas) e PIX Out (saques).
@@ -289,10 +289,10 @@ const BLOCK_KEYS = ['banner', 'timer', 'product', 'notice', 'benefits', 'testimo
 
 // ============================================================================
 // PAPÉIS DE TEMPLATE
-// Um modelo aprovado na Meta pode ter um papel dentro do Elite Pay:
+// Um modelo aprovado na Meta pode ter um papel dentro do Pagamentos:
 //   'cobranca'    → enviado ao gerar uma cobrança
 //   'confirmacao' → enviado quando o pagamento é confirmado
-//   ''            → modelo comum (campanha) — não aparece no Elite Pay
+//   ''            → modelo comum (campanha) — não aparece no Pagamentos
 // Os dois papéis são MUTUAMENTE EXCLUSIVOS: um modelo é uma coisa ou outra.
 //
 // As variáveis de cada papel são fixas e posicionais ({{1}}, {{2}}…), porque é
@@ -347,7 +347,7 @@ function setTemplateRole(acc, name, role, lang) {
   if (!name) return '';
   if (!TPL_ROLES.includes(role)) {
     delete ep.templateRoles[name];
-    // era o selecionado? o Elite Pay volta a não ter modelo designado
+    // era o selecionado? o Pagamentos volta a não ter modelo designado
     if (ep.chargeTemplateName === name) ep.chargeTemplateName = '';
     if (ep.confirmTemplateName === name) ep.confirmTemplateName = '';
     db.save();
@@ -366,7 +366,7 @@ function setTemplateRole(acc, name, role, lang) {
   return role;
 }
 
-// Modelos APROVADOS de um papel — é a lista que o Elite Pay oferece para escolha.
+// Modelos APROVADOS de um papel — é a lista que o Pagamentos oferece para escolha.
 function templatesByRole(acc, role) {
   const ep = ensure(acc);
   const list = (acc.templatesCache && acc.templatesCache.list) || [];
@@ -393,8 +393,8 @@ function pickTemplate(acc, role) {
 }
 
 function ensure(acc) {
-  if (!acc.elitepay) {
-    acc.elitepay = {
+  if (!acc.pagamentos) {
+    acc.pagamentos = {
       subaccount: null,   // { status, name, document, email, phone, pixKey, pixKeyType, gatewayId, synced, createdAt, approvedAt }
       settings: {
         chargeTemplateEnabled: true,   // usa o Template de Cobrança (senão, mensagem padrão)
@@ -417,15 +417,15 @@ function ensure(acc) {
       logs: []
     };
   }
-  if (!acc.elitepay.checkout) acc.elitepay.checkout = defaultCheckout();
+  if (!acc.pagamentos.checkout) acc.pagamentos.checkout = defaultCheckout();
   // migração: contas antigas ganham os campos novos sem perder o que já tinham
-  const ck = acc.elitepay.checkout, d = defaultCheckout();
+  const ck = acc.pagamentos.checkout, d = defaultCheckout();
   for (const k in d) if (ck[k] === undefined) ck[k] = d[k];
   if (!Array.isArray(ck.blocks) || !ck.blocks.length) ck.blocks = defaultBlocks();
   else { for (const b of BLOCK_KEYS) if (!ck.blocks.includes(b)) ck.blocks.push(b); }
 
   // ---- PRODUTOS + CHECKOUTS (múltiplos templates) ----
-  const ep = acc.elitepay;
+  const ep = acc.pagamentos;
   // Contas antigas ganham os ajustes novos sem perder o que já tinham.
   if (!ep.settings) ep.settings = {};
   if (ep.settings.paidStage === undefined) ep.settings.paidStage = '';
@@ -463,7 +463,7 @@ function ensure(acc) {
   }
   if (!ep.checkouts.some(c => c.isDefault)) ep.checkouts[0].isDefault = true;
   for (const p of ep.products) { const dp = defaultProduct(); for (const k in dp) if (p[k] === undefined) p[k] = dp[k]; }
-  return acc.elitepay;
+  return acc.pagamentos;
 }
 
 function log(acc, entry) {
@@ -518,7 +518,7 @@ async function syncSubaccount(acc) {
 async function registerSubaccount(acc, fields) {
   const ep = ensure(acc);
   if (ep.subaccount && ep.subaccount.status !== 'rejected') {
-    const e = new Error('Esta conta já possui uma subconta Elite Pay'); e.status = 400; throw e;
+    const e = new Error('Esta conta já possui uma subconta Pagamentos'); e.status = 400; throw e;
   }
   const cfg = platformCfg();
   const mode = cfg.onboardingMode === 'kyc' ? 'kyc' : 'subaccount';
@@ -621,10 +621,10 @@ async function garantirPagamentos(acc) {
 function applyAccountApproved(payload, broadcast) {
   const cid = (payload && payload.correlationID) || '';
   if (!cid) return { ok: false };
-  const acc = db.get().accounts.find(a => a.elitepay && a.elitepay.subaccount &&
-    a.elitepay.subaccount.kyc && a.elitepay.subaccount.kyc.correlationID === cid);
-  if (!acc) { store.logEvent({ type: 'elitepay_kyc_unmatched', correlationID: cid }); return { ok: false }; }
-  const sub = acc.elitepay.subaccount;
+  const acc = db.get().accounts.find(a => a.pagamentos && a.pagamentos.subaccount &&
+    a.pagamentos.subaccount.kyc && a.pagamentos.subaccount.kyc.correlationID === cid);
+  if (!acc) { store.logEvent({ type: 'pagamentos_kyc_unmatched', correlationID: cid }); return { ok: false }; }
+  const sub = acc.pagamentos.subaccount;
   if (sub.status === 'active') return { ok: true, duplicate: true };
   sub.kyc.status = 'approved';
   sub.kyc.approvedAt = Date.now();
@@ -642,7 +642,7 @@ function applyAccountApproved(payload, broadcast) {
       catch (e) { log(acc, { type: 'gateway_error', detail: 'Chave Pix adiada: ' + e.message }); db.save(); }
     })();
   }
-  if (broadcast) broadcast('elitepay', { accountId: acc.id, kind: 'subaccount', status: 'active' });
+  if (broadcast) broadcast('pagamentos', { accountId: acc.id, kind: 'subaccount', status: 'active' });
   return { ok: true, acc };
 }
 
@@ -663,8 +663,8 @@ async function setSubaccountStatus(acc, status) {
 // ---------------------------------------------------------------------------
 function activeSubaccount(acc) {
   const ep = ensure(acc);
-  if (!ep.subaccount) { const e = new Error('Crie sua conta Elite Pay primeiro'); e.status = 400; throw e; }
-  if (ep.subaccount.status !== 'active') { const e = new Error('Sua conta Elite Pay ainda não está ativa'); e.status = 400; throw e; }
+  if (!ep.subaccount) { const e = new Error('Crie sua conta Pagamentos primeiro'); e.status = 400; throw e; }
+  if (ep.subaccount.status !== 'active') { const e = new Error('Sua conta Pagamentos ainda não está ativa'); e.status = 400; throw e; }
   return ep.subaccount;
 }
 
@@ -787,7 +787,7 @@ function reverterVenda(acc, ch, motivo, broadcast) {
   db.save();
   log(acc, { type: motivo, chargeId: ch.id, amount: liquido, detail: `Valor retirado da carteira${cancelado ? `, ${fmtBRL(cancelado)} ainda não liberado` : ''}` });
   plog({ type: motivo, accountId: acc.id, accountName: acc.name, amount: liquido });
-  if (broadcast) { broadcast('wallet', { accountId: acc.id }); broadcast('elitepay', { accountId: acc.id, chargeId: ch.id, status: ch.status }); }
+  if (broadcast) { broadcast('wallet', { accountId: acc.id }); broadcast('pagamentos', { accountId: acc.id, chargeId: ch.id, status: ch.status }); }
   return { liquido, cancelado, doSaldo };
 }
 
@@ -1115,8 +1115,8 @@ function validatePayer(f) {
 function findChargeAnywhere(id) {
   id = String(id || '');
   for (const acc of db.get().accounts) {
-    if (!acc.elitepay) continue;
-    const ch = (acc.elitepay.charges || []).find(c => c.id === id || c.correlationID === id);
+    if (!acc.pagamentos) continue;
+    const ch = (acc.pagamentos.charges || []).find(c => c.id === id || c.correlationID === id);
     if (ch) return { acc, ch };
   }
   return null;
@@ -1236,12 +1236,12 @@ async function identifyPayer(chargeId, fields, broadcast) {
     }
   }
 
-  // 3) EVENTOS — trilha no Elite Pay + log da plataforma + tempo real no painel
+  // 3) EVENTOS — trilha no Pagamentos + log da plataforma + tempo real no painel
   log(acc, { type: 'payer_identified', chargeId: ch.id, amount: ch.value, detail: `${name} preencheu os dados no checkout (${fmtCpfCnpj(doc)})` });
-  store.logEvent({ type: 'elitepay_checkout_identify', accountId: acc.id, chargeId: ch.id, waId: contact.waId });
+  store.logEvent({ type: 'pagamentos_checkout_identify', accountId: acc.id, chargeId: ch.id, waId: contact.waId });
   db.save();
   if (broadcast) {
-    broadcast('elitepay', { accountId: acc.id, kind: 'charge', chargeId: ch.id, status: 'identified', contactName: name });
+    broadcast('pagamentos', { accountId: acc.id, kind: 'charge', chargeId: ch.id, status: 'identified', contactName: name });
     broadcast('contact', { accountId: acc.id, waId: contact.waId });
   }
   return { acc, ch, contact };
@@ -1408,7 +1408,7 @@ function publicChargeView(id) {
     // /pay/demo-<accId>[:checkoutId[:productId]] — prévia do builder
     const parts = id.slice(5).split(':');
     const acc = db.findAccount(parts[0]);
-    if (!acc || !acc.elitepay) return null;
+    if (!acc || !acc.pagamentos) return null;
     const prod = parts[2] ? findProduct(acc, parts[2]) : null;
     return {
       demo: true, id, status: 'active',
@@ -1472,15 +1472,15 @@ function publicChargeView(id) {
 // ---------------------------------------------------------------------------
 // WEBHOOK — pagamento confirmado (chamado pelo handler da Woovi)
 // ---------------------------------------------------------------------------
-function isElitePayCharge(correlationID) { return String(correlationID || '').startsWith('ep-'); }
+function isPagamentosCharge(correlationID) { return String(correlationID || '').startsWith('ep-'); }
 
 function applyPaid(freshCharge, broadcast) {
   const cid = freshCharge.correlationID || '';
   const accId = cid.split('-')[1];
   const acc = db.findAccount(accId);
-  if (!acc) { store.logEvent({ type: 'elitepay_unmatched', correlationID: cid }); return { ok: false }; }
+  if (!acc) { store.logEvent({ type: 'pagamentos_unmatched', correlationID: cid }); return { ok: false }; }
   const ch = findCharge(acc, cid);
-  if (!ch) { store.logEvent({ type: 'elitepay_unmatched', accountId: acc.id, correlationID: cid }); return { ok: false }; }
+  if (!ch) { store.logEvent({ type: 'pagamentos_unmatched', accountId: acc.id, correlationID: cid }); return { ok: false }; }
   return finalizePaid(acc, ch, broadcast);
 }
 
@@ -1525,7 +1525,7 @@ function finalizePaid(acc, ch, broadcast) {
     }
   }
   db.save();
-  if (broadcast) broadcast('elitepay', { accountId: acc.id, chargeId: ch.id, status: 'paid', amount: ch.value, contactName: ch.contactName, waId: ch.waId });
+  if (broadcast) broadcast('pagamentos', { accountId: acc.id, chargeId: ch.id, status: 'paid', amount: ch.value, contactName: ch.contactName, waId: ch.waId });
 
   // Confirmação automática ao cliente no WhatsApp (quando ativado nas configurações).
   // Vai como TEMPLATE aprovado — assim chega mesmo fora da janela de 24h, que é
@@ -1944,7 +1944,7 @@ function timingEq(a, b) {
 function findChargeByGateway(gatewayId, correlationID) {
   const data = db.get();
   for (const acc of data.accounts || []) {
-    const lista = (acc.elitepay && acc.elitepay.charges) || [];
+    const lista = (acc.pagamentos && acc.pagamentos.charges) || [];
     const ch = lista.find(c =>
       (correlationID && c.correlationID === correlationID) ||
       (gatewayId && c.card && c.card.gatewayId === gatewayId));
@@ -2025,7 +2025,7 @@ function applyCardStatus(acc, ch, status, broadcast) {
     // voltou para o comprador, e o rombo sobraria para a plataforma.
     try { reverterVenda(acc, ch, status === 'chargeback' ? 'chargeback' : 'refund_sale', broadcast); }
     catch (e) { log(acc, { type: 'wallet_error', chargeId: ch.id, detail: e.message }); }
-    if (broadcast) broadcast('elitepay', { accountId: acc.id, chargeId: ch.id, status });
+    if (broadcast) broadcast('pagamentos', { accountId: acc.id, chargeId: ch.id, status });
   } else if (status === 'refused' && antes === 'pending') {
     log(acc, { type: 'card_refused', chargeId: ch.id, detail: 'Recusado após análise do adquirente' });
   }
@@ -2091,11 +2091,11 @@ function metrics(acc) {
 function adminOverview() {
   const data = db.get();
   const cfg = platformCfg();
-  // TODAS as contas com Elite Pay entram na gestão financeira (inclusive a do
+  // TODAS as contas com Pagamentos entram na gestão financeira (inclusive a do
   // admin, que também pode vender) — diferente do billing, que só lista clientes.
-  const accounts = data.accounts.filter(a => a.elitepay);
+  const accounts = data.accounts.filter(a => a.pagamentos);
   const rows = accounts.map(a => {
-    const ep = a.elitepay;
+    const ep = a.pagamentos;
     const paid = (ep.charges || []).filter(c => c.status === 'paid');
     const pixIn = paid.reduce((s, c) => s + c.value, 0);
     const fees = paid.reduce((s, c) => s + (c.platformCut || 0), 0);
@@ -2107,7 +2107,7 @@ function adminOverview() {
     };
   });
   // Cartão: totais separados do Pix, para o admin ver de onde vem a receita.
-  const todas = accounts.flatMap(a => (a.elitepay.charges || []));
+  const todas = accounts.flatMap(a => (a.pagamentos.charges || []));
   const cartaoPagas = todas.filter(c => c.status === 'paid' && c.method === 'card');
   return {
     config: { gateway: cfg.gateway, onboardingMode: cfg.onboardingMode, feeInPercent: cfg.feeInPercent, feeOutPercent: cfg.feeOutPercent, splitPixKey: cfg.splitPixKey, requireApproval: cfg.requireApproval, configured: configured() },
@@ -2145,7 +2145,7 @@ function cobrancasEmAberto(accounts) {
   const agora = Date.now();
   const lista = [];
   for (const a of accounts) {
-    for (const c of (a.elitepay.charges || [])) {
+    for (const c of (a.pagamentos.charges || [])) {
       if (c.status !== 'active' && c.status !== 'expired') continue;
       const vencida = c.status === 'expired' || (c.expiresAt && c.expiresAt < agora);
       lista.push({
@@ -2171,7 +2171,7 @@ module.exports = {
   ensure, configured, platformCfg, gateway,
   registerSubaccount, garantirPagamentos, setSubaccountStatus, syncSubaccount, applyAccountApproved,
   createCharge, cancelCharge, findCharge, chargeMessage, chargeButton, computeOutFee,
-  isElitePayCharge, applyPaid, metrics, adminOverview, log, plog, fmtBRL,
+  isPagamentosCharge, applyPaid, metrics, adminOverview, log, plog, fmtBRL,
   noteBaseUrl, payLink, publicChargeView, defaultCheckout, defaultProduct, defaultBlocks,
   identifyPayer, fmtCpfCnpj, findProduct, findCheckout, checkoutBranding,
   TPL_ROLES, TPL_VARS, tplValues, roleOf, setTemplateRole, templatesByRole, pickTemplate,

@@ -219,7 +219,7 @@ function applyPayment(charge, broadcast) {
 
     // Assinou: a conta de Pagamentos é criada com os dados do cadastro, sem
     // formulário nenhum. Não trava a ativação se o gateway estiver fora.
-    try { require('./elitepay').garantirPagamentos(acc).catch(() => {}); } catch {}
+    try { require('./pagamentos').garantirPagamentos(acc).catch(() => {}); } catch {}
 
     // ---- comissão de afiliado (assinatura E renovação) ----
     const refCode = acc.affiliate && acc.affiliate.refBy;
@@ -272,10 +272,10 @@ function webhookHandler(broadcast) {
       const charge = b.charge || (b.data && b.data.charge) || null;
       store.logEvent({ type: 'woovi_webhook', event: ev, correlationID: charge && charge.correlationID });
 
-      // KYC/BaaS: conta do cliente aprovada pela compliance → ativa o Elite Pay.
+      // KYC/BaaS: conta do cliente aprovada pela compliance → ativa o Pagamentos.
       if (/ACCOUNT_REGISTER_APPROVED/i.test(ev)) {
         const acct = b.account || (b.data && b.data.account) || b.data || b;
-        require('./elitepay').applyAccountApproved(acct, broadcast);
+        require('./pagamentos').applyAccountApproved(acct, broadcast);
         return;
       }
 
@@ -283,10 +283,10 @@ function webhookHandler(broadcast) {
       if (!configured()) return;
       const fresh = await getCharge(charge.correlationID); // verificação server-side
       if (fresh && /COMPLETED|CONFIRMED|PAID/i.test(fresh.status || '')) {
-        // Cobranças do ELITE PAY (correlationID "ep-...") são de subcontas dos
+        // Cobranças do PAGAMENTOS (correlationID "ep-...") são de subcontas dos
         // clientes — vão para o módulo próprio; as demais são do billing SaaS.
-        const elitepay = require('./elitepay');
-        if (elitepay.isElitePayCharge(fresh.correlationID)) elitepay.applyPaid(fresh, broadcast);
+        const pagamentos = require('./pagamentos');
+        if (pagamentos.isPagamentosCharge(fresh.correlationID)) pagamentos.applyPaid(fresh, broadcast);
         else applyPayment(fresh, broadcast);
       }
     } catch (e) {

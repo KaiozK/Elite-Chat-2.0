@@ -113,20 +113,20 @@ function catalogo() {
     {
       id: 'pagamentos', grupo: 'Venda e meça', titulo: 'Abra sua conta de recebimento',
       porque: 'Com ela você cobra por Pix dentro da conversa e recebe sem tirar o cliente do WhatsApp.',
-      acao: 'Abrir Pagamentos', rota: '#/elitepay',
-      feita: (acc) => !!(acc.elitepay && acc.elitepay.subaccount && acc.elitepay.subaccount.status === 'active')
+      acao: 'Abrir Pagamentos', rota: '#/pagamentos',
+      feita: (acc) => !!(acc.pagamentos && acc.pagamentos.subaccount && acc.pagamentos.subaccount.status === 'active')
     },
     {
       id: 'produto', grupo: 'Venda e meça', titulo: 'Cadastre um produto',
       porque: 'Produto cadastrado preenche valor, descrição e checkout sozinho a cada cobrança.',
-      acao: 'Cadastrar produto', rota: '#/elitepay',
-      feita: (acc) => ((acc.elitepay || {}).products || []).length > 0
+      acao: 'Cadastrar produto', rota: '#/pagamentos',
+      feita: (acc) => ((acc.pagamentos || {}).products || []).length > 0
     },
     {
       id: 'cobranca', grupo: 'Venda e meça', titulo: 'Gere sua primeira cobrança',
       porque: 'Fecha o ciclo: da conversa ao pagamento confirmado, com o contato andando no funil sozinho.',
-      acao: 'Cobrar agora', rota: '#/elitepay',
-      feita: (acc) => ((acc.elitepay || {}).charges || []).length > 0
+      acao: 'Cobrar agora', rota: '#/pagamentos',
+      feita: (acc) => ((acc.pagamentos || {}).charges || []).length > 0
     },
     {
       id: 'link', grupo: 'Venda e meça', titulo: 'Crie um link rastreável',
@@ -152,7 +152,7 @@ function catalogo() {
 // ---------------------------------------------------------------------------
 const MODULO = {
   fluxo: 'flows', campanha: 'campaigns', equipe: 'agents',
-  pagamentos: 'elitepay', produto: 'elitepay', cobranca: 'elitepay', link: 'links'
+  pagamentos: 'pagamentos', produto: 'pagamentos', cobranca: 'pagamentos', link: 'links'
 };
 
 function relatorio(acc) {

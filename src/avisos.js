@@ -52,7 +52,7 @@ function avisarVenda(acc, ch) {
     title: 'Venda Aprovada',
     body: `Valor: ${valor}`,
     tag: 'venda:' + ch.id,
-    data: { type: 'sale', url: '/app/#/elitepay' }
+    data: { type: 'sale', url: '/app/#/pagamentos' }
   });
 
   // A assinatura do próprio Koonfy paga pelo checkout não é venda do cliente:
