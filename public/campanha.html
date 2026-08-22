@@ -35,7 +35,7 @@
      faz esta página parecer parte da Koonfy, e não um anúncio colado nela. */
   .convite {
     position: relative; overflow: hidden; border-radius: 16px;
-    margin-top: 26px; min-height: 190px; display: flex; align-items: center;
+    margin: 0 0 22px; min-height: 172px; display: flex; align-items: center;
     background: #0b1a12; color: #fff;
   }
   .convite-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
@@ -82,6 +82,11 @@
       <span id="atualizado"></span>
     </div>
 
+    <!-- O CONVITE fica no TOPO. Quem abre este link acabou de ver o produto
+         funcionando com os numeros dele na tela — e no fim da pagina, depois
+         de uma tabela de duzentos destinatarios, a maioria nao chega. -->
+    <div id="convite"></div>
+
     <div class="page-head row" style="align-items:center">
       <div style="flex:1">
         <h1 id="tit">Campanha</h1>
@@ -91,7 +96,6 @@
     </div>
 
     <div id="bi"><div class="card"><div class="pub-vazio"><b>Carregando…</b>Buscando os números da campanha.</div></div></div>
-    <div id="convite"></div>
     <p class="pub-pe">Acompanhamento em tempo real por Koonfy</p>
   </div>
 

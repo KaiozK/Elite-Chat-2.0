@@ -3649,11 +3649,11 @@ module.exports = function (broadcast, clients) {
       ...rel,
       conta: acc.name,
       telefones: mostrarTelefone,
-      // O CONVITE, com o link de AFILIADO de quem compartilhou. Quem manda o
-      // link está fazendo marketing da Koonfy de graça — se alguém assinar
-      // por causa disso, a comissão é dele. Sem isso, o convite seria a
-      // plataforma usando a base do cliente para vender sozinha, e o cliente
-      // descobriria e pararia de compartilhar.
+      // O CONVITE, no TOPO da página compartilhada, com o link de AFILIADO de
+      // quem compartilhou. Quem manda o link está fazendo marketing da Koonfy
+      // de graça — se alguém assinar por causa disso, a comissão é dele. Sem
+      // isso, o convite seria a plataforma usando a base do cliente para
+      // vender sozinha, e o cliente descobriria e pararia de compartilhar.
       convite: (() => {
         const base = (hosts.origemPublica(req) || (req ? req.protocol + '://' + req.get('host') : '')).replace(/\/+$/, '');
         const codigo = (acc.affiliate && acc.affiliate.code) || '';
