@@ -1,8 +1,8 @@
 {
-  "name": "elitechat-mobile",
+  "name": "koonfy-mobile",
   "version": "1.0.0",
   "private": true,
-  "description": "Apps iOS e Android do EliteChat (Capacitor) — empacotam o painel web e falam com o backend remoto.",
+  "description": "Apps iOS e Android do Koonfy (Capacitor) — empacotam o painel web e falam com o backend remoto.",
   "scripts": {
     "build": "node scripts/build-www.mjs",
     "sync": "npm run build && cap sync",

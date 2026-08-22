@@ -92,61 +92,23 @@ function broadcast(event, data) {
   try { maybePush(event, data); } catch (e) {}
 }
 
-// Traduz eventos SSE em notificações push (nome do contato = título, mensagem = corpo).
+// Traduz eventos SSE em notificações push e entrega nos aparelhos da conta.
+// A DECISÃO do que mostrar mora em src/avisospush.js, que é uma função pura e
+// testável; aqui fica só a entrega.
 function maybePush(event, data) {
-  if (!data || !data.accountId) return;
-  let type = null, payload = null;
-  const url = '/app/#/inbox';
-  if (event === 'message' && data.notify && data.notify.direction === 'in') {
-    type = 'message';
-    payload = { title: data.notify.name || 'Nova mensagem', body: data.notify.text || '', tag: 'msg:' + data.waId, data: { type, waId: data.waId, url } };
-  } else if (event === 'call' && data.kind === 'incoming') {
-    const c = data.call || {};
-    type = 'call';
-    payload = { title: 'Chamada de voz', body: ((c.name || c.contactName || ('+' + (c.waId || ''))) + ' está te ligando…'), tag: 'call:' + (c.id || ''), requireInteraction: true, data: { type, waId: c.waId, url } };
-  } else if (event === 'attendance' && data.status === 'open' && data.reason === 'inbound') {
-    type = 'attendance';
-    payload = { title: 'Novo atendimento', body: (data.name || 'Cliente') + ' iniciou uma conversa', tag: 'att:' + data.waId, data: { type, waId: data.waId, url } };
-  } else if (event === 'pagamentos' && data.status === 'paid') {
-    // VENDA APROVADA no Pagamentos. O dinheiro entrou: é a notificação que o
-    // lojista mais espera, e era a única do fluxo de venda que não existia.
-    const fmt = require('./src/pagamentos').fmtBRL;
-    type = 'sale';
-    payload = {
-      title: 'Venda aprovada ✅',
-      body: fmt(data.amount || 0) + (data.contactName ? ' · ' + data.contactName : ''),
-      tag: 'sale:' + (data.chargeId || Date.now()),
-      data: { type, waId: data.waId || null, url: '/app/#/pagamentos' }
-    };
-  } else if (event === 'commission') {
-    // Venda do indicado aprovada — o afiliado recebe o valor da comissão.
-    type = 'commission';
-    payload = {
-      title: 'Venda Aprovada✅',
-      body: 'Sua comissão: ' + require('./src/pagamentos').fmtBRL(data.amount || 0),
-      tag: 'com:' + (data.accountId || '') + ':' + Date.now(),
-      data: { type, url: '/app/#/billing' }
-    };
-  } else if (event === 'reminder') {
-    const ev = data.event || {};
-    // O fuso vem da CONTA: sem ele o texto saía no fuso do processo (UTC em
-    // produção) e um compromisso das 9h era anunciado como 12h.
-    const when = require('./src/datas').hora(ev.start, db.findAccount(data.accountId));
-    type = 'reminder';
-    payload = { title: 'Lembrete ' + (data.label || 'Agendamento'), body: `${ev.title || ''}${when ? ' · ' + when : ''}`, tag: 'ev:' + (ev.id || ''), requireInteraction: true, data: { type, waId: ev.contact ? ev.contact.waId : null, url: ev.contact ? url : '/app/#/schedule' } };
-  }
-  if (!type) return;
+  const aviso = require('./src/avisospush').avisoDoEvento(event, data);
+  if (!aviso) return;
   const acc = db.findAccount(data.accountId);
   if (!acc) return;
-  push.sendToAccount(acc, type, payload);              // navegador (Web Push)
-  pushNative.sendToAccount(acc, type, payload);        // apps das lojas (FCM/APNs)
+  push.sendToAccount(acc, aviso.type, aviso.payload);        // navegador (Web Push)
+  pushNative.sendToAccount(acc, aviso.type, aviso.payload);  // apps das lojas (FCM/APNs)
 }
 
 // Callback do Embedded Signup (fluxo de diálogo OAuth com redirect).
 // Recebe code + state e repassa para a janela do app via postMessage.
 app.get('/auth/meta/callback', (req, res) => {
   const payload = JSON.stringify({
-    type: 'ELITECHAT_META_CALLBACK',
+    type: 'KOONFY_META_CALLBACK',
     code: String(req.query.code || ''),
     state: String(req.query.state || ''),
     error: String(req.query.error || ''),
@@ -169,7 +131,7 @@ app.get('/auth/meta/callback', (req, res) => {
     } catch (e) {}
     // Sem opener: veio do app das lojas (navegador do sistema). Devolve
     // pelo deep link; se o app nao estiver instalado, cai no painel web.
-    var deep = 'elitechat://auth/meta?' + new URLSearchParams({ code: payload.code, state: payload.state, error: payload.error, error_description: payload.errorDescription });
+    var deep = 'koonfy://auth/meta?' + new URLSearchParams({ code: payload.code, state: payload.state, error: payload.error, error_description: payload.errorDescription });
     setTimeout(function () { window.location.replace('/app/#/settings'); }, 1200);
     window.location.href = deep;
   })();
@@ -180,7 +142,7 @@ app.get('/auth/meta/callback', (req, res) => {
 // Mesma mecânica do Embedded Signup: devolve o code para a janela do painel.
 app.get('/auth/meta-ads/callback', (req, res) => {
   const payload = JSON.stringify({
-    type: 'ELITECHAT_METAADS_CALLBACK',
+    type: 'KOONFY_METAADS_CALLBACK',
     code: String(req.query.code || ''),
     state: String(req.query.state || ''),
     error: String(req.query.error_description || req.query.error || '')
@@ -200,7 +162,7 @@ app.get('/auth/meta-ads/callback', (req, res) => {
         return;
       }
     } catch (e) {}
-    var deep = 'elitechat://auth/meta-ads?' + new URLSearchParams({ code: payload.code, state: payload.state, error: payload.error });
+    var deep = 'koonfy://auth/meta-ads?' + new URLSearchParams({ code: payload.code, state: payload.state, error: payload.error });
     setTimeout(function () { window.location.replace('/app/#/tracking'); }, 1200);
     window.location.href = deep;
   })();
@@ -211,7 +173,7 @@ app.get('/auth/meta-ads/callback', (req, res) => {
 // recebe o `code`, repassa para a janela do painel via postMessage e fecha.
 app.get('/auth/nuvemshop/callback', (req, res) => {
   const payload = JSON.stringify({
-    type: 'ELITECHAT_NUVEMSHOP_CALLBACK',
+    type: 'KOONFY_NUVEMSHOP_CALLBACK',
     code: String(req.query.code || ''),
     state: String(req.query.state || ''),
     error: String(req.query.error || '')
@@ -231,7 +193,7 @@ app.get('/auth/nuvemshop/callback', (req, res) => {
         return;
       }
     } catch (e) {}
-    var deep = 'elitechat://auth/nuvemshop?' + new URLSearchParams({ code: payload.code, state: payload.state, error: payload.error });
+    var deep = 'koonfy://auth/nuvemshop?' + new URLSearchParams({ code: payload.code, state: payload.state, error: payload.error });
     setTimeout(function () { window.location.replace('/app/#/integrations'); }, 1200);
     window.location.href = deep;
   })();

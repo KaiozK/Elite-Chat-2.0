@@ -24,22 +24,22 @@
 
             <!-- Retorno das autorizações OAuth (Meta, Meta Ads, Nuvemshop).
                  A autorização abre no navegador do sistema; o callback do
-                 servidor redireciona para elitechat://auth/... e o Android
+                 servidor redireciona para koonfy://auth/... e o Android
                  devolve o controle para cá. Tratado em public/app/native.js. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="elitechat" />
+                <data android:scheme="koonfy" />
             </intent-filter>
 
         </activity>
 
         <!-- Canal padrão das notificações do FCM (o servidor envia channel_id
-             "elitechat"; sem o canal declarado o Android 8+ silencia). -->
+             "koonfy"; sem o canal declarado o Android 8+ silencia). -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="elitechat" />
+            android:value="koonfy" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/colorPrimary" />

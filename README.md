@@ -24,7 +24,7 @@ os dois. Build, push, assinatura e checklist de submissão em
 
 ```bash
 cd mobile && npm install
-ELITECHAT_API_URL=https://app.seudominio.com npm run sync
+KOONFY_API_URL=https://app.seudominio.com npm run sync
 ```
 
 ## Expor o webhook publicamente (desenvolvimento)

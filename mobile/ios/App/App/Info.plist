@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>EliteChat</string>
+        <string>Koonfy</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -50,16 +50,16 @@
 
 	<!-- Deep link de retorno das autorizações OAuth (Meta, Meta Ads,
 	     Nuvemshop). A autorização abre no Safari; o callback do servidor
-	     redireciona para elitechat://auth/... e o iOS devolve o controle
+	     redireciona para koonfy://auth/... e o iOS devolve o controle
 	     ao app. Tratado em public/app/native.js. -->
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.elitechat.app</string>
+			<string>com.koonfy.app</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>elitechat</string>
+				<string>koonfy</string>
 			</array>
 		</dict>
 	</array>
@@ -74,13 +74,13 @@
 	<!-- Textos que o iOS mostra ao pedir cada permissão. A App Store rejeita
 	     o app se uma permissão for usada sem a descrição correspondente. -->
 	<key>NSCameraUsageDescription</key>
-	<string>O EliteChat usa a câmera para você fotografar e enviar imagens nas conversas de WhatsApp.</string>
+	<string>O Koonfy usa a câmera para você fotografar e enviar imagens nas conversas de WhatsApp.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>O EliteChat acessa suas fotos para você anexar imagens e documentos às conversas de WhatsApp.</string>
+	<string>O Koonfy acessa suas fotos para você anexar imagens e documentos às conversas de WhatsApp.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>O EliteChat salva na sua galeria as imagens recebidas nas conversas.</string>
+	<string>O Koonfy salva na sua galeria as imagens recebidas nas conversas.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>O EliteChat usa o microfone para gravar áudios enviados nas conversas de WhatsApp.</string>
+	<string>O Koonfy usa o microfone para gravar áudios enviados nas conversas de WhatsApp.</string>
 
 	<!-- Permite abrir o WhatsApp e o navegador a partir do app. -->
 	<key>LSApplicationQueriesSchemes</key>

@@ -3,9 +3,9 @@ apply plugin: 'com.android.application'
 // Assinatura de release. As credenciais ficam em android/key.properties
 // (ignorado pelo git) — a Play Store só aceita AAB assinado:
 //
-//   storeFile=/caminho/elitechat.keystore
+//   storeFile=/caminho/koonfy.keystore
 //   storePassword=...
-//   keyAlias=elitechat
+//   keyAlias=koonfy
 //   keyPassword=...
 //
 // Sem o arquivo, o build de release sai sem assinatura (útil em CI de teste)
@@ -18,10 +18,10 @@ if (hasKeystore) {
 }
 
 android {
-    namespace = "com.elitechat.app"
+    namespace = "com.koonfy.app"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.elitechat.app"
+        applicationId "com.koonfy.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

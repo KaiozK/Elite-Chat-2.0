@@ -1,4 +1,4 @@
-package com.elitechat.app;
+package com.koonfy.app;
 
 import com.getcapacitor.BridgeActivity;
 

@@ -12,10 +12,10 @@
  *     app/…             → cópia de public/app (sem o service worker)
  *     assets/…          → cópia de public/assets
  *
- * A URL do backend vem de ELITECHAT_API_URL e é gravada em
+ * A URL do backend vem de KOONFY_API_URL e é gravada em
  * www/app/native-config.js, lido pelo config.js do painel.
  *
- * Uso:  ELITECHAT_API_URL=https://app.seudominio.com npm run build
+ * Uso:  KOONFY_API_URL=https://app.seudominio.com npm run build
  */
 import { cp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -28,17 +28,17 @@ const REPO = resolve(MOBILE, '..');
 const PUBLIC = join(REPO, 'public');
 const WWW = join(MOBILE, 'www');
 
-const API_URL = (process.env.ELITECHAT_API_URL || '').trim().replace(/\/+$/, '');
+const API_URL = (process.env.KOONFY_API_URL || '').trim().replace(/\/+$/, '');
 
 if (!API_URL) {
-  console.error('\n  ERRO: defina ELITECHAT_API_URL com a URL pública do backend.');
-  console.error('  Ex.: ELITECHAT_API_URL=https://app.seudominio.com npm run build\n');
+  console.error('\n  ERRO: defina KOONFY_API_URL com a URL pública do backend.');
+  console.error('  Ex.: KOONFY_API_URL=https://app.seudominio.com npm run build\n');
   console.error('  O app das lojas não é servido pelo Express: o HTML vem do próprio');
   console.error('  pacote e as chamadas de API precisam de um endereço absoluto.\n');
   process.exit(1);
 }
 if (!/^https:\/\//i.test(API_URL) && !/^http:\/\/(localhost|127\.|10\.|192\.168\.)/i.test(API_URL)) {
-  console.error(`\n  ERRO: ELITECHAT_API_URL precisa ser https:// (recebi "${API_URL}").`);
+  console.error(`\n  ERRO: KOONFY_API_URL precisa ser https:// (recebi "${API_URL}").`);
   console.error('  App Store e Play Store recusam tráfego em texto puro.\n');
   process.exit(1);
 }
@@ -106,7 +106,7 @@ for (const nome of ASSETS_DO_APP) {
 // Configuração injetada: lida pelo public/app/config.js já no primeiro script.
 await writeFile(join(WWW, 'app', 'native-config.js'),
   `/* Gerado por mobile/scripts/build-www.mjs — não editar à mão. */\n` +
-  `window.__ELITECHAT_NATIVE__ = ${JSON.stringify({ apiUrl: API_URL, builtAt: new Date().toISOString() }, null, 2)};\n`
+  `window.__KOONFY_NATIVE__ = ${JSON.stringify({ apiUrl: API_URL, builtAt: new Date().toISOString() }, null, 2)};\n`
 );
 
 // O native-config.js precisa vir ANTES do config.js, que o consome.
@@ -125,7 +125,7 @@ await writeFile(indexPath, html);
 // O WebView abre a raiz; o painel mora em /app/.
 await writeFile(join(WWW, 'index.html'),
   `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">` +
-  `<title>EliteChat</title><meta http-equiv="refresh" content="0;url=/app/"></head>` +
+  `<title>Koonfy</title><meta http-equiv="refresh" content="0;url=/app/"></head>` +
   `<body><script>location.replace('/app/');</script></body></html>\n`
 );
 

@@ -1873,6 +1873,13 @@ module.exports = function (broadcast, clients) {
     const call = (req.acc.calls || []).find(c => c.id === req.params.id);
     if (call) { call.status = 'ended'; call.endedAt = Date.now(); db.save(); }
     agents.log(req.acc, req.who, 'call_ended', 'Encerrou a ligação');
+    // Avisa os OUTROS aparelhos, como o recusar já fazia. A Meta também manda o
+    // `terminate` pelo webhook, mas ele leva o tempo da rede dela — e nesse
+    // intervalo o celular de quem não desligou continua com o aviso na tela.
+    broadcast('call', {
+      accountId: req.acc.id, kind: 'terminate',
+      call: { id: req.params.id, waId: call ? call.waId : null, status: 'ended' }
+    });
     res.json({ ok: true, result: r });
   }));
 

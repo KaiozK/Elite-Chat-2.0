@@ -45,7 +45,7 @@ global.fetch = async (u, o) => {
     if (corpo && corpo.messaging_product) enviados.push({ url, corpo });
     if (/\/messages$/.test(url)) return resposta({ messages: [{ id: 'wamid.' + crypto.randomBytes(4).toString('hex') }] });
     if (/subscribed_apps/.test(url)) return resposta(o && o.method === 'POST' ? { success: true } : { data: [{ whatsapp_business_api_data: { id: '1' } }] });
-    return resposta({ id: WABA, owner_business_info: { id: '2502817489799431', name: 'Elite Chat' },
+    return resposta({ id: WABA, owner_business_info: { id: '2502817489799431', name: 'Koonfy' },
       display_phone_number: '+55 11 93623-5758', verified_name: 'Loja Teste', quality_rating: 'GREEN' });
   }
   return fetchReal(u, o);

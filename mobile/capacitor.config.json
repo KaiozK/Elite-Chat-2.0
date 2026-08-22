@@ -1,6 +1,6 @@
 {
-  "appId": "com.elitechat.app",
-  "appName": "EliteChat",
+  "appId": "com.koonfy.app",
+  "appName": "Koonfy",
   "webDir": "www",
   "android": {
     "allowMixedContent": false

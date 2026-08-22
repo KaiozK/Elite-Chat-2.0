@@ -95,7 +95,7 @@ const pagarme = {
       code: correlationID,
       customer: {
         name: customer.name,
-        email: customer.email || 'sem-email@elitechat.com.br',
+        email: customer.email || 'sem-email@koonfy.com.br',
         type: 'individual',
         document: onlyDigits(customer.taxId),
         document_type: onlyDigits(customer.taxId).length > 11 ? 'CNPJ' : 'CPF',
@@ -139,7 +139,7 @@ const pagarme = {
       code: correlationID,
       customer: {
         name: customer.name,
-        email: customer.email || 'sem-email@elitechat.com.br',
+        email: customer.email || 'sem-email@koonfy.com.br',
         type: onlyDigits(customer.taxId).length > 11 ? 'company' : 'individual',
         document: onlyDigits(customer.taxId),
         document_type: onlyDigits(customer.taxId).length > 11 ? 'CNPJ' : 'CPF'
@@ -370,7 +370,7 @@ const asaas = {
       },
       creditCardHolderInfo: card.token ? undefined : {
         name: card.holderName,
-        email: customer.email || 'sem-email@elitechat.com.br',
+        email: customer.email || 'sem-email@koonfy.com.br',
         cpfCnpj: onlyDigits(customer.taxId),
         postalCode: onlyDigits(holder && holder.zip),
         addressNumber: (holder && holder.number) || 'S/N',

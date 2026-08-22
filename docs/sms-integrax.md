@@ -1,6 +1,6 @@
 # SMS pela Integra X
 
-O EliteChat revende disparo de SMS: a **plataforma** contrata a Integra X, liga a
+O Koonfy revende disparo de SMS: a **plataforma** contrata a Integra X, liga a
 funcionalidade no Admin SaaS e escolhe em quais planos ela aparece. O crédito é
 consumido da conta da plataforma; o cliente é limitado pelo teto de SMS do plano
 que assinou.
@@ -23,11 +23,11 @@ Sem o passo 1 nenhum cliente vê a tela. Sem o passo 2, só os planos marcados v
 - **Tela SMS** no menu: envio avulso, disparo em massa filtrado por etapa do
   funil / etiqueta / conexão, e histórico com status de entrega.
 - **Etapa "Enviar SMS"** no Flow Builder, com as mesmas variáveis (`{{nome}}` etc.).
-- O opt-in/opt-out do EliteChat é do **WhatsApp** e não vale para SMS: as
+- O opt-in/opt-out do Koonfy é do **WhatsApp** e não vale para SMS: as
   palavras-chave de cancelamento chegam por mensagem recebida, que é um caminho
   que o SMS não tem. Quem dispara responde pela lista que usa.
 - O consumo é contado por **segmento**: acima do limite de caracteres a operadora
-  cobra mais de um SMS, e o EliteChat conta do mesmo jeito.
+  cobra mais de um SMS, e o Koonfy conta do mesmo jeito.
 
 ## O contrato da API
 

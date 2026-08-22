@@ -10,13 +10,13 @@
  * vez e todo o resto do app passa a usá-la.
  *
  * A URL do backend é gravada em www/app/native-config.js pelo script de build
- * do pacote mobile/ (a partir de ELITECHAT_API_URL) — este arquivo só a lê.
+ * do pacote mobile/ (a partir de KOONFY_API_URL) — este arquivo só a lê.
  */
 (function () {
   var native = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 
   // Injetado no build nativo; ausente no web.
-  var injected = (window.__ELITECHAT_NATIVE__ || {});
+  var injected = (window.__KOONFY_NATIVE__ || {});
 
   // Web: base vazia = tudo relativo ao host que serviu a página (comportamento atual).
   // Nativo: precisa ser absoluta. Sem barra no fim para concatenar sem duplicar.

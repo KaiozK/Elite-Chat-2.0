@@ -133,7 +133,7 @@ alerta no topo do painel Admin SaaS.
 
 ## Aviso importante sobre a Vercel
 
-O Elite Chat é um servidor Node **com estado**: grava tudo em `data/db.json`
+O Koonfy é um servidor Node **com estado**: grava tudo em `data/db.json`
 (191 pontos de gravação), mantém conexões SSE abertas para o tempo real do
 painel e roda 5 jobs em segundo plano (renovação de assinaturas no cartão,
 liberação de recebíveis, lembretes, atendimento e limpeza).

@@ -7,7 +7,7 @@
  * O que ele resolve:
  *   · OAuth (Meta, Meta Ads, Nuvemshop) — no navegador o fluxo é popup +
  *     postMessage; no app não existe popup com opener, então a autorização
- *     abre no navegador do sistema e volta por deep link (elitechat://).
+ *     abre no navegador do sistema e volta por deep link (koonfy://).
  *     Aqui o deep link é reconvertido no MESMO evento `message` que o painel
  *     já escuta, então os fluxos existentes continuam valendo sem alteração.
  *   · Push — token do device (FCM/APNs) registrado no backend.
@@ -20,24 +20,24 @@
   if (!EC.native) { window.ECNative = null; return; }
 
   var P = (window.Capacitor && window.Capacitor.Plugins) || {};
-  var SCHEME = 'elitechat';
+  var SCHEME = 'koonfy';
 
   function plugin(name) { return P[name] || null; }
 
   /* ------------------------------------------------------------------
    * OAuth por deep link
    * O callback no servidor, quando não encontra window.opener, redireciona
-   * para elitechat://auth/<provedor>?code=..&state=..  Traduzimos de volta
+   * para koonfy://auth/<provedor>?code=..&state=..  Traduzimos de volta
    * para o postMessage que connectNs()/esFinish()/Meta Ads já aguardam.
    * ------------------------------------------------------------------ */
   var DEEP_LINK_TYPES = {
-    'meta': 'ELITECHAT_META_CALLBACK',
-    'meta-ads': 'ELITECHAT_METAADS_CALLBACK',
-    'nuvemshop': 'ELITECHAT_NUVEMSHOP_CALLBACK'
+    'meta': 'KOONFY_META_CALLBACK',
+    'meta-ads': 'KOONFY_METAADS_CALLBACK',
+    'nuvemshop': 'KOONFY_NUVEMSHOP_CALLBACK'
   };
 
   function handleDeepLink(url) {
-    var m = /^elitechat:\/\/auth\/([a-z-]+)/i.exec(url || '');
+    var m = /^koonfy:\/\/auth\/([a-z-]+)/i.exec(url || '');
     if (!m) return;
     var type = DEEP_LINK_TYPES[m[1].toLowerCase()];
     if (!type) return;

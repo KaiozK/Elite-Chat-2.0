@@ -1,4 +1,4 @@
-# EliteChat — Mapa de Webhooks (documentação interna)
+# Koonfy — Mapa de Webhooks (documentação interna)
 
 Levantamento completo dos webhooks do sistema: **o que chega, o que é usado, o que
 é armazenado e o que é compartilhado entre módulos.** Base para o Cadastro

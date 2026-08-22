@@ -66,6 +66,24 @@ function notifOptions(p) {
 self.addEventListener('push', (e) => {
   let p = {};
   try { p = e.data ? e.data.json() : {}; } catch { p = { title: 'Koonfy', body: e.data ? e.data.text() : '' }; }
+
+  // FECHAMENTO: a ligação foi atendida em outro aparelho, recusada ou
+  // encerrada. Não é um aviso novo — é o pedido para apagar o que está na
+  // tela de bloqueio. Sem isto, o celular continuava mostrando (e tocando)
+  // uma chamada que já estava acontecendo no computador, e tocar nela abria
+  // um erro.
+  if (p.close === true || (p.data && p.data.type === 'call_end')) {
+    e.waitUntil((async () => {
+      const tag = (p.data && p.data.tag) || p.tag || '';
+      const abertas = await self.registration.getNotifications(tag ? { tag } : {});
+      abertas.forEach(n => { if (!tag || n.tag === tag) n.close(); });
+      // Avisa a aba aberta, se houver: ela fecha a tela de chamada também.
+      const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      all.forEach(c => c.postMessage({ type: 'CALL_END', data: p.data || {} }));
+    })());
+    return;
+  }
+
   e.waitUntil(self.registration.showNotification(p.title || 'Koonfy', notifOptions(p)));
 });
 

@@ -36,6 +36,7 @@
     prefs: loadPrefs(),
     center: loadCenter(),
     onOpen: null,      // callback(data), app registra p/ abrir a conversa
+    onCallEnd: null,   // callback(data), chamada encerrada em outro aparelho
     onResync: null,    // callback(), app registra p/ recarregar dados
     onChange: null,    // callback(), center mudou (repinta o sino/painel)
     audioCtx: null
@@ -222,6 +223,9 @@
     var d = e.data || {};
     if (d.type === 'NOTIFICATION_CLICK' && state.onOpen) { try { state.onOpen(d.data || {}); } catch (x) {} }
     if (d.type === 'RESYNC' && state.onResync) { try { state.onResync(); } catch (x) {} }
+    // A CHAMADA ACABOU em outro aparelho: o Service Worker ja apagou o aviso
+    // da tela de bloqueio e avisa aqui para a tela de chamada fechar junto.
+    if (d.type === 'CALL_END' && state.onCallEnd) { try { state.onCallEnd(d.data || {}); } catch (x) {} }
   }
 
   function urlB64ToUint8(base64) {
@@ -383,7 +387,7 @@
     permission: permission, supported: supported,
     playSound: playSound,
     startRing: startRing, stopRing: stopRing,
-    setHooks: function (h) { if (h.onOpen) state.onOpen = h.onOpen; if (h.onResync) state.onResync = h.onResync; if (h.onChange) state.onChange = h.onChange; }
+    setHooks: function (h) { if (h.onOpen) state.onOpen = h.onOpen; if (h.onResync) state.onResync = h.onResync; if (h.onChange) state.onChange = h.onChange; if (h.onCallEnd) state.onCallEnd = h.onCallEnd; }
   };
   window.ECNotify = api;
 })();

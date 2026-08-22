@@ -1,4 +1,4 @@
-# EliteChat — apps para App Store e Play Store
+# Koonfy — apps para App Store e Play Store
 
 Os aplicativos iOS e Android são o **mesmo painel** de `public/app/`, empacotado
 com [Capacitor](https://capacitorjs.com). Não existe uma segunda base de código:
@@ -42,7 +42,7 @@ cd mobile
 npm install
 
 # A URL do backend é obrigatória — é o que liga o app à sua API.
-ELITECHAT_API_URL=https://app.seudominio.com npm run sync
+KOONFY_API_URL=https://app.seudominio.com npm run sync
 ```
 
 `npm run sync` faz duas coisas: monta `mobile/www/` a partir de `public/` e copia
@@ -51,7 +51,7 @@ o resultado para dentro dos projetos nativos.
 Para não repetir a variável a cada comando, exporte-a no seu shell:
 
 ```bash
-export ELITECHAT_API_URL=https://app.seudominio.com
+export KOONFY_API_URL=https://app.seudominio.com
 ```
 
 ---
@@ -83,7 +83,7 @@ backend (`src/pushnative.js`) fala com os dois.
 ### Android — Firebase Cloud Messaging
 
 1. Crie um projeto no [Firebase Console](https://console.firebase.google.com).
-2. Adicione um app Android com o pacote `com.elitechat.app`.
+2. Adicione um app Android com o pacote `com.koonfy.app`.
 3. Baixe `google-services.json` e salve em `mobile/android/app/`.
 4. No projeto Firebase, gere uma **service account**
    (Configurações → Contas de serviço → Gerar nova chave privada).
@@ -108,7 +108,7 @@ Não precisa de Firebase. O backend fala direto com a Apple.
 APNS_KEY_FILE=/caminho/AuthKey_XXXXXXXXXX.p8
 APNS_KEY_ID=XXXXXXXXXX          # 10 caracteres, do nome do arquivo
 APNS_TEAM_ID=YYYYYYYYYY         # canto superior direito do portal Apple
-APNS_BUNDLE_ID=com.elitechat.app
+APNS_BUNDLE_ID=com.koonfy.app
 APNS_ENV=production             # use "sandbox" para builds de desenvolvimento
 ```
 
@@ -123,16 +123,16 @@ Crie a chave de assinatura **uma vez** e guarde-a com cuidado: perder essa chave
 significa não conseguir mais atualizar o app publicado.
 
 ```bash
-keytool -genkey -v -keystore elitechat.keystore \
-  -alias elitechat -keyalg RSA -keysize 2048 -validity 10000
+keytool -genkey -v -keystore koonfy.keystore \
+  -alias koonfy -keyalg RSA -keysize 2048 -validity 10000
 ```
 
 Crie `mobile/android/key.properties` (já está no `.gitignore`):
 
 ```properties
-storeFile=/caminho/absoluto/elitechat.keystore
+storeFile=/caminho/absoluto/koonfy.keystore
 storePassword=SUA_SENHA
-keyAlias=elitechat
+keyAlias=koonfy
 keyPassword=SUA_SENHA
 ```
 
@@ -159,7 +159,7 @@ No Xcode:
 
 1. Selecione o target **App** → *Signing & Capabilities*.
 2. Marque *Automatically manage signing* e escolha seu Team.
-3. Confirme o Bundle Identifier `com.elitechat.app`.
+3. Confirme o Bundle Identifier `com.koonfy.app`.
 4. Adicione a capability **Push Notifications**.
 5. Ajuste a versão em *General → Version / Build*.
 6. Menu *Product → Archive* → *Distribute App* → *App Store Connect*.
@@ -170,7 +170,7 @@ No Xcode:
 
 Itens que costumam causar rejeição:
 
-- [ ] `ELITECHAT_API_URL` aponta para HTTPS de produção, não localhost
+- [ ] `KOONFY_API_URL` aponta para HTTPS de produção, não localhost
 - [ ] Política de privacidade acessível em `https://SEU_DOMINIO/privacidade`
       com os campos entre colchetes preenchidos (razão social, CNPJ, e-mail do DPO)
 - [ ] Termos de uso em `https://SEU_DOMINIO/termos`, idem
@@ -191,7 +191,7 @@ Este é o ponto mais delicado da submissão. A Apple exige compra dentro do app
 (In-App Purchase, com 15–30% de comissão) para vender acesso a **usuários
 consumidores** — mas abre exceção para apps de negócio usados por empresas.
 
-O EliteChat cobra assinatura por meios próprios (Pix/cartão). Dois caminhos:
+O Koonfy cobra assinatura por meios próprios (Pix/cartão). Dois caminhos:
 
 1. **Ocultar a cobrança no app** — a tela de Assinatura não mostra preço nem
    botão de pagar; o usuário assina pelo site. É o caminho mais seguro contra
@@ -332,7 +332,7 @@ só para dar resposta imediata — quem decide de verdade é o servidor.
 
 Meta, Meta Ads e Nuvemshop autorizam por popup no navegador. Dentro do app não
 existe popup com `opener`, então a autorização abre no navegador do sistema e o
-callback do servidor redireciona para `elitechat://auth/...`. O `native.js`
+callback do servidor redireciona para `koonfy://auth/...`. O `native.js`
 recebe esse deep link e reemite o mesmo `postMessage` que o painel já escutava —
 os fluxos existentes seguem valendo sem alteração.
 

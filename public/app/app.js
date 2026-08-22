@@ -504,7 +504,7 @@ function openExternal(url) {
 // Abre uma autorização OAuth (Meta, Meta Ads, Nuvemshop).
 // Navegador: popup que devolve o código por postMessage.
 // App nativo: navegador do sistema — não existe popup com `opener` ali, então
-// o retorno vem por deep link (elitechat://auth/...) e o native.js reemite o
+// o retorno vem por deep link (koonfy://auth/...) e o native.js reemite o
 // mesmo postMessage que estes fluxos já escutam.
 function openAuthWindow(url, name, features) {
   if (API.native && window.ECNative) return ECNative.openAuthWindow(url);
@@ -1287,7 +1287,7 @@ async function enterApp() {
   paintTopbarAvatar(); // usa a foto do perfil conectado quando existir
   applyNavPermissions();   // esconde do menu os módulos sem permissão de visualizar
   startPresence();         // heartbeat de presença (atendente)
-  if (window.ECNotify) { ECNotify.setHooks({ onOpen: notifOpenFromData, onResync: notifResync, onChange: paintNotifBell }); paintNotifBell(); }
+  if (window.ECNotify) { ECNotify.setHooks({ onOpen: notifOpenFromData, onResync: notifResync, onChange: paintNotifBell, onCallEnd: chamadaEncerradaEmOutroAparelho }); paintNotifBell(); }
   setTheme(currentTheme());   // sincroniza o ícone de tema do topbar
   askNotifPermission();    // permissão + push do WebApp
   refreshWallet();         // saldo no cabeçalho
@@ -1301,6 +1301,13 @@ async function enterApp() {
   if (state.mustChangePassword) toast('Troque a senha padrão em Configurações → Segurança', 'error');
   route();
   atenderPelaUrl();
+  // PARTIDA FRIA COM O TELEFONE TOCANDO. No celular o app quase sempre está
+  // fechado, então abrir pelo ícone é a regra e não a exceção — e numa
+  // partida fria o documento já nasce visível, então `visibilitychange` não
+  // dispara. Sem esta linha o app subia, pintava o dashboard e ficava calado
+  // com uma ligação tocando do outro lado. No computador nunca apareceu
+  // porque lá o app fica aberto o dia inteiro e o SSE já está conectado.
+  recuperarChamadaPendente(true);
 }
 
 // O app pode ter sido ABERTO pelo toque na notificação de chamada — o Service
@@ -11714,9 +11721,34 @@ function toggleMute() {
 // ou por answerCall, então é nesses dois pontos que ele para.
 function pararToque() { if (window.ECNotify && ECNotify.stopRing) ECNotify.stopRing(); }
 
+// Apaga a notificação daquela chamada, esteja ela onde estiver: a que este
+// navegador criou e a que o Service Worker mostrou com o app fechado.
+async function fecharAvisoDaChamada(id) {
+  if (!id) return;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const abertas = reg ? await reg.getNotifications({ tag: 'call:' + id }) : [];
+    abertas.forEach(n => n.close());
+  } catch (e) { /* sem service worker: não há o que fechar */ }
+}
+
+// A CHAMADA FOI RESOLVIDA EM OUTRO APARELHO. O aviso na tela de bloqueio ja
+// foi apagado pelo Service Worker; aqui a tela de chamada fecha junto, para
+// nao sobrar um "Atender" que nao atende mais nada.
+function chamadaEncerradaEmOutroAparelho(d) {
+  d = d || {};
+  if (!callUI) return;
+  if (d.callId && callUI.id && d.callId !== callUI.id) return;
+  endCallUI('Atendida em outro aparelho');
+}
+
 function endCallUI(msg) {
   const c = callUI; if (!c) return;
   pararToque();
+  // A NOTIFICAÇÃO DA CHAMADA SOME JUNTO. Ela é `requireInteraction`: fica na
+  // tela até alguém tocar. Encerrada a ligação, ela vira um convite para
+  // atender uma chamada que não existe mais.
+  fecharAvisoDaChamada(c.id);
   eusQueAtendi = false;          // a próxima chamada começa do zero
   clearInterval(c.timerIv);
   try { c.stream && c.stream.getTracks().forEach(t => t.stop()); } catch {}
@@ -13354,7 +13386,7 @@ function connectNs() {
   const onMsg = async ev => {
     if (ev.origin !== window.location.origin) return;
     const d = ev.data || {};
-    if (d.type !== 'ELITECHAT_NUVEMSHOP_CALLBACK') return;
+    if (d.type !== 'KOONFY_NUVEMSHOP_CALLBACK') return;
     window.removeEventListener('message', onMsg);
     if (d.error) return toast('Autorização cancelada: ' + d.error, 'error');
     if (d.state !== state) return toast('Falha de segurança na autorização (state inválido)', 'error');
@@ -14496,7 +14528,7 @@ window.addEventListener('message', (e) => {
     } catch {}
     return;
   }
-  if (e.origin === location.origin && e.data && e.data.type === 'ELITECHAT_META_CALLBACK') {
+  if (e.origin === location.origin && e.data && e.data.type === 'KOONFY_META_CALLBACK') {
     if (!esOAuthState || e.data.state !== esOAuthState) return;
     if (e.data.error) return esFail(e.data.errorDescription || e.data.error);
     esFinish(e.data.code, true);
@@ -14605,7 +14637,7 @@ async function connectWhatsApp() {
     `&state=${encodeURIComponent(esOAuthState)}` +
     `&response_type=code` +
     `&scope=${encodeURIComponent('business_management,whatsapp_business_management,whatsapp_business_messaging')}`;
-  const pop = openAuthWindow(url, 'elitechat_es', 'width=700,height=780');
+  const pop = openAuthWindow(url, 'koonfy_es', 'width=700,height=780');
   if (!pop) esFail('Popup bloqueado pelo navegador. Libere popups para este site.');
 }
 
@@ -16796,7 +16828,7 @@ async function trkMetaConnect() {
   const aoReceber = async ev => {
     if (ev.origin !== location.origin) return;                 // so aceita o nosso callback
     const d = ev.data || {};
-    if (d.type !== 'ELITECHAT_METAADS_CALLBACK') return;
+    if (d.type !== 'KOONFY_METAADS_CALLBACK') return;
     window.removeEventListener('message', aoReceber);
     if (d.error) return toast(d.error, 'error');
     try {
