@@ -1444,8 +1444,23 @@ function publicChargeView(id) {
     // -----------------------------------------------------------------------
     prefill: dadosConhecidos(acc, ch),
     payerName: ch.payer ? ch.payer.name : '',
-    // cartão: só aparece no checkout se o admin ligou e configurou o adquirente
-    card: { ...cardPublic(), installments: installmentOptions(ch.value) },
+    // CARTÃO E BOLETO: além de o admin ter ligado e configurado o adquirente,
+    // no modo SPLIT o LOJISTA precisa ter recebedor ativo — ali o dinheiro vai
+    // direto para ele, e sem o recebedor o pagamento falha depois de a pessoa
+    // digitar número, validade, CVV e CPF. Oferecer um método que não pode ser
+    // cobrado é pior que não oferecer: ela desiste achando que o cartão dela é
+    // que não presta. No modo CARTEIRA quem recebe é a plataforma, e aí a
+    // conta do lojista não entra na decisão.
+    card: (() => {
+      const pub = cardPublic();
+      const podeReceber = cardConfig().settleMode === 'wallet' ? true : cardReady(acc).ok;
+      return {
+        ...pub,
+        credit: pub.credit && podeReceber,
+        boleto: pub.boleto && podeReceber,
+        installments: installmentOptions(ch.value)
+      };
+    })(),
     // como foi pago (recibo) — sem nenhum dado sensível do cartão
     method: ch.method || 'pix',
     paidCard: ch.card ? { kind: ch.card.kind, brand: ch.card.brand, last4: ch.card.last4, installments: ch.card.installments } : null,

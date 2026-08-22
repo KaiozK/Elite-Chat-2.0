@@ -1222,20 +1222,26 @@ details.adv[open] summary::after { content: '–'; }
 .tpl-btn-line input { flex: 1; }
 
 /* ===== celular realista (iPhone + WhatsApp) ===== */
+/* O APARELHO. É o render da vitrine (o mesmo da seção "No seu bolso"), e não
+   um telefone desenhado em CSS: dois telefones diferentes no mesmo produto
+   fazem a tela parecer montada por duas pessoas que não se falaram.
+   A proporção sai do arquivo — 720x1472 —, e a área de tela dele começa a
+   6,2% de cada lado e 3% em cima e embaixo. */
 .ph-device {
-  width: 300px; margin: 0 auto; position: relative;
-  background: linear-gradient(160deg, #2a2f38, #14171c); padding: 11px 11px 12px;
-  border-radius: 46px;
-  box-shadow: 0 0 0 2px #363b45, 0 30px 60px -18px rgba(15, 31, 21, .5), inset 0 0 0 1.5px rgba(255, 255, 255, .06);
+  --ph-w: 300px;
+  width: var(--ph-w); aspect-ratio: 720 / 1472; margin: 0 auto; position: relative;
   font-family: -apple-system, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+  filter: drop-shadow(0 30px 60px rgba(15, 31, 21, .35));
 }
-.ph-island {
-  position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-  width: 92px; height: 26px; background: #05070a; border-radius: 20px; z-index: 6;
-}
+.ph-mock { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+/* A TELA vai POR CIMA do render, dentro da área de vidro dele — do mesmo jeito
+   que a vitrine faz com as notificações. Por baixo, o que apareceria seria a
+   tela de bloqueio que já vem desenhada no arquivo. A moldura, a ilha e o
+   brilho da borda continuam sendo do render. */
 .ph-screen {
-  border-radius: 36px; overflow: hidden; background: #d9dbd3; position: relative;
-  display: flex; flex-direction: column; height: 540px;
+  position: absolute; left: 6.2%; right: 6.2%; top: 3%; bottom: 3%;
+  border-radius: calc(var(--ph-w) * .115); overflow: hidden;
+  background: #d9dbd3; display: flex; flex-direction: column; z-index: 2;
 }
 /* WhatsApp iOS (base: WhatsApp UI Kit iOS do Figma) — barras claras, azul #007AFF */
 .ph-status {
@@ -2122,47 +2128,107 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   .sv-grid .tpl-preview { display: none; }
 }
 
-/* ---------- tela de ligação (Calling API — estilo WhatsApp) ---------- */
+/* ============================================================
+   TELA DE LIGAÇÃO — desenho da tela de chamada do iPhone
+   ============================================================
+   Fundo preto com a foto do contato desfocada, nome no primeiro
+   terço, botões circulares foscos e as duas ações irreversíveis
+   (atender e recusar) nas pontas opostas da linha de baixo.
+   ============================================================ */
 .call-overlay {
   position: fixed; inset: 0; z-index: 500;
-  background: radial-gradient(120% 90% at 50% 0%, #10473c 0%, #0b2e27 45%, #081f1a 100%);
-  color: #eaf4ef; display: flex; flex-direction: column; align-items: center;
-  padding: 26px 20px calc(38px + env(safe-area-inset-bottom, 0px));
+  background: #000;
+  color: #fff; display: flex; flex-direction: column; align-items: center;
+  padding: calc(58px + env(safe-area-inset-top, 0px)) 22px calc(46px + env(safe-area-inset-bottom, 0px));
   animation: fadeUp .25s var(--ease) both;
+  overflow: hidden;
 }
-.call-top { display: flex; align-items: center; gap: 6px; font-size: 11px; color: rgba(234,244,239,.65); }
-.call-top .ic { color: rgba(234,244,239,.65); }
-.call-brand { display: flex; align-items: center; gap: 7px; margin-top: 6px; font-size: 13px; font-weight: 500; color: rgba(234,244,239,.85); }
-.call-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center; }
-.call-av {
-  width: 118px; height: 118px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(150deg, #25d366, #128c7e); color: #fff; font-size: 40px; font-weight: 500;
-  margin-bottom: 14px; position: relative;
+/* A FOTO do contato, ampliada e desfocada. `scale` porque o desfoque come as
+   bordas: sem ela sobra uma moldura clara em volta da tela. */
+.call-fundo {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  filter: blur(42px) saturate(1.25); transform: scale(1.35); opacity: .55;
 }
-.call-av.ring::before, .call-av.ring::after {
-  content: ''; position: absolute; inset: -12px; border-radius: 50%;
-  border: 2px solid rgba(37, 211, 102, .45); animation: callRing 1.6s ease-out infinite;
+/* O VÉU. Escurece de baixo para cima: embaixo ficam os botões, e botão sobre
+   foto clara é botão que some. Em cima fica o nome, que precisa de contraste
+   constante — daí o gradiente não zerar em lugar nenhum. */
+.call-veu {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,.25) 34%, rgba(0,0,0,.82) 100%);
 }
-.call-av.ring::after { animation-delay: .8s; }
-@keyframes callRing { 0% { transform: scale(.85); opacity: 1; } 100% { transform: scale(1.35); opacity: 0; } }
-.call-overlay h2 { font-size: 24px; font-weight: 500; letter-spacing: -.02em; color: #fff; margin: 0; }
-.call-status { font-size: 14px; color: rgba(234,244,239,.75); min-height: 22px; margin: 0; }
-#call-timer { font-variant-numeric: tabular-nums; font-weight: 500; }
-.call-actions { display: flex; gap: 44px; align-items: flex-start; }
-.call-act { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 12px; color: rgba(234,244,239,.8); }
-.call-btn {
-  width: 64px; height: 64px; border-radius: 50%; border: none; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; color: #fff;
-  transition: transform .15s, background .15s; box-shadow: 0 8px 22px rgba(0,0,0,.35);
-}
-.call-btn:active { transform: scale(.92); }
-.call-btn.green { background: #21c063; }
-.call-btn.red { background: #ea3d2f; }
-.call-btn.dark { background: rgba(255,255,255,.14); }
-.call-btn.dark.on { background: var(--card); color: #0b2e27; }
-.call-btn.pulse { animation: callBtnPulse 1.4s ease-in-out infinite; }
-@keyframes callBtnPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(33,192,99,.55); } 50% { box-shadow: 0 0 0 16px rgba(33,192,99,0); } }
+/* O conteudo sobe por cima da foto e do veu, que sao absolutos. O botao de
+   minimizar fica de FORA desta regra: ele tem posicionamento proprio no canto,
+   e um `position: relative` aqui o devolvia para o fluxo — ele ia parar
+   centralizado em cima do nome do contato. */
+.call-overlay > *:not(.call-fundo):not(.call-veu):not(.call-min) { position: relative; z-index: 1; }
+.call-overlay .call-min { z-index: 2; }
 
+/* ---- identificação, no primeiro terço ---- */
+.call-id { text-align: center; }
+.call-overlay h2 {
+  font-size: clamp(28px, 7vw, 36px); font-weight: 400; letter-spacing: -.02em;
+  color: #fff; margin: 0; line-height: 1.15;
+}
+/* O cinza do iOS para texto secundário sobre fundo escuro. Mais claro que
+   isso vira um segundo título; mais escuro some sobre a foto. */
+.call-status { font-size: 17px; color: rgba(235,235,245,.62); min-height: 24px; margin: 6px 0 0; font-weight: 400; }
+#call-timer { font-variant-numeric: tabular-nums; font-weight: 400; }
+.call-selo {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 14px;
+  padding: 5px 11px; border-radius: 999px;
+  background: rgba(255,255,255,.12); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  font-size: 11.5px; font-weight: 500; color: rgba(235,235,245,.78);
+}
+.call-selo .ic { color: inherit; }
+
+/* ---- o retrato ---- */
+.call-center { flex: 1; display: flex; align-items: center; justify-content: center; }
+.call-av {
+  width: min(150px, 38vw); aspect-ratio: 1; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+  background: linear-gradient(150deg, #4a4a4f, #2c2c2e); color: #fff;
+  font-size: clamp(38px, 10vw, 52px); font-weight: 400; position: relative;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+}
+.call-av img { width: 100%; height: 100%; object-fit: cover; }
+/* As ondas do toque. Duas, defasadas: uma só parece um erro de renderização,
+   três viram enfeite. */
+.call-av.ring::before, .call-av.ring::after {
+  content: ''; position: absolute; inset: -14px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.35); animation: callRing 1.8s ease-out infinite;
+}
+.call-av.ring::after { animation-delay: .9s; }
+@keyframes callRing { 0% { transform: scale(.88); opacity: 1; } 100% { transform: scale(1.4); opacity: 0; } }
+
+/* ---- botões ---- */
+.call-actions { display: flex; gap: 40px; align-items: flex-start; justify-content: center; width: 100%; max-width: 420px; }
+/* Atender e recusar vão para as PONTAS. Lado a lado, um tremor na mão
+   desliga na cara do cliente. */
+.call-actions.atender { justify-content: space-between; padding: 0 12px; }
+.call-act { display: flex; flex-direction: column; align-items: center; gap: 9px; font-size: 12px; color: rgba(235,235,245,.72); font-weight: 500; }
+.call-btn {
+  width: 72px; height: 72px; border-radius: 50%; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; color: #fff;
+  transition: transform .15s, background .2s;
+}
+.call-btn:active { transform: scale(.9); }
+/* O 'material' do iOS: translúcido com desfoque atrás. Sobre uma foto clara,
+   um botão chapado sumiria; com o desfoque ele continua legível e ainda
+   deixa a foto aparecer. */
+.call-btn.fosco {
+  background: rgba(255,255,255,.16); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
+}
+.call-btn.fosco.on { background: #fff; color: #000; }
+.call-btn.green { background: #34c759; box-shadow: 0 10px 30px rgba(52,199,89,.4); }
+.call-btn.red { background: #ff3b30; box-shadow: 0 10px 30px rgba(255,59,48,.35); }
+.call-btn.dark { background: rgba(255,255,255,.16); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); }
+.call-btn.dark.on { background: #fff; color: #000; }
+.call-btn.pulse { animation: callBtnPulse 1.5s ease-in-out infinite; }
+@keyframes callBtnPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(52,199,89,.5); } 50% { box-shadow: 0 0 0 18px rgba(52,199,89,0); } }
+@media (prefers-reduced-motion: reduce) {
+  .call-btn.pulse { animation: none; }
+  .call-av.ring::before, .call-av.ring::after { animation: none; opacity: 0; }
+}
 /* ---------- webhook: modo escuta (aguardando evento real) ---------- */
 .wh-wait { text-align: center; padding: 40px 24px; }
 .wh-wait-anim {
@@ -4339,8 +4405,6 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
 .call-min:hover { background: rgba(255, 255, 255, .3); border-color: rgba(255, 255, 255, .5); }
 .call-min:active { transform: scale(.96); }
 .call-min svg { flex: none; }
-/* o cabeçalho da criptografia desce, para não brigar com o botão */
-.call-overlay .call-top { margin-top: 46px; }
 @media (max-width: 560px) {
   .call-min { left: 12px; top: calc(12px + env(safe-area-inset-top, 0px)); }
   /* O rótulo FICA no celular. Sem ele restava um círculo com um traço dentro,

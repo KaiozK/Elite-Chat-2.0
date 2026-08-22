@@ -269,14 +269,17 @@ async function fcmSend(token, payload) {
 // Mesma assinatura de push.sendToAccount: respeita as prefs de cada aparelho.
 // Cada aparelho vai pelo canal da sua plataforma; um canal não configurado é
 // pulado sem derrubar o outro.
-async function sendToAccount(acc, type, payload) {
+// `apenas` restringe o envio a UM aparelho, pelo token dele — mesmo motivo do
+// push web: o teste de notificação toca só no celular de quem apertou o botão.
+async function sendToAccount(acc, type, payload, apenas) {
   if (!enabled()) return;
   if (!acc || !Array.isArray(acc.pushDevices) || !acc.pushDevices.length) return;
   const temFcm = !!serviceAccount();
   const temApns = !!apnsConfig();
   const dead = [];
+  const alvos = apenas ? acc.pushDevices.filter(d => d.token === apenas) : acc.pushDevices;
 
-  await Promise.all(acc.pushDevices.map(async (dev) => {
+  await Promise.all(alvos.map(async (dev) => {
     const pf = dev.prefs || {};
     if (pf.enabled === false) return;
     if (pf.types && pf.types[type] === false) return;

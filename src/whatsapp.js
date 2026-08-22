@@ -167,7 +167,9 @@ function deleteTemplate(acc, name) {
 
 function getPhoneInfo(acc) {
   requireWa(acc, 'phoneNumberId');
-  return graph(acc, `/${acc.wa.phoneNumberId}?fields=verified_name,display_phone_number,quality_rating,code_verification_status,platform_type`);
+  // `messaging_limit_tier` é o teto de conversas novas por 24h — o número que
+  // decide o tamanho de um disparo. `throughput` é a velocidade de envio.
+  return graph(acc, `/${acc.wa.phoneNumberId}?fields=verified_name,display_phone_number,quality_rating,code_verification_status,platform_type,messaging_limit_tier,throughput`);
 }
 
 // Verificação do número (quando ainda não verificado)

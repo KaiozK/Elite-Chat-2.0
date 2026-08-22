@@ -91,5 +91,5 @@ const url = (r) => 'http://127.0.0.1:' + porta + r;
   ok(typeof pl.destaque === 'boolean', 'destaque vem como booleano');
 
   srv.close();
-  encerrar(falhas);
+  await encerrar(null, falhas);
 })();

@@ -84,5 +84,5 @@ const limits = require(R + 'src/limits');
   ok(doCiclo === 4 && limits.report(acc).sends.used === 3,
      `quatro templates gravados, três no ciclo: ${limits.report(acc).sends.used}`);
 
-  encerrar(falhas);
+  await encerrar(null, falhas);
 })();

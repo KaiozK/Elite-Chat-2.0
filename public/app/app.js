@@ -447,7 +447,7 @@ async function notifTestFire(btn) {
   try {
     // garante que ESTE aparelho está inscrito antes de pedir o envio
     await ECNotify.subscribePush();
-    const r = await api('/push/test', { body: {} });
+    const r = await api('/push/test', { body: { endpoint: await esteAparelho() } });
     toast(r.sent
       ? `Enviado para ${r.sent} aparelho(s). Feche o app e veja se chega.`
       : 'Nenhum aparelho inscrito ainda. Recarregue a página e tente de novo.', r.sent ? 'ok' : 'error');
@@ -4830,8 +4830,12 @@ function phonePreview(data, opts = {}) {
         ${rows.map(r => `<div class="wa-sheet-row"><span>${esc(r)}</span><i></i></div>`).join('')}
       </div>`
     : '';
+  // O APARELHO É O RENDER DA VITRINE, o mesmo da seção "No seu bolso". Antes
+  // era um telefone desenhado em CSS: funcionava, mas eram dois telefones
+  // diferentes no mesmo produto — e isso faz a tela parecer montada por duas
+  // pessoas que não se falaram. A TELA continua a mesma: só a moldura mudou.
   return `<div class="ph-device">
-    <div class="ph-island"></div>
+    <img class="ph-mock" src="/assets/figma-celular.webp" width="720" height="1472" alt="" aria-hidden="true" loading="lazy" decoding="async">
     <div class="ph-screen">
       <div class="ph-status">
         <span class="ph-time">9:41</span>
@@ -5443,6 +5447,7 @@ async function renderSettings() {
           <div class="wa-row"><span>WABA ID</span><b>${esc(w.wabaId || '-')}</b></div>
           <div class="wa-row"><span>Qualidade do número</span><b>${w.qualityRating
             ? `<span class="pill ${w.qualityRating === 'GREEN' ? 'done' : 'warn'}">${esc(w.qualityRating)}</span>` : '-'}</b></div>
+          <div class="wa-row"><span>Limite diário</span><b>${limiteDiarioHtml(w)}</b></div>
           <div class="wa-row"><span>Business ID</span><b>${esc(w.businessId || '-')}${w.businessName
             ? ` <span class="muted" style="font-weight:600">(${esc(w.businessName)})</span>` : ''}</b></div>
           <div class="wa-row"><span>Webhook assinado</span><b>${w.appSubscribed
@@ -9496,13 +9501,17 @@ async function paintAdmin() {
         <div class="card">
           <h2>${ico('zap')} Testar notificação de venda</h2>
           <p class="muted" style="margin:0 0 12px;font-size:13px">
-            Dispara a notificação de <b>venda aprovada</b> nos aparelhos inscritos nesta conta, com o som de caixa
-            registradora. É o mesmo caminho de uma venda de verdade, só o valor é seu. Nenhuma cobrança é criada
-            e nada entra na carteira.
+            Uma venda dispara <b>dois</b> avisos diferentes: o do <b>lojista</b>, que vê o valor que entrou, e o da
+            <b>plataforma</b>, que vê a comissão que ficou. Aqui sai o texto real de cada um, com o som de caixa
+            registradora. Nenhuma cobrança é criada e nada entra na carteira.
           </p>
+          <p class="hint" style="margin:0 0 12px">O aviso chega <b>só neste aparelho</b>, o que está com esta tela aberta. Os outros aparelhos da conta não tocam.</p>
           <div class="row" style="align-items:flex-end">
-            <label style="flex:1">Valor (R$)<input id="ts-valor" inputmode="decimal" placeholder="97,00"></label>
-            <label style="flex:1.4">Cliente (opcional)<input id="ts-nome" maxlength="60" placeholder="Maria Silva"></label>
+            <label style="flex:1">Valor da venda (R$)<input id="ts-valor" inputmode="decimal" placeholder="97,00"></label>
+            <label style="flex:1.4">Qual aviso${ecSelect('ts-tipo', [
+              { value: 'venda', label: 'Do cliente: "Venda Aprovada · Valor"' },
+              { value: 'comissao', label: 'Da plataforma: "Venda aprovada · Sua comissão"' }
+            ], 'venda')}</label>
             <button class="btn primary no-grow" id="ts-btn" onclick="admTestarVenda(this)">${ico('bell', 14)} Disparar</button>
           </div>
         </div>
@@ -10342,7 +10351,9 @@ async function admMarcaRemover() {
 
 // Teste da notificação de VENDA. Existe porque o som e o texto de venda são o
 // aviso que o cliente mais espera e o mais difícil de conferir: só aparece
-// quando alguém paga de verdade. Aqui o valor é escolhido na hora.
+// quando alguém paga de verdade. Aqui o valor e o destinatário são escolhidos
+// na hora, e o aviso chega SÓ NESTE APARELHO — o endereço da inscrição deste
+// navegador vai junto no pedido.
 async function admTestarVenda(btn) {
   const cents = epParseReais($('#ts-valor').value);
   if (!cents) return toast('Informe o valor da venda', 'error');
@@ -10351,13 +10362,29 @@ async function admTestarVenda(btn) {
   try {
     // este aparelho precisa estar inscrito, senão o envio sai para ninguém
     if (window.ECNotify && ECNotify.subscribePush) { try { await ECNotify.subscribePush(); } catch {} }
-    const r = await api('/push/test-sale', { body: { amount: cents, name: $('#ts-nome').value.trim() } });
+    const r = await api('/push/test-sale', { body: {
+      amount: cents,
+      kind: (($('#ts-tipo') || {}).value) || 'venda',
+      endpoint: await esteAparelho()
+    } });
     toast(r.sent
-      ? `Enviado para ${r.sent} aparelho(s). Feche o app para ver como chega.`
-      : 'Nenhum aparelho inscrito ainda. Ative as notificações em Configurações e tente de novo.',
+      ? `Enviado para este aparelho: "${r.titulo} · ${r.corpo}". Feche o app para ver como chega.`
+      : 'Este aparelho não está inscrito. Ative as notificações em Configurações e tente de novo.',
       r.sent ? 'ok' : 'error');
   } catch (e) { toast(e.message, 'error'); }
   finally { btn.disabled = false; btn.innerHTML = txt; }
+}
+
+// O ENDEREÇO DESTE APARELHO. É o endpoint da inscrição de push do navegador —
+// o próprio serviço de push o entrega, e é ele que o servidor usa para
+// entregar em um aparelho só. Vazio = o servidor manda para todos, que é o
+// comportamento antigo e o que vale para quem não tem push ligado.
+async function esteAparelho() {
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = reg && await reg.pushManager.getSubscription();
+    return (sub && sub.endpoint) || '';
+  } catch (e) { return ''; }
 }
 
 // As credenciais só sobem quando preenchidas: o campo volta vazio depois de
@@ -11281,10 +11308,19 @@ async function admEpSubStatus(accId, status) {
 // envia o SDP answer para a Meta. Recusar/Desligar usam as ações oficiais.
 let callUI = null; // { id, waId, name, direction, phase: incoming|calling|active|ended, sdpOffer, pc, stream, timer, startedAt, muted }
 
+// A FOTO DO CONTATO, se houver, vai para a tela da ligação: é ela que fica
+// desfocada no fundo e dentro do círculo, como no iPhone.
+function fotoDoContato(waId) {
+  try {
+    const c = (state.contacts || []).find(x => x.waId === waId);
+    return (c && (c.photo || c.avatar || c.profilePic)) || '';
+  } catch (e) { return ''; }
+}
+
 function onCallEvent(d) {
   if (d.kind === 'incoming') {
     if (callUI) return; // já em chamada, a Meta trata o busy do outro lado
-    callUI = { ...d.call, sdpOffer: d.sdpOffer, phase: 'incoming', muted: false };
+    callUI = { ...d.call, sdpOffer: d.sdpOffer, phase: 'incoming', muted: false, foto: fotoDoContato(d.call && d.call.waId) };
     paintCall();
     if (window.ECNotify && ECNotify.startRing) ECNotify.startRing();
     if (window.ECNotify) {
@@ -11368,30 +11404,48 @@ function paintCall() {
     return;
   }
 
+  const chamando = c.phase === 'incoming' || c.phase === 'calling';
   root.innerHTML = `
     <div class="call-overlay">
+      <!-- A FOTO DO CONTATO DESFOCADA no fundo, como no iPhone: diz de quem é
+           a chamada sem disputar com o nome. Sem foto, fica o preto — e o
+           preto é o certo: numa ligação não há nada para ler no fundo. -->
+      ${c.foto ? `<img class="call-fundo" src="${esc(c.foto)}" alt="" aria-hidden="true">` : ''}
+      <div class="call-veu"></div>
+
       <!-- Canto superior ESQUERDO e com rótulo: é o primeiro lugar onde se
            procura por "voltar/reduzir", e um ícone solto e translúcido no
            canto direito passava despercebido. -->
       <button class="call-min" onclick="minimizarChamada()" title="Minimizar a chamada">
         ${ico('minimize', 16)}<span>Minimizar</span>
       </button>
-      <div class="call-top">
-        ${ico('lock', 12)} <span>Criptografia de ponta a ponta</span>
-      </div>
-      <div class="call-brand"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.5 2 2 6.4 2 11.9c0 1.9.5 3.7 1.5 5.3L2 22l4.9-1.4c1.5.9 3.3 1.4 5.1 1.4 5.5 0 10-4.4 10-9.9S17.5 2 12 2z"/></svg>
-        ${c.canal ? esc(c.canal) : 'WhatsApp'} · Chamada de voz</div>
-      <div class="call-center">
-        <span class="call-av ${c.phase === 'incoming' || c.phase === 'calling' ? 'ring' : ''}">${esc(waInitials(c.name || c.waId))}</span>
+
+      <!-- O NOME NO PRIMEIRO TERÇO, não no centro: quem atende lê o nome
+           primeiro e procura os botões depois. Centralizar tudo faz o olho
+           percorrer a tela inteira duas vezes. -->
+      <div class="call-id">
         <h2>${esc(c.name || '+' + c.waId)}</h2>
         <p class="call-status">${status}</p>
+        <div class="call-selo">
+          ${ico('lock', 11)} <span>${c.canal ? esc(c.canal) : 'WhatsApp'} · ponta a ponta</span>
+        </div>
       </div>
-      <div class="call-actions">
+
+      <div class="call-center">
+        <span class="call-av ${chamando ? 'ring' : ''}">${c.foto
+          ? `<img src="${esc(c.foto)}" alt="">`
+          : esc(waInitials(c.name || c.waId))}</span>
+      </div>
+
+      <!-- ATENDER e RECUSAR nas PONTAS, e nunca lado a lado. São as duas ações
+           irreversíveis da tela: errar o alvo aqui é desligar na cara do
+           cliente. -->
+      <div class="call-actions ${chamando ? 'atender' : ''}">
         ${c.phase === 'incoming' ? `
           <div class="call-act"><button class="call-btn red" onclick="rejectCall()" title="Recusar">${callIcon('down')}</button><span>Recusar</span></div>
           <div class="call-act"><button class="call-btn green pulse" onclick="answerCall()" title="Atender">${callIcon('up')}</button><span>Atender</span></div>
         ` : c.phase === 'ended' ? '' : `
-          <div class="call-act"><button class="call-btn dark ${c.muted ? 'on' : ''}" onclick="toggleMute()" title="Mudo">${callIcon('mic')}</button><span>${c.muted ? 'Ativar som' : 'Mudo'}</span></div>
+          <div class="call-act"><button class="call-btn fosco ${c.muted ? 'on' : ''}" onclick="toggleMute()" title="Mudo">${callIcon('mic')}</button><span>${c.muted ? 'Ativar som' : 'Mudo'}</span></div>
           <div class="call-act"><button class="call-btn red" onclick="hangupCall()" title="Desligar">${callIcon('down')}</button><span>Desligar</span></div>
         `}
       </div>
@@ -16854,3 +16908,21 @@ function trkSnippetModal() {
 }
 
 init();
+
+
+// Traduz a faixa da Meta para o que a pessoa precisa saber: quantas conversas
+// NOVAS este número pode iniciar em 24 horas. Não é o total de mensagens —
+// responder quem já falou com você não entra nessa conta, e é por isso que o
+// rótulo diz "conversas" e o detalhe explica.
+function limiteDiarioHtml(w) {
+  const TETO = {
+    TIER_50: '50 conversas', TIER_250: '250 conversas', TIER_1K: '1.000 conversas',
+    TIER_10K: '10.000 conversas', TIER_100K: '100.000 conversas', TIER_UNLIMITED: 'Sem teto'
+  };
+  const faixa = w.messagingTier || '';
+  if (!faixa) return '<span class="muted">clique em Atualizar dados</span>';
+  const rotulo = TETO[faixa] || faixa;
+  const semTeto = faixa === 'TIER_UNLIMITED';
+  return `<span class="pill ${semTeto ? 'done' : ''}">${esc(rotulo)}</span>` +
+    `<div class="muted" style="font-weight:600;font-size:11.5px;margin-top:3px">conversas novas por 24h, informado pela Meta</div>`;
+}

@@ -158,5 +158,5 @@ const j = async (r) => ({ status: r.status, corpo: await r.json().catch(() => ({
   ok(semAuth.status === 401, 'a rota do painel continua exigindo sessão');
 
   srv.close();
-  encerrar(falhas);
+  await encerrar(srv, falhas);
 })();

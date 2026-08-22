@@ -100,11 +100,17 @@ function unsubscribe(acc, endpoint) {
 
 // ---- Envio à conta inteira (respeita as prefs de cada dispositivo) ----
 // type ∈ message|call|attendance|reminder — filtra por prefs.types[type] e prefs.enabled.
-async function sendToAccount(acc, type, payloadObj) {
-  if (!acc || !Array.isArray(acc.pushSubs) || !acc.pushSubs.length) return;
-  try { ensureKeys(); } catch { return; }
+// `apenas` restringe o envio a UM aparelho, pelo endereço da inscrição dele.
+// É o que faz o teste de notificação tocar só no celular de quem apertou o
+// botão, em vez de em todos os aparelhos da conta — inclusive os da equipe.
+// Sem `apenas`, o comportamento é o de sempre: todo mundo recebe.
+async function sendToAccount(acc, type, payloadObj, apenas) {
+  if (!acc || !Array.isArray(acc.pushSubs) || !acc.pushSubs.length) return 0;
+  try { ensureKeys(); } catch { return 0; }
+  const alvos = apenas ? acc.pushSubs.filter(s => s.endpoint === apenas) : acc.pushSubs;
+  if (!alvos.length) return 0;
   const dead = [];
-  await Promise.all(acc.pushSubs.map(async (sub) => {
+  await Promise.all(alvos.map(async (sub) => {
     const pf = sub.prefs || {};
     if (pf.enabled === false) return;
     if (pf.types && pf.types[type] === false) return;
@@ -126,6 +132,7 @@ async function sendToAccount(acc, type, payloadObj) {
     }
   }));
   if (dead.length) { acc.pushSubs = acc.pushSubs.filter(s => !dead.includes(s.endpoint)); db.save(); }
+  return alvos.length - dead.length;
 }
 
 module.exports = { ensureKeys, publicKey, subscribe, unsubscribe, sendToAccount };

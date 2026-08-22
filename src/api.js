@@ -1153,6 +1153,11 @@ module.exports = function (broadcast, clients) {
         w.displayPhoneNumber = info.display_phone_number || w.displayPhoneNumber || '';
         w.verifiedName = info.verified_name || w.verifiedName || '';
         w.qualityRating = info.quality_rating || w.qualityRating || '';
+        // Teto de CONVERSAS novas por 24h, informado pela própria Meta. Sem
+        // ele a conta descobre o limite no meio do disparo, com metade da base
+        // recebendo e a outra metade voltando erro.
+        w.messagingTier = info.messaging_limit_tier || w.messagingTier || '';
+        w.throughput = (info.throughput && info.throughput.level) || w.throughput || '';
         w.connected = true;                 // a Graph respondeu: o número existe e o token vale
         w.identityAt = Date.now();
         db.save();
@@ -4978,19 +4983,44 @@ module.exports = function (broadcast, clients) {
   // conferir a notificação pelo celular; a decisão mudou — quem testa o aviso é
   // quem opera o Koonfy, e uma venda falsa aparecendo no aparelho do cliente
   // (com som de caixa registradora) é ruído que ele não pediu.
+  // TESTE DE NOTIFICAÇÃO DE VENDA.
+  //
+  // Uma venda dispara DOIS avisos, para duas pessoas: o do LOJISTA, que vê o
+  // valor que entrou, e o da PLATAFORMA, que vê a comissão que ficou. O teste
+  // manda o texto REAL de cada um (o mesmo de src/avisos.js) — mandar um
+  // terceiro texto provaria que o push chega, e não que o aviso está certo.
+  //
+  // E vai só para o APARELHO QUE PEDIU, identificado pelo endereço da própria
+  // inscrição. Sem essa mira, um toque no botão acordava o computador, o
+  // celular e o tablet — e, num time, o atendente no meio do expediente.
   router.post('/push/test-sale', auth, adminOnly, h(async (req, res) => {
-    const cents = Math.round(Number((req.body || {}).amount) || 0);
+    const b = req.body || {};
+    const cents = Math.round(Number(b.amount) || 0);
     if (cents < 1) return res.status(400).json({ error: 'Informe o valor da venda' });
-    const nome = String((req.body || {}).name || '').trim().slice(0, 60);
     const valor = elitepay.fmtBRL(cents);
-    const inscritos = (req.acc.pushSubs || []).length;
-    await push.sendToAccount(req.acc, 'sale', {
-      title: 'Venda aprovada! 💸',
-      body: `${valor}${nome ? ' de ' + nome : ''} — pagamento confirmado no Pix.`,
-      tag: 'venda-teste', data: { type: 'sale', url: '/app/#/elitepay' }
-    });
-    store.logEvent({ type: 'push_test_sale', accountId: req.acc.id, amount: cents });
-    res.json({ sent: inscritos });
+    const paraPlataforma = String(b.kind || 'venda') === 'comissao';
+
+    // A comissão da plataforma sobre uma venda daquele tamanho, pela taxa
+    // configurada — testar com um número inventado esconderia justamente o
+    // erro de arredondamento que o aviso mostraria.
+    const taxa = paraPlataforma
+      ? elitepay.computeSplit(cents).platformCut
+      : 0;
+
+    const aviso = paraPlataforma
+      ? { title: 'Venda aprovada', body: `Sua comissão: ${elitepay.fmtBRL(taxa)}`, url: '/app/#/admin' }
+      : { title: 'Venda Aprovada', body: `Valor: ${valor}`, url: '/app/#/elitepay' };
+
+    const endpoint = String(b.endpoint || '').trim();
+    const token = String(b.token || '').trim();
+    const enviados = await push.sendToAccount(req.acc, 'sale', {
+      title: aviso.title, body: aviso.body,
+      tag: 'venda-teste:' + Date.now(), data: { type: 'sale', url: aviso.url }
+    }, endpoint || null);
+    if (token) { try { await pushNative.sendToAccount(req.acc, 'sale', { title: aviso.title, body: aviso.body, data: { type: 'sale', url: aviso.url } }, token); } catch (e) {} }
+
+    store.logEvent({ type: 'push_test_sale', accountId: req.acc.id, amount: cents, kind: paraPlataforma ? 'comissao' : 'venda' });
+    res.json({ sent: enviados || 0, alvo: endpoint ? 'este aparelho' : 'todos os aparelhos', titulo: aviso.title, corpo: aviso.body });
   }));
 
   router.post('/admin/plans', auth, adminOnly, (req, res) => {
@@ -6055,13 +6085,14 @@ module.exports = function (broadcast, clients) {
   // Teste de ponta a ponta: manda um push REAL para os aparelhos inscritos.
   // É a única forma de provar que a cadeia funciona com o app fechado.
   router.post('/push/test', auth, h(async (req, res) => {
-    const inscritos = (req.acc.pushSubs || []).length;
-    await push.sendToAccount(req.acc, 'message', {
+    // Mesmo princípio do teste de venda: o aviso toca no aparelho que pediu.
+    const endpoint = String((req.body || {}).endpoint || '').trim();
+    const enviados = await push.sendToAccount(req.acc, 'message', {
       title: 'Koonfy',
       body: 'Notificação de teste. Se você está vendo isto, está tudo funcionando.',
       tag: 'teste', data: { type: 'message', url: '/app/#/settings' }
-    });
-    res.json({ sent: inscritos });
+    }, endpoint || null);
+    res.json({ sent: enviados || 0 });
   }));
 
   router.post('/push/subscribe', auth, (req, res) => {
