@@ -6662,6 +6662,51 @@ function geoPlacaGrad() {
   </linearGradient>`;
 }
 
+// A RAMPA DE CALOR. Era um verde só, em opacidades diferentes — e um verde só
+// obriga o olho a comparar SATURAÇÃO entre estados que não se tocam, que é a
+// comparação que a vista humana faz pior. Com quatro matizes, dois estados
+// distantes se comparam por COR, que é imediato.
+//
+// A ordem das paradas não é decorativa: a luminância sobe do frio ao quente
+// (0,32 → 0,49 → 0,65 → 0,75). É o que mantém a escala legível em preto e
+// branco e para quem não distingue verde de vermelho — a intensidade continua
+// dizendo a mesma coisa que a cor.
+//
+// O verde da marca fica no MEIO, e não numa ponta: ele é o centro de gravidade
+// do mapa, e as pontas são o desvio para menos e para mais.
+const GEO_RAMPA = [
+  [0.00, [0x22, 0xA5, 0xD6]],   // azul-piscina: frio, poucos leads
+  [0.33, [0x2E, 0xD3, 0x78]],   // verde Koonfy
+  [0.66, [0xA3, 0xE6, 0x35]],   // lima
+  [1.00, [0xFD, 0xE0, 0x47]]    // ouro: quente, onde a venda está
+];
+function geoCorDoCalor(frac) {
+  const f = Math.max(0, Math.min(1, frac));
+  let i = 0;
+  while (i < GEO_RAMPA.length - 2 && f > GEO_RAMPA[i + 1][0]) i++;
+  const [f0, c0] = GEO_RAMPA[i], [f1, c1] = GEO_RAMPA[i + 1];
+  const t = f1 === f0 ? 0 : (f - f0) / (f1 - f0);
+  const m = c0.map((v, k) => Math.round(v + (c1[k] - v) * t));
+  return '#' + m.map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+// A LEGENDA. Com um matiz só dava para adivinhar que mais escuro era mais; com
+// quatro, não dá — e um mapa que precisa ser adivinhado não informa. A faixa
+// usa a MESMA função de cor do mapa, então nunca sai de sincronia com ele.
+// Só aparece quando há o que legendar: num mapa vazio ela seria uma escala
+// para nenhum dado.
+function geoLegenda(max) {
+  if (!max) return '';
+  const paradas = [];
+  for (let i = 0; i <= 10; i++) paradas.push(`${geoCorDoCalor(i / 10)} ${i * 10}%`);
+  return `<div class="geo-legenda">
+    <span>menos</span>
+    <i style="background:linear-gradient(90deg, ${paradas.join(', ')})"></i>
+    <span>mais</span>
+    <b>${fmtN(max)}</b>
+  </div>`;
+}
+
 function brazilMap3D(g) {
   const counts = g.states || {};
   const max = Math.max(1, ...Object.values(counts));
@@ -6697,19 +6742,17 @@ function brazilMap3D(g) {
     // 10x o segundo), a escala linear jogaria todo o resto no tom mais claro.
     const frac = count ? Math.sqrt(count / max) : 0;
     // MAPA DE CALOR: uma única escala de verde Koonfy, do frio ao quente.
-    // Tudo é opacidade sobre --geo-ink (a cor da marca), então o tema claro
-    // escurece o estado conforme cresce e o escuro o acende — sem JS por tema.
-    //  · 0 leads  = 7%  (verde bem apagado, "frio")
-    //  · 1 lead   = 22% (já visivelmente mais verde que o vazio)
-    //  · máximo   = 92% (verde cheio da marca, "quente")
+    // DUAS coisas crescem juntas: o MATIZ percorre a rampa (frio → quente) e a
+    // OPACIDADE vai de 22% a 92%. A opacidade é o que faz a mesma rampa servir
+    // aos dois temas sem JS ciente do tema: no claro o estado fraco quase some
+    // no branco, no escuro quase some na placa, e o forte grita nos dois.
+    //
     // O estado COM leads leva a tinta aqui, porque a intensidade é dado. O
-    // estado VAZIO não leva nenhuma: quem pinta é o CSS, que sabe o tema. No
-    // claro ele continua um verde bem apagado; no escuro fica transparente e
-    // aparece a placa. Era daí que vinha o "verde musgo": 7% de verde sobre um
-    // card quase preto não dá um verde discreto, dá #18291d — e como o mapa de
-    // uma conta nova está TODO vazio, o país inteiro nascia dessa cor.
+    // VAZIO não leva nenhuma: quem pinta é o CSS, que sabe o tema. Era daí que
+    // vinha o "verde musgo": 7% de verde sobre um card quase preto não dá um
+    // verde discreto, dá #18291d — e o mapa de uma conta nova está TODO vazio.
     const paint = count
-      ? `fill="var(--geo-ink)" fill-opacity="${(0.22 + frac * 0.70).toFixed(3)}"`
+      ? `fill="${geoCorDoCalor(frac)}" fill-opacity="${(0.22 + frac * 0.70).toFixed(3)}"`
       : '';
     const [cx, cy] = BR_UF_CENTROIDS[uf] || [0, 0];
     const lead = UF_LEADER[uf];
@@ -6741,6 +6784,7 @@ function brazilMap3D(g) {
     return `<div class="geo-map geo-solo">
       <svg viewBox="${geoViewBox()}" style="width:100%;height:auto">${svg}</svg>
       <div class="geo-tip" id="geo-tip" aria-hidden="true"></div>
+      ${geoLegenda(Object.keys(counts).length ? max : 0)}
     </div>`;
   }
 
@@ -6751,7 +6795,7 @@ function brazilMap3D(g) {
     <div class="geo-map">
       <svg viewBox="${geoViewBox()}" style="width:100%;height:auto">${svg}</svg>
       <div class="geo-tip" id="geo-tip" aria-hidden="true"></div>
-      ${g.brTotal ? '' : '<p class="muted geo-empty">Sem leads brasileiros localizados ainda, os estados acendem conforme os contatos chegam pelo WhatsApp.</p>'}
+      ${g.brTotal ? geoLegenda(max) : '<p class="muted geo-empty">Sem leads brasileiros localizados ainda, os estados acendem conforme os contatos chegam pelo WhatsApp.</p>'}
     </div>
     <div class="geo-side">
       <div class="geo-block">

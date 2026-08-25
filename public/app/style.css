@@ -1688,11 +1688,18 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .geo-box { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 22px; align-items: start; }
 @media (max-width: 860px) { .geo-box { grid-template-columns: 1fr; } }
 .geo-map { position: relative; }
-/* MAPA DE CALOR. Cada estado é uma opacidade da MESMA tinta --geo-ink (verde da
-   marca): 7% no vazio, até 92% no estado com mais leads. Assim o claro escurece
-   e o escuro acende conforme cresce, sem JS ciente do tema. */
+/* MAPA DE CALOR. A COR de cada estado vem da rampa em app.js (GEO_RAMPA: azul →
+   verde → lima → ouro) e é escrita direto no SVG, porque depende do dado. O que
+   mora aqui é o que depende do TEMA: a placa, as divisas, a parede e o estado
+   sem lead nenhum.
+   A opacidade (22% a 92%) continua vindo junto da cor, e é ela que faz a mesma
+   rampa servir aos dois temas — no claro o fraco quase some no branco, no
+   escuro quase some na placa. */
 :root {
-  --geo-ink: var(--verde-esc);      /* verde da marca — a única cor do mapa de calor */
+  /* O ESTADO SEM LEAD é NEUTRO, e de propósito não é a ponta fria da rampa: a
+     ponta fria significa "poucos", e nenhum não é poucos. Um cinza levíssimo
+     diz "não há dado aqui" sem entrar na escala. */
+  --geo-vazio-cor: #64748b;
   --geo-hover: var(--verde-deep);   /* #0b815a */
   /* divisas ESCURAS no claro / CLARAS no escuro — a linha separa por contraste
      com o preenchimento, então inverte junto com o tema. */
@@ -1706,10 +1713,9 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   --geo-placa-1: var(--card);
   --geo-placa-2: var(--card);
   --geo-placa-3: var(--card);
-  --geo-vazio: .07;                 /* verde do estado sem lead */
+  --geo-vazio: .10;                 /* opacidade do estado sem lead */
 }
 :root[data-theme="dark"] {
-  --geo-ink: var(--verde);          /* verde claro da marca — mais vivo sobre card escuro */
   --geo-hover: var(--verde-deep);   /* vira #6ee7b7 no escuro */
   --geo-halo: rgba(9, 13, 10, .88);
   /* A PLACA NO ESCURO É O MESMO PRETO GRADIENTE DOS CARDS (--card-grad, 160deg).
@@ -1766,7 +1772,7 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 /* ESTADO SEM LEAD. O JS não manda mais tinta nele — quem pinta é aqui, porque
    a resposta depende do tema: no claro um verde bem apagado, no escuro nada,
    deixando a placa aparecer. */
-.geo-tile:not(.hot) use { fill: var(--geo-ink); fill-opacity: var(--geo-vazio); }
+.geo-tile:not(.hot) use { fill: var(--geo-vazio-cor); fill-opacity: var(--geo-vazio); }
 .geo-tile { cursor: default; transition: opacity .16s ease; }
 .geo-tile use { transition: fill-opacity .16s ease, stroke .16s ease, stroke-width .16s ease; }
 .geo-map svg:hover .geo-tile:not(:hover) { opacity: .38; }
@@ -1794,6 +1800,19 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 /* O número herda a cor da sigla de propósito: sobre o verde mais forte, um tom
    apagado caía para ~1.6:1 de contraste. A hierarquia vem de peso e tamanho,
    que já bastam — e não abaixo de ~9px, ou vira ruído na escala do mapa. */
+/* A FAIXA DA LEGENDA. Fininha e no rodapé do mapa: ela é uma nota de rodapé do
+   desenho, não um elemento da tela. O número da ponta é o máximo, que é o que
+   dá ESCALA — sem ele "mais" é um advérbio sem tamanho. */
+.geo-legenda {
+  display: flex; align-items: center; gap: 9px;
+  margin: 10px auto 0; max-width: 420px;
+  font-size: 11px; font-weight: 500; color: var(--muted);
+}
+.geo-legenda i { flex: 1; height: 7px; border-radius: 99px; display: block; }
+.geo-legenda b {
+  font-weight: 500; color: var(--text2); font-variant-numeric: tabular-nums;
+  padding-left: 2px; border-left: 1px solid var(--border); margin-left: 2px;
+}
 .geo-empty { text-align: center; font-size: 12.5px; margin: 8px 0 0; }
 .geo-side { display: flex; flex-direction: column; gap: 16px; }
 .geo-block { background: var(--bg); border: 1px solid var(--border); border-radius: 14px; padding: 14px 15px; }
@@ -2310,7 +2329,16 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   .sidebar .brand-text, .nav-item span, .nav-label, .version { display: none; }
   .sidebar .brand { justify-content: center; padding-bottom: 14px; }
   .nav-item { justify-content: center; padding: 10px 6px; border-radius: 10px; }
-  .badge { position: absolute; top: 2px; right: 2px; margin: 0; padding: 0 5px; }
+  /* `.nav-item .badge`, e NÃO `.badge` solto. Aqui a sidebar encolheu para só
+     ícones, e o contador precisa subir para o canto do ícone — mas a regra sem
+     dono pegava TODA `.badge` da tela, e a lista de conversas usa a mesma
+     classe. O resultado: o `position:absolute` procurava um ancestral
+     posicionado, achava o `.inbox`, e as não lidas das SEIS conversas iam
+     todas para o mesmo ponto, empilhadas no topo à direita — em cima do botão
+     "+ Nova". O `margin: 0` ainda matava o `margin-left: auto` que é o que
+     encosta o contador na direita da linha.
+     Valia de 960px para baixo, então pegava tablet e janela estreita também. */
+  .nav-item .badge { position: absolute; top: 2px; right: 2px; margin: 0; padding: 0 5px; }
   .page { padding: 18px 16px 34px; }
   .msg { max-width: min(78%, 400px); }
   .tb-user #who { display: none; }

@@ -84,4 +84,27 @@ ok(/isMobileLayout\(\) && pedida === 'funnel'/.test(js),
 ok(/'funnel'/.test(js.slice(js.indexOf('const views = {'), js.indexOf('const views = {') + 1200)) ||
    /funnel: renderFunnel/.test(js), 'no computador ele continua existindo');
 
+console.log('\n=== 5. O contador de não lidas fica NA LINHA da conversa ===');
+// Uma regra de menu vazou para a lista de conversas. Na sidebar encolhida
+// (≤960px, que pega celular E tablet) o contador precisa subir para o canto do
+// ícone, então a regra é `position: absolute; margin: 0`. Só que ela estava
+// escrita como `.badge` SOLTO — e a lista de conversas usa a mesma classe.
+//
+// O estrago: o `absolute` procurava um ancestral posicionado, achava o
+// `.inbox`, e as não lidas de TODAS as conversas iam para o mesmo ponto,
+// empilhadas no topo à direita, em cima do botão "+ Nova". O `margin: 0` ainda
+// matava o `margin-left: auto`, que é o que encosta o contador na direita.
+//
+// Medido antes: cinco contadores, todos em y=64, com as linhas em y=191, 256,
+// 320… Nenhum estava na sua conversa.
+const menu960 = css.slice(css.indexOf('@media (max-width: 960px)'));
+const bloco = menu960.slice(0, menu960.indexOf('}', menu960.indexOf('.page {')));
+ok(/\.nav-item \.badge \{[^}]*position: absolute/.test(bloco),
+   'a regra do canto do ícone tem dono: vale para o item do MENU');
+ok(!/^\s*\.badge \{/m.test(bloco),
+   'e não existe mais um `.badge` solto ali para vazar na lista de conversas');
+// O que faz o contador encostar na direita da linha, no computador e no celular.
+ok(/\.conv-meta \.prev \.badge \{ margin-left: auto/.test(css),
+   'na conversa quem posiciona é o `margin-left: auto`, e ele precisa sobreviver');
+
 encerrar(null, falhas);
