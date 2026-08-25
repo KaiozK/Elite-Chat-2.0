@@ -107,4 +107,42 @@ ok(!/^\s*\.badge \{/m.test(bloco),
 ok(/\.conv-meta \.prev \.badge \{ margin-left: auto/.test(css),
    'na conversa quem posiciona é o `margin-left: auto`, e ele precisa sobreviver');
 
+
+console.log('\n=== 6. Nas artes com centro, a peça pousa NO centro ===');
+// Duas artes têm um centro de verdade — o miolo das ondas na Ligação e o alvo
+// no Tracking — e ali a peça no canto direito ficava DO LADO do assunto em vez
+// de dentro dele. Com o foco, o telefone senta no meio das ondas e a mira no
+// meio do alvo: a arte e o objeto viram uma imagem só.
+//
+// O ponto mora no catálogo das artes, e não no CSS, porque é uma medida DO
+// ARQUIVO — quem trocar a arte precisa medir de novo, e o lugar de fazer isso é
+// junto da arte.
+const arte = fs.readFileSync(R + 'src/bannersarte.js', 'utf8');
+const comFoco = [...arte.matchAll(/id: '(\w+)'[^}]*foco: \[([\d.]+), ([\d.]+)\]/g)]
+  .map(m => ({ id: m[1], x: +m[2], y: +m[3] }));
+ok(comFoco.length === 2, `duas artes têm foco: ${comFoco.map(a => a.id).join(', ')}`);
+ok(comFoco.some(a => a.id === 'ligacao') && comFoco.some(a => a.id === 'tracking'),
+   'e são a Ligação e o Tracking, as duas que têm círculo no fundo');
+// O foco é % do arquivo, então tem de caber dentro dele — e do lado direito,
+// que é onde a arte vive (a esquerda é o espaço do texto).
+ok(comFoco.every(a => a.x > 55 && a.x < 95 && a.y > 20 && a.y < 80),
+   'todo foco cai na metade direita da arte, onde o assunto está');
+ok(/foco: a\.foco \|\| null/.test(arte), 'e o catálogo entrega o foco para o painel');
+
+// A peça só ganha a classe quando há foco; sem ele, a regra do canto continua.
+ok(/class="bnr-3d\$\{b\.foco \? ' focada' : ''\}"/.test(js),
+   'a peça só vira `focada` quando a arte tem foco');
+ok(/--foco-x:\$\{b\.foco\[0\]\}%;--foco-y:\$\{b\.foco\[1\]\}%/.test(js),
+   'e o ponto vai para o CSS como variável, em vez de virar regra fixa por arte');
+
+// `right: auto` não é enfeite: sem ele o elemento fica preso pelos DOIS lados e
+// estica em vez de posicionar.
+const focadaPc = css.slice(css.indexOf('.bnr-3d.focada {'));
+ok(/left: var\(--foco-x\); top: var\(--foco-y\); right: auto/.test(focadaPc),
+   'quem tem foco solta o `right` — senão o elemento estica em vez de pousar');
+ok(/transform: translate\(-50%, -50%\)/.test(focadaPc),
+   'e o ponto é o CENTRO da peça, não o canto dela');
+// E vale no celular também: é isso que faz o banner ser o mesmo nos dois lugares.
+ok(/\.bnr-3d\.focada \{/.test(celular), 'a regra do foco existe também no bloco do celular');
+
 encerrar(null, falhas);

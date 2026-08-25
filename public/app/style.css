@@ -5027,6 +5027,26 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
   right: 30%; top: auto; bottom: 2px; width: 78px;
   transform: rotate(14deg); animation-delay: -3s; opacity: .92;
 }
+/* A PEÇA QUE POUSA NO CENTRO DA ARTE.
+
+   Duas artes têm um centro de verdade — o miolo das ondas na Ligação e o alvo
+   no Tracking — e ali a peça no canto ficava do LADO do assunto em vez de
+   dentro dele. Com o foco, o telefone senta no meio das ondas e a mira no meio
+   do alvo: a arte e o objeto viram uma imagem só, em vez de dois desenhos
+   dividindo o mesmo cartão.
+
+   O ponto vem em % do ARQUIVO do fundo (src/bannersarte.js). Como o fundo é
+   `object-fit: cover` e o cartão é muito mais largo que a arte, o corte é só em
+   cima e embaixo: a coordenada X do arquivo vale como X do cartão, e o Y, que
+   nas duas fica em ~49%, cai no meio da faixa visível de qualquer jeito.
+
+   `right: auto` NÃO é enfeite: sem ele a regra de cima continua valendo e o
+   elemento fica preso pelos DOIS lados, esticado em vez de posicionado. */
+.bnr-3d.focada {
+  left: var(--foco-x); top: var(--foco-y); right: auto; bottom: auto;
+  transform: translate(-50%, -50%) rotate(-6deg);
+}
+
 @keyframes bnrFlutua {
   0%, 100% { translate: 0 0; }
   50% { translate: 0 -9px; }
@@ -5105,6 +5125,13 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
        desce sem sair do meio — animar `transform` aqui apagaria a centragem e
        jogaria a peça para baixo. */
     animation: bnrFlutua 6s ease-in-out infinite;
+  }
+  /* A PEÇA FOCADA TAMBÉM NO CELULAR — é o mesmo desenho, e é isso que faz o
+     banner ser o mesmo nos dois lugares. Só o tamanho muda, porque a tela é
+     estreita; o ponto onde ela pousa é o mesmo. */
+  .bnr-3d.focada {
+    left: var(--foco-x); top: var(--foco-y); right: auto; bottom: auto;
+    transform: translate(-50%, -50%);
   }
   .bnr-3d.mini { display: none; }
   .bnr-wrap { margin-bottom: 16px; }

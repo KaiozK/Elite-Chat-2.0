@@ -3154,10 +3154,16 @@ function bannersCorpo() {
               <span class="bnr-veu"></span>
             </div>
             <!-- Largura e altura reais: sem elas, uma peça ainda não
-                 carregada nasce sem largura e pula ao chegar. -->
-            <img class="bnr-3d" ${i ? '' : `src="/assets/banner-${b.peca}.webp"`}
+                 carregada nasce sem largura e pula ao chegar.
+                 As variáveis --foco-x/y só aparecem nas artes que têm um centro
+                 de verdade (ver src/bannersarte.js). Com elas a peça pousa NO
+                 ponto; sem elas a regra do canto vale, e é o CSS que decide.
+                 (Sem crase neste comentário: ele mora DENTRO de um template
+                 literal, e uma crase aqui fecharia a string no meio do HTML.) -->
+            <img class="bnr-3d${b.foco ? ' focada' : ''}" ${i ? '' : `src="/assets/banner-${b.peca}.webp"`}
                  data-src="/assets/banner-${b.peca}.webp" alt="" aria-hidden="true"
-                 width="${b.pw}" height="${b.ph}" decoding="async">
+                 width="${b.pw}" height="${b.ph}" decoding="async"
+                 ${b.foco ? `style="--foco-x:${b.foco[0]}%;--foco-y:${b.foco[1]}%"` : ''}>
             <div class="bnr-txt">
               <span class="bnr-tag">${esc(b.tag)}</span>
               <h3>${esc(b.titulo)}</h3>
