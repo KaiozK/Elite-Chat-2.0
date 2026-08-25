@@ -37,10 +37,26 @@ function nome(id) { const s = POR_ID.get(String(id || '')); return s ? s.nome : 
 // Este segmento precisa informar o site da plataforma?
 function pedeSite(id) { return !!(POR_ID.get(String(id || '')) || {}).pedeSite; }
 
-// A pergunta que liga o Modo Bet. Comparação EXATA de propósito: ver comentário
-// no topo sobre o texto livre antigo.
+// O SEGMENTO É iGAMING? Comparação EXATA de propósito: ver o comentário do topo
+// sobre o texto livre antigo. Esta é a pergunta do CADASTRO — é ela que decide
+// se o admin recebe o push para conferir o site.
 function ehIGaming(acc) {
   return !!(acc && acc.profile && acc.profile.segment === 'igaming');
+}
+
+// ESTA CONTA TEM O MODO BET? É outra pergunta, e por isso outra função.
+//
+// O segmento vem do formulário de cadastro — e há contas que nunca passam por
+// ele: a do próprio administrador e as SUPERCONTAS, que nascem prontas dentro
+// do Admin SaaS. Sem uma chave manual, essas contas jamais alcançariam o Modo
+// Bet, por mais que fosse exatamente para elas que ele precisasse existir.
+//
+// Por isso `betMode` é uma decisão do ADMIN, e não do cadastro: ele liga no
+// painel e pronto. Quando ligado, vence o segmento; desligado, vale o segmento.
+function temModoBet(acc) {
+  if (!acc || !acc.profile) return false;
+  if (acc.profile.betMode === true) return true;
+  return ehIGaming(acc);
 }
 
 // ---------------------------------------------------------------------------
@@ -106,4 +122,4 @@ function aplicar(profile, { segment, site }) {
   return { ok: true };
 }
 
-module.exports = { LISTA, valido, nome, pedeSite, ehIGaming, normalizarSite, aplicar };
+module.exports = { LISTA, valido, nome, pedeSite, ehIGaming, temModoBet, normalizarSite, aplicar };

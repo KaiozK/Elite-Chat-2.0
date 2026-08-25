@@ -594,6 +594,10 @@ function migrateLegacy() {
   if (!acc) {
     acc = newAccount({ name: 'Administrador', email: 'admin@koonfy.local', pass: crypto.randomBytes(12).toString('hex') });
     acc.isAdmin = true;
+    // O Modo Bet nasce ligado aqui também, e não só no shape: esta conta é
+    // criada DEPOIS da migração, então a regra de lá nunca a alcançaria na
+    // primeira partida — que é justamente quando ela nasce.
+    acc.profile.betMode = true;
     db.accounts.push(acc);
   }
   acc.passHash = p.adminPassHash; // mesma senha do login admin
@@ -790,6 +794,16 @@ function ensureAccountShape(acc) {
   }
   if (!acc.profile || typeof acc.profile !== 'object') acc.profile = { segment: '', site: '', size: '', phone: '', country: 'BR', goal: '' };
   if (acc.profile.site === undefined) acc.profile.site = '';
+  // O MODO BET NASCE LIGADO NA CONTA DO ADMIN.
+  //
+  // Ela é a única conta que nunca passa pelo formulário de cadastro, então
+  // nunca teria segmento e nunca alcançaria a aba — justamente a conta de quem
+  // precisa ver o recurso para atender cliente e conferir se funciona.
+  //
+  // `undefined` e não `false` é o que distingue "nunca foi decidido" de
+  // "o admin desligou". Sem essa diferença, desligar no painel seria desfeito
+  // na próxima partida do processo.
+  if (acc.isAdmin && acc.profile.betMode === undefined) acc.profile.betMode = true;
   if (typeof acc.profile.country !== 'string' || !acc.profile.country) acc.profile.country = 'BR';
   if (typeof acc.unlimited !== 'boolean') acc.unlimited = false;
   if (!acc.wallet || typeof acc.wallet !== 'object') acc.wallet = emptyWallet();
@@ -939,6 +953,10 @@ function findAdminAccount() {
   if (!acc) {
     acc = newAccount({ name: 'Administrador', email: 'admin@koonfy.local', pass: crypto.randomBytes(12).toString('hex') });
     acc.isAdmin = true;
+    // O Modo Bet nasce ligado aqui também, e não só no shape: esta conta é
+    // criada DEPOIS da migração, então a regra de lá nunca a alcançaria na
+    // primeira partida — que é justamente quando ela nasce.
+    acc.profile.betMode = true;
     acc.passHash = get().platform.adminPassHash;
     get().accounts.push(acc);
     save();

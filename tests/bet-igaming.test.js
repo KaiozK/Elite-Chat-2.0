@@ -219,6 +219,73 @@ const BASE = 'http://127.0.0.1:3979';
   ok(avisos.avisoDoEvento('cadastro', { accountId: 'a', segmento: 'ecommerce' }) === null,
      'cadastro de outro segmento não vira push nenhum');
 
+
+  console.log('\n=== 11. O interruptor do Admin alcança quem o cadastro não alcança ===');
+  // O segmento vem do formulário de cadastro, e há conta que nunca passa por
+  // ele: a do próprio admin e as SUPERCONTAS, criadas dentro do Admin SaaS.
+  // Sem o interruptor elas jamais chegariam ao Modo Bet — e são justamente as
+  // que o admin usa para operar.
+  const admLogin = await (await fetch(BASE + '/api/adm/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user: 'admin', pass: 'admin' })
+  })).json();
+  const autAdm = { Authorization: 'Bearer ' + admLogin.token, 'Content-Type': 'application/json' };
+
+  const superconta = await (await fetch(BASE + '/api/adm/supers', {
+    method: 'POST', headers: autAdm,
+    body: JSON.stringify({ name: 'Super do Zé', email: 'super@x.com', pass: 'segredo123' })
+  })).json();
+  const accSuper = db.findAccount(superconta.id);
+  accSuper.billing.status = 'active';
+  accSuper.billing.periodEnd = Date.now() + 365 * 86400000;
+  db.save();
+
+  ok(!segmentos.temModoBet(accSuper), 'a Superconta nasce SEM Modo Bet — não passou por cadastro');
+
+  const loginSuper = await (await fetch(BASE + '/api/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user: 'super@x.com', pass: 'segredo123' })
+  })).json();
+  const autSuper = { Authorization: 'Bearer ' + loginSuper.token };
+  ok((await fetch(BASE + '/api/tracking/bet', { headers: autSuper })).status === 404,
+     'e a rota recusa enquanto está desligado');
+
+  const ligou = await (await fetch(BASE + '/api/adm/accounts/' + superconta.id + '/bet', {
+    method: 'PUT', headers: autAdm, body: JSON.stringify({ betMode: true })
+  })).json();
+  ok(ligou.modoBet === true, 'o admin liga pelo painel');
+  ok((await fetch(BASE + '/api/tracking/bet', { headers: autSuper })).status === 200,
+     'e a Superconta passa a ler o relatório');
+  const ovSuper = await (await fetch(BASE + '/api/tracking', { headers: autSuper })).json();
+  ok(ovSuper.bet.disponivel === true, 'a aba aparece na tela dela');
+
+  const desligou = await (await fetch(BASE + '/api/adm/accounts/' + superconta.id + '/bet', {
+    method: 'PUT', headers: autAdm, body: JSON.stringify({ betMode: false })
+  })).json();
+  ok(desligou.modoBet === false, 'e desligar volta atrás');
+  ok((await fetch(BASE + '/api/tracking/bet', { headers: autSuper })).status === 404,
+     'com a rota fechando junto');
+
+  // Só o admin mexe nisso: é a chave de um recurso, não uma preferência do cliente.
+  const tentou = await fetch(BASE + '/api/adm/accounts/' + superconta.id + '/bet', {
+    method: 'PUT', headers: { ...autSuper, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ betMode: true })
+  });
+  ok(tentou.status === 403, `o cliente não liga o próprio Modo Bet: ${tentou.status}`);
+
+  console.log('\n=== 12. A conta do admin já nasce com o Modo Bet ===');
+  // Ela nunca preenche cadastro, e é a conta de quem precisa ver o recurso para
+  // atender cliente. `undefined` (nunca decidido) vira `true`; um `false`
+  // gravado pelo admin é decisão e continua valendo.
+  const admAcc = db.findAdminAccount();
+  ok(admAcc.profile.betMode === true, 'nasce ligada');
+  ok(segmentos.temModoBet(admAcc), 'e o Modo Bet responde que sim');
+
+  admAcc.profile.betMode = false;
+  db.ensureAccountShape(admAcc);
+  ok(admAcc.profile.betMode === false,
+     'desligar de propósito NÃO é desfeito na próxima partida — senão o interruptor seria decorativo');
+
   srv.close();
   await encerrar(srv, falhas);
 })();

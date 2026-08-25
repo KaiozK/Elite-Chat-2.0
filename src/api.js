@@ -4551,6 +4551,22 @@ module.exports = function (broadcast, clients) {
     res.json({ ok: true, id: acc.id });
   });
 
+  // O INTERRUPTOR DO MODO BET, por conta.
+  //
+  // O segmento vem do formulário de cadastro, e há conta que nunca passa por
+  // ele: a do próprio admin e as SUPERCONTAS, criadas aqui dentro. Sem este
+  // interruptor elas jamais alcançariam o Modo Bet — e são justamente as que
+  // mais precisam, porque são as que o admin usa para operar.
+  router.put('/adm/accounts/:id/bet', auth, adminOnly, (req, res) => {
+    const a = db.findAccount(req.params.id);
+    if (!a) return res.status(404).json({ error: 'Conta não encontrada' });
+    const ligado = !!(req.body || {}).betMode;
+    a.profile.betMode = ligado;
+    db.save();
+    store.logEvent({ type: 'adm_modo_bet', accountId: a.id, detail: ligado ? 'ligado' : 'desligado' });
+    res.json({ betMode: ligado, modoBet: segmentos.temModoBet(a) });
+  });
+
   // FICHA COMPLETA DE UMA CONTA — tudo o que existe sobre ela.
   //
   // A lista mostrava nome, plano e carteira. O que a pessoa preencheu no
@@ -4596,7 +4612,15 @@ module.exports = function (broadcast, clients) {
         documentoTipo: doc.length === 14 ? 'CNPJ' : doc.length === 11 ? 'CPF' : '',
         documento: inteiro ? doc : (doc ? '•••' + doc.slice(-4) : ''),
         documentoCompleto: !!inteiro,
-        chavePix: perfil.pixKey || '', chavePixTipo: perfil.pixKeyType || ''
+        chavePix: perfil.pixKey || '', chavePixTipo: perfil.pixKeyType || '',
+        site: perfil.site || '',
+        // Duas informações, e não uma: `modoBet` é o resultado (a conta tem?) e
+        // `betManual` é a causa (foi o admin quem ligou?). Sem separar, o
+        // interruptor apareceria ligado para uma conta de iGaming e desligá-lo
+        // não faria nada visível.
+        modoBet: segmentos.temModoBet(a),
+        betManual: a.profile.betMode === true,
+        betPorSegmento: segmentos.ehIGaming(a)
       },
       assinatura: {
         status: a.billing.status, plano: plano ? plano.name : '',
@@ -5597,7 +5621,7 @@ module.exports = function (broadcast, clients) {
   // existe, e dizer "proibido" contaria que existe.
   const bet = require('./bet');
   const soIGaming = (req, res, next) => {
-    if (!segmentos.ehIGaming(req.acc)) return res.status(404).json({ error: 'Recurso indisponível para este segmento' });
+    if (!segmentos.temModoBet(req.acc)) return res.status(404).json({ error: 'Recurso indisponível para esta conta' });
     next();
   };
 

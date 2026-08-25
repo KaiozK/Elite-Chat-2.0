@@ -602,7 +602,7 @@ function overview(acc) {
     alertsCfg: t.alerts.cfg,
     // A aba do Modo Bet só é desenhada quando existe. Quem decide é o segmento
     // da conta, e a tela pergunta em vez de adivinhar.
-    bet: { disponivel: require('./segmentos').ehIGaming(acc) },
+    bet: { disponivel: require('./segmentos').temModoBet(acc) },
     dashboard: dashboard(acc),
     alerts: alerts(acc),
     eventsCount: t.events.length, sessionsCount: t.sessions.length

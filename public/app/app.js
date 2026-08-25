@@ -2879,6 +2879,25 @@ function admLinha(rotulo, valor, destaque) {
   return `<div class="wa-row"><span>${esc(rotulo)}</span><b${cor}>${v}</b></div>`;
 }
 
+// O interruptor do Modo Bet, na ficha da conta. Otimista na tela e confirmado
+// pelo servidor: quem manda no estado final é a resposta, porque o resultado
+// depende TAMBÉM do segmento — desligar a chave de uma conta de iGaming não
+// apaga a aba, e a tela precisa contar isso em vez de mentir.
+async function admBetToggle(id) {
+  const el = $('#bet-tg-' + id);
+  if (!el) return;
+  const ligar = !el.classList.contains('on');
+  el.disabled = true;
+  try {
+    const r = await api('/adm/accounts/' + id + '/bet', { method: 'PUT', body: { betMode: ligar } });
+    toast(r.modoBet ? 'Modo Bet ligado' : 'Modo Bet desligado');
+    admFicha(id);   // repinta com o estado de verdade
+  } catch (e) {
+    el.disabled = false;
+    toast(e.message, 'error');
+  }
+}
+
 async function admFicha(id, comDocumento) {
   try {
     const d = await api('/adm/accounts/' + id + (comDocumento ? '?doc=1' : ''));
@@ -2905,6 +2924,22 @@ async function admFicha(id, comDocumento) {
         ${admLinha('País', pf.pais ? esc(pf.pais) : null)}
         ${admLinha('O que quer resolver', pf.objetivo ? esc(pf.objetivo) : null)}
         ${admLinha('Chave Pix', pf.chavePix ? esc(pf.chavePix) + (pf.chavePixTipo ? ' (' + esc(pf.chavePixTipo) + ')' : '') : null)}
+      </div>
+
+      <div class="fb-sub" style="margin-top:16px">Modo Bet</div>
+      <div class="card" style="padding:12px 14px;margin-top:6px">
+        <div class="row" style="align-items:center;gap:12px">
+          <div style="flex:1;min-width:0">
+            <b style="font-size:13.5px">${pf.modoBet ? 'Ligado' : 'Desligado'}</b>
+            <p class="muted" style="margin:2px 0 0;font-size:12.5px">
+              ${pf.betPorSegmento
+                ? 'Vem do segmento iGaming escolhido no cadastro. Desligar aqui tira a aba mesmo assim.'
+                : 'Métricas de cadastro e FTD no Tracking. Ligue para contas que operam apostas — inclusive Supercontas, que não passam pelo cadastro.'}
+            </p>
+          </div>
+          <button class="toggle ${pf.modoBet ? 'on' : ''}" id="bet-tg-${id}"
+                  aria-label="Modo Bet" onclick="admBetToggle('${id}')"><span></span></button>
+        </div>
       </div>
 
       <div class="fb-sub" style="margin-top:16px">Assinatura</div>
