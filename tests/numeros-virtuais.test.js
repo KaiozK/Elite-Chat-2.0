@@ -22,6 +22,7 @@ const R = 'C:/Users/amand/Desktop/Elite Projects/whatsapp-crm/';
 let falhas = 0;
 const ok = (c, m) => { console.log((c ? '  OK   ' : '  FALHA') + ' ' + m); if (!c) falhas++; };
 const encerrar = require('./_fim');
+const fs = require('fs');
 
 const Module = require('module');
 const tabela = new Map();
@@ -214,6 +215,45 @@ const BASE = 'http://127.0.0.1:3979';
   const painel = await (await fetch(BASE + '/api/admin/numeros', { headers: aut })).json();
   ok(painel.numeros.temToken === true, 'o painel sabe que existe um token');
   ok(!JSON.stringify(painel).includes('TOKEN-DA-INTEGRACAO'), 'mas o valor não sai do servidor');
+
+
+console.log('\n=== 10. O interruptor é BOTÃO com classe, e não checkbox ===');
+// A folha desenha o interruptor a partir da CLASSE:
+//   .toggle.on      { background: verde }
+//   .toggle.on span { transform: translateX(...) }   ← o botão desliza
+//
+// Um <input type="checkbox"> marcado não diz nada a essas regras. Escrito como
+// label+input, o interruptor dos Números virtuais ficava CINZA E À ESQUERDA
+// mesmo com o recurso ligado: medido no navegador, o servidor respondia
+// `enabled: true` e o elemento vinha sem a classe `on`, com o fundo #cdd8ce.
+//
+// Do lado de quem usa isso é pior do que parece: o admin liga, a chamada grava,
+// e a tela continua dizendo que está desligado. Ele liga de novo — e desliga.
+const telaJs = fs.readFileSync(R + 'public/app/app.js', 'utf8');
+
+const interruptores = [...telaJs.matchAll(/class="toggle[^"]*"/g)].map(m => m[0]);
+ok(interruptores.length >= 4, `${interruptores.length} interruptores na folha`);
+
+// Nenhum deles pode ser um checkbox embrulhado: é isso que quebra o desenho.
+ok(!/<label class="toggle[^"]*">\s*<input/.test(telaJs),
+   'nenhum interruptor é um <label> com <input> dentro');
+
+// E todos precisam levar a classe que a folha lê.
+const semClasse = interruptores.filter(t => !/\$\{[^}]*'on'[^}]*\}/.test(t) && !/\bon\b/.test(t));
+ok(semClasse.length === 0,
+   `todo interruptor decide a classe 'on' pelo estado${semClasse.length ? ': ' + semClasse.join(' | ') : ''}`);
+
+// O dos Números virtuais em particular, que era o quebrado.
+const num = telaJs.slice(telaJs.indexOf('function admNumPaint'), telaJs.indexOf('function admNumLogTexto'));
+ok(/<button class="toggle \$\{c\.enabled \? 'on' : ''\}"/.test(num),
+   'o dos Números virtuais é <button> e reflete c.enabled');
+ok(!/type="checkbox"/.test(num), 'e não há checkbox nenhum no cartão dele');
+
+// A folha precisa continuar desenhando pela classe — se alguém trocar para
+// :checked, o teste acima deixa de significar qualquer coisa.
+const css = fs.readFileSync(R + 'public/app/style.css', 'utf8');
+ok(/\.toggle\.on\s*\{[^}]*background/.test(css), 'a folha pinta o fundo por .toggle.on');
+ok(/\.toggle\.on span\s*\{[^}]*transform/.test(css), 'e desliza o botão por .toggle.on span');
 
   srv.close();
   global.fetch = fetchReal;

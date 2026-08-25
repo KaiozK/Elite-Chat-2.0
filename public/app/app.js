@@ -10371,8 +10371,17 @@ function admNumPaint() {
   <div class="card">
     <div class="row" style="align-items:center;margin-bottom:6px">
       <h2 style="margin:0;flex:1">${ico('phone')} Números virtuais · Integra X</h2>
-      <label class="toggle"><input type="checkbox" ${c.enabled ? 'checked' : ''}
-        onchange="admNumSave({enabled:this.checked})"><span></span></label>
+      <!-- BOTÃO com a classe "on", e não um checkbox embrulhado no rótulo.
+           A folha desenha o interruptor a partir da CLASSE (.toggle.on muda o
+           fundo, .toggle.on span desliza o botão) — um checkbox marcado não diz
+           nada a ela. Escrito como label+input, o interruptor ficava CINZA E À
+           ESQUERDA mesmo com o recurso ligado: o admin ligava, salvava, e a tela
+           continuava dizendo que estava desligado.
+           (Sem crase neste comentário: ele mora dentro de um template literal.)
+           É também o desenho que os outros interruptores do app já usam. -->
+      <button class="toggle ${c.enabled ? 'on' : ''}" id="num-tg"
+        aria-label="Oferecer números virtuais"
+        onclick="admNumSave({enabled: !this.classList.contains('on')})"><span></span></button>
     </div>
     <p class="muted" style="font-size:12.5px;margin:0 0 12px">
       Números que recebem SMS: o código de verificação de um WhatsApp novo, a validação de uma
