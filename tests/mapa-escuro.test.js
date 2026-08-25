@@ -9,8 +9,11 @@
 //    país inteiro nascia dessa cor.
 //
 // 2. UM MATIZ SÓ obriga o olho a comparar SATURAÇÃO entre estados que não se
-//    tocam — a comparação que a vista humana faz pior. Com uma rampa de quatro
-//    matizes, dois estados distantes se comparam por COR, que é imediato.
+//    tocam — a comparação que a vista humana faz pior. A rampa resolve isso com
+//    CLARIDADE: o mesmo verde, do fechado ao da marca. Uma versão intermediária
+//    usou quatro matizes até o ouro; resolvia a comparação e trazia uma cor que
+//    não é da casa — num painel de carbono e verde, o amarelo no topo lê como
+//    alerta, e não como "aqui vende bem".
 //    A luminância precisa subir do frio ao quente: é o que mantém a escala
 //    legível em preto e branco e para quem não distingue verde de vermelho.
 //
@@ -45,7 +48,10 @@ let sobe = true;
 for (let i = 1; i < cores.length; i++) if (lum(cores[i]) <= lum(cores[i - 1])) sobe = false;
 ok(sobe, `a luminância SOBE em toda a rampa: ${cores.map(c => lum(c).toFixed(2)).join(' < ')}`);
 
-// Matizes de verdade diferentes, senão é a escala antiga com outro nome.
+// A RAMPA É UMA FAMÍLIA SÓ: verde, do fechado ao da marca. Já teve uma versão
+// de quatro matizes (azul → verde → lima → ouro) que resolvia a comparação e
+// trazia um ouro que não é da casa — num painel de carbono e verde, o amarelo
+// no topo lê como alerta, e não como "aqui vende bem".
 const matiz = (c) => {
   const [r, g, b] = c.map(v => v / 255), mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
   if (!d) return 0;
@@ -53,9 +59,16 @@ const matiz = (c) => {
   return h * 60;
 };
 const hs = cores.map(matiz);
-ok(Math.abs(hs[0] - hs[3]) > 100, `a ponta fria e a quente estão longe no círculo: ${Math.round(hs[0])}° e ${Math.round(hs[3])}°`);
-// O verde da marca no MEIO: ele é o centro de gravidade do mapa, não uma ponta.
-ok(/0x2E, 0xD3, 0x78/.test(rampa), 'e o verde da marca (#2ED378) é uma das paradas do meio');
+ok(hs.every(h => h >= 120 && h <= 175),
+   `toda parada é verde, sem amarelo nem azul entrando: ${hs.map(h => Math.round(h) + '°').join(', ')}`);
+// O TOPO é o verde do app. É o que amarra o mapa ao resto da tela: o estado com
+// mais leads é literalmente a cor da marca.
+const topo = cores[cores.length - 1];
+ok(topo[0] === 0x2E && topo[1] === 0xD3 && topo[2] === 0x78,
+   'e a ponta QUENTE é o #2ED378, o --brand do aplicativo');
+// Os degraus do meio saem da própria paleta, e não de verdes inventados.
+ok(/0x17, 0x80, 0x48/.test(rampa) && /0x21, 0xB8, 0x66/.test(rampa),
+   'os degraus do meio são o --verde-deep e o --verde-med, que já existem na paleta');
 
 console.log('\n=== 2. A cor é escolhida pelo dado, e a legenda usa a mesma função ===');
 ok(/fill="\$\{geoCorDoCalor\(frac\)\}"/.test(js), 'o estado com leads é pintado pela rampa');

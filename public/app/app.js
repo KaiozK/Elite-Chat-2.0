@@ -6662,23 +6662,29 @@ function geoPlacaGrad() {
   </linearGradient>`;
 }
 
-// A RAMPA DE CALOR. Era um verde só, em opacidades diferentes — e um verde só
-// obriga o olho a comparar SATURAÇÃO entre estados que não se tocam, que é a
-// comparação que a vista humana faz pior. Com quatro matizes, dois estados
-// distantes se comparam por COR, que é imediato.
+// A RAMPA DE CALOR: um verde só, CLAREANDO até o verde da marca.
 //
-// A ordem das paradas não é decorativa: a luminância sobe do frio ao quente
-// (0,32 → 0,49 → 0,65 → 0,75). É o que mantém a escala legível em preto e
-// branco e para quem não distingue verde de vermelho — a intensidade continua
-// dizendo a mesma coisa que a cor.
+// Já passou por duas versões erradas, e vale saber por quê. Primeiro era uma
+// opacidade só sobre um verde — e opacidade sozinha pede que o olho compare
+// SATURAÇÃO entre estados que não se tocam, que é a comparação que a vista
+// humana faz pior. Depois virou uma rampa de quatro matizes (azul → verde →
+// lima → ouro): resolvia a comparação, e trazia um ouro que não é da casa —
+// num painel de carbono e verde, o amarelo no topo lê como alerta, não como
+// "aqui vende bem".
 //
-// O verde da marca fica no MEIO, e não numa ponta: ele é o centro de gravidade
-// do mapa, e as pontas são o desvio para menos e para mais.
+// Agora a rampa é a própria família da marca, ESCURA no frio e CLAREANDO até
+// #2ED378, que é o --brand: o estado com mais leads é literalmente a cor do
+// aplicativo. Dois estados distantes continuam se comparando por claridade, e
+// não por saturação, que era o problema da primeira versão.
+//
+// A luminância sobe em toda a rampa (0,05 → 0,16 → 0,36 → 0,49). É o que
+// mantém a escala legível em preto e branco e para quem não distingue verde de
+// vermelho: quem não vê a cor ainda vê a ordem.
 const GEO_RAMPA = [
-  [0.00, [0x22, 0xA5, 0xD6]],   // azul-piscina: frio, poucos leads
-  [0.33, [0x2E, 0xD3, 0x78]],   // verde Koonfy
-  [0.66, [0xA3, 0xE6, 0x35]],   // lima
-  [1.00, [0xFD, 0xE0, 0x47]]    // ouro: quente, onde a venda está
+  [0.00, [0x0C, 0x4A, 0x35]],   // verde fechado: frio, poucos leads
+  [0.35, [0x17, 0x80, 0x48]],   // --verde-deep
+  [0.70, [0x21, 0xB8, 0x66]],   // --verde-med
+  [1.00, [0x2E, 0xD3, 0x78]]    // --brand: o verde do app, onde a venda está
 ];
 function geoCorDoCalor(frac) {
   const f = Math.max(0, Math.min(1, frac));
