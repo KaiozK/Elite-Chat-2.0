@@ -24,6 +24,7 @@ const numeros = require('./numeros');
 const topup = require('./topup');
 const marketing = require('./marketing');
 const paises = require('./paises');
+const segmentos = require('./segmentos');
 const mailer = require('./mailer');
 const account = require('./account');
 
@@ -233,6 +234,26 @@ module.exports = function (broadcast, clients) {
   // de existir sessão.
   router.get('/public/countries', (req, res) => res.json({ countries: paises.opcoes() }));
 
+  // A lista de segmentos vem do servidor, e não escrita no HTML do formulário:
+  // é a MESMA lista que a API valida e que o Tracking usa para ligar o Modo Bet
+  // (src/segmentos.js). Duplicar no formulário é como três listas divergem na
+  // primeira vez que alguém acrescenta um item.
+  // Avisa a plataforma que nasceu uma conta. Hoje só o iGaming vira push (para
+  // o ADMIN, ver src/avisospush.js), mas o evento sai sempre: quem quiser
+  // ouvir cadastro no SSE não precisa de outro ponto de emissão.
+  function avisarCadastro(acc) {
+    try {
+      broadcast('cadastro', {
+        accountId: acc.id, conta: acc.name, email: acc.email,
+        segmento: acc.profile.segment || '', site: acc.profile.site || ''
+      });
+    } catch { /* um aviso que falha não pode derrubar um cadastro */ }
+  }
+
+  router.get('/public/segmentos', (req, res) => res.json({
+    segmentos: segmentos.LISTA.map(x => ({ id: x.id, nome: x.nome, pedeSite: !!x.pedeSite }))
+  }));
+
   router.post('/register', h(async (req, res) => {
     const { name, email, pass, refCode } = req.body || {};
     const mail = String(email || '').toLowerCase().trim();
@@ -243,9 +264,13 @@ module.exports = function (broadcast, clients) {
     // Perfil da empresa: campos livres de escolha, saneados aqui porque vêm de
     // um formulário PÚBLICO. Nada disso muda permissão ou cobrança.
     const perfil = req.body.profile || {};
-    for (const k of ['segment', 'size', 'goal']) {
+    for (const k of ['size', 'goal']) {
       acc.profile[k] = String(perfil[k] || '').trim().slice(0, 60);
     }
+    // SEGMENTO e SITE andam juntos: iGaming sem site não entra, porque o site é
+    // o que o admin abre para conferir com quem está lidando.
+    const seg = segmentos.aplicar(acc.profile, { segment: perfil.segment, site: perfil.site });
+    if (!seg.ok) return res.status(400).json({ error: seg.erro });
     // WhatsApp em E.164: é o formato que a Meta e a Integra X exigem, e sem
     // ele a cobrança e a recuperação de venda não têm para onde ir.
     acc.profile.country = String(perfil.country || 'BR').toUpperCase().slice(0, 2);
@@ -262,6 +287,7 @@ module.exports = function (broadcast, clients) {
     if (aff) acc.affiliate.refBy = aff.affiliate.code;
     db.get().accounts.push(acc);
     db.save();
+    avisarCadastro(acc);
 
     // CONTA DE PAGAMENTOS JUNTO COM O CADASTRO
     //
@@ -499,7 +525,7 @@ module.exports = function (broadcast, clients) {
   });
 
   router.post('/public/assinatura/:token/concluir', h(async (req, res) => {
-    const acc = preassinatura.concluir(req.params.token, req.body || {});
+    const acc = preassinatura.concluir(req.params.token, req.body || {}, broadcast);
     // Já entra logado: quem acabou de pagar não deve ter que digitar a senha
     // que criou dois segundos atrás.
     const token = newSession('account', acc);
@@ -5562,6 +5588,27 @@ module.exports = function (broadcast, clients) {
 
   router.get('/tracking', auth, can('tracking'), (req, res) => res.json(tracking.overview(req.acc)));
   router.get('/tracking/campaigns', auth, can('tracking'), (req, res) => res.json({ campaigns: tracking.campaignReport(req.acc) }));
+
+  // ---- MODO BET (só para contas de iGaming) ----
+  //
+  // A guarda é de VERDADE, e não só o botão escondido na tela: o segmento é
+  // escolha do cliente no cadastro, e a rota é o que decide. Uma conta que não
+  // é do segmento recebe 404 — e não 403 — porque para ela este recurso não
+  // existe, e dizer "proibido" contaria que existe.
+  const bet = require('./bet');
+  const soIGaming = (req, res, next) => {
+    if (!segmentos.ehIGaming(req.acc)) return res.status(404).json({ error: 'Recurso indisponível para este segmento' });
+    next();
+  };
+
+  router.get('/tracking/bet', auth, can('tracking'), soIGaming, (req, res) => {
+    const dias = Math.max(1, Math.min(180, Number(req.query.dias) || 30));
+    res.json(bet.relatorio(req.acc, { dias }));
+  });
+
+  router.put('/tracking/bet', auth, can('tracking', 'edit'), soIGaming, (req, res) => {
+    res.json({ cfg: bet.salvarCfg(req.acc, req.body || {}) });
+  });
   router.get('/tracking/funnel', auth, can('tracking'), (req, res) => res.json({ funnel: tracking.funnel(req.acc) }));
   router.get('/tracking/compare', auth, can('tracking'), (req, res) => res.json({ compare: tracking.compare(req.acc) }));
   router.get('/tracking/events', auth, can('tracking'), (req, res) => {

@@ -62,6 +62,23 @@ function avisoDoEvento(event, data) {
       tag: 'com:' + (data.accountId || '') + ':' + Date.now(),
       data: { type, url: '/app/#/billing' }
     };
+  } else if (event === 'cadastro' && data.segmento === 'igaming') {
+    // CADASTRO DE iGAMING — o único aviso deste arquivo que NÃO é para o dono
+    // da conta: é para o ADMIN da plataforma, que precisa abrir o site e
+    // conferir com quem está lidando antes de a operação crescer. Por isso o
+    // `paraAdmin` na volta; a entrega em server.js troca o destinatário.
+    //
+    // `requireInteraction` de propósito: é um aviso para AGIR, não para ver de
+    // passagem. Some quando o admin tocar, e não sozinho em cinco segundos.
+    type = 'signup';
+    payload = {
+      title: 'Novo cadastro iGaming ⚠️',
+      body: (data.conta || 'Conta nova') + (data.site ? ' · ' + data.site : ' · sem site informado'),
+      tag: 'signup:' + (data.accountId || Date.now()),
+      requireInteraction: true,
+      data: { type, url: '/adm/#/adm/contas', accountId: data.accountId || '' }
+    };
+    return { type, payload, paraAdmin: true };
   } else if (event === 'reminder') {
     const ev = data.event || {};
     // O fuso vem da CONTA: sem ele o texto saía no fuso do processo (UTC em

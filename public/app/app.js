@@ -537,6 +537,9 @@ async function api(path, opts = {}) {
 
 // ---------- ícones (SVG inline, traço fino — estilo Feather) ----------
 const ICONS = {
+  // O infinito é a marca da casa: o mesmo laço do logo, em traço. Vale para o
+  // Koonpay, que é o módulo com o nome da marca dentro do produto.
+  infinito: '<path d="M12 12c-2-2.67-4-4-6-4a4 4 0 1 0 0 8c2 0 4-1.33 6-4Zm0 0c2 2.67 4 4 6 4a4 4 0 0 0 0-8c-2 0-4 1.33-6 4Z"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   'chevron-down': '<path d="m6 9 6 6 6-6"/>',
   'chevron-up': '<path d="m6 15 6-6 6 6"/>',
@@ -3275,7 +3278,7 @@ async function renderDashboard() {
           ['schedule', 'calendar', 'Agendamento'],
           ['campaigns', 'megaphone', 'Campanha'],
           ['tracking', 'trend', 'Tracking'],
-          ['pagamentos', 'pix', 'Pagamentos']
+          ['pagamentos', 'infinito', 'Koonpay']
         ];
         const mobile = isMobileLayout();
         return atalhos
@@ -6353,7 +6356,7 @@ const TITLES = {
   quick: 'Respostas rápidas', logs: 'Webhook & Logs', settings: 'Configurações',
   team: 'Chat interno', flows: 'Flow Builder', links: 'Links rastreáveis',
   integrations: 'Integrações', webhooks: 'Integrações',
-  pagamentos: 'Pagamentos', 'pagamentos/checkout': 'Checkout Builder', checkouts: 'Checkout Builder', tracking: 'Tracking',
+  pagamentos: 'Koonpay', 'pagamentos/checkout': 'Checkout Builder', checkouts: 'Checkout Builder', tracking: 'Tracking',
   schedule: 'Agendamentos', consent: 'Opt-in & Opt-out', pixels: 'Tracking',
   agents: 'Atendentes', billing: 'Assinatura & Carteira', admin: 'Admin SaaS', sms: 'Disparos de SMS',
   'templates/new': 'Criar modelo', 'campaigns/new': 'Nova campanha'
@@ -9205,7 +9208,7 @@ let ADM_BNR = { lista: [], artes: [] };
 const BNR_DESTINOS = [
   ['#/dashboard', 'Dashboard'], ['#/inbox', 'Conversas'], ['#/contacts', 'Contatos'],
   ['#/campaigns', 'Campanhas'], ['#/flows', 'Flow Builder'], ['#/integrations', 'Integrações'],
-  ['#/nuvemshop', 'Nuvemshop'], ['#/pagamentos', 'Pagamentos'], ['#/checkouts', 'Checkout Builder'],
+  ['#/nuvemshop', 'Nuvemshop'], ['#/pagamentos', 'Koonpay'], ['#/checkouts', 'Checkout Builder'],
   ['#/tracking', 'Tracking'], ['#/links', 'Links'], ['#/afiliacao', 'Indique e ganhe'],
   ['#/billing', 'Assinatura & Carteira'], ['#/templates', 'Modelos'], ['#/sms', 'SMS'],
   ['#/settings', 'Configurações']
@@ -15011,7 +15014,7 @@ function epRenderCobrarNoCelular(d) {
       <b>${ico('alert', 14)} Conta de recebimento pendente</b>
       <p class="muted" style="margin:6px 0 0;font-size:13px">
         ${d.subaccount ? 'Sua conta de Pagamentos ainda está em análise.' : 'Você ainda não criou a conta de Pagamentos.'}
-        Isso é feito no computador, em <b>Pagamentos</b>.
+        Isso é feito no computador, em <b>Koonpay</b>.
       </p></div>` : ''}
 
     <div class="card cel-cob">
@@ -15161,7 +15164,7 @@ async function renderPagamentos() {
   // ---- Subconta ativa → módulo completo ----
   $('#view').innerHTML = `<div class="page">
     <div class="page-head row">
-      <div style="flex:1"><h1>Pagamentos</h1><p>Receba por Pix direto nas suas conversas, ${esc(d.subaccount.name)}</p></div>
+      <div style="flex:1"><h1>Koonpay</h1><p>Receba por Pix direto nas suas conversas, ${esc(d.subaccount.name)}</p></div>
       <button class="btn primary no-grow" onclick="epNewChargeModal()">${ico('plus', 14)} Gerar cobrança</button>
     </div>
     ${!d.configured ? `<div class="card" style="border-color:var(--amber-border);background:var(--amber-bg)"><b>⚠ Gateway não configurado.</b><p class="muted" style="margin:4px 0 0;font-size:13px">O administrador precisa informar o AppID da Woovi em Admin → Pagamentos para gerar cobranças reais.</p></div>` : ''}
@@ -15181,7 +15184,7 @@ function epTab(t) { epState.tab = t; $$('.tabs button').forEach(b => b.classList
 
 function epRenderGate(d, icon, title, text, actionHtml) {
   $('#view').innerHTML = `<div class="page">
-    <div class="page-head"><h1>Pagamentos</h1><p>Pagamentos Pix integrados ao seu atendimento</p></div>
+    <div class="page-head"><h1>Koonpay</h1><p>Pagamentos por Pix e cartão integrados ao seu atendimento</p></div>
     <div class="card empty-state" style="padding:46px 20px">
       <div class="big">${ico(icon, 38)}</div><b>${title}</b>
       <p class="muted" style="margin:8px auto 0;max-width:460px">${text}</p>
@@ -16889,7 +16892,7 @@ async function chatChargeModal(waId) {
 }
 
 // ==================== TRACKING — atribuição + ROAS (estilo UTMify) ====================
-let trkState = { tab: 'overview', data: null };
+let trkState = { tab: 'overview', data: null, bet: false };
 const trkBRL = v => fmtBRL(v || 0);
 
 // ---------------------------------------------------------------------------
@@ -16973,6 +16976,11 @@ const trkPct = v => v === null || v === undefined ? '-' : v + '%';
 const trkX = v => v === null || v === undefined ? '-' : v + 'x';
 
 async function renderTracking() {
+  // O Modo Bet é do segmento iGaming, e quem responde é o servidor. A pergunta
+  // vem ANTES de desenhar: descobrir depois faria a aba aparecer só na segunda
+  // visita à tela. Falha na consulta = sem aba, que é o padrão seguro.
+  try { trkState.bet = !!(await api('/tracking')).bet?.disponivel; }
+  catch { trkState.bet = false; }
   $('#view').innerHTML = `<div class="page">
     <div class="page-head row">
       <div style="flex:1"><h1>Tracking</h1><p>Atribuição de vendas, ROAS e métricas de marketing, cada workspace com seus próprios dados</p></div>
@@ -16984,6 +16992,7 @@ async function renderTracking() {
       <button class="${trkState.tab === 'camp' ? 'active' : ''}" data-tab="trk-camp" onclick="trkTab('camp')">Campanhas</button>
       <button class="${trkState.tab === 'funnel' ? 'active' : ''}" data-tab="trk-funnel" onclick="trkTab('funnel')">Funil</button>
       <button class="${trkState.tab === 'events' ? 'active' : ''}" data-tab="trk-events" onclick="trkTab('events')">Eventos</button>
+      ${trkState.bet ? `<button class="${trkState.tab === 'bet' ? 'active' : ''}" data-tab="trk-bet" onclick="trkTab('bet')">Modo Bet</button>` : ''}
       <button class="${trkState.tab === 'alerts' ? 'active' : ''}" data-tab="trk-alerts" onclick="trkTab('alerts')">Alertas</button>
       <button data-tab="trk-pixels" onclick="location.hash='#/pixels'">Pixels</button>
     </div>
@@ -17005,6 +17014,7 @@ async function trkPaintTab() {
     if (trkState.tab === 'camp') return await trkPaintCamp(box);
     if (trkState.tab === 'funnel') return await trkPaintFunnel(box);
     if (trkState.tab === 'events') return await trkPaintEvents(box);
+    if (trkState.tab === 'bet') return await trkPaintBet(box);
     return await trkPaintAlerts(box);
   } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 }
@@ -17269,12 +17279,19 @@ async function trkPaintFunnel(box) {
 }
 
 // ---- Eventos ----
+// O nome da origem na tela é de MARCA, e não a chave interna: o módulo se chama
+// Koonpay para quem usa, e `koonpay` para o código. As duas origens antigas
+// (`elitepay`, do produto anterior, e `pagamentos`) já foram migradas no banco
+// — este mapa é a rede de segurança para um evento que tenha escapado.
+const TRK_ORIGEM = { koonpay: 'Koonpay', pagamentos: 'Koonpay', elitepay: 'Koonpay', site: 'Site' };
+function trkOrigem(s) { return TRK_ORIGEM[s] || s || '-'; }
+
 async function trkPaintEvents(box) {
   const { events } = await api('/tracking/events');
   box.innerHTML = `<div class="card"><h2>${ico('activity')} Eventos recebidos <span class="muted" style="font-weight:600;font-size:12.5px">· ${events.length} mais recentes</span></h2>
     ${events.length ? `<div style="overflow-x:auto"><table><thead><tr><th>Evento</th><th>Origem</th><th>Data · Hora</th><th>Sessão</th><th>Campanha (UTM)</th><th>Valor</th><th>Status</th></tr></thead><tbody>
       ${events.map(e => `<tr>
-        <td><b>${esc(e.name)}</b></td><td>${esc(e.source || '-')}</td>
+        <td><b>${esc(e.name)}</b></td><td>${esc(trkOrigem(e.source))}</td>
         <td class="muted" style="white-space:nowrap">${new Date(e.ts).toLocaleDateString('pt-BR')} · ${new Date(e.ts).toLocaleTimeString('pt-BR').slice(0, 5)}</td>
         <td class="muted" style="font-size:11.5px">${esc((e.sid || '').slice(0, 10) || '-')}</td>
         <td>${esc((e.payload && e.payload.utm && e.payload.utm.campaign) || (e.payload && e.payload.campaign) || '-')}</td>
@@ -17285,6 +17302,128 @@ async function trkPaintEvents(box) {
 }
 
 // ---- Alertas ----
+// ===========================================================================
+// MODO BET — o Tracking pela régua do iGaming
+//
+// A conta comum mede VENDA. Uma operação de apostas tem DUAS conversões, e a
+// distância entre elas é o negócio: o CADASTRO custa dinheiro e ainda não
+// trouxe nada; o FTD (primeiro depósito) é onde o tráfego pago vira receita.
+//
+// Por isso os dois números grandes são os dois CPAs, e a tabela por campanha
+// mostra a taxa de um para o outro: um criativo com cadastro barato e zero FTD
+// parece ótimo no gerenciador de anúncios e não paga a conta.
+// ===========================================================================
+let betState = { dias: 30, dados: null };
+
+async function trkPaintBet(box) {
+  let r;
+  try { r = await api('/tracking/bet?dias=' + betState.dias); }
+  catch (e) { box.innerHTML = '<div class="card err">' + esc(e.message) + '</div>'; return; }
+  betState.dados = r;
+  const g = r.geral;
+  const brl = c => (c === null || c === undefined) ? '—' : trkBRL(c);
+  const horas = ms => (ms === null || ms === undefined) ? '—'
+    : ms < 3600000 ? Math.round(ms / 60000) + ' min'
+    : ms < 86400000 ? (ms / 3600000).toFixed(1) + ' h'
+    : (ms / 86400000).toFixed(1) + ' dias';
+
+  // A meta de CPA por FTD, quando definida, é o único julgamento desta tela:
+  // acima dela o número fica vermelho. Sem meta, é só um número.
+  const acimaDaMeta = g.metaCpaFtdCents && g.cpaFtdCents && g.cpaFtdCents > g.metaCpaFtdCents;
+
+  box.innerHTML = `
+    <div class="row" style="align-items:center;margin-bottom:14px">
+      <div style="flex:1">
+        <b style="font-size:15px">Modo Bet</b>
+        <p class="muted" style="margin:2px 0 0;font-size:12.5px">Cadastro e FTD, o custo de cada um e de onde eles vêm.</p>
+      </div>
+      <div class="seg no-grow">
+        ${[7, 30, 90].map(d => `<button class="${betState.dias === d ? 'on' : ''}" onclick="betDias(${d})">${d} dias</button>`).join('')}
+      </div>
+    </div>
+
+    <div class="metric-hero">
+      <div class="mh-card hi"><span class="mh-ic">${ico('users', 20)}</span>
+        <div class="mh-val">${fmtN(g.cadastros)}</div><div class="mh-lbl">Cadastros</div></div>
+      <div class="mh-card hi"><span class="mh-ic">${ico('zap', 20)}</span>
+        <div class="mh-val">${fmtN(g.ftds)}</div><div class="mh-lbl">FTD · primeiro depósito</div></div>
+      <div class="mh-card"><span class="mh-ic">${ico('trend', 20) || ico('activity', 20)}</span>
+        <div class="mh-val">${g.taxaFtd}%</div><div class="mh-lbl">Cadastro que vira FTD</div></div>
+      <div class="mh-card"><span class="mh-ic">${ico('clock', 20)}</span>
+        <div class="mh-val">${horas(g.tempoAteFtdMs)}</div><div class="mh-lbl">Até depositar (mediana)</div></div>
+    </div>
+
+    <div class="card">
+      <h2>${ico('activity')} O que custa cada um</h2>
+      <div class="trk-cards">
+        <div class="trk-card"><span>Custo por cadastro</span><b>${brl(g.cpaCadastroCents)}</b>
+          <small>${fmtN(g.cadastros)} cadastro(s)</small></div>
+        <div class="trk-card"><span>Custo por FTD</span>
+          <b style="${acimaDaMeta ? 'color:var(--red)' : ''}">${brl(g.cpaFtdCents)}</b>
+          <small>${g.metaCpaFtdCents ? (acimaDaMeta ? 'acima da meta de ' : 'dentro da meta de ') + brl(g.metaCpaFtdCents) : fmtN(g.ftds) + ' FTD(s)'}</small></div>
+        <div class="trk-card"><span>Ticket médio do FTD</span><b>${brl(g.ticketFtdCents)}</b></div>
+        <div class="trk-card"><span>Depositado no período</span><b>${brl(g.depositoTotalCents)}</b>
+          <small>${fmtN(g.redepositos)} redepósito(s)</small></div>
+        <div class="trk-card"><span>Investimento</span><b>${brl(g.investimentoCents)}</b>
+          <small>${brl(g.investimentoMetaCents)} Meta + ${brl(g.investimentoManualCents)} manual</small></div>
+        <div class="trk-card"><span>ROAS sobre depósitos</span><b>${g.roas === null ? '—' : g.roas + 'x'}</b></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>${ico('activity')} Quanto você investiu</h2>
+      <p class="hint" style="margin-top:0">O gasto do Meta Ads entra sozinho quando a conta está conectada. Tráfego comprado
+      fora dele — Google, Telegram, influenciador, rede de afiliados — o Koonfy não tem como adivinhar, e sem ele
+      todo CPA sai otimista. Um CPA otimista é pior que CPA nenhum, porque parece certo.</p>
+      <div class="row">
+        <label style="flex:1">Investimento fora do Meta, no período (R$)
+          <input id="bet-inv" type="number" min="0" step="0.01" value="${(g.investimentoManualCents / 100).toFixed(2)}"></label>
+        <label style="flex:1">Meta de custo por FTD (R$) <em class="lim-extra">opcional</em>
+          <input id="bet-meta" type="number" min="0" step="0.01" value="${(g.metaCpaFtdCents / 100).toFixed(2)}"></label>
+      </div>
+      <button class="btn primary no-grow" style="margin-top:10px" onclick="betSalvar()">Salvar</button>
+    </div>
+
+    ${r.alertas.length ? `<div class="card">
+      <h2>${ico('alert')} O que os números estão dizendo</h2>
+      ${r.alertas.map(a => `<div class="card ${a.nivel === 'alto' ? 'warn-card' : ''}" style="margin:8px 0 0">
+        ${a.campanha ? `<b>${esc(a.campanha)}</b><br>` : ''}<span class="muted" style="font-size:13px">${esc(a.texto)}</span>
+      </div>`).join('')}
+    </div>` : ''}
+
+    <div class="card">
+      <h2>${ico('megaphone')} Por campanha</h2>
+      <p class="hint" style="margin-top:0">Volume de cadastro engana. A coluna que decide o orçamento é a taxa: quantos daqueles cadastros chegaram a depositar.</p>
+      ${r.campanhas.length ? `<div class="tab-wrap"><table>
+        <thead><tr><th>Campanha</th><th style="text-align:right">Cadastros</th><th style="text-align:right">FTD</th>
+        <th style="text-align:right">Taxa</th><th style="text-align:right">Ticket FTD</th></tr></thead>
+        <tbody>${r.campanhas.map(c => `<tr>
+          <td><b>${esc(c.campanha)}</b></td>
+          <td style="text-align:right">${fmtN(c.cadastros)}</td>
+          <td style="text-align:right">${fmtN(c.ftds)}</td>
+          <td style="text-align:right;${c.cadastros >= 5 && c.ftds === 0 ? 'color:var(--red);font-weight:500' : ''}">${c.taxa}%</td>
+          <td style="text-align:right">${brl(c.ticketFtd)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>` : '<p class="muted" style="font-size:13px">Nenhum cadastro no período.</p>'}
+    </div>`;
+}
+
+function betDias(d) { betState.dias = d; trkPaintTab(); }
+
+async function betSalvar() {
+  const reais = sel => {
+    const el = $(sel);
+    return Math.round((Number(String((el && el.value) || '0').replace(',', '.')) || 0) * 100);
+  };
+  try {
+    await api('/tracking/bet', { method: 'PUT', body: {
+      investimentoCents: reais('#bet-inv'), metaCpaFtdCents: reais('#bet-meta')
+    } });
+    toast('Salvo');
+    trkPaintTab();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
 async function trkPaintAlerts(box) {
   const ov = await api('/tracking');
   trkState.data = ov;

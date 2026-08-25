@@ -98,7 +98,11 @@ function broadcast(event, data) {
 function maybePush(event, data) {
   const aviso = require('./src/avisospush').avisoDoEvento(event, data);
   if (!aviso) return;
-  const acc = db.findAccount(data.accountId);
+  // QUASE TODO aviso é para o dono da conta onde o fato aconteceu. O de
+  // cadastro iGaming é para o ADMIN DA PLATAFORMA — mandá-lo para a conta
+  // recém-criada avisaria o cliente de que ele mesmo se cadastrou, e deixaria
+  // o admin sem saber de nada.
+  const acc = aviso.paraAdmin ? db.findAdminAccount() : db.findAccount(data.accountId);
   if (!acc) return;
   push.sendToAccount(acc, aviso.type, aviso.payload);        // navegador (Web Push)
   pushNative.sendToAccount(acc, aviso.type, aviso.payload);  // apps das lojas (FCM/APNs)

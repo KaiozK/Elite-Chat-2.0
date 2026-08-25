@@ -154,7 +154,7 @@ function confirmar(cid, valorPago, broadcast) {
 // TERMINA O CADASTRO: empresa, senha e o perfil. Os dados do checkout NÃO
 // voltam aqui — eles já estão na conta e são os mesmos do recebimento.
 // ---------------------------------------------------------------------------
-function concluir(token, b) {
+function concluir(token, b, broadcast) {
   const pre = porToken(token);
   if (!pre) throw erro('Cadastro não encontrado', 404);
   if (pre.status === 'pending') throw erro('O pagamento ainda não foi confirmado', 409);
@@ -170,12 +170,22 @@ function concluir(token, b) {
   acc.name = empresa.slice(0, 120);
   acc.passHash = db.hashPassword(senha);
   acc.pendenteCadastro = false;
-  for (const k of ['segment', 'size', 'goal']) {
+  for (const k of ['size', 'goal']) {
     if (b[k] !== undefined) acc.profile[k] = String(b[k] || '').trim().slice(0, 60);
   }
+  // O par segmento+site é validado junto: iGaming sem site não conclui o
+  // cadastro. Erro aqui vira 400 na tela, no campo, e não uma conta criada com
+  // metade do dado.
+  const seg = require('./segmentos').aplicar(acc.profile, { segment: b.segment, site: b.site });
+  if (!seg.ok) throw erro(seg.erro);
   pre.status = 'done';
   db.save();
   store.logEvent({ type: 'preassinatura_concluida', preId: pre.id, accountId: acc.id });
+  // Mesmo aviso do cadastro direto: quem entra por aqui já pagou, então um
+  // iGaming que chega por esta porta é ainda mais urgente de conferir.
+  if (broadcast) {
+    try { broadcast('cadastro', { accountId: acc.id, conta: acc.name, email: acc.email, segmento: acc.profile.segment || '', site: acc.profile.site || '' }); } catch {}
+  }
   return acc;
 }
 

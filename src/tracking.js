@@ -280,7 +280,7 @@ function onPaid(acc, ch, broadcast) {
   const t = ensure(acc);
   ch.attribution = attribute(acc, ch);
   log(acc, {
-    name: 'Purchase', source: 'pagamentos', sid: (ch.attribution && ch.attribution.sid) || '',
+    name: 'Purchase', source: 'koonpay', sid: (ch.attribution && ch.attribution.sid) || '',
     pixel: '', payload: { value: ch.value / 100, campaign: ch.attribution ? ch.attribution.campaign : '', method: ch.attribution ? ch.attribution.method : 'sem origem' }
   });
   db.save();
@@ -600,6 +600,9 @@ function overview(acc) {
       available: (() => { try { return require('./meta').adsConfigured(); } catch { return false; } })()
     },
     alertsCfg: t.alerts.cfg,
+    // A aba do Modo Bet só é desenhada quando existe. Quem decide é o segmento
+    // da conta, e a tela pergunta em vez de adivinhar.
+    bet: { disponivel: require('./segmentos').ehIGaming(acc) },
     dashboard: dashboard(acc),
     alerts: alerts(acc),
     eventsCount: t.events.length, sessionsCount: t.sessions.length
@@ -608,5 +611,6 @@ function overview(acc) {
 
 module.exports = {
   CONNECTIONS, clientTags, ensure, upsertSession, trackEvent, attribute, onPaid, sendConversions,
+  adSpend,
   syncMetaAds, dashboard, campaignReport, funnel, compare, customerTimeline, alerts, overview
 };

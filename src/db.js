@@ -317,7 +317,7 @@ function newAccount({ name, email, pass }) {
     // serve para o onboarding e para o time comercial saber com quem fala.
     // phone em E.164. document/pixKey vêm da etapa de recebimento do cadastro e
     // ficam aqui para o formulário do Pagamentos já nascer preenchido.
-    profile: { segment: '', size: '', phone: '', country: 'BR', goal: '', document: '', pixKey: '', pixKeyType: '' },
+    profile: { segment: '', site: '', size: '', phone: '', country: 'BR', goal: '', document: '', pixKey: '', pixKeyType: '' },
     // CONTA INTERNA: ligada pelo admin, roda sem plano, sem cota e sem
     // cobrança, e fica fora das métricas do SaaS. É para os negócios do
     // próprio dono, não para um cliente.
@@ -494,8 +494,22 @@ function renomearModuloDePagamentos(d) {
     for (const ag of a.team || []) if (mover(ag.permissions, 'elitepay', 'pagamentos')) n++;
   }
   for (const pl of d.plans || []) if (mover(pl.modules, 'elitepay', 'pagamentos')) n++;
+
+  // A ORIGEM DOS EVENTOS DE TRACKING também é um dado, e ficou para trás na
+  // primeira renomeação: o código passou a gravar a origem nova, mas as vendas
+  // já registradas continuaram mostrando "elitepay" na tela de Eventos — o nome
+  // de um produto que não existe mais, à vista do cliente.
+  //
+  // Agora o módulo chama Koonpay, que é o nome da marca, então as duas origens
+  // antigas convergem para ele: quem tem histórico vê uma coluna só.
+  for (const a of d.accounts || []) {
+    for (const ev of ((a.tracking && a.tracking.events) || [])) {
+      if (ev.source === 'elitepay' || ev.source === 'pagamentos') { ev.source = 'koonpay'; n++; }
+    }
+  }
+
   if (n) {
-    console.log('[db] módulo de Pagamentos renomeado em ' + n + ' lugar(es)');
+    console.log('[db] Koonpay: ' + n + ' registro(s) migrado(s) do nome antigo');
     // GRAVA. Sem isto a troca acontece só na memória, o disco continua com o
     // nome antigo e a migração roda de novo a cada partida do processo —
     // barulho no log e trabalho repetido para sempre. O agendamento do save
@@ -774,7 +788,8 @@ function ensureAccountShape(acc) {
   if (acc.billing.status === 'trial' && !acc.billing.periodEnd) {
     acc.billing.periodEnd = (acc.createdAt || Date.now()) + (get().platform.billing.trialDays || 7) * 86400000;
   }
-  if (!acc.profile || typeof acc.profile !== 'object') acc.profile = { segment: '', size: '', phone: '', country: 'BR', goal: '' };
+  if (!acc.profile || typeof acc.profile !== 'object') acc.profile = { segment: '', site: '', size: '', phone: '', country: 'BR', goal: '' };
+  if (acc.profile.site === undefined) acc.profile.site = '';
   if (typeof acc.profile.country !== 'string' || !acc.profile.country) acc.profile.country = 'BR';
   if (typeof acc.unlimited !== 'boolean') acc.unlimited = false;
   if (!acc.wallet || typeof acc.wallet !== 'object') acc.wallet = emptyWallet();

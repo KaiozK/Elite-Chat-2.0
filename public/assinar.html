@@ -172,7 +172,15 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
             <option>Só eu</option><option>2 a 5</option><option>6 a 20</option><option>Mais de 20</option>
           </select></label>
         </div>
-        <label>O que você vende<input id="segment" placeholder="Ex.: consultoria, loja de roupas, curso"></label>
+        <label>O que você vende<select id="segment"><option value="">Prefiro não dizer</option></select></label>
+        <!-- Só aparece para quem escolhe um segmento que exige o endereço (hoje,
+             iGaming). Nasce escondido e sem `required` — um campo obrigatório
+             dentro de um bloco `display:none` trava o envio do formulário sem
+             mostrar em que campo está o problema. -->
+        <label id="campo-site" hidden>Site da plataforma
+          <input id="site" placeholder="minhaplataforma.com" autocomplete="url">
+          <small class="mudo">Usamos para confirmar a operação antes de liberar os recursos do seu segmento.</small>
+        </label>
         <p class="erro" id="erro-conta"></p>
         <button class="btn" id="btn-concluir" type="submit">Entrar no painel</button>
       </form>
@@ -324,6 +332,27 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
     $('c-documento').value = mascaraDoc(d.documento);
   }
 
+  // A LISTA DE SEGMENTOS VEM DO SERVIDOR (/api/public/segmentos), que é a mesma
+  // que a API valida. Se a busca falhar, o campo fica com "Prefiro não dizer" e
+  // o cadastro continua: segmento é informação, não porteiro.
+  var PEDEM_SITE = {};
+  fetch('/api/public/segmentos').then(function (r) { return r.json(); }).then(function (d) {
+    var sel = $('segment');
+    (d.segmentos || []).forEach(function (sg) {
+      var o = document.createElement('option');
+      o.value = sg.id; o.textContent = sg.nome;
+      if (sg.pedeSite) PEDEM_SITE[sg.id] = true;
+      sel.appendChild(o);
+    });
+  }).catch(function () {});
+
+  $('segment').addEventListener('change', function () {
+    var pede = !!PEDEM_SITE[this.value];
+    $('campo-site').hidden = !pede;
+    $('site').required = pede;
+    if (!pede) $('site').value = '';
+  });
+
   // ---- etapa 3 → conta criada, entra no painel ----
   $('form-conta').addEventListener('submit', function (e) {
     e.preventDefault();
@@ -333,7 +362,7 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         empresa: $('empresa').value, senha: $('senha').value,
-        size: $('size').value, segment: $('segment').value
+        size: $('size').value, segment: $('segment').value, site: $('site').value
       })
     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (r) {
