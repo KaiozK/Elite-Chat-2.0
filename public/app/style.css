@@ -1701,18 +1701,39 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   --geo-label: var(--text);
   --geo-label-off: var(--muted);    /* --faint caía para 2.2:1 sobre o estado vazio */
   --geo-halo: rgba(255, 255, 255, .9);
+  /* A PLACA. No claro ela é chapada, como sempre foi — o branco do card não
+     pede degradê. As três paradas existem para o escuro. */
+  --geo-placa-1: var(--card);
+  --geo-placa-2: var(--card);
+  --geo-placa-3: var(--card);
+  --geo-vazio: .07;                 /* verde do estado sem lead */
 }
 :root[data-theme="dark"] {
   --geo-ink: var(--verde);          /* verde claro da marca — mais vivo sobre card escuro */
   --geo-hover: var(--verde-deep);   /* vira #6ee7b7 no escuro */
-  /* Lateral da placa CLARA no escuro: num card quase preto não há espaço de
-     luminância para uma "sombra" — a #202426 ficava a 1.09:1 do fundo, ou seja,
-     invisível. A borda de luz é o que dá o relevo aqui. */
-  --geo-wall: #4b5458;
-  /* no escuro a divisa vira branca — mesma lógica invertida. Branco puro:
-     a .7 a linha sumia sobre os estados de verde mais forte. */
-  --geo-sep: #ffffff;
   --geo-halo: rgba(9, 13, 10, .88);
+  /* A PLACA NO ESCURO É O MESMO PRETO GRADIENTE DOS CARDS (--card-grad, 160deg).
+     Antes era o --card chapado, com 7% de verde por cima em CADA estado. E 7%
+     de #50ea5f sobre #141a18 não dá um verde discreto: dá #18291d, verde musgo.
+     Como o mapa de uma conta nova está todo vazio, o país inteiro nascia dessa
+     cor — e o verde, que devia significar "aqui tem lead", não significava nada.
+     Agora o estado vazio não recebe tinta (--geo-vazio: 0) e quem aparece é a
+     placa. O verde voltou a ter um sentido só. */
+  --geo-placa-1: #151a1b;
+  --geo-placa-2: #121516;
+  --geo-placa-3: #0e1112;
+  --geo-vazio: 0;
+  /* A divisa era BRANCO PURO — escolha certa quando o fundo era o musgo, porque
+     ali a linha precisava furar um meio-tom. Sobre a placa preta o mesmo branco
+     vira uma grade acesa, mais visível que o próprio dado. Mesma luz, com força
+     de linha e não de traço: 2,65:1 sobre a placa, o bastante para desenhar as
+     divisas sem competir com os estados acesos. */
+  --geo-sep: rgba(255, 255, 255, .30);
+  /* A parede é o que faz a placa parecer ERGUIDA do card, e não recortada nele:
+     com a placa e o card na mesma luminância (1,08:1), o relevo é a única coisa
+     que separa os dois. A #4b5458 de antes foi medida contra o musgo e agora
+     pesava mais que o mapa; a #2e3639 sumia a 1,54:1. Esta fica em 1,87:1. */
+  --geo-wall: #394347;
 }
 
 /* O viewBox é ~1185x971 e o mapa renderiza a ~440px de altura => escala ~0.45.
@@ -1741,7 +1762,11 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .geo-wall use { fill: var(--geo-wall); stroke: none; }
 /* Base opaca: isola as faces semitransparentes da parede que fica atrás.
    Sem ela a cor da parede vaza e suja o verde de todos os estados. */
-.geo-base use { fill: var(--card); stroke: none; }
+.geo-base use { fill: url(#geo-placa); stroke: none; }
+/* ESTADO SEM LEAD. O JS não manda mais tinta nele — quem pinta é aqui, porque
+   a resposta depende do tema: no claro um verde bem apagado, no escuro nada,
+   deixando a placa aparecer. */
+.geo-tile:not(.hot) use { fill: var(--geo-ink); fill-opacity: var(--geo-vazio); }
 .geo-tile { cursor: default; transition: opacity .16s ease; }
 .geo-tile use { transition: fill-opacity .16s ease, stroke .16s ease, stroke-width .16s ease; }
 .geo-map svg:hover .geo-tile:not(:hover) { opacity: .38; }

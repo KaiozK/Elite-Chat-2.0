@@ -29,5 +29,15 @@ module.exports = async function encerrar(srv, falhas) {
   }
 
   process.exitCode = falhas ? 1 : 0;
-  setTimeout(() => process.exit(falhas ? 1 : 0), 400).unref();
+
+  // A REDE DE SEGURANÇA PRECISA SER `ref`. Ela era `unref()`, para não segurar
+  // o processo por 400ms à toa — e com isso deixava de ser rede: quando alguma
+  // coisa mantinha um handle vivo (um socket que não drenou, um timer solto), o
+  // laço nunca esvaziava, o timer nunca disparava porque estava desreferenciado,
+  // e o arquivo ficava PENDURADO. Como o `npm test` encadeia com `&&`, a suíte
+  // inteira parava ali — depois de imprimir "TODOS OS TESTES PASSARAM", que é a
+  // pior forma de travar, porque parece sucesso.
+  //
+  // Custo de referenciar: 400ms por arquivo. Um teste que trava custa a suíte.
+  setTimeout(() => process.exit(falhas ? 1 : 0), 400);
 };

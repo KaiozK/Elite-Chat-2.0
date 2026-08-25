@@ -6636,6 +6636,32 @@ function geoViewBox() {
   return `0 0 ${w + 185} ${h + GEO_DEPTH + 10}`;
 }
 
+// A PLACA DO MAPA usa o MESMO gradiente dos cards do modo escuro (--card-grad,
+// 160deg). Em SVG não dá para apontar para uma variável de gradiente do CSS,
+// então ele é redesenhado aqui com as mesmas paradas — as cores vêm de
+// variáveis, e é o tema que troca.
+//
+// `userSpaceOnUse` NÃO é detalhe: no padrão (objectBoundingBox) cada estado
+// receberia o seu próprio gradiente e o país viraria um mosaico de 27 placas
+// com emenda em cada divisa. Assim é UMA superfície, e o degradê atravessa o
+// Brasil inteiro como atravessa um card.
+function geoPlacaGrad() {
+  const [, , W, H] = geoViewBox().split(' ').map(Number);
+  // 160deg do CSS: o vetor aponta para (sen θ, -cos θ), ou seja, direita e para
+  // baixo. O comprimento da linha do degradê é a projeção da caixa nesse vetor.
+  const t = 160 * Math.PI / 180, dx = Math.sin(t), dy = -Math.cos(t);
+  const L = Math.abs(W * dx) + Math.abs(H * dy);
+  const cx = W / 2, cy = H / 2;
+  const x1 = (cx - dx * L / 2).toFixed(1), y1 = (cy - dy * L / 2).toFixed(1);
+  const x2 = (cx + dx * L / 2).toFixed(1), y2 = (cy + dy * L / 2).toFixed(1);
+  return `<linearGradient id="geo-placa" gradientUnits="userSpaceOnUse"
+      x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">
+    <stop offset="0" stop-color="var(--geo-placa-1)"/>
+    <stop offset=".62" stop-color="var(--geo-placa-2)"/>
+    <stop offset="1" stop-color="var(--geo-placa-3)"/>
+  </linearGradient>`;
+}
+
 function brazilMap3D(g) {
   const counts = g.states || {};
   const max = Math.max(1, ...Object.values(counts));
@@ -6649,7 +6675,7 @@ function brazilMap3D(g) {
 
   // A geometria entra UMA vez em <defs>; parede e face de cima são <use>.
   // Sem isso os ~120KB de path se repetiriam 14x no DOM.
-  const defs = ufs.map(uf => `<path id="geo-p-${uf}" d="${BR_UF_PATHS[uf]}"/>`).join('');
+  const defs = geoPlacaGrad() + ufs.map(uf => `<path id="geo-p-${uf}" d="${BR_UF_PATHS[uf]}"/>`).join('');
 
   // Base OPACA entre a parede e as faces. Sem ela a parede aparece através do
   // preenchimento semitransparente dos estados e contamina a cor de todos eles
@@ -6676,8 +6702,15 @@ function brazilMap3D(g) {
     //  · 0 leads  = 7%  (verde bem apagado, "frio")
     //  · 1 lead   = 22% (já visivelmente mais verde que o vazio)
     //  · máximo   = 92% (verde cheio da marca, "quente")
-    const op = count ? (0.22 + frac * 0.70) : 0.07;
-    const paint = `fill="var(--geo-ink)" fill-opacity="${op.toFixed(3)}"`;
+    // O estado COM leads leva a tinta aqui, porque a intensidade é dado. O
+    // estado VAZIO não leva nenhuma: quem pinta é o CSS, que sabe o tema. No
+    // claro ele continua um verde bem apagado; no escuro fica transparente e
+    // aparece a placa. Era daí que vinha o "verde musgo": 7% de verde sobre um
+    // card quase preto não dá um verde discreto, dá #18291d — e como o mapa de
+    // uma conta nova está TODO vazio, o país inteiro nascia dessa cor.
+    const paint = count
+      ? `fill="var(--geo-ink)" fill-opacity="${(0.22 + frac * 0.70).toFixed(3)}"`
+      : '';
     const [cx, cy] = BR_UF_CENTROIDS[uf] || [0, 0];
     const lead = UF_LEADER[uf];
     const tx = lead ? lead[0] : cx;
