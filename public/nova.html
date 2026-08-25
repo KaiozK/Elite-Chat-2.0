@@ -752,9 +752,24 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
   </div>
 </header>
 
-<!-- A joia vive fora das seções: ela atravessa todas. -->
+<!-- A joia vive fora das seções: ela atravessa todas.
+
+     800 E NAO 480. Eu tinha cortado esta arte para 480 pela regra "o dobro do
+     tamanho em que aparece", que serve para uma imagem parada numa tela 2x. Aqui
+     ela erra por tres motivos ao mesmo tempo:
+
+       1. e UM arquivo para SETE paradas, entao quem manda e a MAIOR (240px), e
+          nao a media;
+       2. celular desenha em 3x — 240 x 3 = 720 pixels reais, contra 480 no
+          arquivo: o navegador tinha de ESTICAR a arte em 1,5x;
+       3. a peca e desenhada sob transform (translate + rotate), ou seja,
+          reamostrada em posicao quebrada. A 1:1 nao sobra nada para perder.
+
+     Era exatamente o que se via: borrada no alto, onde ela e grande, e nitida
+     assim que encolhe — das paradas seguintes para baixo sobram de 2x a 3,4x de
+     pixel. Com 800 a maior parada fica com 1,11x de folga em 3x. Custa 19 KB. -->
 <img class="joia" id="joia" src="/assets/koonfy-joia.webp" alt="" aria-hidden="true"
-     width="480" height="480" fetchpriority="high" decoding="async">
+     width="800" height="800" fetchpriority="high" decoding="async">
 
 <!-- ===================== HERÓI ===================== -->
 <section class="heroi escura">
@@ -762,11 +777,13 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
        constelação, onde cada um tem nome e função. -->
 
   <div class="wrap">
-    <!-- 840px e não 4025: o selo é exibido com 420 de largura, e o dobro
-         disso já cobre tela retina. O resto era peso puro. -->
+    <!-- 1260 e não 4025 nem 840: o selo aparece com 420 de largura, e 4025 era
+         peso puro — mas 840 (o dobro) e' pouco para um celular, que desenha em
+         3x e pede 1260. E aqui o custo de errar e' alto: e' TIPOGRAFIA fina,
+         onde meio pixel de borrao ja se ve. 6 KB a mais. -->
     <img class="selo-meta" src="/assets/meta-tech-partner.webp"
          alt="Meta Tech Partner · Powered by WhatsApp Business API"
-         width="840" height="35" decoding="async">
+         width="1260" height="52" decoding="async">
 
     <div class="joia-espaco" aria-hidden="true"></div>
     <h1 class="display">Todo o seu atendimento<br>no WhatsApp em<br class="so-largo"> um lugar só</h1>
@@ -812,8 +829,11 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 <section class="faixa escura" id="celular">
   <div class="wrap split invertido">
     <div class="fone">
+      <!-- 1080 e não 720: são 360 na tela, e um celular desenha em 3x. É a mesma
+           conta da joia e do selo — o "dobro do tamanho exibido" só fecha numa
+           tela 2x, e ninguém abre a vitrine num monitor. -->
       <img src="/assets/figma-celular.webp" alt="Notificações da Koonfy na tela de bloqueio do celular"
-           width="720" height="1472" loading="lazy" decoding="async">
+           width="1080" height="2208" loading="lazy" decoding="async">
       <div class="vidro"><div class="nots">
         <div class="not" style="--i:0;top:calc(var(--kf-w) * .0322);height:calc(var(--kf-w) * .1822)"><img src="/assets/figma-notificacoes.webp" alt="" width="572" height="620" loading="lazy" decoding="async" style="top:calc(var(--kf-w) * -.0322)"><i class="not-ic" style="top:calc(var(--kf-w) * 0.04556)"></i></div>
         <div class="not" style="--i:1;top:calc(var(--kf-w) * .2144);height:calc(var(--kf-w) * .1867)"><img src="/assets/figma-notificacoes.webp" alt="" width="572" height="620" loading="lazy" decoding="async" style="top:calc(var(--kf-w) * -.2144)"><i class="not-ic" style="top:calc(var(--kf-w) * 0.05000)"></i></div>
