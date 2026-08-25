@@ -9700,6 +9700,7 @@ async function paintAdmin() {
       <div class="tabpane ${activeTab === 'adm-int' ? 'show' : ''}" data-pane="adm-int">
         <div id="adm-int-box">${skel(4)}</div>
         <div id="adm-sms-box" style="margin-top:16px">${skel(3)}</div>
+        <div id="adm-num-box" style="margin-top:16px">${skel(3)}</div>
       </div>
 
       <div class="tabpane ${activeTab === 'adm-mkt' ? 'show' : ''}" data-pane="adm-mkt">
@@ -10193,6 +10194,7 @@ async function admSecSave(on) {
 function admIntLoad() {
   admNsLoad();
   admSmsLoad();
+  admNumLoad();
 }
 
 // Um interruptor liga o SMS para os clientes; o token e o remetente são da
@@ -10299,6 +10301,205 @@ async function admSmsSave(patch) {
     admSms = (await api('/admin/sms', { method: 'PUT', body: patch })).sms;
     toast('SMS atualizado');
     admSmsPaint();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ===========================================================================
+// NÚMEROS VIRTUAIS (Integra X) — Admin SaaS → Integrações
+//
+// Números que só RECEBEM SMS: servem para o código de verificação de um
+// WhatsApp novo, para validar uma conta, para testar um fluxo de OTP sem
+// queimar o telefone de alguém.
+//
+// COMPRAR GASTA DINHEIRO DE VERDADE, na hora, e não existe simulação do outro
+// lado. Por isso a compra sempre passa por uma confirmação que diz o número e o
+// preço ANTES de acontecer — e o cancelamento avisa que o reembolso pode não
+// vir, porque quem decide isso é o provedor, não nós.
+// ===========================================================================
+let admNum = null, admNumLista = [], admNumDisp = null;
+
+async function admNumLoad() {
+  const box = $('#adm-num-box'); if (!box) return;
+  try { admNum = (await api('/admin/numeros')).numeros; }
+  catch (e) { box.innerHTML = '<div class="card err">' + esc(e.message) + '</div>'; return; }
+  admNumPaint();
+  if (admNum.enabled && admNum.temToken) admNumMeus();
+}
+
+function admNumPaint() {
+  const box = $('#adm-num-box'); if (!box || !admNum) return;
+  const c = admNum;
+  box.innerHTML = `
+  <div class="card">
+    <div class="row" style="align-items:center;margin-bottom:6px">
+      <h2 style="margin:0;flex:1">${ico('phone')} Números virtuais · Integra X</h2>
+      <label class="toggle"><input type="checkbox" ${c.enabled ? 'checked' : ''}
+        onchange="admNumSave({enabled:this.checked})"><span></span></label>
+    </div>
+    <p class="muted" style="font-size:12.5px;margin:0 0 12px">
+      Números que recebem SMS: o código de verificação de um WhatsApp novo, a validação de uma
+      conta, o teste de um fluxo de OTP. Comprar cobra na hora, da conta da plataforma.</p>
+
+    ${c.temToken
+      ? `<div style="margin-bottom:10px"><span class="pill done">Token ${c.herdaDoSms ? 'herdado do disparo de SMS' : 'próprio'}</span></div>`
+      : `<div class="card warn-card" style="margin-bottom:10px">${ico('alert', 14)} <b>Sem token.</b> Configure o disparo de SMS acima — é a mesma conta e o mesmo token — ou informe um token só para os números aqui embaixo.</div>`}
+
+    <label>Token próprio <em class="lim-extra">vazio = usa o mesmo do SMS</em>
+      <input id="num-token" type="password" placeholder="${c.tokenProprio ? '••••••••  (salvo)' : 'usa o token do SMS'}"></label>
+    <label style="margin-top:9px">Host da API <em class="lim-extra">vazio = ${esc(c.baseEfetiva)}</em>
+      <input id="num-base" value="${esc(c.base || '')}" placeholder="https://api.integraflux.com"></label>
+    <div class="row" style="margin-top:10px">
+      <button class="btn primary no-grow" onclick="admNumSaveForm()">Salvar</button>
+      ${c.tokenProprio ? `<button class="btn no-grow" onclick="admNumSave({token:null})">Voltar a usar o do SMS</button>` : ''}
+    </div>
+
+    ${c.enabled && c.temToken ? `
+    <div class="fee-sep"></div>
+    <div class="row" style="align-items:flex-end;gap:10px">
+      <label style="flex:0 0 120px">DDD <em class="lim-extra">opcional</em>
+        <input id="num-ddd" maxlength="2" inputmode="numeric" placeholder="11"></label>
+      <button class="btn no-grow" onclick="admNumBuscar()">Ver disponíveis</button>
+      <button class="btn no-grow" onclick="admNumMeus()">Meus números</button>
+    </div>
+    <div id="num-disp" style="margin-top:12px"></div>
+    <div id="num-meus" style="margin-top:12px"></div>` : ''}
+
+    ${(c.logs || []).length ? `<div class="fee-sep"></div>
+      <h2 style="font-size:14px">${ico('list')} Últimos eventos</h2>
+      <div class="tx-list">${c.logs.slice(0, 10).map(l => `<div class="tx">
+        <span class="tx-lbl"><b>${esc(l.tipo || '')}</b>
+          <em style="display:block;font-style:normal;color:var(--muted);font-size:11.5px">${esc(admNumLogTexto(l))}</em></span>
+        <span class="muted" style="font-size:11px">${timeAgo(l.ts)}</span></div>`).join('')}</div>` : ''}
+  </div>`;
+}
+
+function admNumLogTexto(l) {
+  if (l.tipo === 'compra') return [l.numero, l.modo, l.ddd ? 'DDD ' + l.ddd : ''].filter(Boolean).join(' · ');
+  if (l.tipo === 'cancelamento') {
+    return l.reembolsado
+      ? 'reembolsado ' + fmtBRL(l.reembolsoCents || 0)
+      : 'sem reembolso · ' + (l.smsComCodigo || 0) + ' SMS com código';
+  }
+  return l.erro || '';
+}
+
+async function admNumSave(patch) {
+  try {
+    admNum = (await api('/admin/numeros', { method: 'PUT', body: patch })).numeros;
+    toast('Números virtuais atualizados');
+    admNumPaint();
+    if (admNum.enabled && admNum.temToken) admNumMeus();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function admNumSaveForm() {
+  const patch = { base: $('#num-base').value };
+  const tok = ($('#num-token').value || '').trim();
+  if (tok) patch.token = tok;
+  admNumSave(patch);
+}
+
+// ---- vitrine do provedor ----
+async function admNumBuscar() {
+  const box = $('#num-disp'); if (!box) return;
+  const ddd = ($('#num-ddd').value || '').replace(/\D/g, '');
+  box.innerHTML = skel(2);
+  try {
+    admNumDisp = await api('/admin/numeros/disponiveis?limit=60' + (ddd ? '&ddd=' + ddd : ''));
+  } catch (e) { box.innerHTML = '<div class="card err">' + esc(e.message) + '</div>'; return; }
+  const d = admNumDisp;
+  if (!d.numeros.length) {
+    box.innerHTML = '<p class="muted" style="font-size:12.5px">Nenhum número disponível' +
+      (ddd ? ' no DDD ' + ddd : '') + ' agora.</p>';
+    return;
+  }
+  box.innerHTML = `
+    <div class="row" style="align-items:center;margin-bottom:8px">
+      <b style="flex:1;font-size:13px">${fmtN(d.count)} de ${fmtN(d.total)} disponíveis</b>
+      <button class="btn small no-grow" onclick="admNumComprar('')">Comprar qualquer um${ddd ? ' do DDD ' + ddd : ''}</button>
+    </div>
+    <div class="tx-list">${d.numeros.slice(0, 30).map(n => `<div class="tx">
+      <span class="tx-lbl"><b>${esc(n.numero)}</b>
+        <em style="display:block;font-style:normal;color:var(--muted);font-size:11.5px">DDD ${esc(n.ddd || '—')}</em></span>
+      <span style="font-weight:600">${n.precoCents ? fmtBRL(n.precoCents) : ''}</span>
+      <button class="btn small no-grow" style="margin-left:10px" onclick="admNumComprar('${esc(n.id)}')">Comprar</button>
+      </div>`).join('')}</div>`;
+}
+
+// A COMPRA PASSA POR AQUI, sempre. Cobra na hora e não tem desfazer sem custo,
+// então quem clica vê o número e o preço antes de confirmar.
+async function admNumComprar(numeroId) {
+  const campo = $('#num-ddd');
+  const ddd = ((campo && campo.value) || '').replace(/\D/g, '');
+  const alvo = numeroId && admNumDisp ? (admNumDisp.numeros || []).find(n => n.id === numeroId) : null;
+  const oque = alvo
+    ? 'o número ' + alvo.numero + (alvo.precoCents ? ' por ' + fmtBRL(alvo.precoCents) : '')
+    : 'um número qualquer' + (ddd ? ' do DDD ' + ddd : '');
+  const aviso = 'Comprar ' + oque + '?\n\n' +
+    'A Integra X cobra no ato, da conta da plataforma. No cancelamento o valor só volta se ' +
+    'o número ainda não tiver recebido nenhum código.';
+  if (!confirm(aviso)) return;
+  try {
+    const body = {};
+    if (numeroId) body.numeroId = numeroId; else if (ddd) body.ddd = ddd;
+    const r = await api('/admin/numeros/comprar', { method: 'POST', body });
+    toast('Número ' + r.compra.numero + ' comprado');
+    admNumLoad();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ---- meus números ----
+async function admNumMeus() {
+  const box = $('#num-meus'); if (!box) return;
+  box.innerHTML = skel(2);
+  try { admNumLista = (await api('/admin/numeros/meus?status=active,reserved')).numeros; }
+  catch (e) { box.innerHTML = '<div class="card err">' + esc(e.message) + '</div>'; return; }
+  if (!admNumLista.length) {
+    box.innerHTML = '<p class="muted" style="font-size:12.5px">Nenhum número ativo. Compre um acima.</p>';
+    return;
+  }
+  box.innerHTML = `
+    <h2 style="font-size:14px">Meus números</h2>
+    <div class="tx-list">${admNumLista.map(n => `<div class="tx">
+      <span class="tx-lbl"><b>${esc(n.numero)}</b>
+        <em style="display:block;font-style:normal;color:var(--muted);font-size:11.5px">${esc(n.status)}${n.criadoEm ? ' · desde ' + fmtDataCurta(n.criadoEm) : ''}</em></span>
+      <button class="btn small no-grow" onclick="admNumVerSms('${esc(n.rentalId)}')">Ver SMS</button>
+      <button class="btn small no-grow" style="margin-left:6px" onclick="admNumCancelar('${esc(n.rentalId)}')">Cancelar</button>
+      </div>`).join('')}</div>
+    <div id="num-sms" style="margin-top:10px"></div>`;
+}
+
+async function admNumVerSms(rentalId) {
+  const box = $('#num-sms'); if (!box) return;
+  box.innerHTML = skel(2);
+  let msgs;
+  try { msgs = (await api('/admin/numeros/' + encodeURIComponent(rentalId) + '/sms')).mensagens; }
+  catch (e) { box.innerHTML = '<div class="card err">' + esc(e.message) + '</div>'; return; }
+  if (!msgs.length) {
+    box.innerHTML = '<p class="muted" style="font-size:12.5px">Nenhum SMS recebido neste número ainda.</p>';
+    return;
+  }
+  box.innerHTML = `<div class="tx-list">${msgs.map(m => `<div class="tx">
+    <span class="tx-lbl"><b>${esc(m.de || '—')}</b>${m.codigo ? ` <b style="color:var(--verde-deep)">${esc(m.codigo)}</b>` : ''}
+      <em style="display:block;font-style:normal;color:var(--muted);font-size:11.5px">${esc(m.texto)}</em></span>
+    <span class="muted" style="font-size:11px">${timeAgo(m.recebidoEm)}</span></div>`).join('')}</div>`;
+}
+
+// O REEMBOLSO NÃO É NOSSO PARA PROMETER: quem decide é o provedor, e a regra é
+// devolver só se o número ainda não recebeu código. O aviso diz isso antes, e a
+// mensagem depois repete o que de fato aconteceu.
+async function admNumCancelar(rentalId) {
+  const n = admNumLista.find(x => x.rentalId === rentalId);
+  const aviso = 'Cancelar ' + (n ? n.numero : 'este número') + '?\n\n' +
+    'Se ele ainda não recebeu nenhum código, o valor volta integral. Se já recebeu, o ' +
+    'cancelamento acontece do mesmo jeito, mas sem reembolso. Depois disso o número sai da conta.';
+  if (!confirm(aviso)) return;
+  try {
+    const r = (await api('/admin/numeros/' + encodeURIComponent(rentalId) + '/cancelar', { method: 'POST' })).resultado;
+    toast(r.reembolsado
+      ? 'Cancelado e reembolsado: ' + fmtBRL(r.reembolsoCents)
+      : 'Cancelado sem reembolso — o número já tinha recebido ' + r.smsComCodigo + ' código(s)');
+    admNumLoad();
   } catch (e) { toast(e.message, 'error'); }
 }
 

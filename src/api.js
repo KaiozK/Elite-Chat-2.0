@@ -20,6 +20,7 @@ const schedule = require('./schedule');
 const push = require('./push');
 const pushNative = require('./pushnative');
 const sms = require('./sms');
+const numeros = require('./numeros');
 const topup = require('./topup');
 const marketing = require('./marketing');
 const paises = require('./paises');
@@ -5292,6 +5293,53 @@ module.exports = function (broadcast, clients) {
   // Testa a conexão e já traz o saldo de créditos.
   router.post('/admin/sms/test', auth, adminOnly, h(async (req, res) => {
     res.json(await sms.testar());
+  }));
+
+  // ---- NÚMEROS VIRTUAIS (Integra X) ----
+  //
+  // Tudo aqui é adminOnly, e de propósito: comprar um número GASTA DINHEIRO da
+  // conta da plataforma na hora. Enquanto isso não virar um produto revendido
+  // (com preço, cota e cobrança do cliente), quem gasta é quem paga.
+  router.get('/admin/numeros', auth, adminOnly, (req, res) => {
+    res.json({ numeros: numeros.adminView() });
+  });
+
+  router.put('/admin/numeros', auth, adminOnly, (req, res) => {
+    const b = req.body || {};
+    const c = numeros.cfg();
+    if (typeof b.enabled === 'boolean') c.enabled = b.enabled;
+    // token vazio = manter o que já está salvo (o painel nunca recebe o valor)
+    if (typeof b.token === 'string' && b.token.trim()) c.token = b.token.trim();
+    if (b.token === null) c.token = '';                  // limpar e voltar a herdar do SMS
+    if (typeof b.base === 'string') c.base = b.base.trim();
+    db.save();
+    res.json({ numeros: numeros.adminView() });
+  });
+
+  // Vitrine do provedor: o que dá para comprar agora.
+  router.get('/admin/numeros/disponiveis', auth, adminOnly, h(async (req, res) => {
+    res.json(await numeros.disponiveis({ ddd: req.query.ddd, limite: req.query.limit }));
+  }));
+
+  // COMPRA. Não tem simulação do outro lado: o que sai daqui é cobrado.
+  router.post('/admin/numeros/comprar', auth, adminOnly, h(async (req, res) => {
+    const b = req.body || {};
+    res.json({ compra: await numeros.comprar({ modo: b.modo, ddd: b.ddd, numeroId: b.numeroId }) });
+  }));
+
+  router.get('/admin/numeros/meus', auth, adminOnly, h(async (req, res) => {
+    res.json({ numeros: await numeros.meus({ status: req.query.status }) });
+  }));
+
+  // Os SMS que chegaram no número — é para isso que ele existe.
+  router.get('/admin/numeros/:id/sms', auth, adminOnly, h(async (req, res) => {
+    res.json({ mensagens: await numeros.mensagens(req.params.id) });
+  }));
+
+  // CANCELAMENTO. O reembolso é condicional e quem decide é o provedor: a
+  // resposta diz o que aconteceu, e o painel repete para quem clicou.
+  router.post('/admin/numeros/:id/cancelar', auth, adminOnly, h(async (req, res) => {
+    res.json({ resultado: await numeros.cancelar(req.params.id) });
   }));
 
   // ---- Integração Nuvemshop (app único da plataforma) ----
