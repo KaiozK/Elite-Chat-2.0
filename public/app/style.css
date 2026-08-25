@@ -4664,76 +4664,6 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 .tema-fcor span { font-size: 10.5px; font-weight: 500; color: var(--muted); }
 .tema-funil-previa .fn-etapa { margin-bottom: 2px; }
 
-/* ---------- PRIMEIROS PASSOS (tela própria, em etapas) ---------- */
-.mis-resumo { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; }
-.mis-resumo-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.mis-resumo-tx b { font-size: 15px; font-weight: 500; color: var(--text); }
-.mis-resumo-tx span { font-size: 13px; color: var(--muted); }
-.mis-resumo-tx span b { font-weight: 500; color: var(--text2); font-size: 13px; }
-/* Anel de progresso em conic-gradient: uma variável (--p) e nenhum SVG. */
-.mis-anel {
-  flex: none; width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center;
-  background: conic-gradient(var(--verde-esc) calc(var(--p) * 1%), var(--border) 0);
-}
-/* Um bloco de texto SÓ no miolo: o número de etapas concluídas. Com dois
-   ("64" grande + "%" pequeno), o peso visual pendia para o número e o conjunto
-   parecia torto por mais que o CSS centralizasse. */
-.mis-anel span {
-  width: 43px; height: 43px; border-radius: 50%; background: var(--card);
-  display: grid; place-items: center;
-  font-size: 17px; font-weight: 500; color: var(--verde-deep); line-height: 1;
-  font-variant-numeric: tabular-nums; letter-spacing: -.03em;
-}
-
-/* Trilha das etapas: mostra onde se está e quanto falta em cada uma. */
-.mis-trilha { display: flex; gap: 8px; margin-bottom: 14px; overflow-x: auto; padding-bottom: 4px; }
-.mis-passo {
-  display: flex; align-items: center; gap: 9px; flex: 1 1 0; min-width: 150px;
-  padding: 11px 13px; border-radius: 13px; cursor: pointer; text-align: left;
-  background: var(--card); border: 1px solid var(--border); color: var(--text2);
-  font: inherit; transition: border-color .16s, background .16s;
-}
-.mis-passo:hover { border-color: var(--border2); }
-.mis-passo.on { background: var(--brand-bg); border-color: var(--brand-border); }
-.mis-passo-n {
-  flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
-  background: var(--bg2); color: var(--muted); font-size: 11.5px; font-weight: 500;
-}
-.mis-passo.on .mis-passo-n { background: var(--verde-esc); color: #fff; }
-.mis-passo.ok .mis-passo-n { background: var(--verde-esc); color: #fff; }
-.mis-passo-tx { display: flex; flex-direction: column; min-width: 0; }
-.mis-passo-tx b { font-size: 12.5px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mis-passo-tx i { font-style: normal; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.mis-lista { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; }
-.mis-item {
-  display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px;
-  border: 1px solid var(--border); background: var(--bg2); margin-bottom: 7px;
-}
-.mis-item.ok { background: transparent; border-color: transparent; }
-.mis-item.ok .mis-txt b { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--border2); }
-.mis-item.ok .mis-txt span { display: none; }
-.mis-check {
-  flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
-  border: 2px solid var(--border2); color: #fff;
-}
-.mis-item.ok .mis-check { background: var(--verde-esc); border-color: var(--verde-esc); }
-.mis-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.mis-txt b { font-size: 13px; font-weight: 500; color: var(--text); }
-.mis-txt span { font-size: 12px; color: var(--muted); line-height: 1.45; }
-.mis-opc {
-  font-style: normal; font-size: 9.5px; font-weight: 500; text-transform: uppercase; letter-spacing: .06em;
-  color: var(--faint); border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; margin-left: 7px;
-}
-@media (max-width: 700px) {
-  /* No celular a trilha rola na horizontal em vez de espremer cinco etapas
-     numa linha só — cada uma fica legível e a atual continua visível. */
-  .mis-passo { flex: 0 0 auto; min-width: 128px; }
-  .mis-resumo { flex-wrap: wrap; }
-  .mis-resumo .btn { width: 100%; }
-  .mis-item { flex-wrap: wrap; }
-  .mis-item .btn { width: 100%; }
-}
-
 /* ---------- SELETOR DE PERÍODO (gráficos) ----------
    Os atalhos de dias continuam à mão porque são o uso de todo dia; mês, ano e
    intervalo livre ficam atrás de um botão, a um clique. */
@@ -4764,45 +4694,6 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
   .per { width: 100%; }
   .per .seg { flex: 1; }
   .per-btn { flex: 1; justify-content: center; }
-}
-
-/* ---------- FAIXA DAS MISSÕES (porta na dashboard) ----------
-   Uma LINHA. A trilha inteira aqui ocupava metade da dashboard; esta faixa só
-   mostra onde se está e leva para a tela de Primeiros passos. */
-.mis-faixa {
-  display: flex; align-items: center; gap: 13px; margin-bottom: 16px;
-  padding: 10px 14px; border-radius: 14px; text-decoration: none;
-  background: linear-gradient(150deg, var(--brand-bg), var(--card));
-  border: 1px solid var(--brand-border);
-  transition: border-color .16s, transform .16s, box-shadow .16s;
-}
-.mis-faixa:hover { transform: translateY(-1px); box-shadow: var(--shadow-xs); border-color: var(--verde-esc); }
-/* anel pequeno: o mesmo conic-gradient da tela cheia, em 34px */
-.mis-faixa-anel {
-  flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
-  background: conic-gradient(var(--verde-esc) calc(var(--p) * 1%), var(--border) 0);
-}
-.mis-faixa-anel i {
-  width: 26px; height: 26px; border-radius: 50%; background: var(--card);
-  display: grid; place-items: center; font-style: normal;
-  font-size: 12px; font-weight: 500; color: var(--verde-deep);
-  font-variant-numeric: tabular-nums;
-}
-.mis-faixa-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.mis-faixa-tx b { font-size: 13px; font-weight: 500; color: var(--text); }
-.mis-faixa-tx span {
-  font-size: 12px; color: var(--muted);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.mis-faixa-ir {
-  flex: none; display: inline-flex; align-items: center; gap: 5px;
-  font-size: 12.5px; font-weight: 500; color: var(--verde-deep);
-}
-@media (max-width: 560px) {
-  /* No celular o "próximo passo" cabe, mas o rótulo do botão não: o ícone
-     sozinho já diz que a faixa leva a algum lugar. */
-  .mis-faixa-ir { font-size: 0; gap: 0; }
-  .mis-faixa-ir svg { width: 16px; height: 16px; }
 }
 
 /* O Checkout Builder usava a classe da marca só para herdar o peso do

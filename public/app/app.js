@@ -1833,7 +1833,7 @@ const views = {
   funnel: renderFunnel, campaigns: renderCampaigns, templates: renderTemplates, quick: renderQuick,
   logs: renderLogs, settings: renderSettings, team: renderTeam, flows: renderFlows, links: renderLinks,
   pixels: renderPixels, billing: renderBilling, sms: renderSms,
-  afiliacao: renderAfiliacao, missoes: renderMissoes,
+  afiliacao: renderAfiliacao,
   integrations: renderIntegrations, webhooks: renderIntegrations, // #/webhooks continua funcionando
   pagamentos: renderPagamentos, tracking: renderTracking,
   consent: renderConsent, agents: renderAgents, 'agents/perf': renderAgentPerf,
@@ -1933,7 +1933,7 @@ function moduleOfView(v) {
 // computador, onde o gesto é o mouse e as colunas cabem lado a lado.
 const MOBILE_VIEWS = new Set([
   'dashboard', 'inbox', 'team', 'schedule', 'contacts',
-  'quick', 'billing', 'afiliacao', 'missoes', 'settings',
+  'quick', 'billing', 'afiliacao', 'settings',
   // Pagamentos no celular é uma tela PRÓPRIA, enxuta: cobrar na frente do
   // cliente e mandar o Pix. O módulo completo (produtos, checkout, relatórios,
   // saque) continua só no computador — ali é trabalho de mesa.
@@ -1993,7 +1993,7 @@ const TABBAR_LABEL = {
   dashboard: 'Início', inbox: 'Conversas', contacts: 'Contatos', pagamentos: 'Cobrar',
   schedule: 'Agenda',
   team: 'Chat interno', quick: 'Respostas', billing: 'Assinatura',
-  afiliacao: 'Afiliação', missoes: 'Primeiros passos', settings: 'Ajustes'
+  afiliacao: 'Afiliação', settings: 'Ajustes'
 };
 
 function navItemVisivel(v) {
@@ -3259,7 +3259,6 @@ async function renderDashboard() {
       </div>
     </div>
     ${bannersHtml()}
-    <div id="missoes-faixa"></div>
     <div class="dash-tiles">
       ${(() => {
         // Os atalhos seguem o mesmo recorte do menu: no celular não faz sentido
@@ -3405,126 +3404,10 @@ async function renderDashboard() {
       ${dashScheduleCard(d.schedule)}
       ${d.agents ? dashAgentsCard(d.agents) : ''}`;
     loadGeo();
-    faixaMissoes();
     bannersCarregar();   // busca a lista no Admin e liga o carrossel
   } catch (e) {
     $('#dash').innerHTML = `<div class="card err">${esc(e.message)}</div>`;
   }
-}
-
-// ---------------------------------------------------------------------------
-// FAIXA DAS MISSÕES na dashboard
-//
-// É só a PORTA: uma linha com o progresso e o próximo passo, que abre a tela
-// de Primeiros passos. A trilha inteira aqui ocupava metade da dashboard; um
-// item fixo no menu também não serve, porque isto é tela de quem está
-// começando, não lugar de voltar todo dia.
-//
-// Termina a configuração, a faixa some sozinha — sem precisar fechar nada.
-// ---------------------------------------------------------------------------
-async function faixaMissoes() {
-  const box = $('#missoes-faixa'); if (!box) return;
-  let m = null;
-  try { m = await api('/missoes'); } catch { return; }
-  if (!m || m.completo) { box.innerHTML = ''; return; }
-  box.innerHTML = `
-    <a class="mis-faixa" href="#/missoes">
-      <span class="mis-faixa-anel" style="--p:${m.percent}"><i>${m.feitas}</i></span>
-      <span class="mis-faixa-tx">
-        <b>Comece por aqui · ${m.feitas} de ${m.total} passos</b>
-        ${m.proxima ? `<span>Próximo: ${esc(m.proxima.titulo)}</span>` : ''}
-      </span>
-      <span class="mis-faixa-ir">Continuar ${ico('arrowright', 13)}</span>
-    </a>`;
-}
-
-// ===========================================================================
-// PRIMEIROS PASSOS — tela própria, dividida em etapas
-//
-// Isto morava no topo da dashboard e ocupava metade dela. Agora é uma tela: as
-// etapas ficam lado a lado numa trilha, e só a etapa aberta mostra os passos —
-// que é o que "passo a passo" quer dizer. A etapa aberta começa na primeira
-// que ainda tem algo pendente, e não na primeira da lista.
-//
-// Cada passo é verificado no servidor a partir do estado real da conta
-// (src/missoes.js): a trilha não mente sobre o que já foi feito.
-// ===========================================================================
-let MISSOES = null;
-let MIS_ETAPA = null;   // índice do grupo aberto
-
-async function renderMissoes() {
-  $('#view').innerHTML = `<div class="page"><div class="card">${skel(5)}</div></div>`;
-  try { MISSOES = await api('/missoes'); }
-  catch (e) { $('#view').innerHTML = `<div class="page"><div class="card err">${esc(e.message)}</div></div>`; return; }
-  if (MIS_ETAPA === null) {
-    const i = MISSOES.grupos.findIndex(g => g.itens.some(x => !x.feita));
-    MIS_ETAPA = i < 0 ? 0 : i;
-  }
-  pintarMissoes();
-}
-
-function misEtapa(i) { MIS_ETAPA = i; pintarMissoes(); }
-
-function pintarMissoes() {
-  const m = MISSOES;
-  const g = m.grupos[MIS_ETAPA] || m.grupos[0];
-  const feitosDaEtapa = g.itens.filter(x => x.feita).length;
-
-  $('#view').innerHTML = `<div class="page mis-page">
-    <div class="page-head">
-      <h1>Primeiros passos</h1>
-      <p>Configure o Koonfy na ordem certa. Cada passo é conferido sozinho, você não precisa marcar nada.</p>
-    </div>
-
-    <div class="card mis-resumo">
-      <div class="mis-anel" style="--p:${m.percent}" title="${m.feitas} de ${m.total} passos concluídos">
-        <span>${m.feitas}</span>
-      </div>
-      <div class="mis-resumo-tx">
-        <b>${m.completo ? 'Tudo pronto!' : `${m.feitas} de ${m.total} passos concluídos`}</b>
-        <span>${m.completo
-          ? 'Você já está usando o Koonfy de ponta a ponta.'
-          : (m.proxima ? `Próximo: <b>${esc(m.proxima.titulo)}</b>` : '')}</span>
-      </div>
-      ${m.proxima ? `<a class="btn primary no-grow" href="${m.proxima.rota}">${esc(m.proxima.acao)}</a>` : ''}
-    </div>
-
-    <!-- Trilha das etapas: mostra ONDE se está e quanto falta em cada uma. -->
-    <div class="mis-trilha">
-      ${m.grupos.map((x, i) => {
-        const ok = x.itens.filter(y => y.feita).length;
-        const completo = ok === x.itens.length;
-        return `<button class="mis-passo ${i === MIS_ETAPA ? 'on' : ''} ${completo ? 'ok' : ''}" onclick="misEtapa(${i})">
-          <span class="mis-passo-n">${completo ? ico('check', 13) : i + 1}</span>
-          <span class="mis-passo-tx"><b>${esc(x.nome)}</b><i>${ok}/${x.itens.length}</i></span>
-        </button>`;
-      }).join('')}
-    </div>
-
-    <div class="card">
-      <div class="row" style="align-items:center;margin-bottom:4px">
-        <h2 style="margin:0;flex:1">${esc(g.nome)}</h2>
-        <span class="pill no-grow ${feitosDaEtapa === g.itens.length ? 'done' : ''}" style="flex:none">${feitosDaEtapa} de ${g.itens.length}</span>
-      </div>
-      <div class="mis-lista">
-        ${g.itens.map(it => `
-          <div class="mis-item ${it.feita ? 'ok' : ''}">
-            <span class="mis-check">${it.feita ? ico('check', 13) : ''}</span>
-            <div class="mis-txt">
-              <b>${esc(it.titulo)}${it.opcional ? '<em class="mis-opc">opcional</em>' : ''}</b>
-              <span>${esc(it.porque)}</span>
-            </div>
-            ${it.feita ? '' : `<a class="btn small no-grow" href="${it.rota}">${esc(it.acao)}</a>`}
-          </div>`).join('')}
-      </div>
-      <div class="row" style="margin-top:16px;justify-content:space-between">
-        <button class="btn no-grow" ${MIS_ETAPA === 0 ? 'disabled' : ''} onclick="misEtapa(${MIS_ETAPA - 1})">
-          ${ico('arrowleft', 13)} Etapa anterior</button>
-        <button class="btn no-grow" ${MIS_ETAPA >= m.grupos.length - 1 ? 'disabled' : ''} onclick="misEtapa(${MIS_ETAPA + 1})">
-          Próxima etapa ${ico('arrowright', 13)}</button>
-      </div>
-    </div>
-  </div>`;
 }
 
 async function loadGeo() {

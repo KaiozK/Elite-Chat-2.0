@@ -1642,10 +1642,6 @@ module.exports = function (broadcast, clients) {
 
   // ============ DASHBOARD ============
 
-  // MISSÕES — a trilha de configuração, verificada no estado real da conta.
-  router.get('/missoes', auth, (req, res) => {
-    res.json(require('./missoes').relatorio(req.acc));
-  });
 
   router.get('/dashboard', auth, can('dashboard', 'view'), (req, res) => {
     const acc = req.acc;
