@@ -196,6 +196,12 @@ module.exports = function (broadcast, clients) {
       businessId: w.businessId,
       businessName: w.businessName || '',
       qualityRating: w.qualityRating || '',
+      // O TETO DE CONVERSAS NOVAS POR 24h. Estava sendo lido e gravado no
+      // servidor e nunca saía daqui — a tela lia `w.messagingTier` de um objeto
+      // que jamais teve o campo, então o "Limite diário" mostrava para sempre
+      // "clique em Atualizar dados", por mais que se clicasse.
+      messagingTier: w.messagingTier || '',
+      throughput: w.throughput || '',
       wabaId: w.wabaId,
       phoneNumberId: w.phoneNumberId,
       displayPhoneNumber: w.displayPhoneNumber,
@@ -1097,6 +1103,16 @@ module.exports = function (broadcast, clients) {
         if (health.display_phone_number) w.displayPhoneNumber = health.display_phone_number;
         if (health.verified_name) w.verifiedName = health.verified_name;
         if (health.quality_rating) w.qualityRating = health.quality_rating;
+        // O LIMITE DIÁRIO TAMBÉM. Ele vinha na resposta (getPhoneInfo já pede
+        // `messaging_limit_tier`) e era jogado fora aqui: só o caminho de
+        // sincronização, que tem cache de 6 horas, gravava o campo.
+        //
+        // Efeito para quem usa: o botão "Atualizar dados" dizia "Dados
+        // atualizados" e o limite continuava o de horas atrás — justamente o
+        // número que se vai conferir ANTES de um disparo, e o único ali que
+        // muda sozinho quando a Meta promove a conta de faixa.
+        if (health.messaging_limit_tier) w.messagingTier = health.messaging_limit_tier;
+        if (health.throughput && health.throughput.level) w.throughput = health.throughput.level;
         w.identityAt = Date.now();
         db.save();
       } catch (e) {
@@ -1155,6 +1171,8 @@ module.exports = function (broadcast, clients) {
       verifiedName: w.verifiedName || '',
       profilePictureUrl: w.profilePictureUrl || '',
       qualityRating: w.qualityRating || '',
+      messagingTier: w.messagingTier || '',
+      throughput: w.throughput || '',
       identityError: w.identityError || '',
       unread: acc.contacts.filter(c => (c.chId || dflt) === ch.id).reduce((s, c) => s + (c.unread || 0), 0),
       contacts: acc.contacts.filter(c => (c.chId || dflt) === ch.id).length,

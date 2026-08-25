@@ -1810,7 +1810,7 @@ const ADM_ABAS = {
   'adm/gateways':       { aba: 'adm-pay',  titulo: 'Gateways',            sub: 'Provedores, taxas e regras de cobrança' },
   'adm/notificacoes':   { aba: 'adm-notif',titulo: 'Notificações',        sub: 'Testar os avisos que chegam no celular' },
   'adm/saques':         { aba: 'adm-wd',   titulo: 'Saques',              sub: 'Pedidos de saque dos clientes' },
-  'adm/pagamentos':     { aba: 'adm-ep',   titulo: 'Pagamentos',          sub: 'Subcontas, cobranças e taxas recebidas' },
+  'adm/pagamentos':     { aba: 'adm-ep',   titulo: 'Koonpay',             sub: 'Subcontas, cobranças e taxas recebidas' },
   'adm/integracoes':    { aba: 'adm-int',  titulo: 'Integrações',         sub: 'Serviços externos e SMS' },
   'adm/plataforma':     { aba: 'adm-plat', titulo: 'Plataforma',          sub: 'Credenciais do app da Meta' },
   'adm/marketing':      { aba: 'adm-mkt',  titulo: 'Marketing',           sub: 'Pixels e rastreamento da vitrine' },
@@ -4704,7 +4704,7 @@ async function paintTemplates(sync) {
     const templates = d.templates || [];
     const sel = d.selected || {};
     $('#tpl-table').innerHTML = templates.length ? `
-      <table><thead><tr><th>Nome</th><th>Uso no Pagamentos</th><th>Idioma</th><th>Status</th><th>Corpo</th><th></th></tr></thead>
+      <table><thead><tr><th>Nome</th><th>Uso no Koonpay</th><th>Idioma</th><th>Status</th><th>Corpo</th><th></th></tr></thead>
       <tbody>${templates.map(t => `
         <tr>
           <td><b>${esc(t.name)}</b><div class="muted" style="font-size:11px">${esc(t.category || '')}</div></td>
@@ -9053,7 +9053,7 @@ async function renderAdmin() {
            nome quando o Pagamentos virou Pagamentos. -->
       <button data-tab="adm-pay" onclick="showSettingsTab('adm-pay');admFeesPaint()">Gateways</button>
       <button data-tab="adm-wd" onclick="showSettingsTab('adm-wd')">Saques</button>
-      <button data-tab="adm-ep" onclick="showSettingsTab('adm-ep');admEpPaint()">Pagamentos</button>
+      <button data-tab="adm-ep" onclick="showSettingsTab('adm-ep');admEpPaint()">Koonpay</button>
       <button data-tab="adm-int" onclick="showSettingsTab('adm-int');admIntLoad()">Integrações</button>
       <button data-tab="adm-plat" onclick="showSettingsTab('adm-plat')">Plataforma</button>
       <button data-tab="adm-mkt" onclick="showSettingsTab('adm-mkt');admMktLoad()">Marketing</button>
@@ -11503,7 +11503,7 @@ function admCardSection(c, t) {
     </p>
 
     <label class="chk"><input type="checkbox" ${c.enabled ? 'checked' : ''} onchange="admCardSave({enabled:this.checked})">
-      Aceitar cartão no Pagamentos</label>
+      Aceitar cartão no Koonpay</label>
 
     <div class="row" style="margin-top:16px;align-items:flex-end">
       <label style="max-width:260px">Adquirente${ecSelect('adm-card-prov',
@@ -13860,7 +13860,7 @@ const NODE_TYPES = {
   optout: { icon: 'slash', label: 'Registrar Opt-out', sub: 'Consentimento', color: 'red', cat: 'consent' },
   reactivate: { icon: 'refresh', label: 'Reativar contato', sub: 'Consentimento', color: 'blue', cat: 'consent' },
   http: { icon: 'globe', label: 'HTTP Request', sub: 'Integração', color: 'orange', cat: 'logic' },
-  payment: { icon: 'pix', label: 'Cobrança Pix', sub: 'Pagamentos', color: 'green', cat: 'messages' },
+  payment: { icon: 'pix', label: 'Cobrança Pix', sub: 'Koonpay', color: 'green', cat: 'messages' },
   sms: { icon: 'message', label: 'Enviar SMS', sub: 'Mensagem', color: 'blue', cat: 'messages' },
   end: { icon: 'square', label: 'Fim', sub: 'Encerrar', color: 'gray', cat: 'logic' }
 };
@@ -15244,9 +15244,9 @@ function epRenderOnboarding(d) {
   // e-mail e telefone o Koonfy já tem, e digitar de novo é trabalho à toa.
   const cta = d.conta || {};
   $('#view').innerHTML = `<div class="page">
-    <div class="page-head"><h1>Pagamentos</h1><p>Crie sua conta de pagamentos e receba por Pix sem sair do Koonfy</p></div>
+    <div class="page-head"><h1>Koonpay</h1><p>Crie a sua conta de recebimento e venda por Pix e cartão sem sair do Koonfy</p></div>
     <div class="card" style="max-width:720px">
-      <h2>${ico('sparkles')} Ative o Pagamentos</h2>
+      <h2>${ico('sparkles')} Ative o Koonpay</h2>
       <p class="muted" style="margin:0 0 16px;font-size:13px">${kyc
         ? 'Preencha os dados da empresa e do representante legal. Após enviar, você concluirá a <b>verificação de identidade (KYC/KYB)</b> na página segura da Woovi. Assim que a compliance aprovar, sua conta é liberada automaticamente.'
         : 'Preencha os dados abaixo para criar sua conta de recebimentos. O dinheiro das suas vendas cai na <b>sua chave Pix</b>, cobranças, QR Code e links são gerados aqui dentro, direto nas conversas.'}</p>
