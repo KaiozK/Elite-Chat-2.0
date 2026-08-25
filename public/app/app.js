@@ -1926,9 +1926,14 @@ function moduleOfView(v) {
 //
 // Construir campanha, desenhar automação no Flow Builder ou montar checkout são
 // trabalhos de tela grande; ficam no navegador do computador.
+// O FUNIL NÃO ESTÁ AQUI. Ele é um quadro de colunas que se opera ARRASTANDO
+// o cartão de uma etapa para a outra — e arrastar de lado num aparelho é o
+// gesto de rolar a tela. Sobra um quadro que só se olha, com as colunas
+// espremidas em 375px: a tela existe, mas não faz o que ela é. Fica no
+// computador, onde o gesto é o mouse e as colunas cabem lado a lado.
 const MOBILE_VIEWS = new Set([
   'dashboard', 'inbox', 'team', 'schedule', 'contacts',
-  'funnel', 'quick', 'billing', 'afiliacao', 'missoes', 'settings',
+  'quick', 'billing', 'afiliacao', 'missoes', 'settings',
   // Pagamentos no celular é uma tela PRÓPRIA, enxuta: cobrar na frente do
   // cliente e mandar o Pix. O módulo completo (produtos, checkout, relatórios,
   // saque) continua só no computador — ali é trabalho de mesa.
@@ -1987,7 +1992,7 @@ const TABBAR_VIEWS = ['dashboard', 'inbox', 'contacts', 'pagamentos'];
 const TABBAR_LABEL = {
   dashboard: 'Início', inbox: 'Conversas', contacts: 'Contatos', pagamentos: 'Cobrar',
   schedule: 'Agenda',
-  team: 'Chat interno', funnel: 'Funil', quick: 'Respostas', billing: 'Assinatura',
+  team: 'Chat interno', quick: 'Respostas', billing: 'Assinatura',
   afiliacao: 'Afiliação', missoes: 'Primeiros passos', settings: 'Ajustes'
 };
 
@@ -2334,6 +2339,15 @@ function route() {
     // deixaria numa tela de login que ele não tem como passar.
     if (state.kind === 'admin') location.replace('/adm/#/' + (admAbaDaRota() ? pedida : 'adm/visao'));
     else location.hash = '#/' + VIEW_PADRAO;
+    return;
+  }
+  // O FUNIL NÃO ABRE NO CELULAR, nem por link direto. Tirar do menu não basta:
+  // o endereço continua guardado em favorito e no histórico de quem já usou no
+  // computador, e a tela que abriria é um quadro de arrastar sem como arrastar.
+  // Aqui a pessoa fica sabendo POR QUÊ, em vez de bater num destino que some.
+  if (isMobileLayout() && pedida === 'funnel') {
+    toast('O funil é um quadro de arrastar: abra no computador.');
+    location.hash = '#/' + VIEW_PADRAO;
     return;
   }
   if (window._fbMove) cleanupBuilder();  // sai do canvas do Flow Builder
@@ -3135,15 +3149,15 @@ function bannersCorpo() {
         ${BANNERS.map((b, i) => `
           <article class="bnr">
             <div class="bnr-fundo">
-              <img class="bnr-bg" src="/assets/banner-bg-${b.fundo}.webp" alt=""
-                   ${i ? 'loading="lazy"' : ''} decoding="async">
+              <img class="bnr-bg" ${i ? '' : `src="/assets/banner-bg-${b.fundo}.webp"`}
+                   data-src="/assets/banner-bg-${b.fundo}.webp" alt="" decoding="async">
               <span class="bnr-veu"></span>
             </div>
             <!-- Largura e altura reais: sem elas, uma peça ainda não
                  carregada nasce sem largura e pula ao chegar. -->
-            <img class="bnr-3d" src="/assets/banner-${b.peca}.webp" alt="" aria-hidden="true"
-                 width="${b.pw}" height="${b.ph}"
-                 ${i ? 'loading="lazy"' : ''} decoding="async">
+            <img class="bnr-3d" ${i ? '' : `src="/assets/banner-${b.peca}.webp"`}
+                 data-src="/assets/banner-${b.peca}.webp" alt="" aria-hidden="true"
+                 width="${b.pw}" height="${b.ph}" decoding="async">
             <div class="bnr-txt">
               <span class="bnr-tag">${esc(b.tag)}</span>
               <h3>${esc(b.titulo)}</h3>
@@ -3159,9 +3173,28 @@ function bannersCorpo() {
   </div>`;
 }
 
+// SÓ O SLIDE QUE VAI APARECER BAIXA. Os cinco banners são 282 KB de imagem, e
+// a dashboard mostra UM. `loading="lazy"` não resolvia: os slides estão todos
+// dentro da faixa visível da tela (o trilho é deslocado por transform, e isso
+// não tira a imagem do campo que o navegador considera "perto"), então os dez
+// arquivos vinham juntos na primeira pintura.
+//
+// O próximo também é carregado, e não só o atual: a troca é automática a cada
+// 4,5s, e um slide que começa a baixar no instante em que entra aparece vazio
+// e preenche na frente da pessoa.
+function bnrCarregar(i) {
+  const slide = document.querySelectorAll('#bnr-trilho .bnr')[(i + BANNERS.length) % BANNERS.length];
+  if (!slide) return;
+  slide.querySelectorAll('img[data-src]').forEach(img => {
+    if (!img.getAttribute('src')) img.src = img.dataset.src;
+  });
+}
+
 function bnrIr(i, manual) {
   const trilho = document.getElementById('bnr-trilho'); if (!trilho) return;
   bnrAtual = (i + BANNERS.length) % BANNERS.length;
+  bnrCarregar(bnrAtual);
+  bnrCarregar(bnrAtual + 1);
   trilho.style.transform = `translate3d(-${bnrAtual * 100}%, 0, 0)`;
   document.querySelectorAll('#bnr-pontos button').forEach((b, n) => b.classList.toggle('on', n === bnrAtual));
   if (manual) bnrRelogio();   // clicou: o tempo do próximo recomeça do zero
@@ -3183,6 +3216,9 @@ function bnrRelogio() {
 function bnrLigar() {
   const wrap = document.getElementById('bnr-wrap'); if (!wrap) return;
   bnrAtual = 0;
+  // O primeiro já veio com src no HTML; aqui entra o segundo, que é o que a
+  // pessoa vê em 4,5 segundos.
+  bnrCarregar(1);
   bnrRelogio();
   // PARA COM O DEDO OU O MOUSE EM CIMA. Trocar no meio da leitura é o jeito
   // mais rápido de garantir que ninguém leia.

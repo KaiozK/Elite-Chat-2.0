@@ -5150,9 +5150,17 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
     width: 96px; height: auto; right: 10px; top: 50%; bottom: auto;
     transform: translateY(-50%); opacity: .96;
     filter: drop-shadow(0 8px 16px rgba(0,0,0,.28));
-    /* Parada. A flutuacao existia para o objeto parecer solto atravessando a
-       borda; dentro do cartao, sem borda para atravessar, ela vira tremor. */
-    animation: none;
+    /* FLUTUA IGUAL AO COMPUTADOR, no lugar do celular.
+       Eu tinha parado a animação aqui achando que, sem borda para atravessar,
+       ela viraria tremor. Não vira: o que dá vida ao objeto é ele não estar
+       preso ao cartão, e isso vale dentro também — o cartão e a peça são
+       planos diferentes, e só o de cima se mexe.
+       A centragem continua sendo `transform: translateY(-50%)`, e a animação
+       usa a propriedade `translate`, que é OUTRA e se compõe com ela (o
+       navegador aplica translate antes de transform). Por isso a peça sobe e
+       desce sem sair do meio — animar `transform` aqui apagaria a centragem e
+       jogaria a peça para baixo. */
+    animation: bnrFlutua 6s ease-in-out infinite;
   }
   .bnr-3d.mini { display: none; }
   .bnr-wrap { margin-bottom: 16px; }
