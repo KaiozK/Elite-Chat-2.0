@@ -194,6 +194,10 @@ function platformCfg() {
   const ep = p.pagamentos;
   // onboardingMode: 'subaccount' (chave Pix, KYC via DICT) | 'kyc' (BaaS com KYC/KYB completo)
   if (!ep.onboardingMode) ep.onboardingMode = 'subaccount';
+  // KYC MANUAL: enquanto desligado, ninguém precisa passar por análise e quem
+  // já vende continua vendendo. Ligar é decisão do admin, e vale dali para a
+  // frente — ver src/kyc.js.
+  if (ep.kycObrigatorio === undefined) ep.kycObrigatorio = false;
   // Taxas separadas: PIX In (split sobre vendas recebidas) e PIX Out (saques).
   // Migração do antigo feePercent único → feeInPercent.
   if (ep.feeInPercent === undefined) ep.feeInPercent = (ep.feePercent !== undefined ? ep.feePercent : 0);
@@ -668,8 +672,20 @@ async function setSubaccountStatus(acc, status) {
 // ---------------------------------------------------------------------------
 function activeSubaccount(acc) {
   const ep = ensure(acc);
-  if (!ep.subaccount) { const e = new Error('Crie sua conta Pagamentos primeiro'); e.status = 400; throw e; }
-  if (ep.subaccount.status !== 'active') { const e = new Error('Sua conta Pagamentos ainda não está ativa'); e.status = 400; throw e; }
+  if (!ep.subaccount) { const e = new Error('Crie a sua conta Koonpay primeiro'); e.status = 400; throw e; }
+  // O KYC VEM ANTES DA SUBCONTA na ordem das perguntas: enquanto a análise não
+  // termina, não importa se a subconta está ativa — a conta não recebe. E a
+  // mensagem precisa dizer em qual dos dois estados a pessoa está, senão ela
+  // fica reenviando documento achando que o problema é outro.
+  const kyc = require('./kyc');
+  if (!kyc.podeReceber(acc)) {
+    const st = kyc.ensure(acc).status;
+    const msg = st === 'em_analise' ? 'A sua conta está em análise. Assim que for aprovada, você volta a cobrar.'
+      : st === 'reprovado' ? 'A sua verificação foi reprovada. Abra o Koonpay para corrigir e reenviar.'
+      : 'Envie a verificação de identidade no Koonpay para começar a receber.';
+    const e = new Error(msg); e.status = 403; throw e;
+  }
+  if (ep.subaccount.status !== 'active') { const e = new Error('A sua conta Koonpay ainda não está ativa'); e.status = 400; throw e; }
   return ep.subaccount;
 }
 
@@ -2292,6 +2308,7 @@ function cobrancasEmAberto(accounts) {
 
 module.exports = {
   ensure, configured, platformCfg, gateway,
+  activeSubaccount,   // exportado para o teste do portão do KYC
   registerSubaccount, garantirPagamentos, setSubaccountStatus, syncSubaccount, applyAccountApproved,
   createCharge, cancelCharge, findCharge, chargeMessage, chargeButton, computeOutFee,
   isPagamentosCharge, applyPaid, metrics, adminOverview, log, plog, fmtBRL,

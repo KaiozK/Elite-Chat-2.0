@@ -120,6 +120,20 @@ function fatiar(db) {
   // algumas telas (a primeira conta é a do canal padrão em código antigo)
   pedacos.set('__accounts_order', (db.accounts || []).map(a => a.id));
   for (const acc of db.accounts || []) pedacos.set('account:' + acc.id, acc);
+
+  // OS ARQUIVOS DO KYC EM PEDAÇO PRÓPRIO, um por conta.
+  //
+   // São fotos: documento e rosto, em base64, centenas de KB cada. Dentro do
+  // pedaço da conta elas seriam reescritas no banco a CADA gravação daquela
+  // conta — e uma conta grava o tempo todo (mensagem que chega, contato que
+  // muda, cobrança que confirma). Seriam centenas de KB de tráfego por
+  // mensagem recebida, para reescrever bytes idênticos.
+  //
+  // Em pedaço separado eles são gravados uma vez, no envio, e nunca mais: o
+  // comparador de `gravarAgora` vê o JSON idêntico e não manda nada.
+  for (const [id, arquivos] of Object.entries(db.kycArquivos || {})) {
+    pedacos.set('kyc:' + id, arquivos);
+  }
   return pedacos;
 }
 
@@ -142,6 +156,11 @@ function juntar(linhas) {
     if (chave.startsWith('account:') && !vistas.has(chave)) contas.push(JSON.parse(raw));
   }
   db.accounts = contas;
+
+  db.kycArquivos = {};
+  for (const [chave, raw] of mapa) {
+    if (chave.startsWith('kyc:')) db.kycArquivos[chave.slice(4)] = JSON.parse(raw);
+  }
   return db;
 }
 

@@ -4717,6 +4717,27 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 .tema-fcor span { font-size: 10.5px; font-weight: 500; color: var(--muted); }
 .tema-funil-previa .fn-etapa { margin-bottom: 2px; }
 
+/* ---------- KYC do Koonpay: prévia das fotos ---------- */
+/* Altura fixa e `contain`: documento é retrato ou paisagem conforme a pessoa
+   segurou o celular, e `cover` cortaria justamente a borda onde estão os dados
+   que o admin precisa ler. Melhor sobrar moldura do que faltar documento. */
+.kyc-prev {
+  min-height: 132px; border-radius: 10px; border: 1px dashed var(--border2);
+  background: var(--bg); display: flex; flex-direction: column;
+  align-items: center; justify-content: center; padding: 8px; text-align: center;
+}
+.kyc-prev img {
+  max-width: 100%; max-height: 150px; object-fit: contain;
+  border-radius: 7px; display: block;
+}
+/* No ADMIN a foto é o objeto da análise, e não uma miniatura: ela precisa ser
+   grande o bastante para ler um documento sem abrir em outra aba. */
+.kyc-foto {
+  width: 100%; border-radius: 12px; border: 1px solid var(--border2);
+  background: var(--bg); display: block; max-height: 460px; object-fit: contain;
+}
+.kyc-fila-vazia { text-align: center; padding: 30px 16px; }
+
 /* ---------- SELETOR DE PERÍODO (gráficos) ----------
    Os atalhos de dias continuam à mão porque são o uso de todo dia; mês, ano e
    intervalo livre ficam atrás de um botão, a um clique. */

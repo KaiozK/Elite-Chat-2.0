@@ -5613,6 +5613,70 @@ module.exports = function (broadcast, clients) {
     res.json({ status, view: pagamentos.publicChargeView(req.params.id) });
   }));
 
+
+  // ==================== KYC DO KOONPAY — conferência manual ====================
+  //
+  // O cliente confere os dados que já deu no cadastro, manda as duas fotos, e a
+  // conta fica EM ANÁLISE até um humano no Admin decidir. Ver src/kyc.js.
+  const kyc = require('./kyc');
+
+  // ---- lado do cliente ----
+  router.get('/kyc', auth, can('pagamentos'), (req, res) => {
+    res.json(kyc.visaoCliente(req.acc));
+  });
+
+  router.post('/kyc', auth, can('pagamentos', 'edit'), (req, res) => {
+    try { res.json(kyc.enviar(req.acc, req.body || {}, broadcast)); }
+    catch (e) { res.status(e.status || 400).json({ error: e.message }); }
+  });
+
+  // Reprovado pode corrigir e mandar de novo.
+  router.post('/kyc/refazer', auth, can('pagamentos', 'edit'), (req, res) => {
+    try { res.json(kyc.reabrir(req.acc)); }
+    catch (e) { res.status(e.status || 400).json({ error: e.message }); }
+  });
+
+  // ---- lado do admin ----
+  router.get('/adm/kyc', auth, adminOnly, (req, res) => {
+    res.json({
+      itens: kyc.fila(String(req.query.status || '')),
+      exigido: kyc.exigido()
+    });
+  });
+
+  // A FICHA COMPLETA, com as fotos. É a única rota que devolve as imagens, e é
+  // adminOnly — ver `fichaAdmin` em src/kyc.js sobre por que o contexto da
+  // conta vai junto.
+  router.get('/adm/kyc/:id', auth, adminOnly, (req, res) => {
+    const a = db.findAccount(req.params.id);
+    if (!a) return res.status(404).json({ error: 'Conta não encontrada' });
+    store.logEvent({ type: 'kyc_ficha_aberta', accountId: a.id, detail: 'documentos exibidos no painel' });
+    res.json(kyc.fichaAdmin(a));
+  });
+
+  router.post('/adm/kyc/:id/revisar', auth, adminOnly, (req, res) => {
+    const a = db.findAccount(req.params.id);
+    if (!a) return res.status(404).json({ error: 'Conta não encontrada' });
+    const b = req.body || {};
+    try {
+      const k = kyc.revisar(a, {
+        aprovar: !!b.aprovar, motivo: b.motivo,
+        porQuem: req.session.user || 'admin'
+      }, broadcast);
+      res.json({ status: k.status, motivo: k.motivo });
+    } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
+  });
+
+  // O interruptor da EXIGÊNCIA. Desligado, ninguém precisa passar por análise —
+  // é o padrão, para ligar a regra não derrubar quem já estava vendendo.
+  router.put('/adm/kyc/exigir', auth, adminOnly, (req, res) => {
+    const cfg = pagamentos.platformCfg();
+    cfg.kycObrigatorio = !!(req.body || {}).exigido;
+    db.save();
+    store.logEvent({ type: 'kyc_exigencia', detail: cfg.kycObrigatorio ? 'ligada' : 'desligada' });
+    res.json({ exigido: cfg.kycObrigatorio });
+  });
+
   // ==================== TRACKING — atribuição + métricas de marketing ====================
   const tracking = require('./tracking');
 
@@ -5839,6 +5903,10 @@ module.exports = function (broadcast, clients) {
       // checkout —, mas o servidor ainda usa a informação para decidir se o
       // código Pix sai junto da mensagem ou só o botão.
       exigePagador: !!pagamentos.gateway().requiresPayer,
+      // O ESTADO DO KYC vai junto: a tela precisa decidir se mostra o módulo
+      // ou a verificação ANTES de desenhar qualquer coisa, e uma segunda
+      // chamada só para isso faria a tela piscar o módulo e depois trocar.
+      kyc: require('./kyc').visaoCliente(req.acc),
       // O rótulo padrão do botão de pagar, para a tela de cobrança mostrar
       // como marca-d'água e na prévia.
       buttonText: (ep.settings && ep.settings.buttonText) || '',

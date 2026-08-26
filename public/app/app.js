@@ -1809,6 +1809,7 @@ const ADM_ABAS = {
   'adm/afiliados':      { aba: 'adm-aff',  titulo: 'Afiliados',           sub: 'Comissões e indicações' },
   'adm/gateways':       { aba: 'adm-pay',  titulo: 'Gateways',            sub: 'Provedores, taxas e regras de cobrança' },
   'adm/notificacoes':   { aba: 'adm-notif',titulo: 'Notificações',        sub: 'Testar os avisos que chegam no celular' },
+  'adm/kyc':            { aba: 'adm-kyc', titulo: 'KYC',                 sub: 'Verificação de identidade das contas do Koonpay' },
   'adm/saques':         { aba: 'adm-wd',   titulo: 'Saques',              sub: 'Pedidos de saque dos clientes' },
   'adm/pagamentos':     { aba: 'adm-ep',   titulo: 'Koonpay',             sub: 'Subcontas, cobranças e taxas recebidas' },
   'adm/integracoes':    { aba: 'adm-int',  titulo: 'Integrações',         sub: 'Serviços externos e SMS' },
@@ -9052,6 +9053,7 @@ async function renderAdmin() {
            cobranças dos clientes, é a adm-ep, e as duas ficaram com o mesmo
            nome quando o Pagamentos virou Pagamentos. -->
       <button data-tab="adm-pay" onclick="showSettingsTab('adm-pay');admFeesPaint()">Gateways</button>
+      <button data-tab="adm-kyc" onclick="showSettingsTab('adm-kyc');admKycLoad()">KYC</button>
       <button data-tab="adm-wd" onclick="showSettingsTab('adm-wd')">Saques</button>
       <button data-tab="adm-ep" onclick="showSettingsTab('adm-ep');admEpPaint()">Koonpay</button>
       <button data-tab="adm-int" onclick="showSettingsTab('adm-int');admIntLoad()">Integrações</button>
@@ -9715,6 +9717,10 @@ async function paintAdmin() {
         </div>
       </div>
 
+      <div class="tabpane ${activeTab === 'adm-kyc' ? 'show' : ''}" data-pane="adm-kyc">
+        <div id="adm-kyc-box">${skel(4)}</div>
+      </div>
+
       <div class="tabpane ${activeTab === 'adm-wd' ? 'show' : ''}" data-pane="adm-wd">
         <div class="card">
           <h2>${ico('download-circle')} Saques de afiliados</h2>
@@ -9766,6 +9772,7 @@ async function paintAdmin() {
     if (activeTab === 'adm-ep') admEpPaint();
     if (activeTab === 'adm-pay') admFeesPaint();
     if (activeTab === 'adm-int') admIntLoad();
+    if (activeTab === 'adm-kyc') admKycLoad();
     if (activeTab === 'adm-mkt') admMktLoad();
     if (activeTab === 'adm-sec') admSecLoad();
     if (activeTab === 'adm-tema') admTemaLoad();
@@ -10229,6 +10236,187 @@ async function admSecSave(on) {
 // ---- Admin → Integrações da PLATAFORMA ----
 // Reúne o que a plataforma conecta uma vez e oferece a todos os clientes: a
 // loja Nuvemshop e os disparos de SMS da Integra X.
+// ===========================================================================
+// KYC — a mesa do admin
+//
+// A análise é MANUAL de propósito: é você abrindo a foto e comparando com o
+// documento. Por isso a tela é feita para a decisão, e não para o inventário —
+// a fila mostra quem está esperando há mais tempo primeiro, e a ficha põe as
+// duas fotos ao lado de tudo o que se sabe da conta.
+//
+// Duas telas, e a divisão importa: a LISTA não carrega as fotos (são dezenas
+// de linhas, e cada foto tem centenas de KB), a FICHA carrega.
+// ===========================================================================
+let admKycState = { filtro: 'em_analise', itens: [], exigido: false };
+
+async function admKycLoad() {
+  const box = $('#adm-kyc-box'); if (!box) return;
+  box.innerHTML = skel(4);
+  try {
+    const d = await api('/adm/kyc?status=' + admKycState.filtro);
+    admKycState.itens = d.itens || [];
+    admKycState.exigido = !!d.exigido;
+  } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
+  admKycPaint();
+}
+
+function admKycPaint() {
+  const box = $('#adm-kyc-box'); if (!box) return;
+  const st = admKycState;
+  const filtros = [['em_analise', 'Em análise'], ['aprovado', 'Aprovados'], ['reprovado', 'Reprovados'], ['todos', 'Todos']];
+  const pill = s => s === 'aprovado' ? '<span class="pill done">aprovado</span>'
+    : s === 'reprovado' ? '<span class="pill warn">reprovado</span>'
+    : '<span class="pill pending">em análise</span>';
+
+  box.innerHTML = `
+  <div class="card">
+    <div class="row" style="align-items:center;gap:12px">
+      <div style="flex:1;min-width:0">
+        <h2 style="margin:0">${ico('shield') || ico('lock')} Exigir verificação para receber</h2>
+        <p class="muted" style="margin:3px 0 0;font-size:12.5px">
+          ${st.exigido
+            ? 'Ligado: uma conta só cobra pelo Koonpay depois de aprovada aqui.'
+            : 'Desligado: todas as contas recebem sem passar por análise. Ligar não derruba quem já vende — quem ainda não enviou é que passa a precisar.'}
+        </p>
+      </div>
+      <button class="toggle ${st.exigido ? 'on' : ''}" id="kyc-exigir-tg"
+        aria-label="Exigir KYC" onclick="admKycExigir()"><span></span></button>
+    </div>
+  </div>
+
+  <div class="row" style="margin-bottom:12px">
+    <div class="seg no-grow">
+      ${filtros.map(([id, rot]) => `<button class="${st.filtro === id ? 'on' : ''}"
+        onclick="admKycFiltro('${id}')">${rot}</button>`).join('')}
+    </div>
+  </div>
+
+  ${st.itens.length ? `<div class="card"><div class="tab-wrap"><table>
+    <thead><tr><th>Conta</th><th>Nome no documento</th><th>Enviado</th><th>Status</th><th></th></tr></thead>
+    <tbody>${st.itens.map(i => `<tr>
+      <td><b>${esc(i.conta)}</b><br><span class="muted" style="font-size:11.5px">${esc(i.email)}</span></td>
+      <td>${esc(i.nome || '—')}${i.tentativas > 1 ? `<br><span class="muted" style="font-size:11.5px">${i.tentativas}ª tentativa</span>` : ''}</td>
+      <td>${i.enviadoEm ? timeAgo(i.enviadoEm) : '—'}</td>
+      <td>${pill(i.status)}${i.motivo ? `<br><span class="muted" style="font-size:11.5px">${esc(i.motivo)}</span>` : ''}</td>
+      <td style="text-align:right"><button class="btn small no-grow" onclick="admKycAbrir('${i.accountId}')">
+        ${i.status === 'em_analise' ? 'Analisar' : 'Ver'}</button></td>
+    </tr>`).join('')}</tbody>
+  </table></div></div>`
+  : `<div class="card kyc-fila-vazia">
+      <p class="muted" style="font-size:13px;margin:0">Nada ${st.filtro === 'em_analise' ? 'esperando análise' : 'aqui'} no momento.</p>
+    </div>`}`;
+}
+
+function admKycFiltro(f) { admKycState.filtro = f; admKycLoad(); }
+
+async function admKycExigir() {
+  const tg = $('#kyc-exigir-tg');
+  const ligar = !tg.classList.contains('on');
+  try {
+    const r = await api('/adm/kyc/exigir', { method: 'PUT', body: { exigido: ligar } });
+    admKycState.exigido = r.exigido;
+    toast(r.exigido ? 'Verificação passou a ser exigida' : 'Verificação deixou de ser exigida');
+    admKycPaint();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// A FICHA. Tudo o que existe sobre a conta ao lado das duas fotos — decidir
+// olhando só a foto é decidir com metade da informação.
+async function admKycAbrir(id) {
+  let f;
+  try { f = await api('/adm/kyc/' + id); }
+  catch (e) { toast(e.message, 'error'); return; }
+
+  const dd = f.dados || {}, c = f.conta || {};
+  const linha = (rot, val) => `<div class="wa-row"><span>${esc(rot)}</span><b>${val || '—'}</b></div>`;
+  const doc = String(dd.documento || '');
+  const docFmt = doc.length === 11 ? doc.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
+    : doc.length === 14 ? doc.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : doc;
+  const dinheiro = v => fmtBRL(v || 0);
+
+  openModal(`
+    <h2>${ico('shield') || ico('lock')} Verificação · ${esc(f.contaNome || '')}</h2>
+    <p class="muted" style="margin:2px 0 0;font-size:13px">
+      ${esc(f.email || '')} · ${esc(c.tipo || '')} ${f.tentativas > 1 ? `· ${f.tentativas}ª tentativa` : ''}</p>
+
+    ${f.status === 'em_analise' ? '' : `<div class="card ${f.status === 'aprovado' ? '' : 'warn-card'}" style="margin-top:14px">
+      <b>${f.status === 'aprovado' ? 'Já aprovado' : 'Já reprovado'}</b>
+      ${f.motivo ? `<br><span class="muted" style="font-size:13px">${esc(f.motivo)}</span>` : ''}
+      <br><span class="muted" style="font-size:12px">por ${esc(f.revisadoPor || '—')} ·
+      ${f.revisadoEm ? new Date(f.revisadoEm).toLocaleString('pt-BR') : '—'}</span>
+    </div>`}
+
+    <div class="fb-sub" style="margin-top:16px">As fotos</div>
+    ${f.fotos && (f.fotos.documento || f.fotos.selfie) ? `
+      <div class="row" style="gap:12px;align-items:flex-start">
+        ${['documento', 'selfie'].map(k => `<div style="flex:1;min-width:0">
+          <span class="muted" style="font-size:11.5px;display:block;margin-bottom:5px">
+            ${k === 'documento' ? 'Documento' : 'Rosto com o documento'}</span>
+          ${f.fotos[k]
+            ? `<img class="kyc-foto" src="data:${esc(f.fotos[k].mime)};base64,${f.fotos[k].data}" alt="">`
+            : '<p class="muted" style="font-size:12.5px">não enviada</p>'}
+        </div>`).join('')}
+      </div>`
+    : `<p class="muted" style="font-size:13px">As fotos foram apagadas quando a análise terminou —
+       elas existem só durante a conferência.</p>`}
+
+    <div class="fb-sub" style="margin-top:16px">O que ele declarou</div>
+    <div class="wa-status">
+      ${linha('Nome completo', esc(dd.nome))}
+      ${linha(doc.length === 14 ? 'CNPJ' : 'CPF', esc(docFmt))}
+      ${linha('Nascimento', dd.nascimento ? esc(new Date(dd.nascimento + 'T12:00:00').toLocaleDateString('pt-BR')) : '')}
+      ${linha('E-mail', esc(dd.email))}
+      ${linha('Telefone', esc(dd.telefone))}
+      ${linha('Endereço', esc([dd.endereco, dd.numero].filter(Boolean).join(', ')))}
+      ${linha('Cidade / UF', esc([dd.cidade, dd.uf].filter(Boolean).join(' / ')))}
+      ${linha('CEP', esc(dd.cep))}
+    </div>
+
+    <div class="fb-sub" style="margin-top:16px">A conta no Koonfy</div>
+    <div class="wa-status">
+      ${linha('ID interno', '<code>' + esc(c.id || '') + '</code>')}
+      ${linha('Criada em', c.criadaEm ? new Date(c.criadaEm).toLocaleString('pt-BR') : '')}
+      ${linha('Último acesso', c.ultimoAcesso ? timeAgo(c.ultimoAcesso) : '')}
+      ${linha('Plano', esc([c.plano, c.assinatura].filter(Boolean).join(' · ')))}
+      ${linha('Segmento', esc(c.segmento))}
+      ${linha('Site', c.site ? `<a href="${esc(c.site)}" target="_blank" rel="noopener noreferrer">${esc(c.site)}</a>` : '')}
+      ${linha('CPF/CNPJ do cadastro', esc(c.documentoCadastro))}
+      ${linha('Telefone do cadastro', esc(c.telefoneCadastro))}
+      ${linha('WhatsApp', c.whatsappConectado ? 'conectado · ' + esc(c.whatsappNumero || '') : 'não conectado')}
+      ${linha('Contatos', fmtN(c.contatos))}
+      ${linha('Cobranças', fmtN(c.cobrancas))}
+      ${linha('Já recebeu', dinheiro(c.recebido))}
+      ${linha('Chave Pix', esc(c.chavePix))}
+    </div>
+
+    ${f.status === 'em_analise' ? `
+      <div class="fb-sub" style="margin-top:16px">A decisão</div>
+      <label>Motivo da reprovação <em class="lim-extra">o cliente lê este texto para corrigir</em>
+        <textarea id="kyc-motivo" rows="2" placeholder="Ex.: a foto do documento está ilegível"></textarea></label>
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary no-grow" onclick="admKycDecidir('${c.id}', true)">Aprovar</button>
+        <button class="btn danger no-grow" onclick="admKycDecidir('${c.id}', false)">Reprovar</button>
+      </div>
+      <p class="muted" style="font-size:12px;margin:10px 0 0">
+        As fotos são apagadas assim que você decide. Fica o registro de quem decidiu e quando.</p>`
+    : ''}
+  `);
+}
+
+async function admKycDecidir(id, aprovar) {
+  const motivo = (($('#kyc-motivo') || {}).value || '').trim();
+  if (!aprovar && !motivo) {
+    toast('Diga o motivo — é o que o cliente vai ler para corrigir', 'error');
+    return;
+  }
+  try {
+    const r = await api('/adm/kyc/' + id + '/revisar', { method: 'POST', body: { aprovar, motivo } });
+    closeModal();
+    toast(r.status === 'aprovado' ? 'Conta aprovada' : 'Conta reprovada');
+    admKycLoad();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
 function admIntLoad() {
   admNsLoad();
   admSmsLoad();
@@ -15174,6 +15362,203 @@ function epCelNova() {
   $('#cel-val').focus();
 }
 
+// ===========================================================================
+// KYC DO KOONPAY — a tela do cliente
+//
+// Três estados, e cada um mostra só o que faz sentido naquele momento:
+//
+//   nao_enviado → o formulário, com os dados JÁ PREENCHIDOS do cadastro. Ele
+//                 confere, corrige o que precisar e manda as duas fotos.
+//   em_analise  → uma tela de espera. Não há nada para ele fazer, e oferecer
+//                 botão aqui só gera reenvio em cima de reenvio.
+//   reprovado   → o MOTIVO em primeiro lugar, e o caminho para refazer.
+//
+// As fotos são reduzidas AQUI, antes de subir. Foto de celular chega com 4000px
+// e 6 MB; o servidor recusa acima de 1,5 MB, e mandar o arquivo cru só para
+// levar 400 na volta gasta o dado móvel de quem está no meio da rua.
+// ===========================================================================
+let kycState = { dados: null, fotos: {}, enviando: false };
+
+async function epRenderKyc(d) {
+  let k;
+  try { k = await api('/kyc'); }
+  catch (e) { $('#view').innerHTML = `<div class="page"><div class="card err">${esc(e.message)}</div></div>`; return; }
+  kycState.dados = { ...k.dados };
+
+  const cabeca = `<div class="page-head"><h1>Koonpay</h1>
+    <p>Verificação de identidade — é o passo que libera a sua conta para receber</p></div>`;
+
+  if (k.status === 'em_analise') {
+    $('#view').innerHTML = `<div class="page">${cabeca}
+      <div class="card" style="max-width:640px;text-align:center;padding:34px 24px">
+        <div style="font-size:34px;line-height:1">${ico('clock', 34)}</div>
+        <h2 style="margin:10px 0 4px">Em análise</h2>
+        <p class="muted" style="font-size:13.5px;margin:0 auto;max-width:420px">
+          Recebemos os seus documentos${k.enviadoEm ? ' em ' + new Date(k.enviadoEm).toLocaleString('pt-BR') : ''}.
+          Uma pessoa vai conferir — não é automático. Assim que for aprovado, a sua conta passa a receber
+          e você é avisado aqui mesmo.</p>
+      </div></div>`;
+    return;
+  }
+
+  if (k.status === 'reprovado') {
+    // O motivo vem primeiro e inteiro: é a única coisa que permite corrigir.
+    $('#view').innerHTML = `<div class="page">${cabeca}
+      <div class="card warn-card" style="max-width:640px">
+        <h2 style="margin:0 0 6px">${ico('alert')} Precisamos de um novo envio</h2>
+        <p style="margin:0 0 4px;font-size:14px"><b>Motivo:</b> ${esc(k.motivo || 'não informado')}</p>
+        <p class="muted" style="font-size:13px;margin:0">Corrija o que foi apontado e envie de novo. É rápido.</p>
+        <button class="btn primary no-grow" style="margin-top:14px" onclick="kycRefazer()">Enviar de novo</button>
+      </div></div>`;
+    return;
+  }
+
+  // ---- nao_enviado: o formulário ----
+  const dd = k.dados;
+  const campo = (id, rot, val, extra) => `<label style="flex:1">${rot}
+    <input id="kyc-${id}" value="${esc(val || '')}" ${extra || ''}></label>`;
+
+  $('#view').innerHTML = `<div class="page">${cabeca}
+
+    <div class="card" style="max-width:720px">
+      <h2>${ico('user') || ico('users')} Confirme os seus dados</h2>
+      <p class="hint" style="margin-top:0">Já preenchemos com o que você informou no cadastro. Confira,
+      corrija o que estiver diferente do seu documento e siga.</p>
+
+      <div class="row">${campo('nome', 'Nome completo (como no documento)', dd.nome)}</div>
+      <div class="row" style="margin-top:9px">
+        ${campo('documento', dd.documentoTipo || 'CPF ou CNPJ', dd.documento, 'inputmode="numeric" maxlength="18"')}
+        ${campo('nascimento', 'Data de nascimento', dd.nascimento, 'type="date"')}
+      </div>
+      <div class="row" style="margin-top:9px">
+        ${campo('email', 'E-mail', dd.email, 'type="email"')}
+        ${campo('telefone', 'Telefone', dd.telefone, 'inputmode="tel"')}
+      </div>
+      <div class="row" style="margin-top:9px">
+        ${campo('cep', 'CEP', dd.cep, 'inputmode="numeric" maxlength="9"')}
+        ${campo('endereco', 'Endereço', dd.endereco)}
+        ${campo('numero', 'Número', dd.numero)}
+      </div>
+      <div class="row" style="margin-top:9px">
+        ${campo('cidade', 'Cidade', dd.cidade)}
+        ${campo('uf', 'UF', dd.uf, 'maxlength="2" style="max-width:90px"')}
+      </div>
+    </div>
+
+    <div class="card" style="max-width:720px">
+      <h2>${ico('camera') || ico('image')} Envie as fotos</h2>
+      <p class="hint" style="margin-top:0">As duas são necessárias: a primeira mostra o documento, a segunda
+      liga o documento a você. Sozinha, a foto do documento só prova que você tem a foto de um documento.</p>
+      <div class="row" style="align-items:stretch;gap:12px">
+        ${k.pecas.map(p => `
+          <div style="flex:1;min-width:0">
+            <div class="capi-box" style="height:100%">
+              <div class="capi-head">${esc(p.nome)}</div>
+              <p class="muted" style="font-size:12px;margin:6px 0 10px">${esc(p.ajuda)}</p>
+              <div id="kyc-prev-${p.id}" class="kyc-prev"></div>
+              <input type="file" id="kyc-file-${p.id}" accept="image/jpeg,image/png,image/webp"
+                     style="display:none" onchange="kycEscolher('${p.id}', this)">
+              <button class="btn no-grow" style="margin-top:10px;width:100%"
+                      onclick="document.getElementById('kyc-file-${p.id}').click()">Escolher foto</button>
+            </div>
+          </div>`).join('')}
+      </div>
+      <p class="erro" id="kyc-erro" style="margin-top:12px"></p>
+      <button class="btn primary no-grow" style="margin-top:6px" id="kyc-enviar" onclick="kycEnviar()">
+        Enviar para análise</button>
+      <p class="muted" style="font-size:12px;margin:10px 0 0">
+        As fotos são usadas só nesta conferência e apagadas assim que a análise termina.</p>
+    </div>
+  </div>`;
+}
+
+// REDUZ ANTES DE SUBIR. Foto de celular vem com 4000px e vários MB; o teto do
+// servidor é 1,5 MB. Mandar o arquivo cru só para receber 400 de volta gasta o
+// dado móvel de quem está no meio da rua tentando resolver isso.
+//
+// 1600px no maior lado é o suficiente para ler um documento na tela do admin.
+async function kycReduzir(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const MAIOR = 1600;
+    const escala = Math.min(1, MAIOR / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.round(img.naturalWidth * escala), h = Math.round(img.naturalHeight * escala);
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const cx = c.getContext('2d');
+    cx.imageSmoothingQuality = 'high';
+    cx.drawImage(img, 0, 0, w, h);
+    // Qualidade decrescente até caber. Documento continua legível bem abaixo
+    // de 0.9, e é melhor uma foto um pouco mais comprimida do que um envio
+    // recusado.
+    for (const q of [0.86, 0.75, 0.62, 0.5]) {
+      const b = await new Promise(r => c.toBlob(r, 'image/jpeg', q));
+      if (b && b.size <= 1_400_000) return { blob: b, w, h, q };
+    }
+    return null;
+  } finally { URL.revokeObjectURL(url); }
+}
+
+async function kycEscolher(peca, input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const prev = $('#kyc-prev-' + peca);
+  const erro = $('#kyc-erro');
+  erro.textContent = '';
+  prev.innerHTML = '<span class="muted" style="font-size:12px">preparando…</span>';
+  try {
+    const r = await kycReduzir(file);
+    if (!r) { prev.innerHTML = ''; erro.textContent = 'Não consegui reduzir esta imagem. Tente outra foto.'; return; }
+    const b64 = await new Promise(res => {
+      const fr = new FileReader();
+      fr.onload = () => res(String(fr.result).split(',')[1] || '');
+      fr.readAsDataURL(r.blob);
+    });
+    kycState.fotos[peca] = { mime: 'image/jpeg', data: b64 };
+    prev.innerHTML = `<img src="data:image/jpeg;base64,${b64}" alt="">
+      <span class="muted" style="font-size:11.5px;display:block;margin-top:5px">
+        ${r.w}×${r.h} · ${(r.blob.size / 1024).toFixed(0)} KB</span>`;
+  } catch (e) {
+    prev.innerHTML = '';
+    erro.textContent = 'Não consegui ler esta imagem: ' + e.message;
+  }
+}
+
+async function kycEnviar() {
+  if (kycState.enviando) return;
+  const erro = $('#kyc-erro');
+  const pega = id => (($('#kyc-' + id) || {}).value || '').trim();
+  const dados = {
+    nome: pega('nome'), documento: pega('documento'), email: pega('email'),
+    telefone: pega('telefone'), nascimento: pega('nascimento'), cep: pega('cep'),
+    endereco: pega('endereco'), numero: pega('numero'), cidade: pega('cidade'), uf: pega('uf')
+  };
+  if (!kycState.fotos.documento || !kycState.fotos.selfie) {
+    erro.textContent = 'Envie as duas fotos antes de continuar.';
+    return;
+  }
+  const btn = $('#kyc-enviar');
+  kycState.enviando = true;
+  btn.disabled = true; btn.textContent = 'Enviando…';
+  try {
+    await api('/kyc', { method: 'POST', body: { dados, fotos: kycState.fotos } });
+    kycState.fotos = {};
+    toast('Enviado para análise');
+    renderPagamentos();
+  } catch (e) {
+    erro.textContent = e.message;
+    btn.disabled = false; btn.textContent = 'Enviar para análise';
+  } finally { kycState.enviando = false; }
+}
+
+async function kycRefazer() {
+  try { await api('/kyc/refazer', { method: 'POST' }); renderPagamentos(); }
+  catch (e) { toast(e.message, 'error'); }
+}
+
 async function renderPagamentos() {
   $('#view').innerHTML = `<div class="page"><div class="card">${skel(6)}</div></div>`;
   let d;
@@ -15186,6 +15571,14 @@ async function renderPagamentos() {
   // A aba Cartão só existe se a plataforma habilitou o adquirente.
   try { epCardTabVisible = (await api('/pagamentos/card-account')).account.available; } catch { epCardTabVisible = false; }
   if (!epCardTabVisible && epState.tab === 'card') epState.tab = 'dash';
+
+  // ---- KYC ANTES DE TUDO ----
+  //
+  // Enquanto a plataforma exige verificação e esta conta não foi aprovada, não
+  // importa o estado da subconta: ela não recebe. Vem antes na tela pela mesma
+  // razão que vem antes no servidor — mostrar o módulo de cobrança para quem
+  // não pode cobrar é convidar a pessoa a descobrir isso só na hora de vender.
+  if (d.kyc && d.kyc.exigido && d.kyc.status !== 'aprovado') { await epRenderKyc(d); return; }
 
   // ---- Sem subconta → fluxo de cadastro (onboarding) ----
   if (!d.subaccount || d.subaccount.status === 'rejected') { epRenderOnboarding(d); return; }
