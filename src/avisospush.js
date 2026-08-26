@@ -79,6 +79,20 @@ function avisoDoEvento(event, data) {
       data: { type, url: '/adm/#/adm/contas', accountId: data.accountId || '' }
     };
     return { type, payload, paraAdmin: true };
+  } else if (event === 'kyc' && data.status === 'em_analise') {
+    // KYC PARA ANALISAR — vai para o ADMIN, como o cadastro iGaming. É uma
+    // fila que trava dinheiro do outro lado: enquanto ninguém olha, aquela
+    // conta não recebe. Por isso `requireInteraction`, e por isso o aviso leva
+    // direto para a aba onde se decide.
+    type = 'kyc';
+    payload = {
+      title: 'KYC para analisar 🔍',
+      body: (data.nome || data.conta || 'Uma conta') + ' enviou os documentos',
+      tag: 'kyc:' + (data.accountId || Date.now()),
+      requireInteraction: true,
+      data: { type, url: '/adm/#/adm/kyc', accountId: data.accountId || '' }
+    };
+    return { type, payload, paraAdmin: true };
   } else if (event === 'reminder') {
     const ev = data.event || {};
     // O fuso vem da CONTA: sem ele o texto saía no fuso do processo (UTC em

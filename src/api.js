@@ -5640,7 +5640,12 @@ module.exports = function (broadcast, clients) {
   router.get('/adm/kyc', auth, adminOnly, (req, res) => {
     res.json({
       itens: kyc.fila(String(req.query.status || '')),
-      exigido: kyc.exigido()
+      exigido: kyc.exigido(),
+      // QUAL caminho está valendo. Sem isto o admin liga a exigência com a
+      // Woovi ativa, vê a fila sempre vazia e conclui que quebrou — quando na
+      // verdade quem está conferindo é a Woovi.
+      modo: kyc.modo(),
+      gateway: pagamentos.platformCfg().gateway
     });
   });
 

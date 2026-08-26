@@ -530,7 +530,11 @@ async function registerSubaccount(acc, fields) {
     const e = new Error('Esta conta já possui uma subconta Pagamentos'); e.status = 400; throw e;
   }
   const cfg = platformCfg();
-  const mode = cfg.onboardingMode === 'kyc' ? 'kyc' : 'subaccount';
+  // COM A WOOVI E A EXIGÊNCIA LIGADA, o caminho é o KYC DELA: a Woovi abre a
+  // página de verificação e avisa por webhook. Não é preciso o admin marcar
+  // `onboardingMode` também — um interruptor que precisa de outro para
+  // funcionar é um interruptor que um dia fica pela metade.
+  const mode = (require('./kyc').modo() === 'woovi' || cfg.onboardingMode === 'kyc') ? 'kyc' : 'subaccount';
   const errs = validateOnboarding(fields, mode);
   if (errs.length) { const e = new Error(errs.join(' · ')); e.status = 400; throw e; }
 

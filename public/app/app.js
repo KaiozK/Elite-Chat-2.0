@@ -10247,7 +10247,7 @@ async function admSecSave(on) {
 // Duas telas, e a divisão importa: a LISTA não carrega as fotos (são dezenas
 // de linhas, e cada foto tem centenas de KB), a FICHA carrega.
 // ===========================================================================
-let admKycState = { filtro: 'em_analise', itens: [], exigido: false };
+let admKycState = { filtro: 'em_analise', itens: [], exigido: false, modo: 'nenhum', gateway: '' };
 
 async function admKycLoad() {
   const box = $('#adm-kyc-box'); if (!box) return;
@@ -10256,6 +10256,8 @@ async function admKycLoad() {
     const d = await api('/adm/kyc?status=' + admKycState.filtro);
     admKycState.itens = d.itens || [];
     admKycState.exigido = !!d.exigido;
+    admKycState.modo = d.modo || 'nenhum';
+    admKycState.gateway = d.gateway || '';
   } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
   admKycPaint();
 }
@@ -10274,10 +10276,13 @@ function admKycPaint() {
       <div style="flex:1;min-width:0">
         <h2 style="margin:0">${ico('shield') || ico('lock')} Exigir verificação para receber</h2>
         <p class="muted" style="margin:3px 0 0;font-size:12.5px">
-          ${st.exigido
-            ? 'Ligado: uma conta só cobra pelo Koonpay depois de aprovada aqui.'
+          ${st.modo === 'woovi'
+            ? 'Ligado, e quem confere é a <b>Woovi</b>: ela abre a página de verificação, o cliente faz tudo lá e a aprovação chega por webhook. O documento não passa pelo Koonfy — por isso esta fila fica vazia, e está certo.'
+            : st.modo === 'manual'
+            ? 'Ligado, e quem confere é <b>você</b>: o adquirente é a Simplify, que não tem KYC próprio. Os envios caem na fila abaixo.'
             : 'Desligado: todas as contas recebem sem passar por análise. Ligar não derruba quem já vende — quem ainda não enviou é que passa a precisar.'}
         </p>
+        ${st.gateway ? `<p class="muted" style="margin:6px 0 0;font-size:11.5px">Adquirente atual: <b>${esc(st.gateway === 'woovi' ? 'Woovi' : st.gateway)}</b> — é ele que decide qual verificação vale.</p>` : ''}
       </div>
       <button class="toggle ${st.exigido ? 'on' : ''}" id="kyc-exigir-tg"
         aria-label="Exigir KYC" onclick="admKycExigir()"><span></span></button>
@@ -10303,7 +10308,9 @@ function admKycPaint() {
     </tr>`).join('')}</tbody>
   </table></div></div>`
   : `<div class="card kyc-fila-vazia">
-      <p class="muted" style="font-size:13px;margin:0">Nada ${st.filtro === 'em_analise' ? 'esperando análise' : 'aqui'} no momento.</p>
+      <p class="muted" style="font-size:13px;margin:0">${st.modo === 'woovi'
+        ? 'Com a Woovi, a verificação acontece do lado dela — não há nada para analisar aqui.'
+        : 'Nada ' + (st.filtro === 'em_analise' ? 'esperando análise' : 'aqui') + ' no momento.'}</p>
     </div>`}`;
 }
 

@@ -276,9 +276,33 @@ function podeReceber(acc) {
   return ensure(acc).status === 'aprovado';
 }
 
+// QUEM FAZ A CONFERÊNCIA depende do ADQUIRENTE escolhido, e não de mais um
+// interruptor. São duas realidades diferentes:
+//
+//   WOOVI — tem KYC próprio na API (POST /api/v1/kyc/onboarding). Ela abre uma
+//     página de verificação, o cliente faz tudo lá, e a aprovação chega por
+//     webhook (ACCOUNT_REGISTER_APPROVED). O documento NUNCA passa pelo Koonfy
+//     — e isso é uma vantagem, não uma limitação: dado que não se guarda é
+//     dado que não vaza.
+//
+//   SIMPLIFY — não tem esse fluxo, e a conta é criada direto com ela. Aqui a
+//     conferência é a manual deste módulo: foto do documento, foto do rosto, e
+//     alguém olhando.
+//
+// Um interruptor só (`kycObrigatorio`) liga a exigência; o adquirente decide
+// QUAL caminho. Dois interruptores independentes deixariam ligar o manual com
+// a Woovi ativa e cobrar do cliente uma foto que ninguém precisa ver.
+function modo() {
+  const pg = require('./pagamentos');
+  const cfg = pg.platformCfg();
+  if (cfg.kycObrigatorio !== true) return 'nenhum';
+  return cfg.gateway === 'woovi' ? 'woovi' : 'manual';
+}
+
+// A conferência MANUAL é exigida? É a pergunta deste módulo — com a Woovi,
+// quem verifica é ela, e este caminho fica fora do jogo.
 function exigido() {
-  const cfg = require('./pagamentos').platformCfg();
-  return cfg.kycObrigatorio === true;
+  return modo() === 'manual';
 }
 
 // ---------------------------------------------------------------------------
@@ -379,7 +403,7 @@ function fila(filtro) {
 
 module.exports = {
   ESTADOS, PECAS, MAX_BYTES, MIMES,
-  ensure, vazio, preenchido, enviar, revisar, reabrir,
+  ensure, vazio, preenchido, enviar, revisar, reabrir, modo,
   podeReceber, exigido, visaoCliente, linhaAdmin, fichaAdmin, fila,
   arquivos, apagarArquivos, validarDados, validarFoto
 };

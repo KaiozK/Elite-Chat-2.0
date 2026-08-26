@@ -27,6 +27,7 @@ const R = 'C:/Users/amand/Desktop/Elite Projects/whatsapp-crm/';
 let falhas = 0;
 const ok = (c, m) => { console.log((c ? '  OK   ' : '  FALHA') + ' ' + m); if (!c) falhas++; };
 const encerrar = require('./_fim');
+const fs = require('fs');
 
 const Module = require('module');
 const tabela = new Map();
@@ -108,6 +109,11 @@ const foto = () => ({ mime: 'image/jpeg', data: FOTO });
   ok(visao.pecas.length === 2, 'e são DUAS fotos pedidas, sempre');
 
   console.log('\n=== 3. Agora a plataforma passa a exigir ===');
+  // O adquirente é a SIMPLIFY nesta parte do arquivo, e é isso que torna a
+  // conferência MANUAL a que vale: com a Woovi quem verifica é ela, e nada
+  // deste caminho acontece (ver seção 13).
+  pagamentos.platformCfg().gateway = 'simplify';
+  db.save();
   await fetch(BASE + '/api/adm/kyc/exigir', { method: 'PUT', headers: autAdm, body: JSON.stringify({ exigido: true }) });
   ok(kyc.exigido() === true, 'o admin ligou a exigência');
   ok(kyc.podeReceber(acc) === false, 'e a conta sem análise deixa de poder receber');
@@ -221,6 +227,74 @@ const foto = () => ({ mime: 'image/jpeg', data: FOTO });
     method: 'POST', headers: aut, body: JSON.stringify({ aprovar: true })
   });
   ok(tentouAprovar.status === 403, 'e não aprova a si mesmo');
+
+
+  console.log('\n=== 13. QUEM confere depende do adquirente ===');
+  // São duas realidades diferentes, e um interruptor só:
+  //
+  //   WOOVI    tem KYC próprio na API (POST /api/v1/kyc/onboarding). Ela abre a
+  //            página, o cliente faz tudo lá, e a aprovação chega por webhook.
+  //            O documento NUNCA passa pelo Koonfy — dado que não se guarda é
+  //            dado que não vaza.
+  //   SIMPLIFY não tem esse fluxo. Aqui a conferência é a manual: foto do
+  //            documento, foto do rosto, e alguém olhando.
+  //
+  // Dois interruptores independentes deixariam ligar o manual com a Woovi ativa
+  // e cobrar do cliente uma foto que ninguém precisa ver.
+  const cfgPg = pagamentos.platformCfg();
+  const antesGw = cfgPg.gateway;
+
+  cfgPg.gateway = 'woovi'; cfgPg.kycObrigatorio = true;
+  ok(kyc.modo() === 'woovi', `Woovi + exigência = KYC da Woovi: ${kyc.modo()}`);
+  ok(kyc.exigido() === false, 'e a conferência MANUAL sai do jogo — quem verifica é ela');
+
+  cfgPg.gateway = 'simplify';
+  ok(kyc.modo() === 'manual', `Simplify + exigência = conferência manual: ${kyc.modo()}`);
+  ok(kyc.exigido() === true, 'e o portão manual volta a valer');
+
+  cfgPg.kycObrigatorio = false;
+  ok(kyc.modo() === 'nenhum', 'sem exigência, nenhum dos dois');
+  ok(kyc.exigido() === false, 'e ninguém é barrado');
+
+  // O painel precisa CONTAR qual está valendo: sem isso o admin liga a
+  // exigência com a Woovi, vê a fila sempre vazia e conclui que quebrou.
+  cfgPg.gateway = 'woovi'; cfgPg.kycObrigatorio = true;
+  const painel = await (await fetch(BASE + '/api/adm/kyc', { headers: autAdm })).json();
+  ok(painel.modo === 'woovi', `a aba do Admin sabe o modo: ${painel.modo}`);
+  ok(painel.gateway === 'woovi', 'e qual adquirente decidiu isso');
+  cfgPg.gateway = antesGw;
+  db.save();
+
+  console.log('\n=== 14. Com a Woovi, o cadastro abre o KYC DELA ===');
+  // `registerSubaccount` não pode depender de o admin marcar `onboardingMode`
+  // também: um interruptor que precisa de outro para funcionar é um
+  // interruptor que um dia fica pela metade.
+  const fonte = fs.readFileSync(R + 'src/pagamentos.js', 'utf8');
+  ok(/require\('\.\/kyc'\)\.modo\(\) === 'woovi'/.test(fonte),
+     'o modo do KYC entra na decisão do cadastro, junto do onboardingMode');
+  // E o driver da Woovi tem mesmo a chamada — não é promessa, é rota.
+  ok(/\/api\/v1\/kyc\/onboarding/.test(fonte), 'o driver chama POST /api/v1/kyc/onboarding');
+  ok(/ACCOUNT_REGISTER_APPROVED/.test(fs.readFileSync(R + 'src/woovi.js', 'utf8')),
+     'e o webhook de aprovação da Woovi está tratado');
+  // A Simplify não tem esse caminho, e diz isso em vez de fingir que tem.
+  ok(/A Simplify não usa KYC pelo Koonfy/.test(fonte),
+     'a Simplify recusa o KYC de gateway explicitamente');
+
+  console.log('\n=== 15. O envio para análise avisa o ADMIN no celular ===');
+  // Uma fila de KYC parada trava dinheiro do outro lado: enquanto ninguém olha,
+  // aquela conta não recebe.
+  const avisos = require(R + 'src/avisospush');
+  const aviso = avisos.avisoDoEvento('kyc', {
+    accountId: 'acc_9', conta: 'Loja do Zé', nome: 'José da Silva', status: 'em_analise'
+  });
+  ok(!!aviso && aviso.paraAdmin === true, 'o aviso é para o ADMIN, e não para quem enviou');
+  ok(/KYC/.test(aviso.payload.title), 'o título diz do que se trata');
+  ok(aviso.payload.body.includes('José da Silva'), 'e o corpo diz de quem');
+  ok(aviso.payload.data.url === '/adm/#/adm/kyc', 'tocar leva direto para a aba onde se decide');
+  ok(aviso.payload.requireInteraction === true, 'e fica na tela: é aviso para AGIR');
+  // Aprovação e reprovação não viram push para o admin — foi ELE quem decidiu.
+  ok(avisos.avisoDoEvento('kyc', { accountId: 'acc_9', status: 'aprovado' }) === null,
+     'a própria decisão dele não vira aviso de volta');
 
   srv.close();
   await encerrar(srv, falhas);
