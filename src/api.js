@@ -666,6 +666,10 @@ module.exports = function (broadcast, clients) {
       // aparece no menu — pendurar um item que abre dizendo 'indisponível' é
       // pior do que não ter o item.
       numerosAluguel: require('./numaluguel').revendaAtiva(),
+      // PIX AUTOMÁTICO da plataforma. Decide se o editor de produto oferece
+      // "cobrar todo mês": marcar um produto como assinatura onde a
+      // recorrência não existe cria um produto que o checkout recusa na venda.
+      pixAutomatico: require('./assinaturas').disponivel(),
       wa: waPublic(req.wctx),
       // toggles do plano: o menu esconde o que o plano nao inclui (o backend
       // tambem recusa com 402, o front e so conforto)
@@ -5496,6 +5500,22 @@ module.exports = function (broadcast, clients) {
     res.json({ aluguel: numaluguel.publicoUm(a) });
   });
 
+  // ==================== ASSINATURAS DO CLIENTE (Pix Automático) ====================
+  //
+  // Quem vende algo mensal precisa ver quem está assinando e conseguir
+  // cancelar. Sem a lista, uma recorrência criada some de vista e continua
+  // cobrando o comprador todo mês — e quem reclama disso reclama no banco
+  // dele, não aqui.
+  const assinaturas = require('./assinaturas');
+
+  router.get('/pagamentos/assinaturas', auth, feat('pagamentos'), (req, res) => {
+    res.json(assinaturas.visaoCliente(req.acc));
+  });
+
+  router.post('/pagamentos/assinaturas/:id/cancelar', auth, feat('pagamentos'), h(async (req, res) => {
+    res.json({ assinatura: await assinaturas.cancelar(req.acc, req.params.id, (req.body || {}).motivo, broadcast) });
+  }));
+
   // ---- Integração Nuvemshop (app único da plataforma) ----
   router.get('/admin/nuvemshop', auth, adminOnly, (req, res) => {
     res.json({ nuvemshop: nuvem.adminCfg(`${req.protocol}://${req.get('host')}`) });
@@ -5665,10 +5685,16 @@ module.exports = function (broadcast, clients) {
   // WhatsApp — e a lista do lojista viraria lixo em uma semana.
   router.post('/public/produto/:slug/identify', h(async (req, res) => {
     const b = req.body || {};
-    const id = await pagamentos.cobrancaDoLink(req.params.slug, {
+    const r = await pagamentos.cobrancaDoLink(req.params.slug, {
       name: b.name, taxID: b.taxID, email: b.email, phone: b.phone, trk: b.trk
     }, broadcast);
-    res.json({ ok: true, view: pagamentos.publicChargeView(id) });
+    // DUAS SAÍDAS. Produto avulso devolve o id de uma cobrança; produto de
+    // assinatura devolve o registro da assinatura, que não tem QR nem valor a
+    // pagar agora — tem um link onde o comprador AUTORIZA no banco dele.
+    // Empacotar os dois no mesmo formato obrigaria a página a adivinhar qual
+    // recebeu, e ela erraria na primeira assinatura sem link de autorização.
+    if (r && r.assinatura) return res.json({ ok: true, assinatura: r.assinatura });
+    res.json({ ok: true, view: pagamentos.publicChargeView(r) });
   }));
 
   router.post('/public/pay/:id/identify', h(async (req, res) => {
@@ -6359,6 +6385,13 @@ module.exports = function (broadcast, clients) {
     if (b.price !== undefined) p.price = Math.max(0, Math.round(Number(b.price) || 0));
     if (typeof b.checkoutId === 'string') p.checkoutId = b.checkoutId.slice(0, 40);
     if (typeof b.active === 'boolean') p.active = b.active;
+    // ASSINATURA. Só entra se a plataforma tem Pix Automático de pé: sem
+    // isso o produto ficaria marcado como mensal e o checkout recusaria a
+    // venda — um produto que existe e não vende é pior do que um campo que
+    // não aparece.
+    if (typeof b.recorrente === 'boolean') {
+      p.recorrente = b.recorrente && require('./assinaturas').disponivel();
+    }
     for (const k of ['banner', 'bannerMobile', 'logo', 'logoMobile']) {
       if (img(b[k]) === null) continue;
       if (b[k].length > 800 * 1024) { res.status(400).json({ error: 'Imagem muito grande (máx. ~800KB)' }); return; }

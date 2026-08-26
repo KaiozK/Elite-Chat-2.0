@@ -581,6 +581,33 @@
   }
 
   // ---------- etapa 1: identificação ----------
+  // É ASSINATURA? Só quando o servidor disse que sim E que dá para usar. O
+  // produto pode estar marcado como recorrente numa plataforma cujo processador
+  // Pix não é a Woovi — aí o Pix Automático não existe, e oferecer um botão de
+  // "Assinar" que não assina é pior do que não oferecer nada.
+  function ehAssinatura() {
+    return !!(data && data.assinatura && data.assinatura.on && data.assinatura.disponivel);
+  }
+
+  // A ASSINATURA NÃO TERMINA AQUI, e a tela precisa dizer isso com todas as
+  // letras. Diferente do Pix avulso — que acaba quando o QR é pago — aqui nada
+  // foi cobrado ainda: falta a pessoa autorizar no banco dela. Uma tela de
+  // "pronto!" neste ponto faria o comprador fechar a página achando que
+  // assinou, e o vendedor ver uma assinatura que nunca cobra.
+  function assinaturaMain(ck, a) {
+    return '<div class="card fade-in"><div class="pad">' +
+      '<h2 class="sect">Falta autorizar no seu banco</h2>' +
+      '<div class="sect-sub">A sua assinatura de ' + esc(a.nome || '') + ' foi criada. ' +
+      'Para ela começar a valer, autorize o Pix Automático no aplicativo do seu banco.</div>' +
+      (a.autorizacaoUrl
+        ? '<a class="btn" href="' + esc(a.autorizacaoUrl) + '" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none">Autorizar no meu banco</a>'
+        : '<div class="form-err show">O link de autorização não veio. Fale com o vendedor antes de tentar de novo — ' +
+          'a assinatura já existe, e criar outra faria você ser cobrado em dobro.</div>') +
+      '<div class="legal">' + ico('lock', 13) + '<span>Você autoriza uma vez. Depois disso a cobrança de ' +
+      brl(a.valueCents || 0) + ' se repete todo mês, e pode ser cancelada por aqui ou no seu banco.</span></div>' +
+    '</div></div>';
+  }
+
   function identifyMain(ck) {
     var pf = data.prefill || {};
     return '<div class="card fade-in">' + stepsBar(1) +
@@ -588,9 +615,18 @@
         '<h2 class="sect">Seus dados</h2>' +
         // Cliente que já comprou aqui: os campos vêm preenchidos e a frase
         // muda, para ele entender de onde vieram os dados em vez de estranhar.
-        '<div class="sect-sub">' + (pf.conhecido
-          ? 'Confira seus dados e siga para o pagamento. Pode alterar o que quiser.'
-          : 'Preencha para gerar o seu Pix, leva menos de um minuto.') + '</div>' +
+        '<div class="sect-sub">' + (ehAssinatura()
+          ? 'Preencha para assinar. A cobrança é mensal e você autoriza uma vez no seu banco.'
+          : pf.conhecido
+            ? 'Confira seus dados e siga para o pagamento. Pode alterar o que quiser.'
+            : 'Preencha para gerar o seu Pix, leva menos de um minuto.') + '</div>' +
+        // O AVISO DE RECORRÊNCIA VEM ANTES DOS CAMPOS, e não no rodapé em letra
+        // miúda. É a diferença entre pagar uma vez e autorizar um débito todo
+        // mês — quem descobre isso depois pede o dinheiro de volta, e com razão.
+        (ehAssinatura()
+          ? '<div class="payer-chip">' + ico('lock', 13) + ' Assinatura mensal de ' + brl(data.assinatura.valueCents) +
+            '. A cobrança se repete todo mês até você cancelar, e quem autoriza é você, no app do seu banco.</div>'
+          : '') +
         (pf.conhecido ? '<div class="payer-chip">' + ico('lock', 13) + ' Que bom te ver de novo! Já preenchemos com os dados da sua última compra.</div>' : '') +
         '<div class="form-err" id="ferr"></div>' +
         '<div class="fld"><label>Nome completo</label><input id="f-name" autocomplete="name" placeholder="Como no seu documento" value="' + esc(pf.name || '') + '"></div>' +
@@ -674,6 +710,18 @@
     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
         if (!res.ok) throw new Error(res.j.error || 'Não foi possível validar seus dados');
+        // ASSINATURA CRIADA: não há cobrança, não há QR, e a página não pode
+        // seguir para a etapa de pagamento — o que falta é a autorização no
+        // banco. Os cronômetros param aqui: eles existem para esperar um Pix
+        // que, neste caminho, não vai chegar.
+        if (res.j.assinatura) {
+          clearInterval(timer); clearTimeout(cdTimer); clearTimeout(offerTimer);
+          var ckA = (data && data.checkout) || {};
+          root.innerHTML = siteHead(ckA) + '<div class="wrap"><div class="grid">' +
+            mainColumn(ckA, assinaturaMain(ckA, res.j.assinatura)) + summary(ckA, '') +
+          '</div></div>';
+          return;
+        }
         data = res.j.view;
         // A cobrança acabou de nascer: o resto da página fala por id, e o
         // endereço da barra passa a ser o dela — recarregar não perde o Pix
@@ -1068,7 +1116,8 @@
 
     var stepOne = data.needsId;
     var cta = stepOne
-      ? '<button class="btn" id="go-pay">Continuar para o pagamento</button><div class="sum-note">' + ico('lock', 12) + ' Pagamento 100% seguro via Pix</div>'
+      ? '<button class="btn" id="go-pay">' + (ehAssinatura() ? 'Assinar por ' + brl(data.assinatura.valueCents) + '/mês' : 'Continuar para o pagamento') + '</button>' +
+        '<div class="sum-note">' + ico('lock', 12) + (ehAssinatura() ? ' Pix Automático · cancele quando quiser' : ' Pagamento 100% seguro via Pix') + '</div>'
       : '<div class="waiting"><span class="pulse"></span> Aguardando pagamento</div><div class="sum-note">A confirmação é automática assim que você pagar.</div>';
 
     root.innerHTML = siteHead(ck) + '<div class="wrap"><div class="grid">' +

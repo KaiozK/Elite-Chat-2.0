@@ -186,12 +186,26 @@ const DRIVERS = {
   }
 };
 
+// OS PADRÕES ENTRAM CHAVE A CHAVE, e não só quando o objeto inteiro falta.
+// Escrito como `if (!p.pagamentos) p.pagamentos = {...}`, um registro que já
+// existisse sem alguma chave NOVA nunca a receberia. `logs` é o caso real:
+// entrou depois, e qualquer plataforma anterior a ele derrubava `plog` — com
+// um "Cannot read properties of undefined" — em TODA venda confirmada, no
+// meio de `finalizePaid`, depois de a venda já ter sido dada como paga.
+// É o mesmo laço de migração que os outros módulos deste projeto já usam.
+const PLATAFORMA_PADRAO = {
+  gateway: 'woovi', onboardingMode: 'subaccount',
+  feeInPercent: 0, feeOutPercent: 0, splitPixKey: '',
+  requireApproval: false, logs: []
+};
+
 function platformCfg() {
   const p = db.get().platform;
-  if (!p.pagamentos) {
-    p.pagamentos = { gateway: 'woovi', onboardingMode: 'subaccount', feeInPercent: 0, feeOutPercent: 0, splitPixKey: '', requireApproval: false, logs: [] };
-  }
+  if (!p.pagamentos || typeof p.pagamentos !== 'object') p.pagamentos = {};
   const ep = p.pagamentos;
+  for (const [k, v] of Object.entries(PLATAFORMA_PADRAO)) {
+    if (ep[k] === undefined) ep[k] = Array.isArray(v) ? [] : v;
+  }
   // onboardingMode: 'subaccount' (chave Pix, KYC via DICT) | 'kyc' (BaaS com KYC/KYB completo)
   if (!ep.onboardingMode) ep.onboardingMode = 'subaccount';
   // KYC MANUAL: enquanto desligado, ninguém precisa passar por análise e quem
@@ -259,6 +273,18 @@ function defaultProduct() {
     // repetir dentro da conta, senão dois produtos disputariam o mesmo
     // endereço e quem abrisse cairia no que o banco devolvesse primeiro.
     slug: '', linkOn: true,
+    // ASSINATURA. O produto passa a ser cobrado todo mês por Pix Automático:
+    // o comprador autoriza uma vez no banco dele e a Woovi cobra sozinha.
+    //
+    // Fica no PRODUTO e não no checkout porque é natureza do que se vende,
+    // não jeito de vender: o mesmo checkout pode ter um curso avulso e uma
+    // mentoria mensal, e quem decide é o item.
+    //
+    // Só MENSAL, e por enquanto sem escolha: é o que a rota de assinatura da
+    // Woovi aceita (`frequency: MONTHLY`). Um seletor de periodicidade que
+    // oferecesse semanal ou anual seria um campo que promete o que o gateway
+    // não entrega — e o comprador só descobre no extrato.
+    recorrente: false,
     active: true, createdAt: Date.now()
   };
 }
@@ -1460,7 +1486,18 @@ function publicProductView(slug) {
                installments: installmentOptions(prod.price) };
     })(),
     method: 'pix', paidCard: null,
-    checkout: checkoutBranding(acc, { checkoutId: prod.checkoutId, productId: prod.id })
+    checkout: checkoutBranding(acc, { checkoutId: prod.checkoutId, productId: prod.id }),
+    // ASSINATURA. A página precisa saber ANTES de desenhar o botão: "Pagar
+    // R$ 90" e "Assinar por R$ 90/mês" são compromissos diferentes, e
+    // descobrir a diferença depois de clicar é como se perde a confiança de
+    // um comprador. Vai junto o MOTIVO de não estar disponível, para a
+    // página poder dizer em vez de só sumir com a opção.
+    assinatura: (() => {
+      if (!prod.recorrente) return null;
+      const a = require('./assinaturas');
+      return { on: true, disponivel: a.contaPode(acc), motivo: a.porQueNao(acc),
+               valueCents: prod.price, ciclo: 'mensal' };
+    })()
   };
 }
 
@@ -1472,6 +1509,20 @@ async function cobrancaDoLink(slug, dados, broadcast) {
   if (!achado) { const e = new Error('Produto não encontrado'); e.status = 404; throw e; }
   const { acc, prod } = achado;
   if (prod.linkOn === false || prod.active === false) { const e = new Error('Este link não está mais ativo'); e.status = 404; throw e; }
+
+  // PRODUTO DE ASSINATURA SEGUE OUTRO CAMINHO. Uma cobrança avulsa aqui
+  // faria o comprador pagar UMA vez achando que assinou — e o vendedor
+  // achando que tem receita recorrente que não existe. Os dois só
+  // descobririam no mês seguinte, quando nada fosse cobrado.
+  if (prod.recorrente) {
+    const a = require('./assinaturas');
+    const reg = await a.criar(acc, {
+      productId: prod.id, checkoutId: prod.checkoutId,
+      pagador: { name: dados.name, email: dados.email, phone: dados.phone, document: dados.taxID },
+      contactName: dados.name, waId: String(dados.phone || '').replace(/\D/g, '') || null
+    }, broadcast);
+    return { assinatura: reg };
+  }
   const ch = await createCharge(acc, {
     valueCents: prod.price, comment: prod.name,
     origin: 'link', productId: prod.id, checkoutId: prod.checkoutId,
@@ -2315,7 +2366,14 @@ module.exports = {
   activeSubaccount,   // exportado para o teste do portão do KYC
   registerSubaccount, garantirPagamentos, setSubaccountStatus, syncSubaccount, applyAccountApproved,
   createCharge, cancelCharge, findCharge, chargeMessage, chargeButton, computeOutFee,
-  isPagamentosCharge, applyPaid, metrics, adminOverview, log, plog, fmtBRL,
+  isPagamentosCharge, applyPaid,
+  // finalizePaid é o caminho ÚNICO de confirmação de venda: funil, carteira,
+  // push, tracking e a mensagem no WhatsApp saem todos daqui. O ciclo de uma
+  // assinatura entra por ele (ver assinaturas.js) em vez de repetir a lista —
+  // um segundo caminho é como se descobre, meses depois, que a renovação não
+  // avança o funil.
+  finalizePaid,
+  metrics, adminOverview, log, plog, fmtBRL,
   apelidoLivre, productLink, produtoPorApelido, publicProductView, cobrancaDoLink,
   noteBaseUrl, payLink, publicChargeView, defaultCheckout, defaultProduct, defaultBlocks,
   identifyPayer, fmtCpfCnpj, findProduct, findCheckout, checkoutBranding,

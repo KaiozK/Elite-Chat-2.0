@@ -70,17 +70,41 @@ async function deleteCharge(correlationID) {
 
 // ---- Assinatura recorrente (Pix Automático quando habilitado na conta Woovi) ----
 // POST /api/v1/subscriptions → cobranças geradas automaticamente a cada ciclo
-async function createSubscription({ correlationID, value, customer, comment }) {
+// PARA QUEM É O DINHEIRO — os dois casos que passam por aqui:
+//
+//   • O KOONFY COBRANDO O CLIENTE (plano, recarga automática). O dinheiro é da
+//     plataforma inteiro: sem subconta, sem split.
+//   • O CLIENTE COBRANDO OS CLIENTES DELE (produto de assinatura no checkout).
+//     O dinheiro é dele e vai para a subconta dele; a taxa da plataforma sai
+//     por split — exatamente como já acontece na cobrança avulsa.
+//
+// São os mesmos dois campos que `createCharge` já usa, e é por isso que têm os
+// mesmos nomes aqui.
+//
+// SUPOSIÇÃO NÃO CONFIRMADA, e vale ler antes de ligar isto para clientes de
+// verdade: a documentação da Woovi descreve `subaccount`/`splits` na rota de
+// COBRANÇA. Que a rota de ASSINATURA aceite os mesmos campos é o esperado e é
+// o que este código faz — mas não foi verificado contra a API. Se a Woovi
+// ignorar os campos em silêncio, o dinheiro da recorrência cai na conta da
+// PLATAFORMA em vez da subconta do cliente, e nada levanta erro. Conferir uma
+// recorrência de ponta a ponta na sandbox e olhar ONDE o dinheiro caiu.
+// `assinaturas.js` guarda a `subPixKey` de cada assinatura para essa
+// conferência ser possível depois.
+async function createSubscription({ correlationID, value, customer, comment, subPixKey, splits, diaDoCiclo }) {
   const today = new Date().getDate();
   const body = {
     value,
     customer,
     correlationID,
     comment: comment || '',
-    dayGenerateCharge: Math.min(28, today), // dia do mês da cobrança (Woovi aceita 1..28)
+    // A Woovi só aceita 1..28, e com razão: fevereiro não tem 29 todo ano, e
+    // uma recorrência marcada no 31 ficaria sem data em metade dos meses.
+    dayGenerateCharge: Math.min(28, Math.max(1, Number(diaDoCiclo) || today)),
     frequency: 'MONTHLY',
     chargeType: 'DYNAMIC'
   };
+  if (subPixKey) body.subaccount = subPixKey;
+  if (splits && splits.length) body.splits = splits;
   const d = await call('POST', '/api/v1/subscriptions', body);
   return d.subscription || d;
 }
@@ -286,7 +310,22 @@ function webhookHandler(broadcast) {
         // Cobranças do PAGAMENTOS (correlationID "ep-...") são de subcontas dos
         // clientes — vão para o módulo próprio; as demais são do billing SaaS.
         const pagamentos = require('./pagamentos');
-        if (pagamentos.isPagamentosCharge(fresh.correlationID)) pagamentos.applyPaid(fresh, broadcast);
+        // O CICLO DE UMA ASSINATURA DE CLIENTE não é reconhecível pelo
+        // correlationID: quem o gerou foi a Woovi, com um id que o Koonfy
+        // nunca viu. Ele é casado pela ASSINATURA que o produziu, e por isso
+        // esta pergunta vem ANTES das outras duas — sem ela o ciclo cairia no
+        // ramo do billing SaaS, que procuraria uma conta pelo prefixo, não
+        // acharia, e registraria "unmatched". A venda mensal do cliente
+        // sumiria em silêncio, mês após mês.
+        //
+        // `fresh` vem do GET da cobrança e pode não trazer o vínculo com a
+        // assinatura; o corpo do webhook traz. Os dois são consultados.
+        const assinaturas = require('./assinaturas');
+        const comVinculo = assinaturas.correlacaoDaAssinatura(fresh)
+          ? fresh
+          : { ...fresh, subscription: charge.subscription, subscriptionCorrelationID: charge.subscriptionCorrelationID };
+        if (assinaturas.ehCicloDeAssinatura(comVinculo)) assinaturas.aoPagarCiclo(comVinculo, broadcast);
+        else if (pagamentos.isPagamentosCharge(fresh.correlationID)) pagamentos.applyPaid(fresh, broadcast);
         else applyPayment(fresh, broadcast);
       }
     } catch (e) {

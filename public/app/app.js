@@ -836,6 +836,7 @@ async function init() {
       // A loja no menu só depois de conectada, em Integrações.
       state.nsConectada = !!me.nsConectada;
       state.numerosAluguel = !!me.numerosAluguel;
+      state.pixAutomatico = !!me.pixAutomatico;
       state.allowedViews = me.allowedViews || null;
       // O painel da plataforma só abre para o admin. Um token de cliente
       // guardado nesta chave abriria um menu cujas telas respondem 403.
@@ -17330,6 +17331,18 @@ function epProdForm(id) {
       <label style="flex:2">Nome<input id="epp-name" maxlength="80" value="${esc(p.name)}" placeholder="Ex.: Mentoria Elite. Plano Mensal"></label>
       <label style="flex:1">Preço (R$)<input id="epp-price" inputmode="decimal" value="${p.price ? (p.price / 100).toFixed(2).replace('.', ',') : ''}" placeholder="97,00"></label>
     </div>
+    <!-- ASSINATURA. Fica logo abaixo do preço porque muda o que o preço
+         SIGNIFICA: R$ 97 uma vez e R$ 97 por mês são ofertas diferentes, e
+         ler o preço sem esta informação ao lado é ler pela metade.
+         Só aparece quando a plataforma tem Pix Automático de pé — marcar um
+         produto como mensal onde a recorrência não existe é criar um
+         produto que o checkout vai recusar na hora da venda. -->
+    ${state.pixAutomatico ? `<label class="chk" style="margin-top:10px">
+      <input type="checkbox" id="epp-recorrente" ${p.recorrente ? 'checked' : ''}>
+      Cobrar todo mês (assinatura por Pix Automático)</label>
+      <p class="muted" style="margin:4px 0 0 26px;font-size:12px">
+        O comprador autoriza uma vez no banco dele e a cobrança se repete sozinha.
+        Ele pode cancelar pelo banco a qualquer momento — e você, aqui.</p>` : ''}
     <label style="margin-top:9px;display:block">Descrição<textarea id="epp-desc" rows="2" maxlength="600" placeholder="O que o cliente recebe">${esc(p.description || '')}</textarea></label>
     ${cks.length ? `<label style="margin-top:9px;display:block">Checkout deste produto
       ${ecSelect('epp-ckt', cks.map(c => ({ value: c.id, label: c.name + (c.isDefault ? ' (padrão)' : '') })), p.checkoutId || (cks.find(c => c.isDefault) || cks[0]).id)}</label>` : ''}
@@ -17404,6 +17417,8 @@ async function epProdSave() {
     // O apelido do link não vem daqui: quem gera é o servidor. O endereço é
     // global para toda a plataforma, e um campo aberto vira corrida pelas
     // palavras boas — e pelas perigosas.
+    const rec = $('#epp-recorrente');
+    if (rec) body.recorrente = rec.checked;
     const linkon = $('#epp-linkon');
     if (linkon) body.linkOn = linkon.checked;
     await api('/pagamentos/products' + (id ? '/' + id : ''), { method: id ? 'PUT' : 'POST', body });
