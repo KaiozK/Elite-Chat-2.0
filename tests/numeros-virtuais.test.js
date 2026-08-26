@@ -255,6 +255,28 @@ const css = fs.readFileSync(R + 'public/app/style.css', 'utf8');
 ok(/\.toggle\.on\s*\{[^}]*background/.test(css), 'a folha pinta o fundo por .toggle.on');
 ok(/\.toggle\.on span\s*\{[^}]*transform/.test(css), 'e desliza o botão por .toggle.on span');
 
+console.log('\n=== 11. Comprar número tem lugar PRÓPRIO no menu ===');
+// Antes era o terceiro cartão dentro de Integrações, e não é isso que ele é:
+// comprar número, ler o SMS que chegou e cancelar é OPERAÇÃO, de todo dia, com
+// dinheiro saindo a cada compra. Coisa que se FAZ merece entrada no menu;
+// coisa que se CONFIGURA uma vez, não.
+const menuAdm = fs.readFileSync(R + 'public/adm/index.html', 'utf8');
+ok(menuAdm.includes('data-view="adm/numeros"'), 'o menu do painel tem o item');
+ok(menuAdm.includes('<span>Números virtuais</span>'), 'com o nome por extenso');
+
+const tela = fs.readFileSync(R + 'public/app/app.js', 'utf8');
+ok(/adm\/numeros[^}]*aba: 'adm-num'/.test(tela), 'a rota existe e aponta para a aba própria');
+ok(tela.includes('data-pane="adm-num"'), 'a aba tem painel próprio');
+ok(tela.includes("if (activeTab === 'adm-num') admNumLoad();"),
+   'e carrega ao entrar direto pela rota, sem depender de clique');
+
+// E saiu de Integrações: dois lugares para a mesma tela é o começo de duas
+// telas diferentes.
+const intLoad = tela.slice(tela.indexOf('function admIntLoad'), tela.indexOf('function admIntLoad') + 160);
+ok(!/admNumLoad/.test(intLoad), 'Integrações não carrega mais os números junto');
+const paneInt = tela.slice(tela.indexOf('data-pane="adm-int"'), tela.indexOf('data-pane="adm-int"') + 320);
+ok(!/adm-num-box/.test(paneInt), 'e a caixa não vive mais dentro do painel de Integrações');
+
   srv.close();
   global.fetch = fetchReal;
   await encerrar(srv, falhas);

@@ -1809,6 +1809,7 @@ const ADM_ABAS = {
   'adm/afiliados':      { aba: 'adm-aff',  titulo: 'Afiliados',           sub: 'Comissões e indicações' },
   'adm/gateways':       { aba: 'adm-pay',  titulo: 'Gateways',            sub: 'Provedores, taxas e regras de cobrança' },
   'adm/notificacoes':   { aba: 'adm-notif',titulo: 'Notificações',        sub: 'Testar os avisos que chegam no celular' },
+  'adm/numeros':        { aba: 'adm-num', titulo: 'Números virtuais',    sub: 'Comprar números que recebem SMS e ler os códigos' },
   'adm/kyc':            { aba: 'adm-kyc', titulo: 'KYC',                 sub: 'Verificação de identidade das contas do Koonpay' },
   'adm/saques':         { aba: 'adm-wd',   titulo: 'Saques',              sub: 'Pedidos de saque dos clientes' },
   'adm/pagamentos':     { aba: 'adm-ep',   titulo: 'Koonpay',             sub: 'Subcontas, cobranças e taxas recebidas' },
@@ -9053,6 +9054,7 @@ async function renderAdmin() {
            cobranças dos clientes, é a adm-ep, e as duas ficaram com o mesmo
            nome quando o Pagamentos virou Pagamentos. -->
       <button data-tab="adm-pay" onclick="showSettingsTab('adm-pay');admFeesPaint()">Gateways</button>
+      <button data-tab="adm-num" onclick="showSettingsTab('adm-num');admNumLoad()">Números virtuais</button>
       <button data-tab="adm-kyc" onclick="showSettingsTab('adm-kyc');admKycLoad()">KYC</button>
       <button data-tab="adm-wd" onclick="showSettingsTab('adm-wd')">Saques</button>
       <button data-tab="adm-ep" onclick="showSettingsTab('adm-ep');admEpPaint()">Koonpay</button>
@@ -9744,7 +9746,15 @@ async function paintAdmin() {
       <div class="tabpane ${activeTab === 'adm-int' ? 'show' : ''}" data-pane="adm-int">
         <div id="adm-int-box">${skel(4)}</div>
         <div id="adm-sms-box" style="margin-top:16px">${skel(3)}</div>
-        <div id="adm-num-box" style="margin-top:16px">${skel(3)}</div>
+      </div>
+
+      <!-- Os NÚMEROS VIRTUAIS saíram de dentro de Integrações. Lá eram o
+           terceiro cartão de uma aba de configuração, e não é isso que eles
+           são: comprar número, ler o SMS que chegou e cancelar é OPERAÇÃO, de
+           todo dia, com dinheiro saindo a cada compra. Coisa que se faz merece
+           entrada no menu; coisa que se configura uma vez, não. -->
+      <div class="tabpane ${activeTab === 'adm-num' ? 'show' : ''}" data-pane="adm-num">
+        <div id="adm-num-box">${skel(4)}</div>
       </div>
 
       <div class="tabpane ${activeTab === 'adm-mkt' ? 'show' : ''}" data-pane="adm-mkt">
@@ -9773,6 +9783,7 @@ async function paintAdmin() {
     if (activeTab === 'adm-pay') admFeesPaint();
     if (activeTab === 'adm-int') admIntLoad();
     if (activeTab === 'adm-kyc') admKycLoad();
+    if (activeTab === 'adm-num') admNumLoad();
     if (activeTab === 'adm-mkt') admMktLoad();
     if (activeTab === 'adm-sec') admSecLoad();
     if (activeTab === 'adm-tema') admTemaLoad();
@@ -10427,7 +10438,6 @@ async function admKycDecidir(id, aprovar) {
 function admIntLoad() {
   admNsLoad();
   admSmsLoad();
-  admNumLoad();
 }
 
 // Um interruptor liga o SMS para os clientes; o token e o remetente são da
