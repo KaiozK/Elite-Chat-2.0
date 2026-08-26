@@ -960,9 +960,18 @@ details.adv[open] summary::after { content: '–'; }
 .flow-actions .btn.danger { flex: 0 0 auto; }
 
 /* toggle switch */
+/* O INTERRUPTOR TEM TAMANHO FIXO, e precisa dizer isso por escrito.
+   `.row > * { flex: 1; min-width: 140px }` alcança TODO filho direto de uma
+   linha, e só `.btn` e `.no-grow` estavam de fora. Um `flex-shrink: 0` sozinho
+   não segura: ele impede encolher, e o que estica é o `flex-grow`. Dentro de
+   uma `.row` o interruptor virava uma barra verde de ponta a ponta, com a
+   bolinha parada na esquerda — parecia um medidor, não uma chave.
+   `flex: none` cobre grow e shrink de uma vez, e o `min-width: 0` desfaz os
+   140px herdados. */
 .toggle {
   width: 40px; height: 22px; border-radius: 99px; border: none; background: #cdd8ce; cursor: pointer;
-  position: relative; padding: 0; transition: background .2s; flex-shrink: 0;
+  position: relative; padding: 0; transition: background .2s;
+  flex: none; min-width: 0;
 }
 .toggle span { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--card); box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .2s; }
 .toggle.on { background: var(--btn-verde); }

@@ -661,6 +661,10 @@ module.exports = function (broadcast, clients) {
       // isso ela abre numa tela que só sabe falar com uma Nuvemshop, e o
       // cartão de erro parece defeito do produto.
       nsConectada: !!(req.acc.nuvemshop && req.acc.nuvemshop.accessToken),
+      // A COMPRA DE NÚMEROS NO /app É SÓ DA CONTA DO ADMINISTRADOR — o número
+      // sai do saldo da plataforma, e não do cliente. A tela precisa saber
+      // disso para não pendurar no menu de todo mundo um item que dá 404.
+      contaDoAdmin: !!req.acc.isAdmin,
       wa: waPublic(req.wctx),
       // toggles do plano: o menu esconde o que o plano nao inclui (o backend
       // tambem recusa com 402, o front e so conforto)
@@ -5407,6 +5411,69 @@ module.exports = function (broadcast, clients) {
   // CANCELAMENTO. O reembolso é condicional e quem decide é o provedor: a
   // resposta diz o que aconteceu, e o painel repete para quem clicou.
   router.post('/admin/numeros/:id/cancelar', auth, adminOnly, h(async (req, res) => {
+    res.json({ resultado: await numeros.cancelar(req.params.id) });
+  }));
+
+
+  // ==================== NÚMEROS VIRTUAIS NO APP DO CLIENTE ====================
+  //
+  // As mesmas operações de /admin/numeros, alcançáveis de dentro do /app — para
+  // não ser preciso trocar de painel só para comprar um número.
+  //
+  // A GUARDA AQUI É OUTRA, e vale entender por quê. As rotas /admin/* exigem
+  // `adminOnly`, que pede uma sessão nascida em /adm — é o que separa os dois
+  // mundos. Uma sessão do /app nunca tem esse escopo, nem quando quem entrou
+  // foi o administrador: entrando pela porta do cliente, ele é tratado como
+  // cliente, e isso é de propósito.
+  //
+  // Então estas rotas não olham o ESCOPO, e sim a CONTA: só a conta do próprio
+  // administrador da plataforma passa. É uma exceção deliberada e estreita —
+  // comprar número gasta o saldo da PLATAFORMA, então nenhuma conta de cliente
+  // pode chegar aqui, e a lista de operações é a mesma, sem nada a mais.
+  //
+  // O que isso custa, dito por escrito: uma sessão do /app do administrador
+  // passa a poder gastar saldo da plataforma. É menos poder do que administrar
+  // (não muda configuração, não vê outras contas), mas é mais do que zero.
+  const soContaDoAdmin = (req, res, next) => {
+    if (!req.acc || !req.acc.isAdmin) {
+      return res.status(404).json({ error: 'Recurso indisponível para esta conta' });
+    }
+    next();
+  };
+
+  router.get('/numeros', auth, soContaDoAdmin, (req, res) => {
+    res.json({ numeros: numeros.adminView() });
+  });
+
+  router.put('/numeros', auth, soContaDoAdmin, (req, res) => {
+    const b = req.body || {};
+    const c = numeros.cfg();
+    if (typeof b.enabled === 'boolean') c.enabled = b.enabled;
+    if (typeof b.token === 'string' && b.token.trim()) c.token = b.token.trim();
+    if (b.token === null) c.token = '';
+    if (typeof b.base === 'string') c.base = b.base.trim();
+    db.save();
+    res.json({ numeros: numeros.adminView() });
+  });
+
+  router.get('/numeros/disponiveis', auth, soContaDoAdmin, h(async (req, res) => {
+    res.json(await numeros.disponiveis({ ddd: req.query.ddd, limite: req.query.limit }));
+  }));
+
+  router.post('/numeros/comprar', auth, soContaDoAdmin, h(async (req, res) => {
+    const b = req.body || {};
+    res.json({ compra: await numeros.comprar({ modo: b.modo, ddd: b.ddd, numeroId: b.numeroId }) });
+  }));
+
+  router.get('/numeros/meus', auth, soContaDoAdmin, h(async (req, res) => {
+    res.json({ numeros: await numeros.meus({ status: req.query.status }) });
+  }));
+
+  router.get('/numeros/:id/sms', auth, soContaDoAdmin, h(async (req, res) => {
+    res.json({ mensagens: await numeros.mensagens(req.params.id) });
+  }));
+
+  router.post('/numeros/:id/cancelar', auth, soContaDoAdmin, h(async (req, res) => {
     res.json({ resultado: await numeros.cancelar(req.params.id) });
   }));
 

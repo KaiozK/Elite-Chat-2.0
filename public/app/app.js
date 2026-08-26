@@ -835,6 +835,7 @@ async function init() {
       state.smsPlataforma = me.smsPlataforma !== false;
       // A loja no menu só depois de conectada, em Integrações.
       state.nsConectada = !!me.nsConectada;
+      state.contaDoAdmin = !!me.contaDoAdmin;
       state.allowedViews = me.allowedViews || null;
       // O painel da plataforma só abre para o admin. Um token de cliente
       // guardado nesta chave abriria um menu cujas telas respondem 403.
@@ -1850,6 +1851,7 @@ const views = {
   'campaigns/report': renderCampaignReport, 'campaigns/mapa': renderMapaLeads,
   'pagamentos/checkout': renderCheckoutBuilder,
   checkouts: renderCheckoutList,
+  numeros: renderNumeros,
   nuvemshop: renderNuvemshop,
   // ---- painel da plataforma (/adm/) ----
   'adm/visao': renderAdmVisao,
@@ -1967,6 +1969,10 @@ function applyNavPermissions() {
     // Integrações; antes disso a aba abre numa tela que só sabe falar com uma
     // Nuvemshop, e o erro parece defeito do produto.
     if (v === 'nuvemshop' && !state.nsConectada) { n.style.display = 'none'; return; }
+    // NÚMEROS VIRTUAIS é da conta do administrador da plataforma, e de mais
+    // ninguém: comprar um gasta o saldo da PLATAFORMA. Para as outras contas
+    // as rotas respondem 404, então o item sairia do menu direto para um erro.
+    if (v === 'numeros' && !state.contaDoAdmin) { n.style.display = 'none'; return; }
     const mod = moduleOfView(v);
     n.style.display = (mod === null || can(mod, 'view')) ? '' : 'none';
   });
@@ -10559,11 +10565,30 @@ async function admSmsSave(patch) {
 // preço ANTES de acontecer — e o cancelamento avisa que o reembolso pode não
 // vir, porque quem decide isso é o provedor, não nós.
 // ===========================================================================
+// A MESMA TELA SERVE OS DOIS PAINÉIS, e só o caminho da API muda: no painel da
+// plataforma ela fala com /admin/numeros (sessão de escopo `adm`); no app do
+// cliente, com /numeros, que exige que a conta seja a do administrador.
+// Duplicar a tela para trocar um prefixo é como as duas versões começam a
+// divergir na primeira correção feita em só uma delas.
+const NUM_API = ADM ? '/admin/numeros' : '/numeros';
+
+// A TELA NO /app É A DO /adm DENTRO DE OUTRA MOLDURA. Todo o desenho mora em
+// admNumPaint(), que pinta dentro de #adm-num-box; aqui só se monta a página
+// e a caixa com esse id. Reescrever a tela para trocar o cabeçalho seria
+// duplicar oitocentas linhas para ganhar um título.
+function renderNumeros() {
+  $('#view').innerHTML = '<div class="page">' +
+    '<div class="page-head"><h1>Números virtuais</h1>' +
+    '<p class="muted">Comprar números que recebem SMS e ler os códigos que chegam. ' +
+    'A compra sai do saldo da plataforma.</p></div>' +
+    '<div id="adm-num-box">' + skel(2) + '</div></div>';
+  admNumLoad();
+}
 let admNum = null, admNumLista = [], admNumDisp = null;
 
 async function admNumLoad() {
   const box = $('#adm-num-box'); if (!box) return;
-  try { admNum = (await api('/admin/numeros')).numeros; }
+  try { admNum = (await api(NUM_API)).numeros; }
   catch (e) { box.innerHTML = '<div class="card err">' + esc(e.message) + '</div>'; return; }
   admNumPaint();
   if (admNum.enabled && admNum.temToken) admNumMeus();
@@ -10637,7 +10662,7 @@ function admNumLogTexto(l) {
 
 async function admNumSave(patch) {
   try {
-    admNum = (await api('/admin/numeros', { method: 'PUT', body: patch })).numeros;
+    admNum = (await api(NUM_API, { method: 'PUT', body: patch })).numeros;
     toast('Números virtuais atualizados');
     admNumPaint();
     if (admNum.enabled && admNum.temToken) admNumMeus();
@@ -10657,7 +10682,7 @@ async function admNumBuscar() {
   const ddd = ($('#num-ddd').value || '').replace(/\D/g, '');
   box.innerHTML = skel(2);
   try {
-    admNumDisp = await api('/admin/numeros/disponiveis?limit=60' + (ddd ? '&ddd=' + ddd : ''));
+    admNumDisp = await api(NUM_API + '/disponiveis?limit=60' + (ddd ? '&ddd=' + ddd : ''));
   } catch (e) { box.innerHTML = '<div class="card err">' + esc(e.message) + '</div>'; return; }
   const d = admNumDisp;
   if (!d.numeros.length) {
@@ -10694,7 +10719,7 @@ async function admNumComprar(numeroId) {
   try {
     const body = {};
     if (numeroId) body.numeroId = numeroId; else if (ddd) body.ddd = ddd;
-    const r = await api('/admin/numeros/comprar', { method: 'POST', body });
+    const r = await api(NUM_API + '/comprar', { method: 'POST', body });
     toast('Número ' + r.compra.numero + ' comprado');
     admNumLoad();
   } catch (e) { toast(e.message, 'error'); }
@@ -10704,7 +10729,7 @@ async function admNumComprar(numeroId) {
 async function admNumMeus() {
   const box = $('#num-meus'); if (!box) return;
   box.innerHTML = skel(2);
-  try { admNumLista = (await api('/admin/numeros/meus?status=active,reserved')).numeros; }
+  try { admNumLista = (await api(NUM_API + '/meus?status=active,reserved')).numeros; }
   catch (e) { box.innerHTML = '<div class="card err">' + esc(e.message) + '</div>'; return; }
   if (!admNumLista.length) {
     box.innerHTML = '<p class="muted" style="font-size:12.5px">Nenhum número ativo. Compre um acima.</p>';
@@ -10725,7 +10750,7 @@ async function admNumVerSms(rentalId) {
   const box = $('#num-sms'); if (!box) return;
   box.innerHTML = skel(2);
   let msgs;
-  try { msgs = (await api('/admin/numeros/' + encodeURIComponent(rentalId) + '/sms')).mensagens; }
+  try { msgs = (await api(NUM_API + '/' + encodeURIComponent(rentalId) + '/sms')).mensagens; }
   catch (e) { box.innerHTML = '<div class="card err">' + esc(e.message) + '</div>'; return; }
   if (!msgs.length) {
     box.innerHTML = '<p class="muted" style="font-size:12.5px">Nenhum SMS recebido neste número ainda.</p>';
@@ -10747,7 +10772,7 @@ async function admNumCancelar(rentalId) {
     'cancelamento acontece do mesmo jeito, mas sem reembolso. Depois disso o número sai da conta.';
   if (!confirm(aviso)) return;
   try {
-    const r = (await api('/admin/numeros/' + encodeURIComponent(rentalId) + '/cancelar', { method: 'POST' })).resultado;
+    const r = (await api(NUM_API + '/' + encodeURIComponent(rentalId) + '/cancelar', { method: 'POST' })).resultado;
     toast(r.reembolsado
       ? 'Cancelado e reembolsado: ' + fmtBRL(r.reembolsoCents)
       : 'Cancelado sem reembolso — o número já tinha recebido ' + r.smsComCodigo + ' código(s)');
