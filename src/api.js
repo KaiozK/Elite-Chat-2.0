@@ -5841,18 +5841,32 @@ module.exports = function (broadcast, clients) {
   });
 
   // Envia a cobrança na conversa do WhatsApp e registra no histórico do chat.
-  // Sem template aprovado a cobrança vai como BOTÃO de pagamento → precisa
-  // respeitar a janela de 24h da Meta.
-  // Fora dela (ou atendimento finalizado), o envio é bloqueado e o motivo é informado.
+  //
+  // DE ONDE A COBRANÇA VEIO decide COMO ela sai, e as duas coisas são
+  // diferentes de verdade:
+  //
+   //   KOONPAY (origin manual) — é um AVISO. Sai pelo Modelo de Cobrança, que é
+  //     um template aprovado pela Meta e por isso vale a qualquer hora,
+  //     inclusive com a janela de 24h fechada.
+  //
+  //   CHAT (origin chat) — é CONVERSA. O atendente está falando com a pessoa e
+  //     escreveu aquela mensagem ali, na hora. Texto livre não atravessa a
+  //     janela: dentro dela vai, fora dela não vai, e ponto.
+  //
+  // Antes o template vencia sempre, e isso quebrava os dois lados: a mensagem
+  // que o atendente digitou no chat era DESCARTADA e saía o template no lugar
+  // — outro texto, sem ele saber —, e uma cobrança de conversa escapava da
+  // janela por uma porta que não era dela.
   async function sendChargeMessage(acc, ch, waId, stamp) {
     const to = store.normalizeWaId(waId);
     const ep = acc.pagamentos || {};
+    const doChat = ch.origin === 'chat';
 
     // 1) Modelo de COBRANÇA selecionado e APROVADO → envia como template Meta
     //    (funciona inclusive fora da janela de 24h).
     //    Variáveis: {{1}} nome · {{2}} valor · {{3}} link · {{4}} Pix copia e cola
     //               {{5}} descrição · {{6}} vencimento
-    const tpl = pagamentos.pickTemplate(acc, 'cobranca');
+    const tpl = doChat ? null : pagamentos.pickTemplate(acc, 'cobranca');
     if (tpl) {
       const nVars = tpl.vars.length;
       const vals = pagamentos.tplValues(acc, ch, 'cobranca');
@@ -5868,7 +5882,12 @@ module.exports = function (broadcast, clients) {
     const contact = store.findContact(acc, to);
     const check = contact ? session.canSend(contact, 'text') : { allowed: true };
     if (!check.allowed) {
-      const e = new Error(check.error || 'A janela de 24h expirou, marque um Template de Cobrança em Modelos para enviar a qualquer momento.');
+      // A saída existe, e a mensagem precisa apontá-la: a mesma cobrança, feita
+      // pelo Koonpay, sai pelo template e não depende da janela.
+      const saida = doChat
+        ? 'A janela de 24h fechou. Uma cobrança escrita no chat é texto livre e não atravessa a janela — gere a cobrança pelo Koonpay, que sai pelo Modelo de Cobrança e chega a qualquer hora.'
+        : 'A janela de 24h expirou, marque um Modelo de Cobrança em Modelos para enviar a qualquer momento.';
+      const e = new Error(doChat ? saida : (check.error || saida));
       e.status = 409; e.code = check.code || 'window_closed';
       pagamentos.log(acc, { type: 'send_blocked', chargeId: ch.id, amount: ch.value, detail: '24h: ' + e.message });
       db.save();
