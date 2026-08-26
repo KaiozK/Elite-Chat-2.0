@@ -835,7 +835,7 @@ async function init() {
       state.smsPlataforma = me.smsPlataforma !== false;
       // A loja no menu só depois de conectada, em Integrações.
       state.nsConectada = !!me.nsConectada;
-      state.contaDoAdmin = !!me.contaDoAdmin;
+      state.numerosAluguel = !!me.numerosAluguel;
       state.allowedViews = me.allowedViews || null;
       // O painel da plataforma só abre para o admin. Um token de cliente
       // guardado nesta chave abriria um menu cujas telas respondem 403.
@@ -1810,7 +1810,6 @@ const ADM_ABAS = {
   'adm/afiliados':      { aba: 'adm-aff',  titulo: 'Afiliados',           sub: 'Comissões e indicações' },
   'adm/gateways':       { aba: 'adm-pay',  titulo: 'Gateways',            sub: 'Provedores, taxas e regras de cobrança' },
   'adm/notificacoes':   { aba: 'adm-notif',titulo: 'Notificações',        sub: 'Testar os avisos que chegam no celular' },
-  'adm/numeros':        { aba: 'adm-num', titulo: 'Números virtuais',    sub: 'Comprar números que recebem SMS e ler os códigos' },
   'adm/kyc':            { aba: 'adm-kyc', titulo: 'KYC',                 sub: 'Verificação de identidade das contas do Koonpay' },
   'adm/saques':         { aba: 'adm-wd',   titulo: 'Saques',              sub: 'Pedidos de saque dos clientes' },
   'adm/pagamentos':     { aba: 'adm-ep',   titulo: 'Koonpay',             sub: 'Subcontas, cobranças e taxas recebidas' },
@@ -1969,10 +1968,10 @@ function applyNavPermissions() {
     // Integrações; antes disso a aba abre numa tela que só sabe falar com uma
     // Nuvemshop, e o erro parece defeito do produto.
     if (v === 'nuvemshop' && !state.nsConectada) { n.style.display = 'none'; return; }
-    // NÚMEROS VIRTUAIS é da conta do administrador da plataforma, e de mais
-    // ninguém: comprar um gasta o saldo da PLATAFORMA. Para as outras contas
-    // as rotas respondem 404, então o item sairia do menu direto para um erro.
-    if (v === 'numeros' && !state.contaDoAdmin) { n.style.display = 'none'; return; }
+    // NÚMEROS VIRTUAIS só entra no menu quando a plataforma REVENDE de fato —
+    // provedor configurado e preço definido no Admin. Sem isso a tela abriria
+    // dizendo que o serviço não existe, que é pior do que não ter o item.
+    if (v === 'numeros' && !state.numerosAluguel) { n.style.display = 'none'; return; }
     const mod = moduleOfView(v);
     n.style.display = (mod === null || can(mod, 'view')) ? '' : 'none';
   });
@@ -9060,7 +9059,6 @@ async function renderAdmin() {
            cobranças dos clientes, é a adm-ep, e as duas ficaram com o mesmo
            nome quando o Pagamentos virou Pagamentos. -->
       <button data-tab="adm-pay" onclick="showSettingsTab('adm-pay');admFeesPaint()">Gateways</button>
-      <button data-tab="adm-num" onclick="showSettingsTab('adm-num');admNumLoad()">Números virtuais</button>
       <button data-tab="adm-kyc" onclick="showSettingsTab('adm-kyc');admKycLoad()">KYC</button>
       <button data-tab="adm-wd" onclick="showSettingsTab('adm-wd')">Saques</button>
       <button data-tab="adm-ep" onclick="showSettingsTab('adm-ep');admEpPaint()">Koonpay</button>
@@ -9752,15 +9750,13 @@ async function paintAdmin() {
       <div class="tabpane ${activeTab === 'adm-int' ? 'show' : ''}" data-pane="adm-int">
         <div id="adm-int-box">${skel(4)}</div>
         <div id="adm-sms-box" style="margin-top:16px">${skel(3)}</div>
-      </div>
-
-      <!-- Os NÚMEROS VIRTUAIS saíram de dentro de Integrações. Lá eram o
-           terceiro cartão de uma aba de configuração, e não é isso que eles
-           são: comprar número, ler o SMS que chegou e cancelar é OPERAÇÃO, de
-           todo dia, com dinheiro saindo a cada compra. Coisa que se faz merece
-           entrada no menu; coisa que se configura uma vez, não. -->
-      <div class="tabpane ${activeTab === 'adm-num' ? 'show' : ''}" data-pane="adm-num">
-        <div id="adm-num-box">${skel(4)}</div>
+        <!-- Os NÚMEROS VIRTUAIS são um SERVIÇO DA PLATAFORMA, como o SMS: o
+             que se faz aqui é configurar o provedor e a tabela de preço do
+             aluguel. Quem aluga, acompanha o vencimento e cancela é o CLIENTE,
+             na aba dele no /app. Dei aba própria a isto e estava errado: aba
+             própria é para o que se OPERA todo dia, e aqui não se opera — se
+             configura uma vez e se olha de vez em quando. -->
+        <div id="adm-num-box" style="margin-top:16px">${skel(3)}</div>
       </div>
 
       <div class="tabpane ${activeTab === 'adm-mkt' ? 'show' : ''}" data-pane="adm-mkt">
@@ -9789,7 +9785,6 @@ async function paintAdmin() {
     if (activeTab === 'adm-pay') admFeesPaint();
     if (activeTab === 'adm-int') admIntLoad();
     if (activeTab === 'adm-kyc') admKycLoad();
-    if (activeTab === 'adm-num') admNumLoad();
     if (activeTab === 'adm-mkt') admMktLoad();
     if (activeTab === 'adm-sec') admSecLoad();
     if (activeTab === 'adm-tema') admTemaLoad();
@@ -10443,6 +10438,7 @@ async function admKycDecidir(id, aprovar) {
 
 function admIntLoad() {
   admNsLoad();
+  admNumLoad();
   admSmsLoad();
 }
 
@@ -10542,7 +10538,125 @@ function admSmsPaint() {
         <span class="tx-lbl"><b>${esc(l.type)}</b>
           <em style="display:block;font-style:normal;color:var(--muted);font-size:11.5px">${esc(l.error || l.etapa || ('créditos: ' + (l.creditos ?? '')))}</em></span>
         <span class="muted" style="font-size:11px">${timeAgo(l.ts)}</span></div>`).join('')}</div>` : ''}
+  </div>
   </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// A REVENDA, do lado do admin
+//
+// O cartão de cima é o PROVEDOR (token, host) — configuração de encanamento.
+// Este é o NEGÓCIO: quanto se cobra do cliente, quanto isso está rendendo, e
+// quais números vencem logo. São coisas diferentes e por isso são dois cartões:
+// mexer no preço não é da mesma natureza que trocar um token.
+// ---------------------------------------------------------------------------
+let admNumRev = null;
+
+async function admNumRevendaLoad() {
+  const box = $('#num-revenda'); if (!box) return;
+  box.innerHTML = skel(2);
+  try { admNumRev = await api('/admin/numeros/alugueis'); }
+  catch (e) { box.innerHTML = '<div class="card err">' + esc(e.message) + '</div>'; return; }
+  admNumRevendaPaint();
+}
+
+function admNumRevendaPaint() {
+  const box = $('#num-revenda'); if (!box || !admNumRev) return;
+  const r = admNumRev;
+  // Os que vencem logo E não têm saldo: é esta lista que vira cancelamento
+  // automático se ninguém fizer nada, então ela vem antes de tudo.
+  const risco = r.alugueis.filter(a => a.risco);
+
+  box.innerHTML = `
+  <div class="card">
+    <h2 style="margin:0 0 4px">${ico('pix')} Aluguel de números · preço e vencimentos</h2>
+    <p class="muted" style="font-size:12.5px;margin:0 0 12px">
+      A plataforma compra na Integra X e aluga para o cliente. O preço abaixo é o que
+      o cliente paga por ciclo, debitado da carteira dele.</p>
+
+    <div class="row">
+      <label>Preço do aluguel <em class="lim-extra">por ciclo, cobrado do cliente</em>
+        <input id="nr-preco" inputmode="numeric" value="${(r.preco / 100).toFixed(2)}"></label>
+      <label>Ciclo <em class="lim-extra">dias</em>
+        <input id="nr-ciclo" inputmode="numeric" value="${r.cicloDias}"></label>
+    </div>
+    <div class="row" style="margin-top:9px">
+      <label>Cancelar sem saldo <em class="lim-extra">dias antes de vencer</em>
+        <input id="nr-prazo" inputmode="numeric" value="${r.prazoSaldoDias}"></label>
+      <label>Avisar a partir de <em class="lim-extra">dias antes de vencer</em>
+        <input id="nr-avisar" inputmode="numeric" value="${r.avisarDias}"></label>
+    </div>
+    <p class="muted" style="font-size:11.5px;margin:8px 0 0">
+      Preço zero desliga o aluguel: a aba some do app dos clientes. O preço vale para
+      aluguéis NOVOS — quem já alugou fica no valor combinado até o fim do ciclo.</p>
+    <div class="row" style="margin-top:10px">
+      <button class="btn primary no-grow" onclick="admNumRevendaSalvar()">Salvar preços</button>
+      <button class="btn no-grow" onclick="admNumVarrer()">Rodar a varredura agora</button>
+    </div>
+
+    <div class="fee-sep"></div>
+    <div class="metric-hero">
+      ${admCartao('phone', fmtN(r.ativos), 'Números alugados agora', true)}
+      ${admCartao('pix', r.receitaFmt, 'Receita por ciclo')}
+      ${admCartao('trend', r.margemFmt, 'Margem por ciclo')}
+      ${admCartao('alert', fmtN(r.emRisco), 'Vencendo sem saldo')}
+    </div>
+
+    ${risco.length ? `<div class="card warn-card" style="margin-top:12px">
+      ${ico('alert', 14)} <b>${fmtN(risco.length)} número(s) vencem em breve e a carteira não cobre a renovação.</b>
+      <div class="muted" style="font-size:12px;margin-top:6px">
+        Sem saldo a ${r.prazoSaldoDias} dias do vencimento, o número é cancelado na Integra X e aqui.</div>
+      <div class="tx-list" style="margin-top:8px">
+        ${risco.slice(0, 8).map(a => `<div class="tx">
+          <span class="tx-lbl"><b>${esc(a.numero)}</b>
+            <em style="display:block;font-style:normal;color:var(--muted);font-size:11.5px">${esc(a.conta)} · saldo ${fmtBRL(a.saldo)} de ${fmtBRL(a.precoCents)}</em></span>
+          <span class="pill ${a.dias <= r.prazoSaldoDias ? 'err' : 'warn'}">${a.dias <= 0 ? 'vencido' : a.dias + 'd'}</span></div>`).join('')}
+      </div></div>` : ''}
+
+    ${r.alugueis.length ? `<div class="fee-sep"></div>
+      <h2 style="font-size:14px">${ico('list')} Todos os aluguéis</h2>
+      <div class="tab-mob-wrap" style="overflow-x:auto"><table class="tab-mob"><thead><tr>
+        <th>Número</th><th>Conta</th><th>Vence</th><th style="text-align:right">Preço</th>
+        <th style="text-align:right">Custo</th><th style="text-align:right">Margem</th><th>Status</th>
+      </tr></thead><tbody>
+      ${r.alugueis.map(a => `<tr>
+        <td><b>${esc(a.numero)}</b></td>
+        <td data-r="Conta">${esc(a.conta)}<div class="muted" style="font-size:11.5px">${esc(a.email || '')}</div></td>
+        <td data-r="Vence">${a.venceEm ? fmtDataCurta(a.venceEm) : '—'}${a.dias !== null && a.status === 'ativo' ? ` <span class="muted" style="font-size:11px">(${a.dias}d)</span>` : ''}</td>
+        <td data-r="Preço" style="text-align:right">${fmtBRL(a.precoCents)}</td>
+        <td data-r="Custo" style="text-align:right">${fmtBRL(a.custoCents)}</td>
+        <td data-r="Margem" style="text-align:right;color:${a.margemCents < 0 ? 'var(--err)' : 'inherit'}">${fmtBRL(a.margemCents)}</td>
+        <td data-r="Status">${a.status === 'ativo' ? '<span class="pill done">ativo</span>' : a.status === 'cancelando' ? '<span class="pill warn">cancelando</span>' : '<span class="muted">' + esc(a.status) + '</span>'}</td>
+      </tr>`).join('')}</tbody></table></div>` : '<p class="muted" style="font-size:12.5px;margin-top:12px">Nenhum número alugado ainda.</p>'}
+  </div>`;
+}
+
+// O valor é digitado em reais e guardado em centavos. Ler o campo como número
+// direto transformaria "19,90" em 19 centavos.
+function admNumRevendaSalvar() {
+  const reais = v => Math.round(parseFloat(String(v).replace(/\./g, '').replace(',', '.')) * 100) || 0;
+  admNumRevendaSalvarPatch({
+    precoCents: reais($('#nr-preco').value),
+    cicloDias: Number($('#nr-ciclo').value) || 30,
+    prazoSaldoDias: Number($('#nr-prazo').value),
+    avisarDias: Number($('#nr-avisar').value)
+  });
+}
+
+async function admNumRevendaSalvarPatch(patch) {
+  try {
+    admNumRev = await api('/admin/numeros/precos', { method: 'PUT', body: patch });
+    toast('Preços do aluguel salvos');
+    admNumRevendaPaint();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function admNumVarrer() {
+  try {
+    const { resumo } = await api('/admin/numeros/varrer', { method: 'POST' });
+    toast(`Varredura: ${resumo.cancelados} cancelado(s), ${resumo.renovados} renovado(s), ${resumo.perto.length} perto de vencer`);
+    admNumRevendaLoad();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function admSmsSave(patch) {
@@ -10565,24 +10679,194 @@ async function admSmsSave(patch) {
 // preço ANTES de acontecer — e o cancelamento avisa que o reembolso pode não
 // vir, porque quem decide isso é o provedor, não nós.
 // ===========================================================================
-// A MESMA TELA SERVE OS DOIS PAINÉIS, e só o caminho da API muda: no painel da
-// plataforma ela fala com /admin/numeros (sessão de escopo `adm`); no app do
-// cliente, com /numeros, que exige que a conta seja a do administrador.
-// Duplicar a tela para trocar um prefixo é como as duas versões começam a
-// divergir na primeira correção feita em só uma delas.
+// O PAINEL usa /admin/numeros e configura o PROVEDOR. O app do cliente usa
+// /numeros e aluga — são duas telas de verdade diferentes, e não a mesma com
+// outro cabeçalho. Tentei unificar as duas e estava errado: o cliente não tem
+// token para digitar, não vê custo, e o que ele precisa (quando vence, quanto
+// falta na carteira) o painel não mostra.
 const NUM_API = ADM ? '/admin/numeros' : '/numeros';
 
-// A TELA NO /app É A DO /adm DENTRO DE OUTRA MOLDURA. Todo o desenho mora em
-// admNumPaint(), que pinta dentro de #adm-num-box; aqui só se monta a página
-// e a caixa com esse id. Reescrever a tela para trocar o cabeçalho seria
-// duplicar oitocentas linhas para ganhar um título.
+// ===========================================================================
+// ALUGUEL DE NÚMEROS — a tela do cliente
+//
+// Três perguntas, nesta ordem de urgência:
+//   1. Algum número meu está por vencer sem saldo? (é o que se perde)
+//   2. Que código chegou agora? (é para isso que se aluga um número)
+//   3. Quero alugar outro.
+//
+// Por isso o aviso de risco vem no topo, antes até da lista.
+// ===========================================================================
+let numCli = null, numDisp = null, numSms = {};
+
 function renderNumeros() {
   $('#view').innerHTML = '<div class="page">' +
     '<div class="page-head"><h1>Números virtuais</h1>' +
-    '<p class="muted">Comprar números que recebem SMS e ler os códigos que chegam. ' +
-    'A compra sai do saldo da plataforma.</p></div>' +
-    '<div id="adm-num-box">' + skel(2) + '</div></div>';
-  admNumLoad();
+    '<p class="muted">Alugue um número que recebe SMS: código de verificação, validação de conta, ' +
+    'teste de OTP. O aluguel é debitado da sua carteira.</p></div>' +
+    '<div id="num-cli">' + skel(3) + '</div></div>';
+  numCliLoad();
+}
+
+async function numCliLoad() {
+  const box = $('#num-cli'); if (!box) return;
+  try { numCli = await api('/numeros'); }
+  catch (e) { box.innerHTML = '<div class="card err">' + esc(e.message) + '</div>'; return; }
+  numCliPaint();
+}
+
+function numCliPaint() {
+  const box = $('#num-cli'); if (!box || !numCli) return;
+  const d = numCli;
+
+  if (!d.disponivel) {
+    box.innerHTML = `<div class="card">
+      <h2>${ico('phone')} Aluguel de números</h2>
+      <p class="muted" style="font-size:13px">A plataforma ainda não está oferecendo aluguel de números.
+      Fale com o suporte se precisar de um.</p></div>`;
+    return;
+  }
+
+  const vivos = d.numeros.filter(n => n.status === 'ativo' || n.status === 'cancelando');
+  const risco = vivos.filter(n => n.emRisco);
+  const encerrados = d.numeros.filter(n => n.status !== 'ativo' && n.status !== 'cancelando');
+
+  box.innerHTML = `
+  ${risco.length ? `<div class="card warn-card">
+    ${ico('alert', 16)} <b>${fmtN(risco.length)} número(s) vencem em ${d.prazoSaldoDias} dias ou menos.</b>
+    <div style="font-size:12.5px;margin-top:6px">
+      A renovação custa ${fmtBRL(d.precoCents)} por número e a sua carteira tem ${esc(d.saldoFormatado)}.
+      Sem saldo, o número é cancelado e <b>não volta</b>: quem alugar depois recebe os SMS.</div>
+    <div class="row" style="margin-top:10px"><a class="btn primary no-grow" href="#/billing">Recarregar carteira</a></div>
+  </div>` : ''}
+
+  <div class="card">
+    <div class="row" style="align-items:center">
+      <h2 style="margin:0;flex:1">${ico('phone')} Alugar um número</h2>
+      <span class="pill">${fmtBRL(d.precoCents)} / ${d.cicloDias} dias</span>
+    </div>
+    <p class="muted" style="font-size:12.5px;margin:6px 0 12px">
+      Saldo na carteira: <b>${esc(d.saldoFormatado)}</b>. O valor é debitado na hora e
+      renovado a cada ciclo enquanto houver saldo.</p>
+    <div class="row" style="align-items:flex-end">
+      <label style="flex:0 0 120px">DDD <em class="lim-extra">opcional</em>
+        <input id="ncl-ddd" maxlength="2" inputmode="numeric" placeholder="11"></label>
+      <button class="btn no-grow" onclick="numCliBuscar()">Ver disponíveis</button>
+    </div>
+    ${d.podeAlugar ? '' : `<div class="muted" style="font-size:12px;margin-top:8px">
+      ${ico('alert', 13)} Saldo insuficiente para alugar agora. <a href="#/billing">Recarregar</a>.</div>`}
+    <div id="ncl-disp" style="margin-top:12px"></div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2 style="margin:0 0 4px">${ico('list')} Meus números</h2>
+    ${vivos.length ? `<div style="margin-top:10px">${vivos.map(numCliLinha).join('')}</div>`
+      : '<p class="muted" style="font-size:12.5px;margin:6px 0 0">Você ainda não alugou nenhum número.</p>'}
+    ${encerrados.length ? `<div class="fee-sep"></div>
+      <h2 style="font-size:14px">Encerrados</h2>
+      <div class="tx-list">${encerrados.slice(0, 10).map(n => `<div class="tx">
+        <span class="tx-lbl"><b>${esc(n.numero)}</b>
+          <em style="display:block;font-style:normal;color:var(--muted);font-size:11.5px">${esc(n.motivo || n.status)}</em></span>
+        <span class="muted" style="font-size:11px">${n.canceladoEm ? timeAgo(n.canceladoEm) : ''}</span></div>`).join('')}</div>` : ''}
+  </div>`;
+}
+
+// Uma linha de número alugado. O VENCIMENTO é o dado principal depois do
+// próprio número: é ele que decide se a pessoa precisa fazer alguma coisa hoje.
+function numCliLinha(n) {
+  const cor = n.emRisco ? 'err' : n.diasParaVencer <= 10 ? 'warn' : 'done';
+  return `<div class="card" style="padding:12px;margin-bottom:10px">
+    <div class="row" style="align-items:center">
+      <div style="flex:1">
+        <b style="font-size:15px">${esc(n.numero)}</b>
+        <div class="muted" style="font-size:11.5px">
+          ${fmtBRL(n.precoCents)} por ciclo · ${n.renovacaoAuto ? 'renova automaticamente' : 'não renova'}</div>
+      </div>
+      <span class="pill ${cor}">${n.diasParaVencer <= 0 ? 'vencido' : 'vence em ' + n.diasParaVencer + 'd'}</span>
+    </div>
+    ${n.status === 'cancelando' ? `<div class="muted" style="font-size:12px;margin-top:8px">
+      ${ico('clock', 13)} Cancelamento em andamento no provedor.</div>` : ''}
+    <div class="row" style="margin-top:10px">
+      <button class="btn small no-grow" onclick="numCliSms('${n.id}')">Ver SMS</button>
+      <button class="btn small no-grow" onclick="numCliRenovacao('${n.id}', ${n.renovacaoAuto ? 'false' : 'true'})">
+        ${n.renovacaoAuto ? 'Não renovar' : 'Renovar automaticamente'}</button>
+      <button class="btn small danger no-grow" onclick="numCliCancelar('${n.id}', '${esc(n.numero)}')">Cancelar agora</button>
+    </div>
+    <div id="ncl-sms-${n.id}"></div>
+  </div>`;
+}
+
+async function numCliBuscar() {
+  const box = $('#ncl-disp'); if (!box) return;
+  const ddd = ($('#ncl-ddd').value || '').replace(/\D/g, '');
+  box.innerHTML = skel(2);
+  try { numDisp = await api('/numeros/disponiveis?limit=60' + (ddd ? '&ddd=' + ddd : '')); }
+  catch (e) { box.innerHTML = '<div class="card err">' + esc(e.message) + '</div>'; return; }
+  if (!numDisp.numeros.length) {
+    box.innerHTML = '<p class="muted" style="font-size:12.5px">Nenhum número disponível' +
+      (ddd ? ' no DDD ' + ddd : '') + ' agora. Tente outro DDD.</p>';
+    return;
+  }
+  box.innerHTML = `
+    <div class="row" style="align-items:center;margin-bottom:8px">
+      <b style="flex:1;font-size:13px">${fmtN(numDisp.count)} disponíveis</b>
+      <button class="btn small no-grow" onclick="numCliAlugar('', '${esc(ddd)}')">Alugar qualquer um${ddd ? ' do DDD ' + esc(ddd) : ''}</button>
+    </div>
+    <div class="tx-list">${numDisp.numeros.slice(0, 30).map(n => `<div class="tx">
+      <span class="tx-lbl"><b>${esc(n.numero)}</b></span>
+      <button class="btn small no-grow" onclick="numCliAlugar('${esc(n.id)}', '')">Alugar</button>
+    </div>`).join('')}</div>`;
+}
+
+// ALUGAR TIRA DINHEIRO DA CARTEIRA NA HORA. A confirmação diz o número e o
+// valor antes de acontecer — um clique sem aviso em cima de "Alugar" que já
+// debitou não tem desfazer.
+async function numCliAlugar(numeroId, ddd) {
+  const qual = numeroId ? (numDisp.numeros.find(n => n.id === numeroId) || {}).numero : (ddd ? 'um número do DDD ' + ddd : 'um número qualquer');
+  if (!confirm(`Alugar ${qual} por ${fmtBRL(numCli.precoCents)}?\n\nO valor sai da sua carteira agora e o número renova a cada ${numCli.cicloDias} dias enquanto houver saldo.`)) return;
+  try {
+    const { aluguel } = await api('/numeros/comprar', { method: 'POST', body: { numeroId, ddd } });
+    toast('Número ' + aluguel.numero + ' alugado');
+    numDisp = null;
+    numCliLoad();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function numCliSms(id) {
+  const box = $('#ncl-sms-' + id); if (!box) return;
+  box.innerHTML = '<div style="margin-top:10px">' + skel(1) + '</div>';
+  let msgs = [];
+  try { msgs = (await api('/numeros/' + encodeURIComponent(id) + '/sms')).mensagens; }
+  catch (e) { box.innerHTML = '<div class="card err" style="margin-top:10px">' + esc(e.message) + '</div>'; return; }
+  numSms[id] = msgs;
+  if (!msgs.length) {
+    box.innerHTML = '<p class="muted" style="font-size:12px;margin-top:10px">Nenhum SMS ainda. Os códigos aparecem aqui assim que chegarem.</p>';
+    return;
+  }
+  box.innerHTML = `<div class="tx-list" style="margin-top:10px">${msgs.map(m => `<div class="tx">
+    <span class="tx-lbl">${m.codigo ? `<b style="font-size:15px;letter-spacing:1px">${esc(m.codigo)}</b>` : ''}
+      <em style="display:block;font-style:normal;color:var(--muted);font-size:11.5px">${esc(m.texto || '')}</em></span>
+    <span class="muted" style="font-size:11px">${m.recebidoEm ? timeAgo(m.recebidoEm) : ''}</span></div>`).join('')}</div>`;
+}
+
+async function numCliRenovacao(id, ativa) {
+  try {
+    await api('/numeros/' + encodeURIComponent(id) + '/renovacao', { method: 'PUT', body: { ativa } });
+    toast(ativa ? 'O número passa a renovar automaticamente' : 'O número não será renovado no fim do ciclo');
+    numCliLoad();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// Cancelar AGORA joga fora os dias já pagos — e o texto diz isso, porque
+// desligar a renovação quase sempre é o que a pessoa realmente quer.
+async function numCliCancelar(id, numero) {
+  const n = (numCli.numeros || []).find(x => x.id === id) || {};
+  if (!confirm(`Cancelar ${numero} agora?\n\nVocê perde os ${n.diasParaVencer > 0 ? n.diasParaVencer + ' dia(s) já pagos' : 'dias restantes'} e o número não volta. ` +
+    `Se a intenção é só não pagar o próximo ciclo, use "Não renovar".`)) return;
+  try {
+    await api('/numeros/' + encodeURIComponent(id) + '/cancelar', { method: 'POST' });
+    toast('Número cancelado');
+    numCliLoad();
+  } catch (e) { toast(e.message, 'error'); }
 }
 let admNum = null, admNumLista = [], admNumDisp = null;
 
@@ -10647,7 +10931,9 @@ function admNumPaint() {
         <span class="tx-lbl"><b>${esc(l.tipo || '')}</b>
           <em style="display:block;font-style:normal;color:var(--muted);font-size:11.5px">${esc(admNumLogTexto(l))}</em></span>
         <span class="muted" style="font-size:11px">${timeAgo(l.ts)}</span></div>`).join('')}</div>` : ''}
-  </div>`;
+  </div>
+  <div id="num-revenda" style="margin-top:16px"></div>`;
+  admNumRevendaLoad();
 }
 
 function admNumLogTexto(l) {

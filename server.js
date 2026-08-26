@@ -878,6 +878,16 @@ setInterval(async () => {
 // O Pix recorrente é renovado pela própria Woovi; o cartão é por nossa conta.
 require('./src/saasbilling').startRenewalJob(broadcast);
 
+// ALUGUEL DE NÚMEROS — varredura diária dos vencimentos.
+//
+// Faz três coisas por dia: retenta os cancelamentos que o provedor recusou,
+// aplica a régua do saldo (sem dinheiro na carteira a 5 dias do vencimento, o
+// número é cancelado na Integra X e aqui) e renova o que venceu com saldo.
+//
+// É a única coisa entre um cliente sem saldo e a plataforma pagando a conta
+// dele indefinidamente na Integra X.
+require('./src/numaluguel').startJob(broadcast);
+
 const PORT = process.env.PORT || 3900;
 
 // Desligar direito: grava o que está pendente e fecha a conexão. Sem isto, um

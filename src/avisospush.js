@@ -93,6 +93,26 @@ function avisoDoEvento(event, data) {
       data: { type, url: '/adm/#/adm/kyc', accountId: data.accountId || '' }
     };
     return { type, payload, paraAdmin: true };
+  } else if (event === 'numeros_admin') {
+    // VENCIMENTOS DOS NÚMEROS ALUGADOS — para o ADMIN, como o KYC e o cadastro
+    // iGaming. É aviso de dinheiro escapando nos dois sentidos: número
+    // cancelado é receita que parou, e número perto de vencer sem saldo do
+    // cliente é a plataforma prestes a pagar sozinha a conta da Integra X.
+    //
+    // Sem `requireInteraction`: diferente do KYC, não há uma fila travada
+    // esperando decisão — é para ver e saber, e a varredura roda de novo amanhã.
+    const partes = [];
+    if (data.cancelados) partes.push(data.cancelados + ' cancelado(s) por falta de saldo');
+    if (data.perto) partes.push(data.perto + ' perto de vencer');
+    if (!partes.length) return null;
+    type = 'numeros';
+    payload = {
+      title: 'Números virtuais 📞',
+      body: partes.join(' · '),
+      tag: 'num:' + new Date().toISOString().slice(0, 10),
+      data: { type, url: '/adm/#/adm/integracoes' }
+    };
+    return { type, payload, paraAdmin: true };
   } else if (event === 'reminder') {
     const ev = data.event || {};
     // O fuso vem da CONTA: sem ele o texto saía no fuso do processo (UTC em

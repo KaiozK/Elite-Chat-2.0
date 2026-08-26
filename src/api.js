@@ -661,10 +661,11 @@ module.exports = function (broadcast, clients) {
       // isso ela abre numa tela que só sabe falar com uma Nuvemshop, e o
       // cartão de erro parece defeito do produto.
       nsConectada: !!(req.acc.nuvemshop && req.acc.nuvemshop.accessToken),
-      // A COMPRA DE NÚMEROS NO /app É SÓ DA CONTA DO ADMINISTRADOR — o número
-      // sai do saldo da plataforma, e não do cliente. A tela precisa saber
-      // disso para não pendurar no menu de todo mundo um item que dá 404.
-      contaDoAdmin: !!req.acc.isAdmin,
+      // O ALUGUEL DE NÚMEROS só existe se a plataforma revender de fato:
+      // provedor configurado E preço definido. É isto que decide se o item
+      // aparece no menu — pendurar um item que abre dizendo 'indisponível' é
+      // pior do que não ter o item.
+      numerosAluguel: require('./numaluguel').revendaAtiva(),
       wa: waPublic(req.wctx),
       // toggles do plano: o menu esconde o que o plano nao inclui (o backend
       // tambem recusa com 402, o front e so conforto)
@@ -5414,68 +5415,86 @@ module.exports = function (broadcast, clients) {
     res.json({ resultado: await numeros.cancelar(req.params.id) });
   }));
 
+  // ---- A REVENDA: preço, quem alugou, e o que está para vencer ----
+  //
+  // É aqui que o admin decide quanto cobrar pelo aluguel. O preço vale para as
+  // compras NOVAS: quem já alugou fica no valor combinado até o fim do ciclo
+  // (o aluguel guarda o preço do dia), porque mudar o valor de um contrato em
+  // curso é cobrar a mais sem avisar.
+  router.get('/admin/numeros/alugueis', auth, adminOnly, (req, res) => {
+    res.json(require('./numaluguel').visaoAdmin());
+  });
 
-  // ==================== NÚMEROS VIRTUAIS NO APP DO CLIENTE ====================
+  router.put('/admin/numeros/precos', auth, adminOnly, (req, res) => {
+    res.json(require('./numaluguel').salvarPrecos(req.body || {}));
+  });
+
+  // A varredura roda sozinha uma vez por dia. Esta rota é para o admin poder
+  // rodar na hora — depois de mexer no preço, ou para conferir a régua sem
+  // esperar até amanhã.
+  router.post('/admin/numeros/varrer', auth, adminOnly, h(async (req, res) => {
+    res.json({ resumo: await require('./numaluguel').varrer(broadcast) });
+  }));
+
+
+  // ==================== ALUGUEL DE NÚMEROS (app do cliente) ====================
   //
-  // As mesmas operações de /admin/numeros, alcançáveis de dentro do /app — para
-  // não ser preciso trocar de painel só para comprar um número.
+  // Aqui o cliente aluga um número, acompanha o vencimento, lê os SMS que
+  // chegam e cancela. Quem paga é a CARTEIRA dele, ao preço que o admin definiu
+  // em Integrações — a plataforma compra na Integra X e revende.
   //
-  // A GUARDA AQUI É OUTRA, e vale entender por quê. As rotas /admin/* exigem
-  // `adminOnly`, que pede uma sessão nascida em /adm — é o que separa os dois
-  // mundos. Uma sessão do /app nunca tem esse escopo, nem quando quem entrou
-  // foi o administrador: entrando pela porta do cliente, ele é tratado como
-  // cliente, e isso é de propósito.
-  //
-  // Então estas rotas não olham o ESCOPO, e sim a CONTA: só a conta do próprio
-  // administrador da plataforma passa. É uma exceção deliberada e estreita —
-  // comprar número gasta o saldo da PLATAFORMA, então nenhuma conta de cliente
-  // pode chegar aqui, e a lista de operações é a mesma, sem nada a mais.
-  //
-  // O que isso custa, dito por escrito: uma sessão do /app do administrador
-  // passa a poder gastar saldo da plataforma. É menos poder do que administrar
-  // (não muda configuração, não vê outras contas), mas é mais do que zero.
-  const soContaDoAdmin = (req, res, next) => {
-    if (!req.acc || !req.acc.isAdmin) {
-      return res.status(404).json({ error: 'Recurso indisponível para esta conta' });
+  // Estas rotas são de CLIENTE, e não uma versão do painel: `numaluguel` só
+  // deixa a conta ver e mexer nos próprios aluguéis. O `rentalId` da Integra X
+  // nunca entra por aqui — se entrasse, uma conta leria os SMS de outra
+  // passando o id na mão, códigos de verificação inclusive.
+  const numaluguel = require('./numaluguel');
+
+  // O módulo faz parte do plano como qualquer outro, e só aparece quando a
+  // plataforma realmente revende (provedor configurado E preço definido).
+  const revendaLigada = (req, res, next) => {
+    if (!numaluguel.revendaAtiva()) {
+      return res.status(503).json({ error: 'O aluguel de números não está disponível na plataforma' });
     }
     next();
   };
 
-  router.get('/numeros', auth, soContaDoAdmin, (req, res) => {
-    res.json({ numeros: numeros.adminView() });
+  router.get('/numeros', auth, (req, res) => {
+    res.json(numaluguel.visaoCliente(req.acc));
   });
 
-  router.put('/numeros', auth, soContaDoAdmin, (req, res) => {
+  // A vitrine do provedor, sem preço de custo: o cliente vê o número e o DDD,
+  // e paga o preço da plataforma, que é o mesmo para qualquer número.
+  router.get('/numeros/disponiveis', auth, revendaLigada, h(async (req, res) => {
+    const d = await numeros.disponiveis({ ddd: req.query.ddd, limite: req.query.limit });
+    res.json({
+      total: d.total, count: d.count,
+      precoCents: numaluguel.preco(),
+      numeros: d.numeros.map(n => ({ id: n.id, numero: n.numero, ddd: n.ddd }))
+    });
+  }));
+
+  router.post('/numeros/comprar', auth, revendaLigada, h(async (req, res) => {
     const b = req.body || {};
-    const c = numeros.cfg();
-    if (typeof b.enabled === 'boolean') c.enabled = b.enabled;
-    if (typeof b.token === 'string' && b.token.trim()) c.token = b.token.trim();
-    if (b.token === null) c.token = '';
-    if (typeof b.base === 'string') c.base = b.base.trim();
+    res.json({ aluguel: await numaluguel.comprar(req.acc, { numeroId: b.numeroId, ddd: b.ddd }, broadcast) });
+  }));
+
+  router.get('/numeros/:id/sms', auth, h(async (req, res) => {
+    res.json({ mensagens: await numaluguel.mensagens(req.acc, req.params.id) });
+  }));
+
+  router.post('/numeros/:id/cancelar', auth, h(async (req, res) => {
+    res.json(await numaluguel.cancelar(req.acc, req.params.id, 'Cancelado pelo cliente', broadcast));
+  }));
+
+  // Desligar a renovação é o cancelamento EDUCADO: o número serve até o fim do
+  // ciclo já pago e não é renovado. Cancelar na hora joga fora dias pagos.
+  router.put('/numeros/:id/renovacao', auth, (req, res) => {
+    const a = numaluguel.achar(req.acc, req.params.id);
+    if (!a) return res.status(404).json({ error: 'Número não encontrado' });
+    a.renovacaoAuto = !!(req.body || {}).ativa;
     db.save();
-    res.json({ numeros: numeros.adminView() });
+    res.json({ aluguel: numaluguel.publicoUm(a) });
   });
-
-  router.get('/numeros/disponiveis', auth, soContaDoAdmin, h(async (req, res) => {
-    res.json(await numeros.disponiveis({ ddd: req.query.ddd, limite: req.query.limit }));
-  }));
-
-  router.post('/numeros/comprar', auth, soContaDoAdmin, h(async (req, res) => {
-    const b = req.body || {};
-    res.json({ compra: await numeros.comprar({ modo: b.modo, ddd: b.ddd, numeroId: b.numeroId }) });
-  }));
-
-  router.get('/numeros/meus', auth, soContaDoAdmin, h(async (req, res) => {
-    res.json({ numeros: await numeros.meus({ status: req.query.status }) });
-  }));
-
-  router.get('/numeros/:id/sms', auth, soContaDoAdmin, h(async (req, res) => {
-    res.json({ mensagens: await numeros.mensagens(req.params.id) });
-  }));
-
-  router.post('/numeros/:id/cancelar', auth, soContaDoAdmin, h(async (req, res) => {
-    res.json({ resultado: await numeros.cancelar(req.params.id) });
-  }));
 
   // ---- Integração Nuvemshop (app único da plataforma) ----
   router.get('/admin/nuvemshop', auth, adminOnly, (req, res) => {

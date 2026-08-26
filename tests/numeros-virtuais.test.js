@@ -273,99 +273,16 @@ const kyc = telaJs2.slice(telaJs2.indexOf('function admKycPaint'), telaJs2.index
 ok(/class="toggle \$\{st\.exigido \? 'on' : ''\}"/.test(kyc),
    'o do KYC também decide a classe pelo estado');
 
-console.log('\n=== 11. Comprar número tem lugar PRÓPRIO no menu ===');
-// Antes era o terceiro cartão dentro de Integrações, e não é isso que ele é:
-// comprar número, ler o SMS que chegou e cancelar é OPERAÇÃO, de todo dia, com
-// dinheiro saindo a cada compra. Coisa que se FAZ merece entrada no menu;
-// coisa que se CONFIGURA uma vez, não.
-const menuAdm = fs.readFileSync(R + 'public/adm/index.html', 'utf8');
-ok(menuAdm.includes('data-view="adm/numeros"'), 'o menu do painel tem o item');
-ok(menuAdm.includes('<span>Números virtuais</span>'), 'com o nome por extenso');
-
-const tela = fs.readFileSync(R + 'public/app/app.js', 'utf8');
-ok(/adm\/numeros[^}]*aba: 'adm-num'/.test(tela), 'a rota existe e aponta para a aba própria');
-ok(tela.includes('data-pane="adm-num"'), 'a aba tem painel próprio');
-ok(tela.includes("if (activeTab === 'adm-num') admNumLoad();"),
-   'e carrega ao entrar direto pela rota, sem depender de clique');
-
-// E saiu de Integrações: dois lugares para a mesma tela é o começo de duas
-// telas diferentes.
-const intLoad = tela.slice(tela.indexOf('function admIntLoad'), tela.indexOf('function admIntLoad') + 160);
-ok(!/admNumLoad/.test(intLoad), 'Integrações não carrega mais os números junto');
-const paneInt = tela.slice(tela.indexOf('data-pane="adm-int"'), tela.indexOf('data-pane="adm-int"') + 320);
-ok(!/adm-num-box/.test(paneInt), 'e a caixa não vive mais dentro do painel de Integrações');
-
-
-console.log('\n=== 12. A tela também existe no /app, e SÓ para a conta do admin ===');
-// O painel da plataforma é outra porta e outra sessão. Precisar trocar de
-// painel para comprar um número é atrito puro — então a mesma tela aparece no
-// app do cliente. Só que comprar número gasta o saldo da PLATAFORMA, e as
-// rotas /admin/* exigem uma sessão nascida em /adm/, que uma sessão do /app
-// nunca tem (nem quando é o admin que entrou — de propósito).
+// As seções 11 e 12 moravam aqui e foram REMOVIDAS, não perdidas: elas
+// prendiam o desenho errado — aba própria para os números no painel do admin,
+// e a compra restrita à conta dele. Os números são um SERVIÇO DA PLATAFORMA
+// (configura-se em Integrações, como o SMS) e quem aluga é o CLIENTE, pela
+// carteira dele. O lugar das telas é conferido em numeros-aluguel.test.js,
+// seção 17, junto com as regras de dinheiro que dão sentido a ele.
 //
-// Daí a guarda ser OUTRA: estas rotas não olham o escopo, olham a CONTA. É uma
-// exceção estreita, e este bloco é o que a mantém estreita.
-
-// O admin entrando pela porta do CLIENTE.
-const loginApp = await (await fetch(BASE + '/api/login', {
-  method: 'POST', headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ user: 'admin', pass: 'admin' })
-})).json();
-const autApp = { Authorization: 'Bearer ' + loginApp.token, 'Content-Type': 'application/json' };
-ok(loginApp.kind === 'account', 'entrando pelo /app, o admin é uma conta comum: ' + loginApp.kind);
-
-const meAdm = await (await fetch(BASE + '/api/me', { headers: autApp })).json();
-ok(meAdm.contaDoAdmin === true, '/me marca a conta do admin — é o que acende o item no menu');
-ok((await fetch(BASE + '/api/numeros', { headers: autApp })).status === 200,
-   'e ele alcança /numeros de dentro do app');
-
-// O ESCOPO CONTINUA VALENDO: a mesma sessão não administra nada.
-ok((await fetch(BASE + '/api/admin/numeros', { headers: autApp })).status === 403,
-   'a MESMA sessão continua recusada em /admin/numeros — a separação dos painéis não afrouxou');
-
-// Uma conta de cliente qualquer, com plano de sobra para o 402 não responder
-// antes e esconder o que está sendo testado aqui.
-const limits = require(R + 'src/limits');
-await fetch(BASE + '/api/register', {
-  method: 'POST', headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ name: 'Cliente Qualquer', email: 'qualquer@cli.com', pass: 'segredo123' })
-});
-const cli = db.findAccountByEmail('qualquer@cli.com');
-cli.unlimited = true;               // sem trava de assinatura no caminho
-db.save();
-const loginCli = await (await fetch(BASE + '/api/login', {
-  method: 'POST', headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ user: 'qualquer@cli.com', pass: 'segredo123' })
-})).json();
-const autCli = { Authorization: 'Bearer ' + loginCli.token, 'Content-Type': 'application/json' };
-
-const meCli = await (await fetch(BASE + '/api/me', { headers: autCli })).json();
-ok(meCli.contaDoAdmin === false, 'para o cliente, /me diz que não — o item não entra no menu dele');
-
-// TODAS as rotas, e não só a primeira: é a que alguém esquece de proteger que
-// vira a porta aberta, e comprar é a que gasta dinheiro.
-for (const [metodo, rota] of [
-  ['GET', '/api/numeros'], ['GET', '/api/numeros/meus'], ['GET', '/api/numeros/disponiveis'],
-  ['GET', '/api/numeros/abc/sms'], ['POST', '/api/numeros/comprar'],
-  ['POST', '/api/numeros/abc/cancelar'], ['PUT', '/api/numeros']
-]) {
-  const r = await fetch(BASE + rota, { method: metodo, headers: autCli, body: metodo === 'GET' ? undefined : '{}' });
-  ok(r.status === 404, `cliente em ${metodo} ${rota} -> ${r.status} (404, e não 403: nem confirma que existe)`);
-}
-
-// E o menu do app só mostra o item quando o servidor disse que sim.
-const menuApp = fs.readFileSync(R + 'public/app/index.html', 'utf8');
-ok(menuApp.includes('data-view="numeros"'), 'o menu do app tem o item');
-ok(/state\.contaDoAdmin = !!me\.contaDoAdmin/.test(tela), 'a tela guarda o sinal do /me');
-ok(/v === 'numeros' && !state\.contaDoAdmin/.test(tela),
-   'e esconde o item de quem não é a conta do admin');
-ok(/numeros: renderNumeros/.test(tela), 'a rota #/numeros existe no app');
-// A tela é UMA só: se alguém duplicar o desenho, os dois painéis começam a
-// divergir na primeira correção feita em um deles.
-ok(/const NUM_API = ADM \? '\/admin\/numeros' : '\/numeros'/.test(tela),
-   'e é a mesma tela dos dois lados, com o caminho decidido por uma constante');
-ok(!/'\/admin\/numeros'/.test(tela.replace(/const NUM_API[^\n]*\n/, '')),
-   'nenhuma chamada ficou presa no caminho antigo');
+// Este arquivo continua sendo o do CONTRATO COM O PROVEDOR: token no header e
+// não na URL, host próprio, status válidos, o token que não vaza na mensagem
+// de erro. Nada disso mudou.
 
   srv.close();
   global.fetch = fetchReal;

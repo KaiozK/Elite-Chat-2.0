@@ -260,7 +260,13 @@ async function comprar({ modo, ddd, numeroId } = {}) {
   const compra = {
     rentalId: String(dd.rental_id ?? dd.rentalId ?? dd.id ?? ''),
     numero: String(dd.phone ?? dd.number ?? dd.msisdn ?? ''),
-    modo: m
+    modo: m,
+    // O CUSTO e o VENCIMENTO vinham na resposta e eram jogados fora. Quem
+    // revende precisa dos dois: sem o custo não há margem para mostrar ao
+    // admin, e sem o vencimento a régua do saldo trabalha em cima de uma data
+    // estimada pelo ciclo — que acerta enquanto o provedor não mudar nada.
+    precoCents: dinheiroEmCentavos(dd.price_brl ?? dd.price ?? dd.valor),
+    expiraEm: dataEmMs(dd.expires_at ?? dd.expiresAt ?? dd.expire_at)
   };
   plog({ tipo: 'compra', rentalId: compra.rentalId, numero: compra.numero, modo: m, ddd: d || '' });
   return compra;
