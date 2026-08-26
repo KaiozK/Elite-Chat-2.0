@@ -9748,15 +9748,16 @@ async function paintAdmin() {
       </div>
 
       <div class="tabpane ${activeTab === 'adm-int' ? 'show' : ''}" data-pane="adm-int">
-        <div id="adm-int-box">${skel(4)}</div>
-        <div id="adm-sms-box" style="margin-top:16px">${skel(3)}</div>
+        <div id="adm-int-hub"></div>
+        <div id="adm-int-box" data-int="nuvemshop">${skel(4)}</div>
+        <div id="adm-sms-box" data-int="sms" style="margin-top:16px">${skel(3)}</div>
         <!-- Os NÚMEROS VIRTUAIS são um SERVIÇO DA PLATAFORMA, como o SMS: o
              que se faz aqui é configurar o provedor e a tabela de preço do
              aluguel. Quem aluga, acompanha o vencimento e cancela é o CLIENTE,
              na aba dele no /app. Dei aba própria a isto e estava errado: aba
              própria é para o que se OPERA todo dia, e aqui não se opera — se
              configura uma vez e se olha de vez em quando. -->
-        <div id="adm-num-box" style="margin-top:16px">${skel(3)}</div>
+        <div id="adm-num-box" data-int="numeros" style="margin-top:16px">${skel(3)}</div>
       </div>
 
       <div class="tabpane ${activeTab === 'adm-mkt' ? 'show' : ''}" data-pane="adm-mkt">
@@ -10436,10 +10437,106 @@ async function admKycDecidir(id, aprovar) {
   } catch (e) { toast(e.message, 'error'); }
 }
 
-function admIntLoad() {
-  admNsLoad();
-  admNumLoad();
-  admSmsLoad();
+// ==================== HUB DE INTEGRAÇÕES ====================
+//
+// A aba era uma pilha de cartões de configuração, um debaixo do outro, e
+// achar a Nuvemshop no meio dela era rolar até reconhecer o título. Marca se
+// reconhece pelo DESENHO, não pelo nome escrito em corpo 14 — então a aba
+// abre por uma grade de logos e o cartão de configuração aparece embaixo
+// depois de escolhido.
+//
+// O HUB SÓ DESENHA DEPOIS QUE OS TRÊS CARREGARAM. Cada ladrilho mostra se
+// aquela integração está de pé, e esse estado é o que os próprios cartões
+// buscaram — desenhar antes daria uma grade de bolinhas cinzas que muda
+// sozinha um segundo depois, e a pessoa lê a grade errada.
+async function admIntLoad() {
+  await Promise.all([admNsLoad(), admSmsLoad(), admNumLoad()]);
+  admIntHubPaint();
+  admIntSel(admIntAtiva);
+}
+
+let admIntAtiva = 'nuvemshop';
+
+// O LOGO DE QUEM É, e um monograma quando não temos o arquivo.
+//
+// O monograma não tenta imitar a identidade de ninguém: são as iniciais num
+// quadrado neutro. Inventar o logo de uma empresa é pior do que não ter um —
+// fica errado na tela e errado como uso de marca. No dia em que o arquivo
+// certo for colocado em /assets/logos/, o monograma some sozinho.
+function admIntLogo(arq, nome) {
+  const iniciais = String(nome || '').replace(/[^A-Za-zÀ-ú ]/g, '').split(/\s+/)
+    .filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?';
+  const mono = `<span class="int-mono">${esc(iniciais)}</span>`;
+  if (!arq) return mono;
+  // O MONOGRAMA JÁ VAI PRONTO DENTRO DO onerror, e não uma expressão que o
+  // leia de uma variável: o atributo roda no escopo global da página, onde
+  // `iniciais` não existe. Escrito assim, o logo que faltasse não caía no
+  // monograma — estourava um ReferenceError e deixava a imagem quebrada.
+  const fallback = mono.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  return `<img src="/assets/logos/${arq}.webp" alt="" decoding="async"
+    onerror="this.outerHTML='${fallback}'">`;
+}
+
+
+// Um ponto colorido em vez de etiqueta escrita: em seis ladrilhos, seis
+// etiquetas viram ruído e nenhuma é lida.
+function admIntPonto(estado) {
+  const c = estado === 'on' ? 'on' : estado === 'meio' ? 'meio' : '';
+  const t = estado === 'on' ? 'ativa' : estado === 'meio' ? 'incompleta' : 'desligada';
+  return `<span class="int-st"><span class="int-dot ${c}"></span>${t}</span>`;
+}
+
+function admIntHubPaint() {
+  const box = $('#adm-int-hub'); if (!box) return;
+
+  // O estado de cada uma sai do que o próprio cartão já carregou.
+  const ns = admNs ? (admNs.available ? 'on' : admNs.enabled ? 'meio' : 'off') : 'off';
+  const sms = admSms ? (admSms.configured ? 'on' : admSms.enabled ? 'meio' : 'off') : 'off';
+  const num = admNum ? (admNum.enabled && admNum.temToken
+    ? ((admNumRev && admNumRev.preco > 0) ? 'on' : 'meio') : admNum.enabled ? 'meio' : 'off') : 'off';
+
+  const tiles = [
+    ['nuvemshop', 'nuvemshop', 'Nuvemshop', 'Loja dos clientes', ns],
+    ['sms', 'integrax', 'Integra X · SMS', 'Disparos de texto', sms],
+    ['numeros', 'integrax', 'Integra X · Números', 'Aluguel de números', num]
+  ];
+
+  // ATALHOS: levam para outra aba e não configuram nada aqui. O gateway e as
+  // credenciais da Meta são integrações tanto quanto as de cima, e quem vem
+  // procurar "onde eu ligo o Pix" chega nesta aba primeiro. Mandar daqui é
+  // melhor do que deixar a pessoa procurar no menu — e ficam tracejados
+  // porque duplicar a configuração em dois lugares é como as duas versões
+  // começam a discordar.
+  const atalhos = [
+    ['adm/gateways', 'card', 'Gateways', 'Woovi, Simplify'],
+    ['adm/plataforma', 'shield', 'Meta / WhatsApp', 'Credenciais do app']
+  ];
+
+  box.innerHTML = `<div class="int-hub">
+    ${tiles.map(([k, logo, nome, sub, st]) => `
+      <button class="int-tile" data-tile="${k}" aria-pressed="${k === admIntAtiva}"
+        onclick="admIntSel('${k}')">
+        ${admIntLogo(logo, nome)}
+        <b>${esc(nome)}</b>
+        <span class="int-sub">${esc(sub)}</span>
+        ${admIntPonto(st)}
+      </button>`).join('')}
+    ${atalhos.map(([rota, icone, nome, sub]) => `
+      <a class="int-tile atalho" href="#/${rota}">
+        <span class="int-ic">${ico(icone, 22)}</span>
+        <b>${esc(nome)}</b>
+        <span class="int-sub">${esc(sub)}</span>
+        <span class="int-st">abrir aba</span>
+      </a>`).join('')}
+  </div>`;
+}
+
+// Mostra um cartão de configuração e esconde os outros. Sem isto o hub seria
+// só um índice bonito em cima da mesma pilha comprida.
+function admIntSel(qual) {
+  admIntAtiva = qual;
+  for (const el of $$('[data-int]')) el.style.display = el.dataset.int === qual ? '' : 'none';
+  for (const el of $$('[data-tile]')) el.setAttribute('aria-pressed', String(el.dataset.tile === qual));
 }
 
 // Um interruptor liga o SMS para os clientes; o token e o remetente são da
@@ -10875,6 +10972,10 @@ async function admNumLoad() {
   try { admNum = (await api(NUM_API)).numeros; }
   catch (e) { box.innerHTML = '<div class="card err">' + esc(e.message) + '</div>'; return; }
   admNumPaint();
+  // ESPERA a revenda: o hub lê `admNumRev` para saber se a integração está
+  // inteira (provedor + preço). Disparar sem esperar fazia o ladrilho abrir
+  // dizendo "incompleta" e se corrigir sozinho meio segundo depois.
+  await admNumRevendaLoad();
   if (admNum.enabled && admNum.temToken) admNumMeus();
 }
 
@@ -10933,7 +11034,6 @@ function admNumPaint() {
         <span class="muted" style="font-size:11px">${timeAgo(l.ts)}</span></div>`).join('')}</div>` : ''}
   </div>
   <div id="num-revenda" style="margin-top:16px"></div>`;
-  admNumRevendaLoad();
 }
 
 function admNumLogTexto(l) {
