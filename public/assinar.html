@@ -267,8 +267,39 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
 (function () {
   var qs = new URLSearchParams(location.search);
   var planId = qs.get('plano') || '';
-  var token = qs.get('token') || '';
   var planos = [];
+
+  /* ---------------- RETOMAR DE ONDE PAROU ----------------
+     O token identifica um cadastro que JÁ FOI PAGO. Ele vivia só na barra de
+     endereços — o que cobre o F5, porque a URL continua ali, e não cobre nada
+     além disso.
+
+     Fechar a aba e voltar ao site depois era o fim da linha: a conta existe no
+     banco, com o pagamento dentro, mas nasce com senha aleatória e
+     pendenteCadastro — a pessoa não consegue entrar (nunca definiu senha) nem
+     continuar (não tem o token). Só o suporte resolvia, e por um dado que o
+     próprio navegador podia ter guardado.
+
+     Guardar aqui é seguro: é o cadastro da própria pessoa, no aparelho dela.
+
+     A LIMPEZA IMPORTA TANTO QUANTO. Um token concluído que sobrevive faria a
+     próxima visita a /assinar cair num cadastro que já acabou. Ele é apagado
+     quando termina — e também quando o servidor diz que não existe mais. */
+  var GUARDA = 'koonfy_assinatura';
+  function tokenGuardado() {
+    try { return localStorage.getItem(GUARDA) || ''; } catch (e) { return ''; }
+  }
+  function guardarToken(t) {
+    try { if (t) localStorage.setItem(GUARDA, t); } catch (e) {}
+  }
+  function esquecerToken() {
+    try { localStorage.removeItem(GUARDA); } catch (e) {}
+  }
+
+  // A URL manda: quem chega por um link tem de ver AQUELE cadastro, e não o que
+  // ficou guardado de uma tentativa anterior.
+  var token = qs.get('token') || tokenGuardado();
+  if (token) guardarToken(token);
 
   function $(id) { return document.getElementById(id); }
   function mostrar(qual) {
@@ -347,6 +378,7 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
         $('btn-pagar').disabled = false;
         if (!r.ok) { $('erro-dados').textContent = r.j.error || 'Não foi possível criar a cobrança'; return; }
         token = r.j.token;
+        guardarToken(token);
         history.replaceState(null, '', '?plano=' + planId + '&token=' + token);
         verPix(r.j.cobranca);
       }).catch(function () {
@@ -381,15 +413,9 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
       if (!d || !d.status) return;
       if (d.status === 'pending') return;
       clearInterval(relogio);
-      preencher(d.dados);
       mostrar('conta');
     }).catch(function () {});
   }
-  function preencher(d) {
-    // Os dados da etapa 1 não são mais mostrados aqui — ver o comentário do
-    // formulário. Continuam guardados na conta.
-  }
-
   // A LISTA DE SEGMENTOS VEM DO SERVIDOR (/api/public/segmentos), que é a mesma
   // que a API valida. Se a busca falhar, o campo fica com "Prefiro não dizer" e
   // o cadastro continua: segmento é informação, não porteiro.
@@ -428,6 +454,9 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
       .then(function (r) {
         $('btn-concluir').disabled = false;
         if (!r.ok) { $('erro-conta').textContent = r.j.error || 'Não foi possível concluir'; return; }
+        // O cadastro acabou: o token não serve para mais nada e não pode
+        // sobreviver para sequestrar a próxima visita a esta página.
+        esquecerToken();
         // entra direto: a sessão vem pronta da rota
         try { localStorage.setItem('wacrm_token', r.j.token); } catch (err) {}
         location.href = '/app/';
@@ -440,10 +469,16 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
   // Quem volta pelo link do checkout cai direto no ponto em que parou.
   if (token) {
     fetch('/api/public/assinatura/' + token).then(function (r) { return r.json(); }).then(function (d) {
-      if (!d || !d.status) return;
+      // TOKEN QUE NÃO EXISTE MAIS não pode ficar guardado: sem esta linha, um
+      // token velho no armazenamento faria toda visita a esta página tentar
+      // retomar um cadastro que não existe, e a pessoa nunca mais veria o
+      // formulário do começo.
+      if (!d || !d.status) { esquecerToken(); return; }
       if (d.status === 'pending') { verPix(d.cobranca || {}); return; }
-      if (d.status === 'done') { location.href = '/app/'; return; }
-      preencher(d.dados); mostrar('conta');
+      if (d.status === 'done') { esquecerToken(); location.href = '/app/'; return; }
+      // Pago e ainda sem cadastro: é exatamente aqui que quem voltou precisa
+      // cair, com os dados do pagamento já reconhecidos.
+      mostrar('conta');
     }).catch(function () {});
   }
 })();

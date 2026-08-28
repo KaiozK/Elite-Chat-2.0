@@ -104,5 +104,38 @@ const pre = fs.readFileSync(R + 'src/preassinatura.js', 'utf8');
     ok(assinar.includes('id="' + campo + '"'), `a etapa 3 pede ${campo}, que é novo`);
   }
 
+  console.log('\n=== 7. Quem fecha a aba consegue voltar ===');
+  // O token identifica um cadastro JÁ PAGO, e vivia só na barra de endereços.
+  // Isso cobre o F5 — a URL continua ali — e mais nada.
+  //
+  // Fechar a aba e voltar ao site era o fim da linha: a conta existe no banco,
+  // com o pagamento dentro, mas nasce com senha aleatória e `pendenteCadastro`.
+  // A pessoa não consegue entrar (nunca definiu senha) nem continuar (não tem
+  // o token). Só o suporte resolvia — por um dado que o próprio navegador
+  // podia ter guardado.
+  ok(/localStorage\.getItem\(GUARDA\)/.test(assinar), 'o token é lido do armazenamento');
+  ok(/localStorage\.setItem\(GUARDA, t\)/.test(assinar), 'e guardado quando a cobrança nasce');
+  ok(/var token = qs\.get\('token'\) \|\| tokenGuardado\(\)/.test(assinar),
+     'a URL vem primeiro — quem chega por um link vê AQUELE cadastro, não o guardado');
+
+  console.log('\n=== 8. E o token guardado não sequestra a próxima visita ===');
+  // É a metade que faltaria se eu só tivesse guardado: um token concluído (ou
+  // que não existe mais) sobrevivendo faria toda visita a /assinar tentar
+  // retomar um cadastro morto, e a pessoa nunca mais veria o formulário do
+  // começo.
+  const boot = assinar.slice(assinar.indexOf("if (token) {"), assinar.length);
+  ok(/if \(!d \|\| !d\.status\) \{ esquecerToken\(\); return; \}/.test(boot),
+     'token que o servidor não reconhece é apagado');
+  ok(/d\.status === 'done'.*esquecerToken\(\)/.test(boot),
+     'e o concluído também, antes de mandar para o app');
+  const fim = assinar.slice(assinar.indexOf("/concluir"), assinar.indexOf("/concluir") + 1400);
+  ok(/esquecerToken\(\)/.test(fim), 'e ao terminar o cadastro, o token é esquecido');
+
+  console.log('\n=== 9. Nada ficou apontando para o que foi removido ===');
+  // `preencher()` alimentava os quatro campos repetidos. Com eles fora, ela
+  // virou uma casca vazia — função que não faz nada é armadilha para quem ler
+  // depois e achar que faz.
+  ok(!/preencher/.test(assinar), 'a função que preenchia os campos removidos saiu junto');
+
   await encerrar(null, falhas);
 })();
