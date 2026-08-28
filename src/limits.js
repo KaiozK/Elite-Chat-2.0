@@ -52,6 +52,12 @@ function isUnlimited(acc) { return !!(acc && (acc.unlimited || acc.isAdmin)); }
 
 function limitOf(acc, key) {
   if (isUnlimited(acc)) return -1;
+  // TESTER TEM TETO PRÓPRIO, e vem ANTES do plano porque ele não tem plano
+  // nenhum: caindo na regra de baixo, herdaria os limites do plano mais barato
+  // publicado — que não é o que o admin configurou para as contas de teste, e
+  // muda sozinho toda vez que alguém mexe na tabela de preços.
+  const doTester = require('./testers').limiteDe(acc, key);
+  if (doTester !== undefined) return doTester;
   const plan = planOf(acc);
   const base = (plan && plan.limits) || fallbackLimits();
   let v = base[key];
@@ -183,6 +189,11 @@ const FEATURE_LABEL = {
 // Módulos do plano vigente. Trial/sem plano usa o plano mais barato publicado
 // (mesma regra dos limites); sem nenhum plano, tudo liberado.
 function featuresOf(acc) {
+  // Os módulos de um tester são os que o admin liberou para TODOS os testers,
+  // num lugar só. Sem esta linha ele cairia no plano mais barato publicado, e
+  // o que o teste enxerga mudaria sozinho a cada mexida na tabela de planos.
+  const doTester = require('./testers').modulosDe(acc);
+  if (doTester) return doTester;
   const plan = planOf(acc);
   if (plan) return db.normFeatures(plan.modules, plan.modules);
   const pubs = db.get().plans.filter(p => !p.archived);

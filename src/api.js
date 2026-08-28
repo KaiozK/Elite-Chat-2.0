@@ -136,6 +136,10 @@ module.exports = function (broadcast, clients) {
     if (!db.get().platform.billing.requirePlan) return false;
     if (req.session.kind === 'admin') return false;
     if (limits.isUnlimited(req.acc)) return false;
+    // TESTER NUNCA ASSINA. Sem esta linha, a conta de teste abriria direto na
+    // tela de Assinatura e não sairia dela — cobrando um plano de quem foi
+    // convidado justamente para experimentar de graça.
+    if (require('./testers').ehTester(req.acc)) return false;
     return !planoAtivo(req.acc);
   }
 
@@ -4491,7 +4495,11 @@ module.exports = function (broadcast, clients) {
     const now = Date.now();
     const dia = 86400000;
     const contas = data.accounts.filter(a => !a.isAdmin);
-    const clientes = contas.filter(a => !a.unlimited);
+    // TESTER NÃO É CLIENTE. Ele não paga, não tem plano e não entra na
+    // receita — somá-lo aqui faria a plataforma parecer maior do que é, e é
+    // o tipo de número errado que se olha por meses sem desconfiar.
+    const contasTeste = contas.filter(a => require('./testers').ehTester(a));
+    const clientes = contas.filter(a => !a.unlimited && !a.tester);
     const supers = contas.filter(a => a.unlimited);
 
     let contatos = 0, mensagens = 0, msg24h = 0, conversasAbertas = 0, pessoas = 0, canais = 0;
@@ -4529,6 +4537,7 @@ module.exports = function (broadcast, clients) {
     res.json({
       totais: {
         contas: contas.length, clientes: clientes.length, supercontas: supers.length,
+        testers: contasTeste.length,
         contatos, pessoas, canais, mensagens, msg24h, conversasAbertas
       },
       ranking
@@ -4612,6 +4621,43 @@ module.exports = function (broadcast, clients) {
     store.logEvent({ type: 'superconta_criada', accountId: acc.id, detail: acc.name });
     res.json({ ok: true, id: acc.id });
   });
+
+  // ==================== TESTERS ====================
+  //
+  // Contas de teste, criadas aqui e só aqui. O admin governa QUANTAS podem
+  // existir, O QUE fica liberado e QUANTO cada uma pode usar — ver
+  // src/testers.js, onde as três regras moram juntas.
+  const testers = require('./testers');
+
+  router.get('/adm/testers', auth, adminOnly, (req, res) => {
+    res.json(testers.visao());
+  });
+
+  router.put('/adm/testers', auth, adminOnly, (req, res) => {
+    res.json(testers.salvar(req.body || {}));
+  });
+
+  router.post('/adm/testers', auth, adminOnly, h(async (req, res) => {
+    const b = req.body || {};
+    const acc = testers.criar({ name: b.name, email: b.email, pass: b.pass });
+    res.json({ ok: true, id: acc.id, visao: testers.visao() });
+  }));
+
+  // Apagar a conta inteira. É destrutivo e é o que se espera de um tester
+  // que acabou — guardar a casca de uma conta de teste só ocupa vaga no
+  // limite e confunde a lista.
+  router.delete('/adm/testers/:id', auth, adminOnly, h(async (req, res) => {
+    testers.remover(req.params.id);
+    res.json({ ok: true, visao: testers.visao() });
+  }));
+
+  // O teste deu certo: vira cliente, com o histórico inteiro. Recriar do
+  // zero perderia os contatos e as conversas do teste, que é justamente o
+  // que faz a pessoa querer continuar.
+  router.post('/adm/testers/:id/promover', auth, adminOnly, h(async (req, res) => {
+    const acc = testers.promover(req.params.id);
+    res.json({ ok: true, id: acc.id, visao: testers.visao() });
+  }));
 
   // O INTERRUPTOR DO MODO BET, por conta.
   //

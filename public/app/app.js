@@ -1895,6 +1895,7 @@ const views = {
   'adm/contatos': renderAdmContatos,
   'adm/usuarios': renderAdmUsuarios,
   'adm/supers': renderAdmSupers,
+  'adm/testers': renderAdmTesters,
   // As abas do Admin SaaS, cada uma com o seu endereço.
   ...Object.fromEntries(Object.keys(ADM_ABAS).map(k => [k, renderAdmin]))
 };
@@ -2575,6 +2576,203 @@ async function renderAdmUsuarios() {
 // São contas comuns em tudo, menos em três coisas: rodam sem plano, sem
 // teto de uso e sem cobrança, e ficam fora das métricas de clientes (contar
 // uma conta que não paga como assinante inflaria MRR e conversão).
+// ===========================================================================
+// TESTERS — contas de teste, criadas e governadas aqui
+//
+// A tela tem duas metades e a ordem importa: primeiro AS REGRAS (quantos
+// podem existir, o que fica aberto, quanto podem usar), depois as contas. Quem
+// abre esta tela quase sempre vem decidir uma das regras — criar a conta é o
+// último passo, não o primeiro.
+// ===========================================================================
+let ADM_TST = null;
+
+async function renderAdmTesters() {
+  $('#view').innerHTML = `<div class="page"><div class="page-head"><h1>Testers</h1>` +
+    `<p class="muted">Contas de teste: usam o produto de verdade, sem pagar e com teto.</p></div>` + skel(3) + `</div>`;
+  try { ADM_TST = await api('/adm/testers'); }
+  catch (e) { $('#view').innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
+  admTstPaint();
+}
+
+function admTstPaint() {
+  const d = ADM_TST; if (!d) return;
+  const cheio = d.vagas <= 0;
+
+  $('#view').innerHTML = `<div class="page">
+    <div class="page-head"><h1>Testers</h1>
+      <p class="muted">Contas de teste: usam o produto de verdade, sem pagar e com teto.
+      Não contam como clientes nem entram na receita.</p></div>
+
+    <div class="metric-hero">
+      ${admCartao('users', fmtN(d.usados), 'Testers agora', true)}
+      ${admCartao('check', fmtN(d.vagas), 'Vagas livres')}
+      ${admCartao('columns', fmtN(Object.values(d.modulos).filter(Boolean).length) + '/' + fmtN(Object.keys(d.modulos).length), 'Módulos liberados')}
+    </div>
+
+    <div class="card">
+      <h2>${ico('gear')} Quantos podem existir</h2>
+      <p class="muted" style="margin:0 0 12px;font-size:12.5px">
+        Sem um teto, criar tester vira o caminho fácil para dar acesso de graça — e em seis meses
+        há uma dezena de contas que ninguém lembra por que existem. Zero fecha a porta sem apagar
+        quem já está dentro.</p>
+      <div class="row" style="align-items:flex-end">
+        <label style="flex:0 0 160px">Limite de testers
+          <input id="tst-limite" inputmode="numeric" value="${d.limite}"></label>
+        <button class="btn primary no-grow" onclick="admTstSalvarLimite()">Salvar</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>${ico('columns')} O que fica liberado</h2>
+      <p class="muted" style="margin:0 0 12px;font-size:12.5px">
+        Vale para <b>todos</b> os testers ao mesmo tempo. Um módulo desligado some do menu deles e
+        as rotas recusam — o mesmo comportamento de um plano que não inclui o módulo.</p>
+      <div class="int-hub" style="margin-bottom:12px">
+        ${Object.keys(d.modulos).map(k => `
+          <button type="button" class="int-tile" data-mod="${k}" aria-pressed="${!!d.modulos[k]}"
+            onclick="admTstModulo('${k}')">
+            <span class="int-ic">${ico(TST_ICO[k] || 'square', 20)}</span>
+            <b>${esc(TST_NOME[k] || k)}</b>
+            <span class="int-st"><span class="int-dot ${d.modulos[k] ? 'on' : ''}"></span>${d.modulos[k] ? 'liberado' : 'fechado'}</span>
+          </button>`).join('')}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>${ico('activity')} Quanto podem usar</h2>
+      <p class="muted" style="margin:0 0 12px;font-size:12.5px">
+        Cada disparo é uma mensagem paga na Meta e cada SMS é crédito real na Integra X: um teto
+        generoso aqui é dinheiro gasto por quem não está comprando nada.
+        <b>-1</b> significa ilimitado.</p>
+      <div class="row">
+        ${Object.keys(d.limites).map(k => `
+          <label style="flex:1;min-width:120px">${esc(TST_LIM[k] || k)}
+            <input id="tstl-${k}" inputmode="numeric" value="${d.limites[k]}"></label>`).join('')}
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn primary no-grow" onclick="admTstSalvarLimites()">Salvar limites</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>${ico('plus')} Criar um tester</h2>
+      <p class="muted" style="margin:0 0 12px;font-size:12.5px">
+        Ele entra pelo <b>painel do cliente</b>, em <code>/app/</code>, com o e-mail e a senha
+        definidos aqui. Não há cadastro por fora: tester só nasce nesta tela.</p>
+      ${cheio ? `<div class="card warn-card" style="margin-bottom:10px">
+        ${ico('alert', 14)} <b>Sem vagas.</b> Aumente o limite acima ou remova um tester existente.</div>` : ''}
+      <div class="row" style="align-items:flex-end">
+        <label style="flex:1.2">Nome<input id="tst-nome" placeholder="Quem vai testar"></label>
+        <label style="flex:1.2">E-mail de acesso<input id="tst-email" placeholder="pessoa@email.com"></label>
+        <label style="flex:1">Senha<input id="tst-senha" type="password" placeholder="mínimo 6 caracteres"></label>
+        <button class="btn primary no-grow" ${cheio ? 'disabled' : ''} onclick="admTstCriar(this)">${ico('plus', 14)} Criar</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>${ico('users')} ${fmtN(d.testers.length)} tester(s)</h2>
+      ${d.testers.length ? `<div class="tab-mob-wrap" style="overflow-x:auto"><table class="tab-mob"><thead><tr>
+        <th>Quem</th><th style="text-align:right">Contatos</th><th style="text-align:right">Disparos no ciclo</th>
+        <th>WhatsApp</th><th>Criado</th><th></th>
+      </tr></thead><tbody>
+      ${d.testers.map(a => `<tr>
+        <td><b>${esc(a.nome)}</b><div class="muted" style="font-size:11.5px">${esc(a.email)}</div></td>
+        <td data-r="Contatos" style="text-align:right">${fmtN(a.contatos)}</td>
+        <td data-r="Disparos" style="text-align:right">${fmtN(a.usoEnvios)}${d.limites.sends >= 0 ? ' / ' + fmtN(d.limites.sends) : ''}</td>
+        <td data-r="WhatsApp">${a.conectado ? '<span class="pill done">conectado</span>' : '<span class="muted">fora do ar</span>'}</td>
+        <td data-r="Criado">${timeAgo(a.criadoEm)}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <button class="btn small" onclick="admTstPromover('${a.id}', '${esc(a.nome)}')">Virar cliente</button>
+          <button class="btn small danger" onclick="admTstRemover('${a.id}', '${esc(a.nome)}')">Remover</button>
+        </td>
+      </tr>`).join('')}
+      </tbody></table></div>` : '<p class="muted">Nenhum tester ainda. Crie o primeiro acima.</p>'}
+    </div></div>`;
+}
+
+// Nomes e ícones dos módulos, para a grade não mostrar as chaves cruas.
+const TST_NOME = {
+  campaigns: 'Campanhas', flows: 'Fluxos', schedule: 'Agenda', team: 'Equipe',
+  agents: 'Atendentes', pagamentos: 'Koonpay', links: 'Links', pixels: 'Pixels',
+  tracking: 'Tracking', integrations: 'Integrações', sms: 'SMS'
+};
+const TST_ICO = {
+  campaigns: 'megaphone', flows: 'flow', schedule: 'calendar', team: 'users',
+  agents: 'headset', pagamentos: 'infinito', links: 'link', pixels: 'target',
+  tracking: 'trend', integrations: 'braces', sms: 'message'
+};
+const TST_LIM = {
+  sends: 'Disparos', campaigns: 'Campanhas', contacts: 'Contatos',
+  flows: 'Fluxos', pixels: 'Pixels', links: 'Links', whatsapps: 'Conexões'
+};
+
+// O clique no módulo salva na hora: é um interruptor, e interruptor que exige
+// um "salvar" depois é interruptor que fica meio ligado quando alguém sai da
+// tela sem clicar.
+async function admTstModulo(k) {
+  const mods = { ...ADM_TST.modulos };
+  mods[k] = !mods[k];
+  await admTstSalvar({ modulos: mods });
+}
+
+function admTstSalvarLimite() {
+  admTstSalvar({ limite: Number($('#tst-limite').value) || 0 });
+}
+
+function admTstSalvarLimites() {
+  const lim = {};
+  for (const k of Object.keys(ADM_TST.limites)) lim[k] = Number($('#tstl-' + k).value);
+  admTstSalvar({ limites: lim });
+}
+
+async function admTstSalvar(patch) {
+  try {
+    ADM_TST = await api('/adm/testers', { method: 'PUT', body: patch });
+    toast('Regras dos testers salvas');
+    admTstPaint();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function admTstCriar(btn) {
+  const body = {
+    name: $('#tst-nome').value.trim(),
+    email: $('#tst-email').value.trim(),
+    pass: $('#tst-senha').value
+  };
+  if (!body.email || !body.pass) return toast('Informe e-mail e senha', 'error');
+  btn.disabled = true;
+  try {
+    const r = await api('/adm/testers', { method: 'POST', body });
+    toast('Tester criado');
+    ADM_TST = r.visao;
+    admTstPaint();
+  } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
+}
+
+async function admTstRemover(id, nome) {
+  // APAGA A CONTA INTEIRA, com os contatos e as conversas do teste. É o que se
+  // espera de um tester que acabou — e é irreversível, então o aviso diz isso.
+  if (!await confirmModal('Remover ' + nome + '?',
+    'A conta é apagada com tudo o que houver dentro dela: contatos, conversas e configurações. Não dá para desfazer.')) return;
+  try {
+    const r = await api('/adm/testers/' + id, { method: 'DELETE' });
+    toast('Tester removido');
+    ADM_TST = r.visao;
+    admTstPaint();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function admTstPromover(id, nome) {
+  if (!await confirmModal('Transformar ' + nome + ' em cliente?',
+    'A conta mantém tudo o que criou no teste e passa a precisar de um plano para continuar. É o caminho de quem testou e resolveu assinar.')) return;
+  try {
+    const r = await api('/adm/testers/' + id + '/promover', { method: 'POST', body: {} });
+    toast(nome + ' agora é uma conta de cliente');
+    ADM_TST = r.visao;
+    admTstPaint();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
 async function renderAdmSupers() {
   $('#view').innerHTML = `<div class="page"><div class="page-head"><h1>Supercontas</h1>` +
     `<p class="muted">As contas dos seus próprios negócios.</p></div>` + skel(3) + `</div>`;

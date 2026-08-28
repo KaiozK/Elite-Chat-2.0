@@ -322,6 +322,11 @@ function newAccount({ name, email, pass }) {
     // cobrança, e fica fora das métricas do SaaS. É para os negócios do
     // próprio dono, não para um cliente.
     unlimited: false,
+    // CONTA DE TESTE: criada pelo admin, roda sem plano e sem cobrança —
+    // mas, diferente da superconta, COM TETO. Os módulos e os limites vêm
+    // de um lugar só (platform.testers) e não de um plano, porque ela não
+    // tem um. Fica fora da contagem de clientes: não paga, não é receita.
+    tester: false,
     channels: [emptyChannel('WhatsApp principal')],
     stages: [...DEFAULT_STAGES],
     contacts: [],
@@ -806,6 +811,9 @@ function ensureAccountShape(acc) {
   if (acc.isAdmin && acc.profile.betMode === undefined) acc.profile.betMode = true;
   if (typeof acc.profile.country !== 'string' || !acc.profile.country) acc.profile.country = 'BR';
   if (typeof acc.unlimited !== 'boolean') acc.unlimited = false;
+  // Precisa de `false` EXPLÍCITO: `undefined` funcionaria na comparação, mas
+  // some do JSON, e o campo nunca se materializaria no banco.
+  if (typeof acc.tester !== 'boolean') acc.tester = false;
   if (!acc.wallet || typeof acc.wallet !== 'object') acc.wallet = emptyWallet();
   if (!Array.isArray(acc.wallet.transactions)) acc.wallet.transactions = [];
   if (!Array.isArray(acc.wallet.receivables)) acc.wallet.receivables = [];
