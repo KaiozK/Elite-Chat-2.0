@@ -2,7 +2,7 @@
  * Cache do app shell + offline + Push Notifications + clique abre a conversa.
  * Escopo: /app/  (registrado por notifications.js)
  */
-const VERSION = 'koonfy-v11';  // v11: o login do app aponta o caminho do painel da plataforma
+const VERSION = 'koonfy-v12';  // v12: clique na notificação de chamada abre a tela em vez de atender
 const SHELL = 'ec-shell-' + VERSION;
 const RUNTIME = 'ec-runtime-' + VERSION;
 
@@ -105,11 +105,30 @@ self.addEventListener('notificationclick', (e) => {
   }
   e.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    for (const c of all) {
-      if (c.url.includes('/app')) {
-        c.postMessage({ type: 'NOTIFICATION_CLICK', data: { ...data, action: acao } });
-        return c.focus();
-      }
+    const doApp = all.filter(c => c.url.includes('/app'));
+
+    // A ABA CERTA, e não a primeira que aparecer. `matchAll` devolve na ordem
+    // que quiser, e quem deixa o painel aberto no computador costuma ter mais
+    // de uma aba do app. Mandar o aviso para uma aba de fundo e focar ELA tira
+    // a pessoa da aba em que ela estava para mostrar a chamada em outra — ou,
+    // pior, foca uma aba que o sistema já descarregou e nada acontece.
+    //
+    // Ordem de preferência: a que está em foco, depois qualquer visível,
+    // depois o resto.
+    const alvo = doApp.find(c => c.focused)
+      || doApp.find(c => c.visibilityState === 'visible')
+      || doApp[0];
+
+    if (alvo) {
+      alvo.postMessage({ type: 'NOTIFICATION_CLICK', data: { ...data, action: acao } });
+      // Focar DEPOIS de mandar o aviso: focar primeiro faz a aba acordar e
+      // redesenhar, e a mensagem chega no meio disso.
+      //
+      // Se a mensagem se perder (aba descarregada, listener ainda não
+      // registrado), o app não fica parado: ao voltar à tela ele dispara
+      // `visibilitychange`, que busca a chamada pendente e a desenha. É a rede
+      // de segurança deste caminho.
+      try { return await alvo.focus(); } catch (x) { /* segue e abre janela */ }
     }
     return self.clients.openWindow(url);
   })());

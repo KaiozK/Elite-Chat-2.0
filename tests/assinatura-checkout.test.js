@@ -314,8 +314,12 @@ const BASE = 'http://127.0.0.1:3983';
   const apiSrc = fs.readFileSync(R + 'src/api.js', 'utf8');
   const rotaPlano = apiSrc.slice(apiSrc.indexOf("router.post('/billing/subscribe'"), apiSrc.indexOf("router.post('/billing/subscribe'") + 2200);
   ok(/woovi\.createSubscription/.test(rotaPlano), 'o PLANO da Koonfy cria Pix Automático ao assinar');
-  ok(/pixAutomatic/.test(rotaPlano), 'respeitando o interruptor do admin');
-  ok(/gateway\(\)\.id === 'woovi'/.test(rotaPlano), 'e só com a Woovi ativa');
+  // A CONDIÇÃO SAIU DAQUI e virou uma função só, em assinaturas.disponivel()
+  // — ver a seção 24. Estas duas asserções liam a condição escrita à mão na
+  // rota, e deixaram de valer no momento em que ela foi centralizada:
+  // continuar exigindo o texto antigo seria exigir a duplicação de volta.
+  ok(rotaPlano.includes("require('./assinaturas').disponivel()"),
+     'e a regra do gateway vem da função central, não copiada aqui');
 
   const topupSrc = fs.readFileSync(R + 'src/topup.js', 'utf8');
   ok(/woovi\.createSubscription/.test(topupSrc), 'a RECARGA AUTOMÁTICA também usa Pix Automático');
@@ -573,6 +577,57 @@ const BASE = 'http://127.0.0.1:3983';
   ok(/data\.assinaturaDoCiclo/.test(pagina2), 'e abre já na aba do meio escolhido');
   ok(/Primeira cobrança da sua assinatura/.test(pagina2),
      'dizendo que é o começo de uma assinatura — o valor é o mesmo de uma compra avulsa, o compromisso não');
+
+  console.log('\n=== 24. A regra do gateway vale para as TRÊS recorrências ===');
+  // Pix Automático é produto do Banco Central que o gateway precisa oferecer.
+  // A Woovi oferece; a Simplify, na integração que temos, não. Com a Simplify
+  // ativa existe Pix, e só Pix — avulso, uma cobrança de cada vez.
+  //
+  // A regra estava escrita em três lugares, e um deles estava errado: `topup`
+  // conferia apenas se a Woovi estava CONFIGURADA, sem olhar se ela era o
+  // adquirente ATIVO. Com a Simplify selecionada, ligar a recarga automática
+  // criava uma recorrência numa Woovi que não processa mais nada, e o cliente
+  // ficava com um débito agendado num gateway fora de uso — sem erro nenhum.
+  const topup = require(R + 'src/topup');
+
+  // Todas perguntam à MESMA função.
+  const srcTopup = fs.readFileSync(R + 'src/topup.js', 'utf8');
+  const srcApi = fs.readFileSync(R + 'src/api.js', 'utf8');
+  ok(/require\('\.\/assinaturas'\)\.disponivel\(\)/.test(srcTopup),
+     'a recarga automática pergunta à regra central');
+  const rotaPlano2 = srcApi.slice(srcApi.indexOf("router.post('/billing/subscribe'"), srcApi.indexOf("router.post('/billing/subscribe'") + 2000);
+  ok(/require\('\.\/assinaturas'\)\.disponivel\(\)/.test(rotaPlano2),
+     'o plano da Koonfy também');
+  ok(!/woovi\.pixAutomatic/.test(rotaPlano2),
+     'e a condição escrita à mão saiu de lá — regra repetida é regra que um dia diverge');
+
+  // COM A SIMPLIFY, nenhuma das três oferece Pix Automático.
+  P.pagamentos.gateway = 'simplify'; db.save();
+  ok(assinaturas.disponivel() === false, 'assinatura do checkout: fora');
+
+  const meSimplify = await (await fetch(BASE + '/api/me', { headers: aut })).json();
+  ok(meSimplify.pixAutomatico === false,
+     'o app do cliente sabe que não há Pix Automático — o editor de produto não oferece a opção');
+
+  let recusouTopup = null;
+  try {
+    await topup.configurarAuto(acc, { enabled: true, method: 'pix', amount: 5000, threshold: 1000 }, null);
+  } catch (e) { recusouTopup = e; }
+  ok(!!recusouTopup, 'recarga automática no Pix: recusada');
+  ok(/Pix Automático/.test(recusouTopup.message),
+     'com o motivo por extenso, e uma saída: ' + recusouTopup.message);
+
+  // E DE VOLTA COM A WOOVI, as três voltam.
+  P.pagamentos.gateway = 'woovi'; db.save();
+  ok(assinaturas.disponivel() === true, 'com a Woovi ativa, volta');
+  const meWoovi = await (await fetch(BASE + '/api/me', { headers: aut })).json();
+  ok(meWoovi.pixAutomatico === true, 'e o app do cliente volta a oferecer');
+
+  // O interruptor do admin continua valendo por cima do gateway.
+  P.woovi.pixAutomatic = false; db.save();
+  ok(assinaturas.disponivel() === false,
+     'desligado no painel, some mesmo com a Woovi ativa');
+  P.woovi.pixAutomatic = true; db.save();
 
   srv.close();
   global.fetch = fetchReal;

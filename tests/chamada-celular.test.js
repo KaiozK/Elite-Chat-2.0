@@ -143,6 +143,72 @@ pushNative.sendToAccount = async () => 0;
   const velha = await (await fetch(BASE + '/api/calls/pending', { headers: aut })).json();
   ok(!velha.call, 'e uma de cinco minutos atrás também não — a Meta já desistiu');
 
+  console.log('\n=== 6. Tocar na notificação ABRE a tela, não atende ===');
+  // ERA O BUG RELATADO: tocar na notificação da ligação levava para a tela
+  // principal em vez da tela da chamada.
+  //
+  // A causa: o toque chamava `answerCall()`, que pede o MICROFONE. Num celular
+  // que acabou de abrir o app essa permissão quase sempre ainda não foi dada —
+  // então o que aparecia era o pedido de permissão, e se ela demorasse ou
+  // fosse negada, `endCallUI('Falha ao conectar')` fechava tudo e deixava a
+  // pessoa no dashboard, com o telefone ainda tocando do outro lado.
+  //
+  // Um toque numa notificação não é consentimento para abrir o microfone: é
+  // intenção de VER quem está ligando.
+  const fs = require('fs');
+  const tela = fs.readFileSync(R + 'public/app/app.js', 'utf8');
+  const abre = tela.slice(tela.indexOf('function notifOpenFromData'), tela.indexOf('function notifOpenFromData') + 1400);
+  ok(/abrirChamadaPorId\(data\.callId\)/.test(abre),
+     'o toque na notificação abre a tela da chamada');
+  ok(!/atenderChamadaPorId\(data\.callId\)/.test(abre),
+     'e NÃO atende sozinho — abrir o microfone é sempre gesto explícito');
+  ok(/data\.action === 'reject'/.test(abre),
+     'o botão Recusar da notificação continua recusando na hora, sem abrir tela');
+
+  // ATENDER continua existindo, e agora só é alcançado pelo botão Atender.
+  ok(/async function atenderChamadaPorId/.test(tela) && /async function abrirChamadaPorId/.test(tela),
+     'abrir e atender são funções separadas');
+  const atende = tela.slice(tela.indexOf('async function atenderChamadaPorId'), tela.indexOf('async function atenderChamadaPorId') + 320);
+  ok(/await abrirChamadaPorId\(id\)/.test(atende),
+     'atender passa por abrir: a tela aparece antes de o microfone ser pedido');
+
+  console.log('\n=== 7. A chamada ERRADA não é atendida ===');
+  // Com `callUI` preenchido e um id DIFERENTE, o código antigo não fazia nada —
+  // nem buscava, nem avisava — e caía direto no `answerCall()`, atendendo a
+  // chamada que estava na tela em vez da que a pessoa tocou.
+  const abrir = tela.slice(tela.indexOf('async function abrirChamadaPorId'), tela.indexOf('async function abrirChamadaPorId') + 1200);
+  ok(/callUI && \(!id \|\| callUI\.id === id\)/.test(abrir),
+     'só reusa o que está na tela quando é a MESMA chamada');
+  ok(/await recuperarChamadaPendente\(true\)/.test(abrir),
+     'sendo outra, busca a que está tocando de verdade');
+  ok(/callUI\.min = false/.test(abrir),
+     'e desminimiza: uma chamada em pastilha era o estado em que tocar na notificação parecia não fazer nada');
+
+  console.log('\n=== 8. Uma busca de pendente por vez ===');
+  // `if (callUI) return` era conferido ANTES do await, e a partida fria chamava
+  // por dois caminhos quase juntos: duas buscas, dois `callUI`, duas pinturas e
+  // duas campainhas sobrepostas — a lentidão que se sente ao abrir com o
+  // telefone tocando.
+  const rec = tela.slice(tela.indexOf('async function recuperarChamadaPendente'), tela.indexOf('async function recuperarChamadaPendente') + 1400);
+  ok(/let buscandoPendente = null;/.test(tela), 'existe uma trava de busca em voo');
+  ok(/if \(buscandoPendente\) return buscandoPendente;/.test(rec),
+     'a segunda chamada espera a primeira em vez de abrir outra busca');
+  ok((rec.match(/if \(callUI\) return callUI;/g) || []).length >= 2,
+     'e o estado é reconferido DEPOIS do await — o SSE pode ter entregue a mesma chamada no meio');
+
+  // E o arranque não dispara os dois caminhos de uma vez.
+  ok(/if \(!abrirChamadaPelaUrl\(\)\) recuperarChamadaPendente\(true\);/.test(tela),
+     'aberto pela notificação OU pelo ícone, nunca os dois ao mesmo tempo');
+  ok(!/atenderPelaUrl\(\)/.test(tela),
+     'e a partida fria não atende mais às cegas');
+
+  console.log('\n=== 9. O Service Worker foca a aba certa ===');
+  const sw = fs.readFileSync(R + 'public/app/sw.js', 'utf8');
+  ok(/doApp\.find\(c => c\.focused\)/.test(sw),
+     'prefere a aba em foco — mandar o aviso para uma de fundo tira a pessoa de onde ela estava');
+  ok(/visibilityState === .visible./.test(sw), 'depois uma visível');
+  ok(/koonfy-v12/.test(sw), 'e a versão do cache subiu, senão o navegador serve o SW antigo');
+
   srv.close();
   await encerrar(srv, falhas);
 })();

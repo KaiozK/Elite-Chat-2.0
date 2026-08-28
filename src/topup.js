@@ -104,7 +104,15 @@ async function configurarAuto(acc, cfg, broadcast) {
 
   let sub = null;
   if (metodo === 'pix') {
-    if (!woovi.configured()) throw erro('Pix indisponível no momento');
+    // A MESMA REGRA DAS OUTRAS DUAS RECORRÊNCIAS, e vinda da mesma função.
+    // Aqui só se conferia `woovi.configured()`: com a Simplify como adquirente
+    // ativo, a recarga automática criava assinatura numa Woovi que não
+    // processa mais nada, e o cliente ficava com um débito agendado num
+    // gateway fora de uso — sem erro em lugar nenhum.
+    if (!require('./assinaturas').disponivel()) {
+      throw erro('A recarga automática no Pix depende do Pix Automático, que não está ' +
+        'disponível na plataforma agora. Use a recarga no cartão ou deposite quando precisar.');
+    }
     // Trocar de valor/meio significa outra assinatura: a Woovi guarda o valor
     // fixo, então a antiga é cancelada antes de nascer a nova.
     if (a.wooviSubId) { try { await woovi.cancelSubscription(a.wooviSubId); } catch {} }

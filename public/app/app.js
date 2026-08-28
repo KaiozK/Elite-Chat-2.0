@@ -263,12 +263,23 @@ function renderThemeSettings() {
 // ---------- Centro de Notificações (sino no topbar) ----------
 function notifOpenFromData(data) {
   data = data || {};
-  // LIGAÇÃO: tocar na notificação é o gesto de atender, não de "abrir o app e
-  // procurar". O botão "Recusar" da notificação recusa; qualquer outro toque
-  // atende.
+  // LIGAÇÃO: tocar na notificação ABRE A TELA DA CHAMADA, com Atender e
+  // Recusar. Não atende sozinho.
+  //
+  // Atender direto no toque era o desenho antigo, e era o bug: `answerCall`
+  // pede o MICROFONE, e num celular que acabou de abrir o app essa permissão
+  // quase sempre ainda não foi dada. O que a pessoa via era o pedido de
+  // permissão no lugar da chamada e, se demorasse ou negasse,
+  // `endCallUI('Falha ao conectar')` fechava tudo e a deixava no dashboard —
+  // com o telefone ainda tocando do outro lado.
+  //
+  // Um toque numa notificação também não é consentimento para abrir o
+  // microfone: é intenção de VER quem está ligando. O botão "Recusar" da
+  // notificação continua recusando na hora — esse é um gesto explícito e não
+  // precisa de tela.
   if (data.type === 'call' && data.callId) {
     if (data.action === 'reject') { recusarChamadaPorId(data.callId); return; }
-    atenderChamadaPorId(data.callId);
+    abrirChamadaPorId(data.callId);
     return;
   }
   if (data.waId) { location.hash = '#/inbox'; setTimeout(() => { try { openChat(data.waId); } catch {} }, 180); }
@@ -1304,26 +1315,39 @@ async function enterApp() {
   pollTimer = setInterval(refreshBadge, 30000);
   if (state.mustChangePassword) toast('Troque a senha padrão em Configurações → Segurança', 'error');
   route();
-  atenderPelaUrl();
-  // PARTIDA FRIA COM O TELEFONE TOCANDO. No celular o app quase sempre está
-  // fechado, então abrir pelo ícone é a regra e não a exceção — e numa
-  // partida fria o documento já nasce visível, então `visibilitychange` não
-  // dispara. Sem esta linha o app subia, pintava o dashboard e ficava calado
-  // com uma ligação tocando do outro lado. No computador nunca apareceu
-  // porque lá o app fica aberto o dia inteiro e o SSE já está conectado.
-  recuperarChamadaPendente(true);
+  // ABERTO PELA NOTIFICAÇÃO, ou aberto pelo ícone com o telefone tocando.
+  //
+  // Os dois caminhos terminam na mesma tela, e por isso o segundo só corre
+  // quando o primeiro não pegou. Antes os dois disparavam sempre e sem se
+  // olhar: duas buscas em `/calls/pending`, dois `callUI`, duas pinturas e
+  // duas campainhas — em cima do gesto de quem acabou de tocar na
+  // notificação. (`recuperarChamadaPendente` agora também trava a segunda
+  // busca; esta linha evita até a primeira.)
+  //
+  // A recuperação pelo ícone é necessária porque, numa partida fria, o
+  // documento já nasce visível e `visibilitychange` nunca dispara: sem ela o
+  // app subia, pintava o dashboard e ficava calado com uma ligação tocando.
+  if (!abrirChamadaPelaUrl()) recuperarChamadaPendente(true);
 }
 
 // O app pode ter sido ABERTO pelo toque na notificação de chamada — o Service
 // Worker põe `?atender=<id>` na URL justamente porque, com o app fechado, não
-// há a quem mandar mensagem. A intenção é consumida uma vez e apagada da barra
-// de endereços, senão um F5 tentaria atender de novo uma chamada encerrada.
-function atenderPelaUrl() {
+// há a quem mandar mensagem. A intenção é consumida uma vez e apagada da
+// barra de endereços, senão um F5 tentaria de novo uma chamada encerrada.
+//
+// O NOME DO PARÂMETRO FICOU, mas o que ele faz mudou: ABRE a tela da chamada
+// em vez de atender. Notificações já entregues carregam `?atender=` na URL e
+// continuam funcionando; trocar o nome quebraria justamente as que estão na
+// bandeja do celular agora. E atender numa partida fria era o pior caso do
+// desenho antigo — o app subindo, pedindo microfone antes de desenhar
+// qualquer coisa, e caindo no dashboard se a permissão demorasse.
+function abrirChamadaPelaUrl() {
   let id = '';
   try { id = new URLSearchParams(location.search).get('atender') || ''; } catch {}
-  if (!id) return;
+  if (!id) return false;
   try { history.replaceState(null, '', location.pathname + location.hash); } catch {}
-  atenderChamadaPorId(id);
+  abrirChamadaPorId(id);
+  return true;
 }
 
 // No PWA do navegador ninguém chama `__ecOnResume`: quem avisa que o app voltou
@@ -12658,26 +12682,75 @@ async function answerCall() {
 // Atender, como se o evento nunca tivesse se perdido. Vindo da notificação a
 // chamada é atendida em seguida, e começar a tocar para parar meio segundo
 // depois seria só um susto.
+// UMA BUSCA DE CADA VEZ. O `if (callUI) return` é conferido ANTES do await, e
+// numa partida fria esta função é chamada por dois caminhos quase juntos
+// (`abrirChamadaPelaUrl` e a recuperação do arranque). As duas passavam pela
+// guarda, as duas buscavam `/calls/pending`, as duas montavam `callUI` e as
+// duas pintavam — dois toques de campainha sobrepostos e a tela redesenhando
+// no meio do gesto. É a lentidão que se sente ao abrir com o telefone
+// tocando.
+let buscandoPendente = null;
+
 async function recuperarChamadaPendente(tocar) {
   if (callUI) return callUI;
-  let r = null;
-  try { r = await api('/calls/pending'); } catch { return null; }
-  if (!r || !r.call || !r.sdpOffer) return null;
-  callUI = { ...r.call, sdpOffer: r.sdpOffer, phase: 'incoming', muted: false };
-  paintCall();
-  if (tocar && window.ECNotify && ECNotify.startRing) ECNotify.startRing();
-  return callUI;
+  if (buscandoPendente) return buscandoPendente;
+
+  buscandoPendente = (async () => {
+    let r = null;
+    try { r = await api('/calls/pending'); } catch { return null; }
+    if (!r || !r.call || !r.sdpOffer) return null;
+    // Reconfere DEPOIS do await: o SSE pode ter entregue a mesma chamada
+    // enquanto a resposta vinha, e sobrescrever aqui apagaria um `callUI`
+    // que já podia estar em `active`.
+    if (callUI) return callUI;
+    callUI = { ...r.call, sdpOffer: r.sdpOffer, phase: 'incoming', muted: false };
+    paintCall();
+    return callUI;
+  })();
+
+  try {
+    const c = await buscandoPendente;
+    // A campainha toca uma vez só, e só se a chamada ainda está chamando.
+    if (c && tocar && c.phase === 'incoming' && window.ECNotify && ECNotify.startRing) ECNotify.startRing();
+    return c;
+  } finally {
+    buscandoPendente = null;
+  }
 }
 
-async function atenderChamadaPorId(id) {
-  // Já está na tela: é a mesma chamada, atende direto.
-  if (!callUI || (id && callUI.id !== id)) {
-    if (!callUI && !(await recuperarChamadaPendente())) {
-      toast('Esta ligação já foi encerrada ou atendida em outro aparelho');
-      return;
-    }
+// ABRIR A TELA DA CHAMADA — o que o toque na notificação faz.
+//
+// Separado de `atenderChamadaPorId` de propósito: ABRIR é mostrar quem está
+// ligando e oferecer os dois botões; ATENDER é abrir o microfone. Eram a
+// mesma função, e é por isso que o toque na notificação abria o microfone.
+async function abrirChamadaPorId(id) {
+  // Já está na tela e é a mesma: só garante que está visível — pode estar
+  // minimizada em pastilha, que é o estado em que "não aconteceu nada" ao
+  // tocar na notificação.
+  if (callUI && (!id || callUI.id === id)) {
+    if (callUI.min) { callUI.min = false; paintCall(); }
+    return callUI;
   }
-  if (callUI && callUI.phase === 'incoming') answerCall();
+  // É OUTRA chamada, ou não há nenhuma: busca o que o servidor tem.
+  //
+  // Com `callUI` preenchido e id DIFERENTE, o código antigo não fazia nada —
+  // nem buscava, nem avisava — e caía direto no `answerCall()`, atendendo a
+  // chamada ERRADA. O servidor só devolve uma pendente, e é a que está
+  // tocando agora.
+  const c = await recuperarChamadaPendente(true);
+  if (!c) {
+    toast('Esta ligação já foi encerrada ou atendida em outro aparelho');
+    return null;
+  }
+  if (c.min) { c.min = false; paintCall(); }
+  return c;
+}
+
+// ATENDER DE VERDADE. Só chega aqui por um toque no botão Atender — nunca
+// por notificação, nunca por URL. Abrir o microfone é sempre gesto explícito.
+async function atenderChamadaPorId(id) {
+  const c = await abrirChamadaPorId(id);
+  if (c && c.phase === 'incoming') answerCall();
 }
 
 async function recusarChamadaPorId(id) {

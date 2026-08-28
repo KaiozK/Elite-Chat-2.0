@@ -98,6 +98,19 @@ function gatewayAtivo() { return (db.get().platform.pagamentos || {}).gateway ||
 // do PLANO desde antes; se as assinaturas dos clientes o ignorassem, desligar
 // no painel pararia uma recorrência e deixaria a outra correndo, e o admin não
 // teria como saber disso olhando a tela.
+// A REGRA DO PIX AUTOMÁTICO MORA AQUI, e as TRÊS recorrências do produto
+// perguntam a esta função — a assinatura do checkout, o plano da Koonfy e a
+// recarga automática da carteira.
+//
+// Ter a mesma regra escrita em três lugares foi o que produziu o buraco que
+// isto conserta: `topup` conferia só se a Woovi estava CONFIGURADA, sem olhar
+// se ela era o adquirente ATIVO. Com a Simplify selecionada, ligar a recarga
+// automática criava uma recorrência numa Woovi que não processa mais nada — e
+// o cliente ficava com um débito agendado num gateway fora de uso.
+//
+// Pix Automático é produto do Banco Central que o gateway precisa oferecer. A
+// Woovi oferece; a Simplify, na integração que temos, não. Com a Simplify
+// ativa existe Pix, e só Pix — avulso, uma cobrança de cada vez.
 function disponivel() {
   if (gatewayAtivo() !== 'woovi') return false;
   try {

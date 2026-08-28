@@ -4265,7 +4265,10 @@ module.exports = function (broadcast, clients) {
     // a recorrência na Woovi deixaria a assinatura de um lado e as cobranças do
     // outro. A Simplify não tem produto recorrente; ali a renovação segue pelo
     // débito da carteira, que já existe (ver saasbilling.runRenewals).
-    if (pagamentos.gateway().id === 'woovi' && db.get().platform.woovi.pixAutomatic) {
+    // A MESMA função que decide para a assinatura do checkout e para a recarga
+    // automática. A condição estava escrita à mão aqui, igualzinha — e regra
+    // repetida é regra que um dia diverge.
+    if (require('./assinaturas').disponivel()) {
       try {
         const sub = await woovi.createSubscription({
           correlationID: cid, value: total, customer,
