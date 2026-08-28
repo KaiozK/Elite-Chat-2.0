@@ -40,6 +40,12 @@ form{display:grid;gap:16px;margin-top:28px}
    recupera a diferenca. A conta fica escrita para o numero nao virar magia. */
 form .btn{margin-top:calc(5px - 16px)}
 label{display:grid;gap:6px;font-size:12px;font-weight:500;letter-spacing:.032em;text-transform:uppercase;color:var(--mudo)}
+  /* display:grid no label VENCE o [hidden]{display:none} do navegador:
+     a regra da folha é mais específica que a da UA. O campo do site nascia com
+     o atributo hidden e aparecia assim mesmo — 93px pedindo o endereço de uma
+     plataforma de apostas para quem vende sapato. Esta linha devolve ao
+     atributo o poder que ele deveria ter. */
+  label[hidden]{display:none}
 input,select{background:var(--painel);border:1px solid var(--fio);border-radius:4px;color:var(--texto);
   padding:13px 14px;font:400 16px/1.3 var(--fonte)}
 input:focus,select:focus{outline:none;border-color:var(--sinal)}
@@ -155,15 +161,12 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
       <p class="mudo" style="max-width:520px">Escolha o nome que o seu cliente vê e uma senha. Do outro lado, é só conectar o número
         e a sua operação começa a rodar.</p>
 
+      <!-- SEM REPETIR A ETAPA 1. Nome, WhatsApp, e-mail e documento já foram
+           digitados antes do pagamento e não mudam aqui: eram quatro campos
+           somente-leitura ocupando meia tela num formulário que precisa ser
+           curto — a pessoa acabou de pagar e o que ela quer é entrar.
+           Os dados continuam na conta; o que saiu foi a repetição. -->
       <form id="form-conta">
-        <div class="dupla">
-          <label>Nome<input id="c-nome" readonly></label>
-          <label>WhatsApp<input id="c-telefone" readonly></label>
-        </div>
-        <div class="dupla">
-          <label>E-mail<input id="c-email" readonly></label>
-          <label>CPF ou CNPJ<input id="c-documento" readonly></label>
-        </div>
         <label>Nome da empresa<input id="empresa" required placeholder="Como o cliente conhece você"></label>
         <div class="dupla">
           <label>Senha<input id="senha" type="password" autocomplete="new-password" minlength="6" required></label>
@@ -172,7 +175,23 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
             <option>Só eu</option><option>2 a 5</option><option>6 a 20</option><option>Mais de 20</option>
           </select></label>
         </div>
-        <label>O que você vende<select id="segment"><option value="">Prefiro não dizer</option></select></label>
+        <div class="dupla">
+          <label>O que você vende<select id="segment"><option value="">Prefiro não dizer</option></select></label>
+          <!-- O QUE A PESSOA QUER RESOLVER. Estava no formulário antigo e sumiu
+               no caminho para o checkout. Não muda permissão nem cobrança: muda
+               o que a plataforma sabe sobre para que a conta foi aberta, que é o
+               que permite chegar nela com a coisa certa. -->
+          <label>O que você quer resolver primeiro<select id="goal">
+            <option value="">Prefiro não dizer</option>
+            <option>Atender mais rápido</option>
+            <option>Vender pelo WhatsApp</option>
+            <option>Recuperar carrinho e lead frio</option>
+            <option>Automatizar o atendimento</option>
+            <option>Organizar a equipe</option>
+            <option>Disparar campanhas</option>
+            <option>Cobrar e receber (Pagamentos)</option>
+          </select></label>
+        </div>
         <!-- Só aparece para quem escolhe um segmento que exige o endereço (hoje,
              iGaming). Nasce escondido e sem `required` — um campo obrigatório
              dentro de um bloco `display:none` trava o envio do formulário sem
@@ -181,6 +200,25 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
           <input id="site" placeholder="minhaplataforma.com" autocomplete="url">
           <small class="mudo">Usamos para confirmar a operação antes de liberar os recursos do seu segmento.</small>
         </label>
+        <!-- CONTA DE RECEBIMENTO. Também estava no formulário antigo. É opcional
+             de propósito: sem a chave, a conta nasce igual e o Koonpay é
+             concluído depois no painel. Torná-la obrigatória aqui faria perder
+             um cadastro já PAGO por causa de um dado que a pessoa pode nem ter
+             em mãos no momento.
+             O documento não é pedido de novo — ele já veio na etapa 1. -->
+        <div class="dupla">
+          <label>Tipo da chave Pix <span style="text-transform:none;opacity:.6">(opcional)</span>
+            <select id="pixtipo">
+              <option value="">Depois, no painel</option>
+              <option value="cpf">CPF</option>
+              <option value="cnpj">CNPJ</option>
+              <option value="email">E-mail</option>
+              <option value="telefone">Telefone</option>
+              <option value="aleatoria">Chave aleatória</option>
+            </select></label>
+          <label>Chave Pix que recebe
+            <input id="pixkey" placeholder="a chave que recebe" autocomplete="off"></label>
+        </div>
         <p class="erro" id="erro-conta"></p>
         <button class="btn" id="btn-concluir" type="submit">Entrar no painel</button>
       </form>
@@ -348,10 +386,8 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
     }).catch(function () {});
   }
   function preencher(d) {
-    $('c-nome').value = d.nome;
-    $('c-email').value = d.email;
-    $('c-telefone').value = mascaraTel(String(d.telefone).replace(/^55/, ''));
-    $('c-documento').value = mascaraDoc(d.documento);
+    // Os dados da etapa 1 não são mais mostrados aqui — ver o comentário do
+    // formulário. Continuam guardados na conta.
   }
 
   // A LISTA DE SEGMENTOS VEM DO SERVIDOR (/api/public/segmentos), que é a mesma
@@ -384,7 +420,9 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         empresa: $('empresa').value, senha: $('senha').value,
-        size: $('size').value, segment: $('segment').value, site: $('site').value
+        size: $('size').value, goal: $('goal').value,
+        segment: $('segment').value, site: $('site').value,
+        pixKeyType: $('pixtipo').value, pixKey: $('pixkey').value
       })
     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (r) {

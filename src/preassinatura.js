@@ -193,6 +193,17 @@ function concluir(token, b, broadcast) {
   for (const k of ['size', 'goal']) {
     if (b[k] !== undefined) acc.profile[k] = String(b[k] || '').trim().slice(0, 60);
   }
+  // A CHAVE PIX que a conta usa para receber. Vem desta etapa e é OPCIONAL:
+  // sem ela a conta nasce igual e o Koonpay é concluído depois, no painel.
+  // Exigi-la aqui faria perder um cadastro JÁ PAGO por causa de um dado que a
+  // pessoa pode nem ter em mãos na hora — e o dinheiro já entrou.
+  //
+  // Os mesmos campos e o mesmo corte de /api/register: dois formatos para o
+  // mesmo dado viram duas telas mostrando coisas diferentes sobre a mesma conta.
+  if (b.pixKey) {
+    acc.profile.pixKey = String(b.pixKey).trim().slice(0, 120);
+    acc.profile.pixKeyType = String(b.pixKeyType || '').slice(0, 20);
+  }
   // O par segmento+site é validado junto: iGaming sem site não conclui o
   // cadastro. Erro aqui vira 400 na tela, no campo, e não uma conta criada com
   // metade do dado.
