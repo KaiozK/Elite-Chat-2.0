@@ -274,6 +274,56 @@ const BASE = 'http://127.0.0.1:3984';
   const b = anti.ipDaRequisicao({ headers: { 'x-forwarded-for': '198.51.100.1, 10.0.0.1' }, socket: {} });
   ok(b === '198.51.100.1', 'e do X-Forwarded-For sai o primeiro, que é o cliente');
 
+  console.log('\n=== 12. A tela existe, e mostra o que decidir primeiro ===');
+  // A fila só valia como endpoint: para ver uma comissão parada era preciso
+  // chamar a API na mão. Uma verificação que ninguém consegue olhar não
+  // protege nada — e comissão retida sem tela é dinheiro parado que ninguém
+  // sabe que está parado.
+  const tela = fs.readFileSync(R + 'public/app/app.js', 'utf8');
+  const menu = fs.readFileSync(R + 'public/adm/index.html', 'utf8');
+
+  ok(menu.includes('data-view="adm/antiabuso"'), 'o menu do painel tem o item');
+  ok(/'adm\/antiabuso': renderAdmAntiabuso/.test(tela), 'a rota existe');
+  ok(/function admAbPaint/.test(tela), 'e a tela é pintada por função própria');
+
+  // O QUE ESTÁ RETIDO VEM PRIMEIRO. Ordenar por risco poria em cima uma conta
+  // que não tem nada a decidir, e a comissão parada — a única linha com
+  // dinheiro esperando — ficaria embaixo.
+  const paint = tela.slice(tela.indexOf('function admAbPaint'), tela.indexOf('function admAbLinha'));
+  ok(/const retidas = d\.contas\.filter\(c => c\.comissaoRetida\)/.test(paint),
+     'as comissões paradas são separadas do resto');
+  ok(paint.indexOf('retidas.map') < paint.indexOf('resto.map'),
+     'e desenhadas ANTES — risco é informação, comissão parada é decisão');
+
+  console.log('\n=== 13. A tela EXPLICA o sinal, não só o acusa ===');
+  // "Mesmo IP" sem contexto lê-se como acusação, e é o sinal mais fraco dos
+  // três: escritório, coworking e operadora põem muita gente legítima atrás do
+  // mesmo endereço. Sem essa frase ao lado, o admin bloqueia gente honesta.
+  ok(/const AB_SINAL = \{/.test(tela), 'cada sinal tem um texto que diz o que ele vale');
+  ok(/O mais FRACO/.test(tela), 'e o IP é apresentado como fraco, com o porquê');
+  ok(/MEI com dois negócios/.test(tela),
+     'e o documento vem com a explicação inocente possível');
+
+  // Dá para abrir as contas parecidas sem sair da tela: comparar é o trabalho
+  // que se faz aqui, e sem isso o admin decide olhando um id.
+  ok(/onclick="admFicha\('\$\{id\}'\)"/.test(tela) || /admFicha\('\$\{id\}'\)/.test(tela),
+     'as contas parentes abrem em um clique');
+
+  console.log('\n=== 14. Liberar avisa o que acontece DEPOIS ===');
+  // Liberar não é "dispensar este aviso": é pagar esta comissão e todas as
+  // renovações seguintes, para sempre. Um confirm que só fala do agora
+  // esconde a metade que importa.
+  const lib = tela.slice(tela.indexOf('async function admAbLiberar'), tela.indexOf('async function admAbLiberar') + 900);
+  ok(/confirmModal/.test(lib), 'liberar pede confirmação');
+  ok(/renovações seguintes/.test(lib),
+     'dizendo que vale para as renovações também, e não só para a primeira');
+  ok(/registrado que foi você quem liberou/.test(lib), 'e que fica registrado quem decidiu');
+
+  // A rota devolve a fila já atualizada — sem isso a tela ficaria mostrando a
+  // linha vermelha depois de liberada, e o admin clicaria de novo.
+  ok(/ADM_AB = await api\(.\/adm\/antiabuso\/. \+ id \+ ./.test(lib.replace(/'/g, '.')),
+     'e a tela se atualiza com o que a rota devolveu');
+
   srv.close();
   await encerrar(srv, falhas);
 })();

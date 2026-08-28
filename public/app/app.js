@@ -1896,6 +1896,7 @@ const views = {
   'adm/usuarios': renderAdmUsuarios,
   'adm/supers': renderAdmSupers,
   'adm/testers': renderAdmTesters,
+  'adm/antiabuso': renderAdmAntiabuso,
   // As abas do Admin SaaS, cada uma com o seu endereço.
   ...Object.fromEntries(Object.keys(ADM_ABAS).map(k => [k, renderAdmin]))
 };
@@ -2590,6 +2591,135 @@ let ADM_TST = null;
 // em que um segmento novo entrasse — e ninguém repara numa lista que só
 // aparece no painel.
 let TST_SEGS = [];
+
+// ===========================================================================
+// ANTIABUSO — a fila do que a plataforma marcou
+//
+// Esta tela NÃO é uma lista de culpados. É a lista do que bateu em algum
+// sinal, para alguém olhar — e quase tudo aqui tem explicação inocente: duas
+// empresas do mesmo dono, o sócio que abriu a conta da mesma sala, o celular
+// atrás do CGNAT da operadora.
+//
+// O QUE ESTÁ REALMENTE EM JOGO É A COMISSÃO. O Koonfy paga 30% da primeira
+// assinatura e 15% de cada renovação a quem indica. Quem cria a conta pelo
+// PRÓPRIO link recebe isso de volta todo mês — uma assinatura permanentemente
+// mais barata, paga pela plataforma, sem indicação nenhuma por trás. Enquanto
+// a linha estiver aqui em vermelho, esse repasse está PARADO.
+//
+// Por isso a tela começa pelo que está retido, e não pelo que tem risco alto:
+// risco é informação, comissão parada é dinheiro esperando decisão.
+// ===========================================================================
+let ADM_AB = null;
+
+async function renderAdmAntiabuso() {
+  $('#view').innerHTML = `<div class="page"><div class="page-head"><h1>Antiabuso</h1>` +
+    `<p class="muted">Contas que bateram em algum sinal. Nada aqui bloqueia ninguém — o que fica parado é a comissão.</p></div>` + skel(3) + `</div>`;
+  try { ADM_AB = await api('/adm/antiabuso'); }
+  catch (e) { $('#view').innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
+  admAbPaint();
+}
+
+// Como cada sinal se explica em uma linha. O texto do servidor diz O QUE
+// bateu; isto diz POR QUE aquilo importa — sem isso, "mesmo IP" parece uma
+// acusação, e é o sinal mais fraco dos três.
+const AB_SINAL = {
+  documento: ['Mesmo CPF/CNPJ', 'O sinal mais forte: não se cria um CPF como se cria um e-mail. Ainda assim pode ser legítimo — um MEI com dois negócios.'],
+  telefone: ['Mesmo WhatsApp', 'Quase tão forte quanto o documento: número é caro de multiplicar.'],
+  ip: ['Mesmo IP', 'O mais FRACO. Escritório, coworking e operadora de celular põem muita gente legítima atrás do mesmo endereço. Sozinho não quer dizer quase nada.'],
+  indicacao: ['Indicação suspeita', 'Quem indicou e quem foi indicado têm algo em comum. É este que segura o dinheiro.']
+};
+
+function admAbPaint() {
+  const d = ADM_AB; if (!d) return;
+  // O QUE ESTÁ RETIDO VEM PRIMEIRO. É a única parte da tela em que há dinheiro
+  // parado esperando uma decisão; o resto é informação.
+  const retidas = d.contas.filter(c => c.comissaoRetida);
+  const resto = d.contas.filter(c => !c.comissaoRetida);
+
+  $('#view').innerHTML = `<div class="page">
+    <div class="page-head"><h1>Antiabuso</h1>
+      <p class="muted">Contas que bateram em algum sinal. Nada aqui bloqueia ninguém —
+      o que fica parado é a <b>comissão de afiliado</b>, até você decidir.</p></div>
+
+    <div class="metric-hero">
+      ${admCartao('alert', fmtN(d.comissoesRetidas), 'Comissões paradas', d.comissoesRetidas > 0)}
+      ${admCartao('users', fmtN(d.total), 'Contas marcadas')}
+    </div>
+
+    ${d.total === 0 ? `<div class="card">
+      <h2>${ico('check')} Nada para olhar</h2>
+      <p class="muted" style="font-size:13px;margin:6px 0 0">Nenhuma conta bateu em sinal nenhum.
+      Esta tela enche sozinha quando isso mudar.</p></div>` : ''}
+
+    ${retidas.length ? `<div class="card">
+      <h2>${ico('alert')} ${fmtN(retidas.length)} comissão(ões) parada(s)</h2>
+      <p class="muted" style="margin:0 0 14px;font-size:12.5px">
+        Quem indicou e quem foi indicado têm algo em comum. O repasse não sai enquanto isto estiver aqui —
+        <b>reter e conferir custa uma espera; pagar e descobrir depois é pedir dinheiro de volta</b>,
+        que quase nunca volta. Liberar fica registrado com o seu nome.</p>
+      ${retidas.map(admAbLinha).join('')}
+    </div>` : ''}
+
+    ${resto.length ? `<div class="card">
+      <h2>${ico('list')} ${fmtN(resto.length)} marcada(s), sem dinheiro parado</h2>
+      <p class="muted" style="margin:0 0 14px;font-size:12.5px">
+        Bateram em algum sinal mas não têm comissão em jogo. Ficam aqui para você reconhecer um padrão
+        se ele aparecer — não há nada a decidir.</p>
+      ${resto.map(admAbLinha).join('')}
+    </div>` : ''}
+  </div>`;
+}
+
+function admAbLinha(c) {
+  const cor = c.risco >= 60 ? 'err' : c.risco >= 30 ? 'warn' : '';
+  return `<div class="card" style="padding:13px;margin-bottom:10px">
+    <div class="row" style="align-items:flex-start">
+      <div style="flex:1;min-width:0">
+        <b style="font-size:14.5px">${esc(c.conta)}</b>
+        <div class="muted" style="font-size:11.5px">${esc(c.email)} · criada ${timeAgo(c.criadoEm)}</div>
+      </div>
+      <span class="pill ${cor}">risco ${c.risco}</span>
+    </div>
+
+    <div style="margin-top:10px">
+      ${c.marcas.map(m => `<div style="margin-bottom:8px">
+        <b style="font-size:12.5px">${esc((AB_SINAL[m.chave] || [m.chave])[0])}</b>
+        <div class="muted" style="font-size:11.5px">${esc(m.texto)}</div>
+        <div class="muted" style="font-size:11px;opacity:.75;margin-top:2px">${esc((AB_SINAL[m.chave] || ['', ''])[1])}</div>
+        ${(m.contas || []).length ? `<div class="row" style="gap:6px;margin-top:5px">
+          ${m.contas.map(id => `<button class="btn small no-grow" onclick="admFicha('${id}')">
+            ${ico('eye', 12)} ver a conta parecida</button>`).join('')}
+        </div>` : ''}
+      </div>`).join('')}
+    </div>
+
+    ${c.comissaoRetida ? `<div class="card warn-card" style="margin-top:6px">
+      ${ico('alert', 13)} <b>Comissão parada.</b> ${esc((c.motivosComissao || []).join(' · '))}</div>` : ''}
+
+    <div class="row" style="margin-top:10px;align-items:center">
+      <button class="btn small no-grow" onclick="admFicha('${c.accountId}')">${ico('briefcase', 12)} Abrir esta conta</button>
+      ${c.comissaoRetida
+        ? `<button class="btn small primary no-grow" onclick="admAbLiberar('${c.accountId}', '${esc(c.conta)}')">
+            ${ico('check', 12)} Liberar a comissão</button>`
+        : ''}
+      ${c.revisadoPor ? `<span class="muted" style="font-size:11.5px">revisado por ${esc(c.revisadoPor)}</span>` : ''}
+      ${c.trialNegado ? `<span class="muted" style="font-size:11.5px">· sem teste grátis</span>` : ''}
+    </div>
+  </div>`;
+}
+
+async function admAbLiberar(id, nome) {
+  // LIBERAR PAGA DINHEIRO, e a partir daqui todas as renovações seguintes
+  // também pagam. Não é um "ok, dispensar" — por isso o aviso diz o que
+  // acontece depois, e não só o que acontece agora.
+  if (!await confirmModal('Liberar a comissão de ' + nome + '?',
+    'O repasse desta conta passa a ser pago normalmente, agora e em todas as renovações seguintes. Fica registrado que foi você quem liberou.')) return;
+  try {
+    ADM_AB = await api('/adm/antiabuso/' + id + '/liberar', { method: 'POST', body: {} });
+    toast('Comissão liberada');
+    admAbPaint();
+  } catch (e) { toast(e.message, 'error'); }
+}
 
 async function renderAdmTesters() {
   $('#view').innerHTML = `<div class="page"><div class="page-head"><h1>Testers</h1>` +
