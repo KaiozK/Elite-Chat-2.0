@@ -285,6 +285,19 @@ function defaultProduct() {
     // oferecesse semanal ou anual seria um campo que promete o que o gateway
     // não entrega — e o comprador só descobre no extrato.
     recorrente: false,
+    // MÉTODOS ACEITOS POR ESTE PRODUTO.
+    //
+    // `null` = herda do checkout, e é assim que TODO produto que já existia
+    // continua se comportando: a escolha vivia no checkout, e trocar isso por
+    // baixo mudaria em silêncio o que cada página aceita. Só quem marcar aqui
+    // passa a mandar no próprio produto.
+    //
+    // As três chaves valem para os dois tipos, e `pix` muda de sentido com o
+    // tipo: em produto avulso é o Pix comum, em assinatura é o Pix Automático.
+    // São o mesmo meio de pagamento visto uma vez e visto todo mês — separar
+    // em duas chaves faria a tela ter de esconder uma delas conforme o tipo,
+    // e é exatamente aí que se esquece de esconder.
+    metodos: null,
     active: true, createdAt: Date.now()
   };
 }
@@ -1387,6 +1400,54 @@ function contatoDaCobranca(acc, ch) {
 // CHECKOUT PÚBLICO — dados sanitizados servidos em /api/public/pay/:id
 // (sem autenticação: expõe SOMENTE o necessário para pagar a cobrança).
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// O QUE ESTE PRODUTO ACEITA
+//
+// Três camadas, e todas precisam concordar:
+//
+//   1. A PLATAFORMA tem o meio ligado? (adquirente configurado, Pix de pé)
+//   2. A CONTA pode usar? (cartão exige recebedor pronto no adquirente)
+//   3. O PRODUTO aceita? (a escolha do lojista; sem escolha, a do checkout)
+//
+// A ordem importa: um produto que aceita boleto numa plataforma sem boleto
+// não aceita boleto. Perguntar só ao produto é como se acaba oferecendo um
+// meio que morre na hora de cobrar, com o comprador já com o cartão na mão.
+function metodosDoProduto(acc, prod, checkoutId) {
+  const ck = findCheckout(acc, checkoutId || (prod && prod.checkoutId)) || {};
+  const doCheckout = Object.assign({ pix: true, credit: true, boleto: false }, ck.methods || {});
+  // O produto manda quando escolheu; senão vale o checkout, como sempre valeu.
+  const escolha = (prod && prod.metodos) ? prod.metodos : {
+    pix: doCheckout.pix, credito: doCheckout.credit, boleto: doCheckout.boleto
+  };
+
+  const pub = cardPublic();
+  const podeCartao = cardConfig().settleMode === 'wallet' ? true : cardReady(acc).ok;
+  const recorrente = !!(prod && prod.recorrente);
+
+  // PIX. Em assinatura ele é o Pix AUTOMÁTICO, que tem condições próprias
+  // (Woovi, configurada, ligada no painel, subconta pronta).
+  const pixOk = recorrente
+    ? require('./assinaturas').contaPode(acc)
+    : configured();
+
+  return {
+    pix: !!escolha.pix && pixOk,
+    credito: !!escolha.credito && !!pub.credit && podeCartao,
+    boleto: !!escolha.boleto && !!pub.boleto && podeCartao,
+    // Por que cada um está fora, para a tela poder explicar em vez de sumir.
+    motivos: {
+      pix: !escolha.pix ? 'desligado neste produto'
+        : !pixOk ? (recorrente ? require('./assinaturas').porQueNao(acc) : 'Pix indisponível na plataforma') : '',
+      credito: !escolha.credito ? 'desligado neste produto'
+        : !pub.credit ? 'cartão indisponível na plataforma'
+        : !podeCartao ? 'a sua conta de cartão ainda não está pronta' : '',
+      boleto: !escolha.boleto ? 'desligado neste produto'
+        : !pub.boleto ? 'boleto indisponível na plataforma'
+        : !podeCartao ? 'a sua conta de cartão ainda não está pronta' : ''
+    }
+  };
+}
+
 function findProduct(acc, id) { return ensure(acc).products.find(p => p.id === id) || null; }
 
 // ---------------------------------------------------------------------------
@@ -1492,11 +1553,28 @@ function publicProductView(slug) {
     // descobrir a diferença depois de clicar é como se perde a confiança de
     // um comprador. Vai junto o MOTIVO de não estar disponível, para a
     // página poder dizer em vez de só sumir com a opção.
+    // OS MÉTODOS QUE ESTE PRODUTO ACEITA, já cruzados com o que a plataforma e
+    // a conta permitem. A página desenha a partir daqui e não decide nada — o
+    // servidor revalida de novo na hora de cobrar, porque a página é do
+    // comprador e o que vem dela é sugestão, não autorização.
+    metodos: (() => {
+      const m = metodosDoProduto(acc, prod, prod.checkoutId);
+      return { pix: m.pix, credito: m.credito, boleto: m.boleto };
+    })(),
     assinatura: (() => {
       if (!prod.recorrente) return null;
       const a = require('./assinaturas');
-      return { on: true, disponivel: a.contaPode(acc), motivo: a.porQueNao(acc),
-               valueCents: prod.price, ciclo: 'mensal' };
+      const m = metodosDoProduto(acc, prod, prod.checkoutId);
+      return {
+        on: true,
+        // "Dá para assinar" é ter ALGUM meio de pagamento de pé, e não só o Pix
+        // Automático. Um produto que aceita cartão continua vendável numa
+        // plataforma cujo Pix Automático está desligado.
+        disponivel: !!(m.pix || m.credito || m.boleto),
+        motivo: a.porQueNao(acc),
+        valueCents: prod.price, ciclo: 'mensal',
+        metodos: { pix: m.pix, credito: m.credito, boleto: m.boleto }
+      };
     })()
   };
 }
@@ -1518,10 +1596,16 @@ async function cobrancaDoLink(slug, dados, broadcast) {
     const a = require('./assinaturas');
     const reg = await a.criar(acc, {
       productId: prod.id, checkoutId: prod.checkoutId,
+      metodo: dados.metodo,
       pagador: { name: dados.name, email: dados.email, phone: dados.phone, document: dados.taxID },
       contactName: dados.name, waId: String(dados.phone || '').replace(/\D/g, '') || null
     }, broadcast);
-    return { assinatura: reg };
+    // CARTÃO E BOLETO abrem uma cobrança de verdade para o primeiro ciclo, e a
+    // página segue para ela como em qualquer venda. Só o Pix Automático termina
+    // aqui, porque lá o que falta é a autorização no banco, não um pagamento.
+    return reg.primeiraCobrancaId
+      ? { chargeId: reg.primeiraCobrancaId, assinatura: reg }
+      : { assinatura: reg };
   }
   const ch = await createCharge(acc, {
     valueCents: prod.price, comment: prod.name,
@@ -1648,13 +1732,30 @@ function publicChargeView(id) {
     card: (() => {
       const pub = cardPublic();
       const podeReceber = cardConfig().settleMode === 'wallet' ? true : cardReady(acc).ok;
+      // CICLO DE ASSINATURA ACEITA UM MEIO SÓ, e é o que o comprador escolheu
+      // ao assinar. Deixar as outras abas abertas parece generosidade e não é:
+      // pagar no Pix o primeiro ciclo de uma assinatura de CARTÃO deixaria a
+      // assinatura ativa e SEM cartão salvo — e o mês seguinte falharia com
+      // "sem cartão para cobrar", num assinante que pagou direitinho.
+      const daAssinatura = ch.subscriptionId
+        ? (require('./assinaturas').achar(acc, ch.subscriptionId) || {}).metodo
+        : '';
       return {
         ...pub,
-        credit: pub.credit && podeReceber,
-        boleto: pub.boleto && podeReceber,
+        credit: pub.credit && podeReceber && (!daAssinatura || daAssinatura === 'credito'),
+        boleto: pub.boleto && podeReceber && (!daAssinatura || daAssinatura === 'boleto'),
+        // O Pix sai de cena quando a assinatura é de cartão ou boleto: é o
+        // único meio que a página mostra sem depender de `card`.
+        pixOff: !!daAssinatura && daAssinatura !== 'pix',
         installments: installmentOptions(ch.value)
       };
     })(),
+    // Qual assinatura esta cobrança serve, e por qual meio. A página usa para
+    // abrir já na aba certa e para dizer que é o ciclo de uma assinatura.
+    assinaturaDoCiclo: ch.subscriptionId ? (() => {
+      const a = require('./assinaturas').achar(acc, ch.subscriptionId);
+      return a ? { id: a.id, metodo: a.metodo, ciclo: ch.ciclo || 1, nome: a.nome } : null;
+    })() : null,
     // como foi pago (recibo) — sem nenhum dado sensível do cartão
     method: ch.method || 'pix',
     paidCard: ch.card ? { kind: ch.card.kind, brand: ch.card.brand, last4: ch.card.last4, installments: ch.card.installments } : null,
@@ -1705,6 +1806,14 @@ function finalizePaid(acc, ch, broadcast) {
   // Tracking: atribui a venda à campanha de origem + reenvia a conversão
   // (Meta CAPI / GA4 / TikTok) automaticamente — não bloqueia a confirmação.
   try { require('./tracking').onPaid(acc, ch, broadcast); } catch {}
+  // CICLO DE ASSINATURA (cartão/boleto): liga a assinatura, guarda o token do
+  // cartão e marca o próximo ciclo. Fica AQUI, e não no caminho de cada meio,
+  // porque é por aqui que toda venda passa — inclusive a que for confirmada
+  // pelo webhook do adquirente horas depois, que não volta por `payWithCard`.
+  if (ch.subscriptionId) {
+    try { require('./assinaturas').aoPagarCobranca(acc, ch, ch.card || null); }
+    catch (e) { log(acc, { type: 'assinatura_erro', chargeId: ch.id, detail: e.message }); }
+  }
   // ASSINATURA DO KOONFY paga pelo checkout do dono. Reaproveita a ativação
   // do Pix (que também cuida de período, receita e comissão de afiliado)
   // montando o mesmo correlationID que ela espera.
@@ -1921,8 +2030,17 @@ async function payWithCard(chargeId, body, broadcast) {
   if (!card.credit) { const e = new Error('Cartão de crédito indisponível'); e.status = 400; throw e; }
   // Blindagem por checkout: o lojista pode ter desligado o cartão nesta página.
   // Não confia no front — revalida contra o que foi salvo no checkout.
-  const ckMethods = Object.assign({ pix: true, credit: true, boleto: false }, (findCheckout(acc, ch.checkoutId) || {}).methods || {});
-  if (!ckMethods[kind]) { const e = new Error('Este checkout não aceita esse método de pagamento'); e.status = 400; throw e; }
+  // A ESCOLHA DO PRODUTO VEM ANTES DA DO CHECKOUT, e o front nunca é a fonte:
+  // `metodosDoProduto` cruza plataforma, conta e produto num lugar só. Um
+  // produto que desligou o cartão não aceita cartão, mesmo que a página tenha
+  // desenhado o botão.
+  const prodDaCobranca = ch.productId ? findProduct(acc, ch.productId) : null;
+  const aceita = metodosDoProduto(acc, prodDaCobranca, ch.checkoutId);
+  if (!aceita.credito) {
+    const e = new Error('Este produto não aceita cartão de crédito' +
+      (aceita.motivos.credito ? ': ' + aceita.motivos.credito : ''));
+    e.status = 400; throw e;
+  }
 
   const c = body.card || {};
   const faltando = ['number', 'holderName', 'expMonth', 'expYear', 'cvv'].filter(k => !String(c[k] || '').trim());
@@ -1979,7 +2097,12 @@ async function payWithCard(chargeId, body, broadcast) {
     provider: card.provider, kind, installments: parcelas,
     brand: r.brand || '', last4: r.last4 || String(c.number).replace(/\D/g, '').slice(-4),
     status: r.status, gatewayId: r.gatewayId, authCode: r.authCode || '',
-    attemptedAt: Date.now()
+    attemptedAt: Date.now(),
+    // O TOKEN QUE O ADQUIRENTE DEVOLVEU. É a única coisa do cartão que fica
+    // guardada — nunca número completo, nunca CVV —, e é o que permite cobrar
+    // o ciclo seguinte de uma assinatura sem pedir o cartão de novo. Numa
+    // cobrança avulsa ele simplesmente não é usado por ninguém.
+    token: r.cardToken || ''
   };
   // A taxa da plataforma no cartão substitui a do Pix nesta cobrança.
   ch.feePercent = fee.feePercent;
@@ -2007,6 +2130,77 @@ async function payWithCard(chargeId, body, broadcast) {
 }
 
 // ---------------------------------------------------------------------------
+// COBRANÇA COM O CARTÃO SALVO — o ciclo mensal de uma assinatura
+//
+// É `payWithCard` sem o comprador na frente: não há formulário, não há CVV, há
+// um token que o adquirente devolveu na primeira compra. Por isso as validações
+// mudam de natureza — nada de "preencha os dados do cartão", porque não há
+// ninguém para preencher; o que pode dar errado aqui é o cartão não passar.
+//
+// E por isso ela NÃO LEVANTA em caso de recusa: recusa é resultado esperado de
+// uma cobrança recorrente, não erro de programa. Quem chama decide se tenta de
+// novo — ver `assinaturas.cobrarNoCartao`.
+async function cobrarComCartaoSalvo(acc, ch, cartao, broadcast) {
+  const card = cardConfig();
+  if (!card.credit) { const e = new Error('Cartão de crédito indisponível'); e.status = 400; throw e; }
+  const pronto = card.settleMode === 'wallet' ? { ok: true, ca: {} } : cardReady(acc);
+  if (!pronto.ok) { const e = new Error(pronto.reason); e.status = 400; throw e; }
+  if (ch.status === 'paid') return { status: 'paid', duplicate: true };
+
+  const fee = cards.computeCardFee(card, ch.value);
+  const ca = pronto.ca;
+  const split = card.settleMode === 'wallet' ? null : cards.driver(card).splitFor({
+    recipientId: ca.recipientId, walletId: ca.walletId,
+    platformRecipientId: card.platformRecipientId,
+    platformWalletId: (card.asaas && card.asaas.walletId) || '',
+    valueCents: ch.value, platformCut: fee.platformCut
+  });
+
+  const pagador = ch.payer || {};
+  const r = await cards.driver(card).charge({
+    cfg: cards.creds(card),
+    valueCents: ch.value,
+    installments: 1,                       // ciclo de assinatura não se parcela
+    kind: 'credit',
+    // O TOKEN NO LUGAR DO CARTÃO. Os drivers já entendem os dois formatos: com
+    // `token` preenchido, o número e o CVV nem são enviados.
+    card: { token: cartao.token },
+    holder: {},
+    customer: {
+      name: pagador.name || ch.contactName || '',
+      taxId: String(pagador.taxID || '').replace(/\D/g, ''),
+      email: pagador.email || '', phone: pagador.phone || ch.waId || ''
+    },
+    description: ch.comment || 'Assinatura',
+    correlationID: ch.correlationID,
+    softDescriptor: card.softDescriptor,
+    split
+  });
+
+  ch.method = 'card';
+  ch.card = {
+    provider: card.provider, kind: 'credit', installments: 1,
+    brand: r.brand || cartao.brand || '', last4: r.last4 || cartao.last4 || '',
+    status: r.status, gatewayId: r.gatewayId, authCode: r.authCode || '',
+    attemptedAt: Date.now(), recorrente: true
+  };
+  ch.feePercent = fee.feePercent;
+  ch.feeFixed = fee.feeFixed;
+  ch.platformCut = fee.platformCut;
+
+  if (r.status === 'paid') {
+    plog({ type: 'card_paid', accountId: acc.id, accountName: acc.name, amount: ch.value, fee: fee.platformCut, provider: card.provider, recorrente: true });
+    finalizePaid(acc, ch, broadcast);
+    db.save();
+    return { status: 'paid' };
+  }
+  // Pendente conta como não pago: o adquirente ainda vai dizer, e o webhook
+  // dele confirma depois. Tentar de novo agora cobraria duas vezes.
+  db.save();
+  return { status: r.status, message: r.message || '' };
+}
+
+// ---------------------------------------------------------------------------
 // BOLETO no checkout do lojista.
 // Diferente do cartão, não aprova na hora: emitimos, devolvemos a linha
 // digitável e o PDF, e a cobrança só vira 'paid' quando o adquirente avisa a
@@ -2024,8 +2218,13 @@ async function payWithBoleto(chargeId, body, broadcast) {
   if (ch.status !== 'active') { const e = new Error('Esta cobrança não está mais ativa'); e.status = 400; throw e; }
   if (!card.boleto) { const e = new Error('Boleto indisponível'); e.status = 400; throw e; }
 
-  const ckMethods = Object.assign({ pix: true, credit: true, boleto: false }, (findCheckout(acc, ch.checkoutId) || {}).methods || {});
-  if (!ckMethods.boleto) { const e = new Error('Este checkout não aceita boleto'); e.status = 400; throw e; }
+  const prodDoBoleto = ch.productId ? findProduct(acc, ch.productId) : null;
+  const aceitaBol = metodosDoProduto(acc, prodDoBoleto, ch.checkoutId);
+  if (!aceitaBol.boleto) {
+    const e = new Error('Este produto não aceita boleto' +
+      (aceitaBol.motivos.boleto ? ': ' + aceitaBol.motivos.boleto : ''));
+    e.status = 400; throw e;
+  }
 
   const pagador = body.customer || {};
   const nome = String(pagador.name || (ch.payer && ch.payer.name) || ch.contactName || '').trim();
@@ -2366,7 +2565,7 @@ module.exports = {
   activeSubaccount,   // exportado para o teste do portão do KYC
   registerSubaccount, garantirPagamentos, setSubaccountStatus, syncSubaccount, applyAccountApproved,
   createCharge, cancelCharge, findCharge, chargeMessage, chargeButton, computeOutFee,
-  isPagamentosCharge, applyPaid,
+  isPagamentosCharge, applyPaid, metodosDoProduto, cobrarComCartaoSalvo,
   // finalizePaid é o caminho ÚNICO de confirmação de venda: funil, carteira,
   // push, tracking e a mensagem no WhatsApp saem todos daqui. O ciclo de uma
   // assinatura entra por ele (ver assinaturas.js) em vez de repetir a lista —

@@ -888,6 +888,14 @@ require('./src/saasbilling').startRenewalJob(broadcast);
 // dele indefinidamente na Integra X.
 require('./src/numaluguel').startJob(broadcast);
 
+// ASSINATURAS DOS CLIENTES — os ciclos de cartão e boleto.
+//
+// O Pix Automático NÃO passa por aqui: quem repete a cobrança é a Woovi, e
+// uma segunda cobrança nossa seria cobrança em dobro no cartão de alguém.
+// No cartão e no boleto quem repete somos nós, e é esta varredura que faz
+// a receita recorrente dos clientes existir de verdade.
+require('./src/assinaturas').startJob(broadcast);
+
 const PORT = process.env.PORT || 3900;
 
 // Desligar direito: grava o que está pendente e fecha a conexão. Sem isto, um

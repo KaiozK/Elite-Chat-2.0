@@ -17317,9 +17317,14 @@ async function epPaintProducts(box) {
       </tbody></table></div>` : '<p class="muted">Nenhum produto ainda, crie o primeiro para agilizar suas cobranças.</p>'}
     </div>`;
 }
-function epProdForm(id) {
+// `recEscolhido` só vem preenchido quando quem chamou foi o botão de tipo.
+// Sem ele, o tipo sai do PRODUTO — senão abrir uma assinatura para editar
+// mostraria "Uma vez" marcado, e salvar sem tocar em nada a transformaria em
+// produto avulso, parando de cobrar quem já assinava.
+function epProdForm(id, recEscolhido) {
   const p = (state.epProducts || []).find(x => x.id === id) || { name: '', description: '', price: 0, checkoutId: '', logo: '', banner: '' };
   window._epProd = id || null;
+  window._epProdRec = recEscolhido === undefined ? !!p.recorrente : !!recEscolhido;
   window._epProdImgs = { logo: p.logo || '', logoMobile: p.logoMobile || '', banner: p.banner || '', bannerMobile: p.bannerMobile || '' };
   const cks = state.epCheckouts || [];
   $('#ep-prod-form').innerHTML = `<div class="card px-editor" style="margin-bottom:14px">
@@ -17337,12 +17342,28 @@ function epProdForm(id) {
          Só aparece quando a plataforma tem Pix Automático de pé — marcar um
          produto como mensal onde a recorrência não existe é criar um
          produto que o checkout vai recusar na hora da venda. -->
-    ${state.pixAutomatico ? `<label class="chk" style="margin-top:10px">
-      <input type="checkbox" id="epp-recorrente" ${p.recorrente ? 'checked' : ''}>
-      Cobrar todo mês (assinatura por Pix Automático)</label>
-      <p class="muted" style="margin:4px 0 0 26px;font-size:12px">
-        O comprador autoriza uma vez no banco dele e a cobrança se repete sozinha.
-        Ele pode cancelar pelo banco a qualquer momento — e você, aqui.</p>` : ''}
+    <!-- TIPO DO PRODUTO. Fica logo abaixo do preço porque muda o que o preço
+         SIGNIFICA: R$ 97 uma vez e R$ 97 por mês são ofertas diferentes, e ler
+         o preço sem esta informação ao lado é ler pela metade. -->
+    <span class="fb-sub" style="margin-top:14px">Como este produto é cobrado</span>
+    <div class="row" style="gap:8px;margin-top:6px">
+      <button type="button" class="btn ${p.recorrente ? '' : 'primary'}" onclick="epProdTipo(false)">Uma vez</button>
+      <button type="button" class="btn ${p.recorrente ? 'primary' : ''}" onclick="epProdTipo(true)">Todo mês (assinatura)</button>
+    </div>
+    <p class="muted" style="margin:6px 0 0;font-size:12px">
+      ${p.recorrente
+        ? 'A cobrança se repete todo mês até o comprador cancelar. Só mensal, por enquanto.'
+        : 'Uma cobrança só, como sempre foi.'}</p>
+
+    <!-- OS MEIOS QUE ESTE PRODUTO ACEITA. Antes a escolha vivia no checkout e
+         valia para tudo que passasse por ele; agora o produto pode mandar no
+         próprio. Quem não marcar nada continua herdando o checkout, que é como
+         todo produto que já existia se comporta. -->
+    <span class="fb-sub" style="margin-top:14px">Formas de pagamento deste produto</span>
+    <p class="muted" style="margin:0 0 8px;font-size:12px">
+      Sem marcar nada, vale o que estiver ligado no checkout.
+      ${p.recorrente ? 'Na assinatura, o Pix é o <b>Pix Automático</b>: o comprador autoriza uma vez no banco e a cobrança se repete sozinha.' : ''}</p>
+    ${epProdMetodos(p)}
     <label style="margin-top:9px;display:block">Descrição<textarea id="epp-desc" rows="2" maxlength="600" placeholder="O que o cliente recebe">${esc(p.description || '')}</textarea></label>
     ${cks.length ? `<label style="margin-top:9px;display:block">Checkout deste produto
       ${ecSelect('epp-ckt', cks.map(c => ({ value: c.id, label: c.name + (c.isDefault ? ' (padrão)' : '') })), p.checkoutId || (cks.find(c => c.isDefault) || cks[0]).id)}</label>` : ''}
@@ -17403,6 +17424,37 @@ function epProdImg(kind) {
   };
   inp.click();
 }
+// O tipo é guardado FORA do formulário e redesenha o cartão: o texto de
+// ajuda dos meios muda com ele (na assinatura o Pix é o Pix Automático), e
+// um rótulo que continua dizendo a coisa errada depois do clique é pior do
+// que não ter rótulo.
+function epProdTipo(rec) {
+  epProdForm(window._epProd || null, !!rec);
+}
+
+// As três caixas. Sem Pix Automático na plataforma, a do Pix aparece
+// desabilitada COM O MOTIVO ao lado, e não some: sumir faz o lojista
+// procurar uma opção que ele viu em algum lugar e não acha mais.
+function epProdMetodos(p) {
+  const m = p.metodos || null;
+  const rec = !!window._epProdRec;
+  const pixTravado = rec && !state.pixAutomatico;
+  const linha = (k, nome, ajuda, travado, motivo) => `
+    <label class="chk" style="margin-top:8px;${travado ? 'opacity:.55' : ''}">
+      <input type="checkbox" id="epm-${k}" ${m && m[k] ? 'checked' : ''} ${travado ? 'disabled' : ''}>
+      ${esc(nome)}</label>
+    <p class="muted" style="margin:2px 0 0 26px;font-size:11.5px">${travado ? esc(motivo) : esc(ajuda)}</p>`;
+  return [
+    linha('pix', rec ? 'Pix Automático' : 'Pix',
+      rec ? 'O comprador autoriza uma vez no banco e a Woovi cobra sozinha todo mês.' : 'QR e copia-e-cola, confirmação na hora.',
+      pixTravado, 'A plataforma está com o Pix Automático desligado.'),
+    linha('credito', 'Cartão de crédito',
+      rec ? 'O cartão é guardado na primeira cobrança e cobrado todo mês.' : 'Parcelamento conforme a configuração da plataforma.', false, ''),
+    linha('boleto', 'Boleto',
+      rec ? 'Um boleto novo a cada mês. É o meio com mais atraso: ele não se paga sozinho.' : 'Compensação em 1 a 3 dias úteis.', false, '')
+  ].join('');
+}
+
 async function epProdSave() {
   const body = {
     name: $('#epp-name').value.trim(),
@@ -17417,8 +17469,14 @@ async function epProdSave() {
     // O apelido do link não vem daqui: quem gera é o servidor. O endereço é
     // global para toda a plataforma, e um campo aberto vira corrida pelas
     // palavras boas — e pelas perigosas.
-    const rec = $('#epp-recorrente');
-    if (rec) body.recorrente = rec.checked;
+    body.recorrente = !!window._epProdRec;
+    // `null` quando NENHUM está marcado: é o que diz "herda do checkout".
+    // Um objeto com os três em `false` seria outra coisa — um produto que não
+    // aceita forma de pagamento nenhuma, e portanto não vende.
+    const met = ['pix', 'credito', 'boleto'].filter(k => { const e = $('#epm-' + k); return e && e.checked; });
+    body.metodos = met.length
+      ? { pix: met.includes('pix'), credito: met.includes('credito'), boleto: met.includes('boleto') }
+      : null;
     const linkon = $('#epp-linkon');
     if (linkon) body.linkOn = linkon.checked;
     await api('/pagamentos/products' + (id ? '/' + id : ''), { method: id ? 'PUT' : 'POST', body });

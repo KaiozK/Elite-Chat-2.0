@@ -74,6 +74,21 @@ global.fetch = async (u, o = {}) => {
 const responder = (body, ok = true, status = 200) => { proxima = { ok, status, body }; };
 const ultima = re => [...chamadas].reverse().find(c => re.test(c.url)) || null;
 
+// ---- adquirente de mentira ----
+// O driver de cartão é substituído inteiro, e não a rede embaixo dele: o que
+// este teste precisa dizer é "o cartão passou" ou "o cartão recusou", e montar
+// a resposta HTTP da Pagar.me para isso seria reescrever o driver dentro do
+// teste — que é a maneira mais rápida de um teste passar enquanto o código de
+// verdade está quebrado.
+const cards = require(R + 'src/cardgateways');
+let cartaoResponde = { status: 'paid', gatewayId: 'g1', brand: 'visa', last4: '4242', cardToken: 'tok_1' };
+let cobrancasNoCartao = [];
+cards.DRIVERS.pagarme.charge = async (args) => {
+  cobrancasNoCartao.push(args);
+  return { ok: cartaoResponde.status === 'paid', ...cartaoResponde };
+};
+cards.DRIVERS.pagarme.splitFor = () => null;
+
 const db = require(R + 'src/db');
 const assinaturas = require(R + 'src/assinaturas');
 const pagamentos = require(R + 'src/pagamentos');
@@ -145,15 +160,20 @@ const BASE = 'http://127.0.0.1:3983';
   ok(criado.product && criado.product.recorrente === true, 'produto marcado como assinatura');
   const prod = criado.product;
 
-  // Com a plataforma sem Pix Automático, marcar não pega: seria criar um
-  // produto que o checkout recusa na hora da venda.
+  // SER MENSAL NÃO DEPENDE DO PIX AUTOMÁTICO, e esta asserção já disse o
+  // contrário: enquanto o único meio recorrente era o Pix Automático, marcar um
+  // produto como mensal sem ele era criar algo que não vendia. Com cartão e
+  // boleto no jogo isso deixou de valer — o produto continua mensal e passa a
+  // ser cobrado pelos outros dois. Amarrar o TIPO do produto à disponibilidade
+  // de UM dos meios faria desligar o Pix Automático no painel converter, em
+  // silêncio, toda assinatura da plataforma em venda avulsa.
   P.woovi.pixAutomatic = false; db.save();
   const semRec = await (await fetch(BASE + '/api/pagamentos/products', {
     method: 'POST', headers: aut,
     body: JSON.stringify({ name: 'Outro', price: 5000, recorrente: true })
   })).json();
-  ok(semRec.product.recorrente === false,
-     'sem Pix Automático na plataforma, a marca não gruda — produto que não vende é pior que campo que não aparece');
+  ok(semRec.product.recorrente === true,
+     'sem Pix Automático a plataforma, o produto CONTINUA mensal — sobra cartão e boleto');
   P.woovi.pixAutomatic = true; db.save();
 
   console.log('\n=== 4. O checkout anuncia que é mensal ANTES de clicar ===');
@@ -319,6 +339,240 @@ const BASE = 'http://127.0.0.1:3983';
   ok(typeof uma.autorizada === 'boolean',
      'e se já foi autorizada no banco — "criada" e "cobrando" parecem a mesma coisa e não são');
   ok(visao.receitaMensalCents >= 0, 'com a receita recorrente somada');
+
+
+  console.log('\n=== 15. O produto manda nos MEIOS, e a plataforma tem a última palavra ===');
+  // Três camadas precisam concordar. Perguntar só ao produto é como se acaba
+  // oferecendo um meio que morre na hora de cobrar, com o comprador já com o
+  // cartão na mão.
+  const cfgCartao = pagamentos.cardConfig();
+  // `enabled` também: sem ele o adquirente existe configurado e continua
+  // indisponível para os clientes, que é o desenho — ligar é ato do admin.
+  cfgCartao.enabled = true;
+  cfgCartao.provider = 'pagarme';
+  cfgCartao.credit = true;
+  cfgCartao.boleto = true;
+  cfgCartao.settleMode = 'wallet';       // sem exigir recebedor por conta
+  cfgCartao.pagarme = { secretKey: 'sk_de_mentira' };
+  db.save();
+
+  const prodM = (await (await fetch(BASE + '/api/pagamentos/products', {
+    method: 'POST', headers: aut,
+    body: JSON.stringify({ name: 'Clube', price: 5000, recorrente: true,
+      metodos: { pix: true, credito: true, boleto: false } })
+  })).json()).product;
+  ok(prodM.metodos && prodM.metodos.boleto === false, 'o produto guarda os meios escolhidos');
+
+  const m1 = pagamentos.metodosDoProduto(acc, prodM, prodM.checkoutId);
+  ok(m1.pix === true, 'Pix Automático liberado');
+  ok(m1.credito === true, 'cartão liberado');
+  ok(m1.boleto === false, 'e o boleto fica de fora porque o PRODUTO o desligou');
+  ok(/desligado neste produto/.test(m1.motivos.boleto), 'com o motivo dito: ' + m1.motivos.boleto);
+
+  // A plataforma desligando o cartão derruba o produto junto, mesmo marcado.
+  cfgCartao.credit = false; db.save();
+  ok(pagamentos.metodosDoProduto(acc, prodM, prodM.checkoutId).credito === false,
+     'plataforma sem cartão: o produto não aceita cartão, por mais que esteja marcado');
+  cfgCartao.credit = true; db.save();
+
+  // E `null` continua herdando do checkout, que é como todo produto antigo se
+  // comporta — mudar isso por baixo alteraria em silêncio o que cada página aceita.
+  const prodHerda = (await (await fetch(BASE + '/api/pagamentos/products', {
+    method: 'POST', headers: aut,
+    body: JSON.stringify({ name: 'Antigo', price: 3000 })
+  })).json()).product;
+  ok(prodHerda.metodos === null, 'produto sem escolha nasce herdando');
+  const mh = pagamentos.metodosDoProduto(acc, prodHerda, prodHerda.checkoutId);
+  ok(mh.pix === true && mh.credito === true, 'e herda pix+cartão do checkout padrão');
+
+  console.log('\n=== 16. O método é revalidado contra o PRODUTO ===');
+  // O que chega vem da página, e a página é do comprador. Sem revalidar,
+  // qualquer um assina no boleto um produto que só aceita cartão editando a
+  // requisição.
+  let recusou = null;
+  try {
+    await assinaturas.criar(acc, {
+      productId: prodM.id, metodo: 'boleto',
+      pagador: { name: 'Fulano', email: 'f@ex.com', document: '39053344705', phone: '11966665555' }
+    }, null);
+  } catch (e) { recusou = e; }
+  ok(!!recusou, 'assinar no boleto um produto que não aceita boleto é recusado');
+  ok(/boleto/.test(recusou.message), 'com a mensagem certa: ' + recusou.message);
+
+  console.log('\n=== 17. Assinatura no CARTÃO: primeiro ciclo é uma cobrança normal ===');
+  responder({ subscription: {} });   // não deve ser usada: cartão não fala com a Woovi
+  const noCartao = await assinaturas.criar(acc, {
+    productId: prodM.id, metodo: 'credito',
+    pagador: { name: 'Ana Cartão', email: 'ana@ex.com', document: '39053344705', phone: '11999998888' }
+  }, null);
+  ok(noCartao.metodo === 'credito', 'a assinatura sabe o meio dela');
+  ok(noCartao.status === 'pendente',
+     'e nasce PENDENTE — entre "criada" e "cobrando" existe o cartão passar');
+  const regC = assinaturas.achar(acc, noCartao.id);
+  ok(!!regC.primeiraCobrancaId, 'com uma cobrança de verdade para o primeiro ciclo');
+  const ch1 = pagamentos.ensure(acc).charges.find(c => c.id === regC.primeiraCobrancaId);
+  ok(ch1 && ch1.subscriptionId === regC.id, 'a cobrança aponta de volta para a assinatura');
+  ok(ch1.ciclo === 1, 'e é o ciclo 1');
+  ok(!regC.wooviSubId, 'nenhuma recorrência foi criada na Woovi — quem repete aqui somos nós');
+
+  console.log('\n=== 18. Pagar o primeiro ciclo LIGA a assinatura e guarda o token ===');
+  // O token é a única coisa do cartão que fica guardada, e é o que faz o mês
+  // seguinte existir sem pedir o cartão de novo.
+  ch1.card = { brand: 'visa', last4: '4242', token: 'tok_do_adquirente' };
+  pagamentos.finalizePaid(acc, ch1, null);
+  ok(regC.status === 'ativa', `saiu de pendente: ${regC.status}`);
+  ok(regC.ciclos === 1, 'contou o ciclo');
+  ok(regC.cartao && regC.cartao.token === 'tok_do_adquirente', 'e guardou o token do cartão');
+  ok(regC.cartao.last4 === '4242', 'com os últimos quatro, para a tela mostrar qual cartão é');
+  ok(regC.proximoCicloEm > Date.now() + 29 * 864e5,
+     'o próximo ciclo foi marcado para daqui a um mês');
+
+  console.log('\n=== 19. A varredura cobra o ciclo vencido no cartão salvo ===');
+  regC.proximoCicloEm = Date.now() - 1000;
+  db.save();
+  const antesCh = pagamentos.ensure(acc).charges.length;
+  cartaoResponde = { status: 'paid', gatewayId: 'g2', brand: 'visa', last4: '4242', cardToken: 'tok_do_adquirente' };
+  let r19 = await assinaturas.varrer(null);
+  ok(r19.cobrados === 1, `cobrou: ${r19.cobrados}`);
+  ok(pagamentos.ensure(acc).charges.length === antesCh + 1, 'uma cobrança nova nasceu');
+  const ch2 = pagamentos.ensure(acc).charges[0];
+  ok(ch2.status === 'paid', 'já paga');
+  ok(ch2.ciclo === 2, `e é o ciclo 2: ${ch2.ciclo}`);
+  ok(ch2.card && ch2.card.recorrente === true, 'marcada como cobrança recorrente');
+  ok(regC.ciclos === 2 && regC.falhas === 0, 'a assinatura avançou e zerou falhas');
+  ok(regC.proximoCicloEm > Date.now() + 29 * 864e5, 'com o ciclo seguinte marcado');
+
+  console.log('\n=== 20. Cartão recusado NÃO cancela — tenta de novo ===');
+  // Cartão recusa por motivo passageiro o tempo todo. Cancelar na primeira
+  // negativa perde assinante que teria pago três dias depois.
+  regC.proximoCicloEm = Date.now() - 1000;
+  db.save();
+  cartaoResponde = { status: 'refused', message: 'Saldo insuficiente' };
+  let r20 = await assinaturas.varrer(null);
+  ok(r20.falhas === 1, `a recusa foi contada como falha: ${r20.falhas}`);
+  ok(regC.status === 'inadimplente', `a assinatura fica inadimplente: ${regC.status}`);
+  ok(regC.falhas === 1, 'com uma falha');
+  ok(/Saldo insuficiente/.test(regC.ultimaFalha), 'e o motivo guardado: ' + regC.ultimaFalha);
+  ok(regC.proximoCicloEm > Date.now(), 'a próxima tentativa está marcada, não cancelada');
+
+  // Duas, três… e só então para de tentar.
+  for (const n of [2, 3]) {
+    regC.proximoCicloEm = Date.now() - 1000; db.save();
+    cartaoResponde = { status: 'refused', message: 'Recusado' };
+    await assinaturas.varrer(null);
+    ok(regC.falhas === n, `${n}ª falha contada`);
+  }
+  ok(regC.proximoCicloEm === 0,
+     'depois das três tentativas para de cobrar — mas continua existindo, para o lojista decidir');
+  ok(regC.status === 'inadimplente', 'e fica visível como inadimplente, não apagada');
+
+  console.log('\n=== 21. Sem token não se tenta cobrar todo dia ===');
+  const semTok = await assinaturas.criar(acc, {
+    productId: prodM.id, metodo: 'credito',
+    pagador: { name: 'Sem Token', email: 's@ex.com', document: '39053344705', phone: '11977776666' }
+  }, null);
+  const regS = assinaturas.achar(acc, semTok.id);
+  regS.status = 'ativa';
+  regS.proximoCicloEm = Date.now() - 1000;
+  regS.cartao = null;
+  db.save();
+  const r21 = await assinaturas.varrer(null);
+  ok(r21.inadimplentes >= 1, 'vira inadimplente');
+  ok(regS.proximoCicloEm === 0,
+     'e PARA de tentar: sem cartão salvo não é falha do cartão, é assinatura que nunca teve um');
+
+  console.log('\n=== 21b. As TRÊS saídas do link, cada uma com o que a página precisa ===');
+  // Aqui escapou um defeito de verdade: `publico()` não devolvia
+  // `primeiraCobrancaId`, então a rota nunca via a cobrança do cartão e a
+  // página caía na tela de "autorize no seu banco" do Pix Automático —
+  // oferecendo um link de autorização que nunca existiu, para quem tinha
+  // escolhido cartão. Achado abrindo a tela, não rodando teste.
+  const linkProd = (await (await fetch(BASE + '/api/pagamentos/products', {
+    method: 'POST', headers: aut,
+    body: JSON.stringify({ name: 'Tres Saidas', price: 6000, recorrente: true,
+      metodos: { pix: true, credito: true, boleto: true } })
+  })).json()).product;
+
+  const identificar = async metodo => (await (await fetch(
+    BASE + '/api/public/produto/' + encodeURIComponent(linkProd.slug) + '/identify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Comprador', email: 'c@ex.com', taxID: '39053344705', phone: '11988887777', metodo })
+    })).json());
+
+  responder({ subscription: { globalID: 'w9', paymentLinkUrl: 'https://woovi.test/aut/9' } });
+  const saiPix = await identificar('pix');
+  ok(!!saiPix.assinatura && !saiPix.view,
+     'PIX AUTOMÁTICO devolve só a assinatura: não há nada a pagar, há uma autorização a dar');
+  ok(!!saiPix.assinatura.autorizacaoUrl, 'com o link do banco');
+
+  const saiCartao = await identificar('credito');
+  ok(!!saiCartao.assinatura && !!saiCartao.view,
+     'CARTÃO devolve assinatura E cobrança — o primeiro ciclo se paga como qualquer venda');
+  ok(saiCartao.view.id === saiCartao.assinatura.primeiraCobrancaId,
+     'e as duas apontam para a MESMA cobrança');
+  ok(saiCartao.assinatura.metodo === 'credito', 'com o meio escolhido: ' + saiCartao.assinatura.metodo);
+
+  const saiBoleto = await identificar('boleto');
+  ok(!!saiBoleto.view, 'BOLETO também devolve cobrança');
+  ok(saiBoleto.assinatura.metodo === 'boleto', 'com o meio certo');
+
+  // E A COBRANÇA JÁ NASCE IDENTIFICADA. Sem isso ela vem com `needsId`, e a
+  // página — que acabou de mandar nome, documento, e-mail e telefone — volta
+  // para o formulário e pede tudo de novo. Quem preenche duas vezes a mesma
+  // tela desiste na segunda; foi assim que apareceu, abrindo a tela.
+  ok(saiCartao.view.needsId === false,
+     'a cobrança do primeiro ciclo já vem com o pagador identificado');
+  ok(saiCartao.view.payerName === 'Comprador',
+     'com o nome de quem assinou: ' + saiCartao.view.payerName);
+
+  console.log('\n=== 22. O Pix Automático fica FORA da varredura ===');
+  // Quem repete lá é a Woovi. Uma segunda cobrança nossa seria cobrança em
+  // dobro no cartão de alguém.
+  const regPix = assinaturas.lista(acc).find(x => x.metodo === 'pix' && x.status !== 'cancelada');
+  if (regPix) {
+    regPix.status = 'ativa';
+    regPix.proximoCicloEm = Date.now() - 999999;   // vencidíssimo de propósito
+    db.save();
+    const nAntes = pagamentos.ensure(acc).charges.length;
+    await assinaturas.varrer(null);
+    ok(pagamentos.ensure(acc).charges.length === nAntes,
+       'nenhuma cobrança foi criada para a assinatura de Pix Automático, por mais vencida que estivesse');
+  } else {
+    ok(true, '(sem assinatura de Pix ativa neste ponto do teste)');
+  }
+
+  console.log('\n=== 23. O ciclo aceita UM meio só, e a página abre na aba certa ===');
+  // Achado abrindo a tela: a cobrança do primeiro ciclo de uma assinatura de
+  // CARTÃO estava oferecendo aba de Pix. Pago no Pix, a assinatura ficaria
+  // ativa e SEM cartão salvo — e o mês seguinte falharia com "sem cartão para
+  // cobrar", num assinante que tinha pago direitinho.
+  const vistaCartao = pagamentos.publicChargeView(saiCartao.assinatura.primeiraCobrancaId);
+  ok(vistaCartao.card.pixOff === true, 'a cobrança do ciclo de cartão desliga o Pix');
+  ok(vistaCartao.card.credit === true, 'e mantém o cartão');
+  ok(vistaCartao.card.boleto === false, 'sem boleto: o meio foi escolhido ao assinar');
+  ok(vistaCartao.assinaturaDoCiclo && vistaCartao.assinaturaDoCiclo.metodo === 'credito',
+     'a página sabe de qual assinatura é o ciclo, e por qual meio');
+  ok(vistaCartao.assinaturaDoCiclo.ciclo === 1, 'e qual ciclo é');
+
+  const vistaBoleto = pagamentos.publicChargeView(saiBoleto.assinatura.primeiraCobrancaId);
+  ok(vistaBoleto.card.boleto === true && vistaBoleto.card.credit === false,
+     'no boleto é o contrário: boleto sim, cartão não');
+
+  // E uma cobrança AVULSA continua aceitando tudo o que a plataforma oferece —
+  // a trava vale para ciclo de assinatura, e não para o checkout inteiro.
+  const avulsa = await pagamentos.createCharge(acc, {
+    valueCents: 5000, comment: 'Avulsa', origin: 'manual'
+  }, null);
+  const vistaAvulsa = pagamentos.publicChargeView(avulsa.id);
+  ok(!vistaAvulsa.card.pixOff, 'venda avulsa continua com Pix');
+  ok(vistaAvulsa.assinaturaDoCiclo === null, 'e não é ciclo de assinatura nenhuma');
+
+  // A página lê exatamente esses campos.
+  const pagina2 = fs.readFileSync(R + 'public/pay.html', 'utf8');
+  ok(/if \(c\.pixOff\) pix = false;/.test(pagina2), 'a página desliga o Pix quando o servidor manda');
+  ok(/data\.assinaturaDoCiclo/.test(pagina2), 'e abre já na aba do meio escolhido');
+  ok(/Primeira cobrança da sua assinatura/.test(pagina2),
+     'dizendo que é o começo de uma assinatura — o valor é o mesmo de uma compra avulsa, o compromisso não');
 
   srv.close();
   global.fetch = fetchReal;

@@ -5686,13 +5686,21 @@ module.exports = function (broadcast, clients) {
   router.post('/public/produto/:slug/identify', h(async (req, res) => {
     const b = req.body || {};
     const r = await pagamentos.cobrancaDoLink(req.params.slug, {
-      name: b.name, taxID: b.taxID, email: b.email, phone: b.phone, trk: b.trk
+      name: b.name, taxID: b.taxID, email: b.email, phone: b.phone, trk: b.trk, metodo: b.metodo
     }, broadcast);
     // DUAS SAÍDAS. Produto avulso devolve o id de uma cobrança; produto de
     // assinatura devolve o registro da assinatura, que não tem QR nem valor a
     // pagar agora — tem um link onde o comprador AUTORIZA no banco dele.
     // Empacotar os dois no mesmo formato obrigaria a página a adivinhar qual
     // recebeu, e ela erraria na primeira assinatura sem link de autorização.
+    // TRÊS SAÍDAS agora. Produto avulso devolve o id de uma cobrança. Assinatura
+    // no Pix Automático devolve só o registro: não há nada a pagar, há uma
+    // autorização a dar no banco. Assinatura no cartão ou no boleto devolve as
+    // DUAS coisas — o primeiro ciclo é uma cobrança de verdade, e a página
+    // segue para ela como em qualquer venda.
+    if (r && r.chargeId) {
+      return res.json({ ok: true, assinatura: r.assinatura, view: pagamentos.publicChargeView(r.chargeId) });
+    }
     if (r && r.assinatura) return res.json({ ok: true, assinatura: r.assinatura });
     res.json({ ok: true, view: pagamentos.publicChargeView(r) });
   }));
@@ -6389,8 +6397,17 @@ module.exports = function (broadcast, clients) {
     // isso o produto ficaria marcado como mensal e o checkout recusaria a
     // venda — um produto que existe e não vende é pior do que um campo que
     // não aparece.
-    if (typeof b.recorrente === 'boolean') {
-      p.recorrente = b.recorrente && require('./assinaturas').disponivel();
+    // ASSINATURA. Diferente do resto, NÃO é filtrada pelo que a plataforma
+    // oferece hoje: um produto mensal continua sendo mensal mesmo com o Pix
+    // Automático desligado — ele passa a ser vendido no cartão ou no boleto.
+    if (typeof b.recorrente === 'boolean') p.recorrente = b.recorrente;
+    // MEIOS DE PAGAMENTO deste produto. `null` = herda do checkout, que é o
+    // comportamento de todo produto criado antes deste campo existir.
+    if (b.metodos === null) p.metodos = null;
+    else if (b.metodos && typeof b.metodos === 'object') {
+      p.metodos = {
+        pix: !!b.metodos.pix, credito: !!b.metodos.credito, boleto: !!b.metodos.boleto
+      };
     }
     for (const k of ['banner', 'bannerMobile', 'logo', 'logoMobile']) {
       if (img(b[k]) === null) continue;

@@ -310,6 +310,31 @@
     h2.sect { font-size: 19px; }
     .final h2 { font-size: 26px; }
   }
+  /* SELETOR DE MEIO DA ASSINATURA. Alvo grande e rótulo com a explicação do
+     que cada um faz: "Pix Automático" e "Boleto" soam parecidos para quem
+     nunca assinou nada, e a diferença (um cobra sozinho, o outro não) é a
+     única coisa que a pessoa precisa saber para escolher. */
+  .met-list { display: flex; flex-direction: column; gap: 8px; }
+  .met {
+    display: flex; align-items: flex-start; gap: 10px; width: 100%;
+    padding: 12px 13px; text-align: left; cursor: pointer;
+    background: var(--card, #fff); border: 1.5px solid var(--line, #e3e8e5);
+    border-radius: 11px; font: inherit; color: inherit;
+    transition: border-color .15s, background .15s;
+  }
+  .met:hover { border-color: var(--brand, #10b981); }
+  .met.on { border-color: var(--brand, #10b981); background: rgba(16,185,129,.06); }
+  .met-dot {
+    width: 16px; height: 16px; border-radius: 50%; flex: none; margin-top: 2px;
+    border: 1.5px solid var(--line, #e3e8e5); background: transparent;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .met.on .met-dot {
+    border-color: var(--brand, #10b981);
+    box-shadow: inset 0 0 0 4px var(--brand, #10b981);
+  }
+  .met b { display: block; font-size: 13.5px; font-weight: 600; }
+  .met em { display: block; font-style: normal; font-size: 12px; opacity: .7; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -608,6 +633,58 @@
     '</div></div>';
   }
 
+  // OS MEIOS QUE ESTA ASSINATURA ACEITA, na ordem em que fazem sentido para
+  // quem compra: o que menos atrito tem primeiro.
+  var METODOS_ASS = [
+    ['pix', 'Pix Automático', 'Você autoriza uma vez no seu banco e pronto.'],
+    ['credito', 'Cartão de crédito', 'Cobrado no cartão todo mês, automaticamente.'],
+    ['boleto', 'Boleto', 'Um boleto novo a cada mês, para você pagar.']
+  ];
+
+  function metodosAceitos() {
+    var m = (data.assinatura && data.assinatura.metodos) || {};
+    return METODOS_ASS.filter(function (x) { return m[x[0]]; });
+  }
+
+  // O meio escolhido. Começa no primeiro aceito — e não num padrão fixo, que
+  // apareceria marcado mesmo quando o lojista o desligou.
+  var metodoAss = '';
+  function metodoAtual() {
+    var lista = metodosAceitos();
+    if (!lista.length) return '';
+    var achou = lista.some(function (x) { return x[0] === metodoAss; });
+    if (!achou) metodoAss = lista[0][0];
+    return metodoAss;
+  }
+  // Troca o meio SEM redesenhar a página inteira: um `render()` aqui apagaria
+  // o que a pessoa já digitou nos campos, e escolher a forma de pagamento
+  // depois de preencher o nome é o caminho natural.
+  function setMetodoAss(m) {
+    metodoAss = m;
+    var bts = document.querySelectorAll('.met');
+    for (var i = 0; i < bts.length; i++) {
+      var on = bts[i].getAttribute('data-met') === m;
+      bts[i].classList.toggle('on', on);
+      bts[i].setAttribute('aria-pressed', String(on));
+    }
+  }
+
+  // COM UM MEIO SÓ, NÃO HÁ ESCOLHA A FAZER. Desenhar um seletor de uma opção
+  // pede uma decisão que não existe e ainda sugere que falta alguma coisa.
+  function escolhaDeMetodo() {
+    var lista = metodosAceitos();
+    if (lista.length < 2) return '';
+    var atual = metodoAtual();
+    return '<div class="fld"><label>Como você quer pagar</label>' +
+      '<div class="met-list">' + lista.map(function (x) {
+        var on = x[0] === atual;
+        return '<button type="button" class="met' + (on ? ' on' : '') + '" ' +
+          'data-met="' + esc(x[0]) + '" aria-pressed="' + on + '">' +
+          '<span class="met-dot"></span>' +
+          '<span><b>' + esc(x[1]) + '</b><em>' + esc(x[2]) + '</em></span></button>';
+      }).join('') + '</div></div>';
+  }
+
   function identifyMain(ck) {
     var pf = data.prefill || {};
     return '<div class="card fade-in">' + stepsBar(1) +
@@ -625,7 +702,7 @@
         // mês — quem descobre isso depois pede o dinheiro de volta, e com razão.
         (ehAssinatura()
           ? '<div class="payer-chip">' + ico('lock', 13) + ' Assinatura mensal de ' + brl(data.assinatura.valueCents) +
-            '. A cobrança se repete todo mês até você cancelar, e quem autoriza é você, no app do seu banco.</div>'
+            '. A cobrança se repete todo mês até você cancelar.</div>' + escolhaDeMetodo()
           : '') +
         (pf.conhecido ? '<div class="payer-chip">' + ico('lock', 13) + ' Que bom te ver de novo! Já preenchemos com os dados da sua última compra.</div>' : '') +
         '<div class="form-err" id="ferr"></div>' +
@@ -640,6 +717,13 @@
   }
 
   function bindIdentify() {
+    var lista = document.querySelector('.met-list');
+    if (lista) {
+      lista.addEventListener('click', function (ev) {
+        var b = ev.target.closest ? ev.target.closest('.met') : null;
+        if (b && b.getAttribute('data-met')) setMetodoAss(b.getAttribute('data-met'));
+      });
+    }
     var fd = document.getElementById('f-doc'), fp = document.getElementById('f-phone');
     if (fd) {
       fd.addEventListener('input', function () {
@@ -705,6 +789,7 @@
     var rota = apelidoProduto
       ? '/api/public/produto/' + encodeURIComponent(apelidoProduto) + '/identify'
       : '/api/public/pay/' + encodeURIComponent(id) + '/identify';
+    if (ehAssinatura()) f.metodo = metodoAtual();
     fetch(rota, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(f)
     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
@@ -714,7 +799,14 @@
         // seguir para a etapa de pagamento — o que falta é a autorização no
         // banco. Os cronômetros param aqui: eles existem para esperar um Pix
         // que, neste caminho, não vai chegar.
-        if (res.j.assinatura) {
+        // ASSINATURA NO PIX AUTOMÁTICO: não há cobrança, não há QR, e a página
+        // não pode seguir para a etapa de pagamento — o que falta é a
+        // autorização no banco. Os cronômetros param aqui: existem para esperar
+        // um Pix que, neste caminho, não vai chegar.
+        //
+        // No CARTÃO e no BOLETO vem `view` junto: o primeiro ciclo é uma
+        // cobrança de verdade, e o caminho é o de sempre.
+        if (res.j.assinatura && !res.j.view) {
           clearInterval(timer); clearTimeout(cdTimer); clearTimeout(offerTimer);
           var ckA = (data && data.checkout) || {};
           root.innerHTML = siteHead(ckA) + '<div class="wrap"><div class="grid">' +
@@ -761,6 +853,12 @@
     var pix = m.pix !== false;
     var credit = !!c.credit && !!m.credit && !data.demo;
     var boleto = !!c.boleto && !!m.boleto && !data.demo;
+    // CICLO DE ASSINATURA ACEITA UM MEIO SÓ. `pixOff` vem do servidor quando
+    // esta cobrança é o ciclo de uma assinatura de cartão ou de boleto — e é o
+    // servidor que decide, não esta função: pagar no Pix o primeiro ciclo de
+    // uma assinatura de CARTÃO deixaria a assinatura ativa e sem cartão salvo,
+    // e o mês seguinte falharia num assinante que pagou direitinho.
+    if (c.pixOff) pix = false;
     if (!pix && !credit && !boleto) pix = true;
     return { pix: pix, credit: credit, boleto: boleto };
   }
@@ -774,6 +872,13 @@
     if (pm.credit) disponiveis.push('card');
     if (pm.boleto) disponiveis.push('boleto');
     if (disponiveis.indexOf(payTab) < 0) payTab = disponiveis[0] || 'pix';
+    // Abre já na aba do meio que a pessoa escolheu ao assinar. Cair na primeira
+    // disponível a faria escolher duas vezes a mesma coisa.
+    var doCiclo = data.assinaturaDoCiclo;
+    if (doCiclo) {
+      var alvo = doCiclo.metodo === 'credito' ? 'card' : doCiclo.metodo === 'boleto' ? 'boleto' : 'pix';
+      if (disponiveis.indexOf(alvo) >= 0) payTab = alvo;
+    }
 
     var rotulo = { pix: pix + ' Pix', card: icoCard() + ' Cartão', boleto: icoBoleto() + ' Boleto' };
     var abas = disponiveis.length > 1
@@ -782,8 +887,12 @@
         }).join('') + '</div>'
       : '';
     var painel = payTab === 'card' ? cardForm() : (payTab === 'boleto' ? boletoForm() : pixPane());
+    var avisoCiclo = doCiclo
+      ? '<div class="payer-chip">' + ico('lock', 13) + ' Primeira cobrança da sua assinatura de ' +
+        esc(doCiclo.nome || '') + '. As próximas se repetem todo mês, e você pode cancelar quando quiser.</div>'
+      : '';
     return '<div class="card fade-in">' + stepsBar(2) +
-      '<div class="pad">' + abas + painel +
+      '<div class="pad">' + abas + avisoCiclo + painel +
       '</div></div>';
   }
 
