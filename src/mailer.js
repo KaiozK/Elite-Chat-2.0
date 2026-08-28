@@ -232,7 +232,29 @@ function adminView() {
   };
 }
 
+// O LINK QUE FALTAVA. A tela de entrada já dizia "abra o link que você
+// recebeu" — e nada nunca mandava link nenhum. Quem pagava, fechava a aba e
+// voltava, lia uma instrução impossível de seguir.
+//
+// POR QUE POR E-MAIL, e não mostrando o link para quem digita o endereço: o
+// token conclui o cadastro, e concluir é DEFINIR A SENHA. Entregá-lo a quem
+// souber o e-mail seria entregar uma conta já paga a um estranho. A caixa de
+// entrada é o que prova que a pessoa é ela mesma.
+function enviarLinkCadastro(email, url, plano) {
+  return enviar({
+    to: email,
+    subject: 'Conclua o seu cadastro no Koonfy',
+    text: 'O seu pagamento foi confirmado' + (plano ? ' (' + plano + ')' : '') +
+      '. Falta só criar a sua senha e responder algumas perguntas sobre o seu negócio: ' + url,
+    html: CAIXA('Falta pouco', [
+      'O seu pagamento foi confirmado' + (plano ? ' <b>(' + plano + ')</b>' : '') + '.',
+      'Falta criar a sua senha e responder algumas perguntas rápidas sobre o seu negócio — é o que nos permite te ajudar melhor desde o primeiro dia.',
+      '<a href="' + url + '">' + url + '</a>'
+    ])
+  });
+}
+
 module.exports = {
   cfg, emptyConfig, configured, enviar, adminView,
-  enviarCodigoVerificacao, enviarCodigoLogin
+  enviarCodigoVerificacao, enviarCodigoLogin, enviarLinkCadastro
 };

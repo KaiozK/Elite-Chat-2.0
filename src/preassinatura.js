@@ -158,6 +158,9 @@ function confirmar(cid, valorPago, broadcast) {
 
   pre.status = 'paid';
   pre.pagoEm = Date.now();
+  // O link sai JÁ, sem esperar ninguém pedir: é o momento em que a pessoa mais
+  // pode fechar a aba (o Pix confirmou, ela acha que acabou).
+  mandarLink(pre).catch(() => {});
   pre.accountId = acc.id;
   db.save();
 
@@ -174,6 +177,46 @@ function confirmar(cid, valorPago, broadcast) {
 // TERMINA O CADASTRO: empresa, senha e o perfil. Os dados do checkout NÃO
 // voltam aqui — eles já estão na conta e são os mesmos do recebimento.
 // ---------------------------------------------------------------------------
+// MANDA O LINK DE CONCLUSÃO por e-mail.
+//
+// Duas horas em que isto é chamado, e as duas importam:
+//
+//   • quando o PAGAMENTO CONFIRMA, para a pessoa ter o link mesmo que feche a
+//     aba no segundo seguinte;
+//   • quando ela tenta ENTRAR e a conta ainda está pendente — é o que ela faz
+//     naturalmente ao voltar, porque do ponto de vista dela a conta já existe.
+//
+// Falha de e-mail não pode derrubar nada: o pagamento já entrou, e o cadastro
+// ainda pode ser concluído pelo link que está na aba dela ou guardado no
+// navegador. Por isso todo chamador ignora o erro.
+function linkDeConclusao(pre) {
+  const base = (db.get().platform.baseUrl || '').replace(/\/+$/, '');
+  if (!base) return '';
+  return base + '/assinar?plano=' + encodeURIComponent(pre.planId) + '&token=' + encodeURIComponent(pre.token);
+}
+
+async function mandarLink(pre) {
+  const url = linkDeConclusao(pre);
+  if (!url) return { ok: false, motivo: 'sem endereço público configurado' };
+  const mailer = require('./mailer');
+  if (!mailer.configured()) return { ok: false, motivo: 'e-mail não configurado' };
+  const plano = (db.get().plans.find(p => p.id === pre.planId) || {}).name || '';
+  try {
+    await mailer.enviarLinkCadastro(pre.email, url, plano);
+    store.logEvent({ type: 'preassinatura_link_enviado', preId: pre.id });
+    return { ok: true };
+  } catch (e) {
+    store.logEvent({ type: 'preassinatura_link_falhou', preId: pre.id, error: e.message });
+    return { ok: false, motivo: e.message };
+  }
+}
+
+// Acha a pré-assinatura PAGA e ainda não concluída de uma conta. É o que liga
+// "esta pessoa tentou entrar" a "este é o cadastro que falta terminar".
+function pendenteDaConta(accountId) {
+  return lista().find(p => p.accountId === accountId && p.status === 'paid') || null;
+}
+
 function concluir(token, b, broadcast) {
   const pre = porToken(token);
   if (!pre) throw erro('Cadastro não encontrado', 404);
@@ -235,4 +278,5 @@ function publico(token) {
   };
 }
 
-module.exports = { criar, confirmar, concluir, publico, porToken, ehPreAssinatura };
+module.exports = {
+  linkDeConclusao, mandarLink, pendenteDaConta, criar, confirmar, concluir, publico, porToken, ehPreAssinatura };

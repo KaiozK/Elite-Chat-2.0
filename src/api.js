@@ -419,7 +419,34 @@ module.exports = function (broadcast, clients) {
     // conta de cliente (dono — login por e-mail)
     const acc = db.findAccountByEmail(user);
     if (acc && acc.pendenteCadastro) {
-      return res.status(409).json({ error: 'O seu pagamento foi confirmado, mas o cadastro não foi concluído. Abra o link que você recebeu para criar a sua senha.', code: 'cadastro_pendente' });
+      // ENTRAR É O QUE ELE FAZ AO VOLTAR, e é natural: do ponto de vista dele a
+      // conta já existe — ele pagou. O que ele não sabe é que ainda não tem
+      // senha, porque a senha se define na etapa que ele não terminou.
+      //
+      // A mensagem daqui já mandava "abrir o link que você recebeu" e NADA
+      // nunca mandou link nenhum. Era uma instrução impossível de seguir, no
+      // meio do caminho de quem acabou de pagar.
+      //
+      // Agora o link SAI daqui, por e-mail. Não é mostrado na tela de propósito:
+      // concluir o cadastro é DEFINIR A SENHA, e entregar isso a quem souber o
+      // e-mail seria entregar uma conta já paga a um estranho. A caixa de
+      // entrada é o que prova que a pessoa é ela mesma.
+      const pend = preassinatura.pendenteDaConta(acc.id);
+      let enviado = false;
+      if (pend) {
+        const r = await preassinatura.mandarLink(pend);
+        enviado = !!r.ok;
+      }
+      return res.status(409).json({
+        code: 'cadastro_pendente',
+        error: enviado
+          ? 'O seu pagamento foi confirmado, mas falta concluir o cadastro. Mandamos o link para ' +
+            acc.email + ' agora — abra para criar a sua senha.'
+          // Sem e-mail configurado ou sem endereço público, prometer um e-mail
+          // que não vai chegar é pior do que dizer a verdade.
+          : 'O seu pagamento foi confirmado, mas falta concluir o cadastro. ' +
+            'Fale com o suporte para receber o link e criar a sua senha.'
+      });
     }
     if (acc && db.verifyPassword(pass || '', acc.passHash)) {
       if (db.needsRehash(acc.passHash)) { acc.passHash = db.hashPassword(pass || ''); db.save(); }
