@@ -122,7 +122,12 @@
      depois que a pessoa interage com a página; enquanto isso o play() é
      recusado e cai no tom sintetizado, que nunca falha. */
   var ARQUIVOS = { message: '/assets/sons/mensagem.mp3', sale: '/assets/sons/venda.mp3',
-                   commission: '/assets/sons/venda.mp3' };
+                   commission: '/assets/sons/venda.mp3',
+                   call: '/assets/sons/chamada.mp3' };
+  // O toque da ligação fica FORA do pré-carregamento: é o maior arquivo dos
+  // três e a maioria das sessões nunca recebe uma chamada. Baixá-lo na abertura
+  // seria banda de celular gasta por um som que talvez não toque.
+  var NAO_PRECARREGAR = { call: true };
   var tocadores = {};
   function tocador(tipo) {
     if (!ARQUIVOS[tipo]) return null;
@@ -137,7 +142,7 @@
   }
   // Deixa os arquivos em cache antes do primeiro aviso, para o som não chegar
   // atrasado na mensagem que importa.
-  function prepararSons() { for (var k in ARQUIVOS) tocador(k); }
+  function prepararSons() { for (var k in ARQUIVOS) if (!NAO_PRECARREGAR[k]) tocador(k); }
 
   function playSound(type) {
     if (!state.prefs.sounds) return;
@@ -160,23 +165,65 @@
      perde a ligação inteira. O toque repete até alguém atender, recusar ou o
      cliente desistir — como qualquer telefone. Fica em teto de 60 repetições
      (~2 min) para que uma falha em parar o toque não vire um alarme eterno. */
-  var toque = { iv: null, n: 0 };
+  var toque = { iv: null, n: 0, audio: null };
+
+  /* O ARQUIVO TOCA EM LAÇO, e não repetido por temporizador.
+     Um toque de telefone tem começo, meio e fim pensados para emendar: cortá-lo
+     a cada 2,2s pelo relógio produz silêncios e sobreposições que não existem
+     no som original. `loop` deixa o próprio navegador emendar, no ponto certo.
+
+     O TEMPORIZADOR CONTINUA EXISTINDO, mas com outra função: contar os ciclos
+     para o toque não virar alarme eterno se algo falhar ao pará-lo. */
+  var CICLO_MS = 2200;      // ritmo do padrão sintetizado e da vibração
+  var MAX_CICLOS = 60;      // ~2 min, como qualquer telefone desiste
+
   function startRing() {
     if (toque.iv) return;             // já tocando: não empilha
     toque.n = 0;
+
+    if (state.prefs.sounds) {
+      var a = tocador('call');
+      if (a) {
+        try {
+          a.loop = true;
+          a.currentTime = 0;
+          var pr = a.play();
+          toque.audio = a;
+          // play() é recusado enquanto a pessoa não tiver interagido com a
+          // página — e numa ligação que chega com o app recém-aberto isso é o
+          // caso comum. Aí o tom sintetizado assume, que nunca é bloqueado
+          // porque não é reprodução de mídia.
+          if (pr && pr.catch) {
+            pr.catch(function () {
+              toque.audio = null;
+            });
+          }
+        } catch (e) { toque.audio = null; }
+      }
+    }
+
     var bater = function () {
-      if (++toque.n > 60) return stopRing();
-      if (state.prefs.sounds) { try { SOUNDS.call(); } catch (e) {} }
+      if (++toque.n > MAX_CICLOS) return stopRing();
+      // O sintetizado só entra quando o arquivo NÃO está tocando — os dois
+      // juntos viram barulho, não toque.
+      if (state.prefs.sounds && !toque.audio) { try { SOUNDS.call(); } catch (e) {} }
       if (state.prefs.vibrate && navigator.vibrate) {
         try { navigator.vibrate([400, 200, 400]); } catch (e) {}
       }
     };
     bater();
-    toque.iv = setInterval(bater, 2200);   // o padrão SOUNDS.call dura ~1s
+    toque.iv = setInterval(bater, CICLO_MS);
   }
+
   function stopRing() {
     if (toque.iv) { clearInterval(toque.iv); toque.iv = null; }
     toque.n = 0;
+    // PARAR É PAUSAR E VOLTAR AO ZERO. Só pausar deixaria o próximo toque
+    // começando no meio do som, de onde o anterior parou.
+    if (toque.audio) {
+      try { toque.audio.pause(); toque.audio.currentTime = 0; toque.audio.loop = false; } catch (e) {}
+      toque.audio = null;
+    }
     if (navigator.vibrate) { try { navigator.vibrate(0); } catch (e) {} }
   }
 

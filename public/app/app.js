@@ -870,7 +870,20 @@ function showLogin() {
   // fluxo novo fechou.
   try {
     const p = new URLSearchParams(location.search);
-    if (p.get('novo') === '1' || p.get('cadastro') === '1') location.replace('/assinar');
+  if (p.get('novo') === '1' || p.get('cadastro') === '1') {
+    // O CÓDIGO DE INDICAÇÃO ATRAVESSA O REDIRECIONAMENTO.
+    //
+    // `location.replace('/assinar')` puro descartava a query inteira, e com
+    // ela o `?ref=` que a landing tinha acabado de grudar no botão. O clique
+    // vinha do link de um afiliado, passava por aqui e chegava ao cadastro
+    // sem dono — a comissão sumia neste ponto, em silêncio.
+    //
+    // O cookie ainda valeria, mas nem sempre existe: em aba anônima o
+    // armazenamento é bloqueado, e aba anônima é onde muita gente abre link
+    // que recebeu. A URL é a via que sobra.
+    const ref = p.get('ref') || refAtivo();
+    location.replace('/assinar' + (ref ? '?ref=' + encodeURIComponent(ref) : ''));
+  }
   } catch {}
 }
 
@@ -8201,7 +8214,10 @@ async function paintBilling() {
     const [stLbl, stCls] = BILL_ST[b.status] || [b.status, 'pill'];
     const plan = b.plan;
     const pc = b.pendingCharge;
-    const refLink = `${API.webOrigin}/app/?ref=${d.affiliate.code}`;
+    // A LANDING, e não a tela de entrada — o mesmo link da aba de Afiliação.
+    // Este aqui tinha ficado para trás na primeira passada: dois destinos
+    // para o mesmo programa mandariam metade dos cliques para o lugar errado.
+    const refLink = `${API.webOrigin}/?ref=${d.affiliate.code}`;
     const cardOn = !!(d.card && d.card.credit);
     BILL_CACHE = d;
     box.innerHTML = `
@@ -8306,7 +8322,18 @@ function affPlano() {
 
 function pintarAfiliacao() {
   const d = AFF, a = d.affiliate;
-  const refLink = `${API.webOrigin}/app/?ref=${a.code}`;
+  // O LINK DO AFILIADO ABRE A LANDING, e não a tela de entrada do app.
+  //
+  // Quem recebe uma indicação quase nunca conhece o produto: caindo direto
+  // no login, a primeira coisa que vê é um formulário de uma coisa que ele
+  // não sabe o que é. A landing é a página que EXPLICA — e é ela que faz a
+  // indicação virar assinatura, que é de onde sai a comissão de quem indicou.
+  //
+  // O código continua chegando ao cadastro: a landing lê o `?ref=`, grava o
+  // mesmo cookie de 7 dias que o app já usava e ainda o repassa nos botões
+  // (ver public/index.html). Sem essa ponte, mudar o destino do link teria
+  // custado a comissão de todo mundo.
+  const refLink = `${API.webOrigin}/?ref=${a.code}`;
   const ativos = a.referrals.filter(r => r.status === 'active').length;
   const plano = affPlano();
   const porMes = plano ? Math.floor(plano.price * a.percentRenewal / 100) : 0;

@@ -73,6 +73,10 @@ async function criar(b) {
     planId: plano.id,
     ...dados,
     refBy: String(b.ref || '').trim().slice(0, 24),
+    // O IP de QUEM PEDIU, guardado aqui porque a conta só nasce depois — na
+    // hora do pagamento, num webhook que não tem requisição de navegador
+    // nenhuma para consultar. Sem guardar agora, o sinal se perde.
+    ip: String(b.ip || '').slice(0, 45),
     status: 'pending',
     valor: plano.price,
     correlationID: '',
@@ -132,6 +136,22 @@ function confirmar(cid, valorPago, broadcast) {
 
   const aff = pre.refBy ? db.findAccountByRefCode(pre.refBy) : null;
   if (aff) acc.affiliate.refBy = aff.affiliate.code;
+
+  // ANTIABUSO neste caminho também.
+  //
+  // Este é o cadastro que a landing usa — o principal, não o secundário. A
+  // camada tinha entrado só em /api/register, e uma verificação que cobre a
+  // porta menos usada e deixa a principal aberta não verifica nada.
+  //
+  // Aqui não há trial a negar (a conta já nasce paga, o plano foi comprado),
+  // então o que importa é a COMISSÃO: se quem indicou e quem foi indicado
+  // dividem documento, telefone ou IP, o dinheiro fica retido para alguém
+  // olhar. O IP vem de quando a pré-assinatura foi criada.
+  try {
+    require('./antiabuso').aoCadastrar(acc, { headers: { 'x-forwarded-for': pre.ip || '' }, socket: {} }, {
+      documento: pre.documento, telefone: pre.telefone, email: pre.email
+    }, aff);
+  } catch (e) { /* uma verificação que falha não pode derrubar uma conta paga */ }
 
   data.accounts.push(acc);
   data.revenue.push({ ts: Date.now(), accountId: acc.id, planId: pre.planId, amount: valorPago, kind: 'first', chargeId: cid });

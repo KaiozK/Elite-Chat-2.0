@@ -287,10 +287,30 @@ module.exports = function (broadcast, clients) {
     } else {
       acc.profile.phone = '';
     }
-    acc.billing.periodEnd = Date.now() + (db.get().platform.billing.trialDays || 7) * 86400000;
     // afiliação: registra quem indicou (comissão na assinatura e nas renovações)
     const aff = db.findAccountByRefCode(refCode);
     if (aff) acc.affiliate.refBy = aff.affiliate.code;
+
+    // ANTIABUSO — antes de dar o teste grátis.
+    //
+    // E-mail não é identidade: é grátis e infinito. O que diz que uma conta
+    // nova é a mesma pessoa de antes é o CPF/CNPJ e o WhatsApp — e é por
+    // eles que o segundo teste grátis deixa de sair. O IP entra só como
+    // sinal para o admin olhar: escritório, coworking e operadora de
+    // celular põem muita gente legítima atrás do mesmo endereço.
+    //
+    // NADA AQUI RECUSA O CADASTRO. A conta nasce; o que ela não ganha é o
+    // benefício repetido. Recusar um cadastro legítimo custa um cliente
+    // inteiro para economizar sete dias de teste.
+    const antiabuso = require('./antiabuso');
+    const risco = antiabuso.aoCadastrar(acc, req, {
+      documento: (req.body.recebimento || {}).document || perfil.document,
+      telefone: acc.profile.phone,
+      email: mail
+    }, aff);
+
+    const diasTrial = risco.trialNegado ? 0 : (db.get().platform.billing.trialDays || 7);
+    acc.billing.periodEnd = Date.now() + diasTrial * 86400000;
     db.get().accounts.push(acc);
     db.save();
     avisarCadastro(acc);
@@ -520,7 +540,13 @@ module.exports = function (broadcast, clients) {
   // com 18 bytes e conhecido só por quem abriu o checkout.
   // =========================================================================
   router.post('/public/assinatura', h(async (req, res) => {
-    const r = await preassinatura.criar(req.body || {});
+    // O IP entra AQUI, e não vem do corpo: o corpo é do navegador de quem se
+    // cadastra, e um sinal antiabuso que a própria pessoa pode escrever não é
+    // sinal nenhum.
+    const r = await preassinatura.criar({
+      ...(req.body || {}),
+      ip: require('./antiabuso').ipDaRequisicao(req)
+    });
     res.json(r);
   }));
 
@@ -3708,7 +3734,10 @@ module.exports = function (broadcast, clients) {
         const base = (hosts.origemPublica(req) || (req ? req.protocol + '://' + req.get('host') : '')).replace(/\/+$/, '');
         const codigo = (acc.affiliate && acc.affiliate.code) || '';
         if (!base) return null;
-        return { link: base + '/app/?ref=' + encodeURIComponent(codigo), por: acc.name };
+        // A LANDING, e não a tela de entrada: quem clica aqui está conhecendo o
+        // Koonfy agora, e um formulário de login não explica nada. A landing
+        // repassa o `ref` para o cadastro (ver public/index.html).
+        return { link: base + '/?ref=' + encodeURIComponent(codigo), por: acc.name };
       })(),
       pessoas: rel.pessoas.map(x => ({
         ...x,
@@ -5518,6 +5547,21 @@ module.exports = function (broadcast, clients) {
   router.post('/pagamentos/assinaturas/:id/cancelar', auth, feat('pagamentos'), h(async (req, res) => {
     res.json({ assinatura: await assinaturas.cancelar(req.acc, req.params.id, (req.body || {}).motivo, broadcast) });
   }));
+
+
+  // ==================== ANTIABUSO (Admin SaaS) ====================
+  //
+  // A lista de contas que bateram em algum sinal. Não é uma fila de
+  // punição: é o que a plataforma viu, para alguém decidir. Liberar é ato
+  // de gente, e fica registrado quem liberou.
+  router.get('/adm/antiabuso', auth, adminOnly, (req, res) => {
+    res.json(require('./antiabuso').fila());
+  });
+
+  router.post('/adm/antiabuso/:id/liberar', auth, adminOnly, (req, res) => {
+    const quem = req.session.kind === 'admin' ? db.get().platform.adminUser : req.acc.name;
+    res.json(require('./antiabuso').liberar(req.params.id, quem));
+  });
 
   // ---- Integração Nuvemshop (app único da plataforma) ----
   router.get('/admin/nuvemshop', auth, adminOnly, (req, res) => {

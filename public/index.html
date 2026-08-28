@@ -497,9 +497,54 @@
     var href = el.getAttribute('href');
     // âncoras internas do menu/rodapé (#funcoes etc.) permanecem, exceto se forem CTA
     if (href && href.charAt(0) === '#' && !SIGNUP_RE.test(t) && !LOGIN_RE.test(t)) return null;
-    if (LOGIN_RE.test(t)) return '/app';
-    if (SIGNUP_RE.test(t)) return '/app?novo=1';
+    if (LOGIN_RE.test(t)) return comRef('/app');
+    if (SIGNUP_RE.test(t)) return comRef('/app?novo=1');
     return null;
+  }
+
+  /* ---------------- INDICAÇÃO DE AFILIADO ----------------
+     O link do afiliado agora abre ESTA página, e não a tela de entrada: quem
+     recebe uma indicação quase nunca conhece o produto, e um formulário de
+     login não explica nada.
+
+     Mas a landing é o meio do caminho, não o destino — o código precisa
+     chegar ao CADASTRO. São duas pontes, de propósito:
+
+       1. O COOKIE que o app já lia: ec_ref, 7 dias, path=/. Vale mesmo se a
+          pessoa fechar a aba e voltar dias depois por outro caminho.
+       2. O ref grudado nos botões, que funciona mesmo com cookie e
+          armazenamento bloqueados — o caso de quem navega em aba anônima,
+          que é justamente quem clica em link de indicação.
+
+     Sem essas duas pontes, trocar o destino do link teria custado a comissão
+     de todo mundo: o clique chegaria à landing, o código morreria ali, e o
+     cadastro aconteceria sem dono. */
+  var REF_DIAS = 7;
+  var refCode = '';
+  try {
+    var vindo = new URLSearchParams(location.search).get('ref');
+    if (vindo) {
+      refCode = vindo.toUpperCase().trim().slice(0, 16);
+      var expRef = new Date(Date.now() + REF_DIAS * 86400000).toUTCString();
+      // Mesmo nome, mesmo path e mesma validade que o app usa — é o MESMO
+      // cookie, e não um segundo parecido.
+      document.cookie = 'ec_ref=' + encodeURIComponent(refCode) + '; expires=' + expRef + '; path=/; SameSite=Lax';
+      try {
+        localStorage.setItem('ec_ref', refCode);
+        localStorage.setItem('ec_ref_ts', String(Date.now()));
+      } catch (e) {}
+    } else {
+      // Sem o parâmetro na URL, o cookie de uma visita anterior ainda vale: a
+      // pessoa pode ter chegado pela indicação ontem e voltado hoje digitando
+      // o endereço.
+      var mRef = document.cookie.match(/(?:^|;\s*)ec_ref=([^;]+)/);
+      if (mRef) refCode = decodeURIComponent(mRef[1]);
+    }
+  } catch (e) {}
+
+  function comRef(url) {
+    if (!refCode) return url;
+    return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'ref=' + encodeURIComponent(refCode);
   }
   function wireCta() {
     var all = document.querySelectorAll('button, a');

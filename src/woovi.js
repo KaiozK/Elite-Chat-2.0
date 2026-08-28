@@ -253,6 +253,16 @@ function applyPayment(charge, broadcast) {
         const cfg = data.platform.affiliate || {};
         const pct = kind === 'first' ? (cfg.percentFirst || 0) : (cfg.percentRenewal || 0);
         const cut = Math.floor(paid * pct / 100);
+        // COMISSÃO RETIDA não é paga. Quando quem indicou e quem foi
+        // indicado dividem IP, CPF/CNPJ ou WhatsApp, o dinheiro espera
+        // alguém olhar — ver src/antiabuso.js.
+        //
+        // Reter e conferir custa uma espera; pagar e descobrir depois custa
+        // pedir dinheiro de volta, que quase nunca volta. O evento fica no
+        // log para o valor não sumir da história.
+        if (cut > 0 && !require('./antiabuso').comissaoLiberada(acc)) {
+          store.logEvent({ type: 'comissao_retida', accountId: acc.id, afiliado: aff.id, valor: cut, kind });
+        } else
         if (cut > 0) {
           aff.wallet.balance += cut;
           aff.affiliate.earned += cut;

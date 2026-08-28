@@ -272,6 +272,27 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
   });
 
   // ---- etapa 1 → cobrança ----
+  /* ---------------- QUEM INDICOU ----------------
+     Esta página é o fim do caminho de uma indicação, e era o ponto onde o
+     código se perdia: ela nunca leu o ref, e a rota que cria a conta esperava
+     um. Resultado: todo cadastro vindo de afiliado nascia sem dono, e a
+     comissão simplesmente não existia — sem erro, sem log, sem nada.
+
+     Duas fontes, na ordem em que são confiáveis:
+       1. a URL, que a landing e o redirecionamento do /app repassam;
+       2. o cookie de 7 dias, para quem chegou pela indicação dias atrás e
+          voltou por outro caminho.
+
+     path=/ é o que faz o cookie gravado na raiz ser visto aqui. */
+  function refDeIndicacao() {
+    try {
+      var daUrl = new URLSearchParams(location.search).get('ref');
+      if (daUrl) return daUrl.toUpperCase().trim().slice(0, 16);
+    } catch (e) {}
+    var m = document.cookie.match(/(?:^|;\s*)ec_ref=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+
   $('form-dados').addEventListener('submit', function (e) {
     e.preventDefault();
     $('erro-dados').textContent = '';
@@ -280,7 +301,8 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         planId: planId, nome: $('nome').value, email: $('email').value,
-        telefone: $('telefone').value, documento: $('documento').value, pais: 'BR'
+        telefone: $('telefone').value, documento: $('documento').value, pais: 'BR',
+        ref: refDeIndicacao()
       })
     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (r) {
