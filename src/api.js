@@ -291,17 +291,20 @@ module.exports = function (broadcast, clients) {
     const aff = db.findAccountByRefCode(refCode);
     if (aff) acc.affiliate.refBy = aff.affiliate.code;
 
-    // ANTIABUSO — antes de dar o teste grátis.
+    // ANTIABUSO.
     //
-    // E-mail não é identidade: é grátis e infinito. O que diz que uma conta
-    // nova é a mesma pessoa de antes é o CPF/CNPJ e o WhatsApp — e é por
-    // eles que o segundo teste grátis deixa de sair. O IP entra só como
-    // sinal para o admin olhar: escritório, coworking e operadora de
-    // celular põem muita gente legítima atrás do mesmo endereço.
+    // O que ele protege de verdade é a COMISSÃO: a autoindicação devolve 30%
+    // da primeira assinatura e 15% de cada renovação para quem se indicou —
+    // uma assinatura permanentemente mais barata, paga pela plataforma, sem
+    // indicação nenhuma por trás.
     //
-    // NADA AQUI RECUSA O CADASTRO. A conta nasce; o que ela não ganha é o
-    // benefício repetido. Recusar um cadastro legítimo custa um cliente
-    // inteiro para economizar sete dias de teste.
+    // A negação do teste grátis logo abaixo é um resguardo DORMENTE: esta rota
+    // não é usada por tela nenhuma (o cadastro real é /assinar, e lá a conta
+    // nasce paga), e o trial só existe se o admin ligar. Fica porque é a regra
+    // certa para o dia em que houver trial.
+    //
+    // NADA AQUI RECUSA O CADASTRO. Recusar um cliente que ia PAGAR para evitar
+    // uma comissão indevida é trocar a assinatura inteira pela fração dela.
     const antiabuso = require('./antiabuso');
     const risco = antiabuso.aoCadastrar(acc, req, {
       documento: (req.body.recebimento || {}).document || perfil.document,

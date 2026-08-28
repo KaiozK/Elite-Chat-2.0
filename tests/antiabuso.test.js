@@ -1,27 +1,36 @@
 // ============================================================================
-// ANTIABUSO — o segundo teste grátis e a comissão para si mesmo
+// ANTIABUSO — a comissão para si mesmo
 //
-// São as duas coisas que o produto dá de graça, e por isso as duas que alguém
-// tenta pegar duas vezes: cadastrar de novo com outro e-mail para ganhar outro
-// período grátis, e se indicar com o próprio link para receber comissão por
-// ter trazido a si mesmo.
+// O Koonfy não dá teste grátis no caminho que as pessoas usam: quem assina
+// entra por /assinar, paga o plano, e a conta nasce ativa. O que se dá é
+// COMISSÃO — uma porcentagem da primeira assinatura e outra de cada renovação
+// (30% e 15%).
+//
+// É por aí que se pega um plano mais barato sem parecer que se pegou: criar a
+// conta pelo PRÓPRIO link de afiliado devolve 30% do primeiro pagamento e 15%
+// de todo mês seguinte. Não é um desconto de uma vez — é uma assinatura
+// permanentemente mais barata, paga pela plataforma, sem indicação nenhuma por
+// trás.
 //
 // O QUE ESTE TESTE PROTEGE, e a ordem importa:
 //
 // 1. NÃO BLOQUEAR QUEM É LEGÍTIMO. É a metade que se esquece. Recusar um
-//    cadastro de verdade custa um cliente inteiro para economizar sete dias de
-//    teste — um preço péssimo. Metade das asserções aqui existe para garantir
-//    que o inocente PASSA.
+//    cliente que ia PAGAR para evitar uma comissão indevida é trocar a
+//    assinatura inteira pela fração dela. Metade das asserções aqui existe
+//    para garantir que o inocente PASSA.
 //
-// 2. O TRIAL SÓ SAI UMA VEZ POR PESSOA, e "pessoa" é CPF/CNPJ ou WhatsApp.
-//    Nunca IP sozinho: escritório, coworking e operadora de celular põem muita
-//    gente legítima atrás do mesmo endereço, e negar por IP é negar ao colega
-//    de mesa de quem já é cliente.
+// 2. A RETENÇÃO VALE NA RENOVAÇÃO, e não só na primeira. Segurar só a primeira
+//    resolveria 30% do problema uma vez e deixaria 15% escapando todo mês,
+//    para sempre — e a de todo mês é justamente a que some no meio das outras.
 //
-// 3. A COMISSÃO SUSPEITA É RETIDA, não negada. Reter e conferir custa uma
-//    espera; pagar e descobrir depois custa pedir dinheiro de volta, que quase
-//    nunca volta. E aqui o IP CONTA sozinho, porque o custo do engano é o
-//    contrário: segurar um pagamento não tira nada de ninguém.
+// 3. RETIDA, NÃO NEGADA. Reter e conferir custa uma espera; pagar e descobrir
+//    depois custa pedir dinheiro de volta, que quase nunca volta. Aqui o IP
+//    conta sozinho, porque o custo do engano inverte: segurar um repasse não
+//    tira nada de ninguém.
+//
+// O trial aparece em algumas asserções abaixo como RESGUARDO DORMENTE: a regra
+// existe e está certa, mas só tem efeito em /api/register, que nenhuma tela
+// chama. Está testada para o dia em que houver trial, não porque seja a defesa.
 // ============================================================================
 const R = 'C:/Users/amand/Desktop/Elite Projects/whatsapp-crm/';
 let falhas = 0;
@@ -86,8 +95,10 @@ const BASE = 'http://127.0.0.1:3984';
   ok(!accUm.origem.marcas.length, 'e sem marca nenhuma');
   ok(accUm.origem.ip === '198.51.100.1', `o IP fica guardado para as comparações: ${accUm.origem.ip}`);
 
-  console.log('\n=== 2. Outro e-mail, MESMO CPF: entra, mas sem teste de novo ===');
-  // É o caso central. E-mail é grátis e infinito; CPF não.
+  console.log('\n=== 2. Outro e-mail, MESMO CPF: entra, e fica marcado ===');
+  // E-mail é grátis e infinito; CPF não. A negação do trial aqui é o RESGUARDO
+  // DORMENTE — vale só nesta rota, que nenhuma tela chama. O que importa de
+  // verdade é a marca, que é o que segura a comissão mais adiante.
   const dois = await cadastrar({
     name: 'Loja Dois', email: 'dois@ex.com', pass: 'segredo123',
     profile: { phone: '11955554444', country: 'BR' },
@@ -182,7 +193,9 @@ const BASE = 'http://127.0.0.1:3984';
   const ganhoAntes = accUm.affiliate.earned;
   const plano = { id: 'plano_x', name: 'Pro', price: 10000, periodDays: 30 };
   db.get().plans.push(plano);
-  db.get().platform.affiliate = { percentFirst: 30, percentRenewal: 10 };
+    // Os MESMOS percentuais que o produto traz de fábrica (ver src/db.js), para
+  // os números deste teste serem os números reais e não uma aritmética à parte.
+  db.get().platform.affiliate = { percentFirst: 30, percentRenewal: 15 };
   db.save();
 
   // A conta suspeita assina. O dinheiro do afiliado não pode se mexer.
@@ -198,6 +211,27 @@ const BASE = 'http://127.0.0.1:3984';
     { correlationID: `sub-${accAmigo.id}-${plano.id}-y`, value: 10000 }, null);
   ok(accUm.wallet.balance === saldoAntes + 3000,
      `a indicação honesta paga os 30%: ${accUm.wallet.balance - saldoAntes}`);
+
+  console.log('\n=== 8b. E a RENOVAÇÃO também é retida — é a que repete ===');
+  // A parte mais cara e a menos visível. Segurar só a primeira assinatura
+  // resolveria 30% uma vez e deixaria 15% escapando todo mês, para sempre.
+  //
+  // `wallet-ren-` é o formato que o produto gera de verdade para uma renovação
+  // (ver saasbilling.renewWallet). Um `ren-` solto não casa com nada e cairia
+  // em "unmatched" — o teste passaria dizendo que a comissão foi retida quando
+  // na verdade o pagamento inteiro tinha se perdido.
+  // A conta suspeita renova. A carteira do afiliado não pode se mexer de novo.
+  const saldoDepoisDaPrimeira = accUm.wallet.balance;
+  require(R + 'src/woovi').applyPayment(
+    { correlationID: `wallet-ren-${accEu.id}-${plano.id}-m2`, value: 10000 }, null);
+  ok(accUm.wallet.balance === saldoDepoisDaPrimeira,
+     `a renovação da conta suspeita não paga comissão: ${accUm.wallet.balance}`);
+
+  // E a honesta renova pagando os 15%.
+  require(R + 'src/woovi').applyPayment(
+    { correlationID: `wallet-ren-${accAmigo.id}-${plano.id}-m2`, value: 10000 }, null);
+  ok(accUm.wallet.balance === saldoDepoisDaPrimeira + 1500,
+     `e a honesta paga os 15% da renovação: ${accUm.wallet.balance - saldoDepoisDaPrimeira}`);
 
   console.log('\n=== 9. Liberar é ato de gente, e fica registrado ===');
   const admLogin = await (await fetch(BASE + '/api/adm/login', {

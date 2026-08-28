@@ -1,23 +1,34 @@
 // ============================================================================
 // ANTIABUSO — conta nova não é conta nova só porque o e-mail é outro
 //
-// O teste grátis e a comissão de afiliado são as duas coisas do produto que se
-// dão de graça, e por isso são as duas que alguém tenta pegar duas vezes:
+// O QUE ESTE ARQUIVO PROTEGE, e é uma coisa só: a COMISSÃO DE AFILIADO.
 //
-//   • TRIAL EM SÉRIE — cadastra de novo com outro e-mail, ganha outro período
-//     grátis, repete. E-mail é gratuito e infinito; não serve de identidade.
-//   • AUTOINDICAÇÃO — a pessoa se indica com o próprio link e a plataforma paga
-//     comissão para ela por ter trazido ela mesma.
+// No Koonfy não existe teste grátis no caminho que as pessoas usam. Quem assina
+// entra por /assinar, paga o plano, e a conta nasce ativa. O que se dá é
+// comissão: uma porcentagem da PRIMEIRA assinatura e outra de CADA RENOVAÇÃO
+// (hoje 30% e 15%).
+//
+// É por aí que se pega um plano mais barato sem parecer que se pegou:
+//
+//   AUTOINDICAÇÃO — a pessoa cria a conta pelo PRÓPRIO link de afiliado. Os 30%
+//   da primeira assinatura voltam para a carteira dela, e os 15% de cada
+//   renovação voltam TODO MÊS, para sempre. Não é um desconto de uma vez: é uma
+//   assinatura permanentemente 15% mais barata, paga pela plataforma, sem nada
+//   em troca — porque não houve indicação nenhuma, só alguém se indicando.
+//
+// A parte da renovação é a que mais custa, e é a que menos aparece: a primeira
+// dá para notar num relatório, a de todo mês some no meio das outras.
 //
 // ---------------------------------------------------------------------------
 // O QUE ESTE ARQUIVO NÃO FAZ, e é de propósito
 // ---------------------------------------------------------------------------
 // NÃO BLOQUEIA CADASTRO. Nenhum sinal daqui é forte o bastante para dizer "esta
-// pessoa é fraudadora" — todos têm explicação inocente, e recusar um cadastro
-// legítimo custa um cliente inteiro para economizar sete dias de teste.
+// pessoa é fraudadora" — todos têm explicação inocente, e recusar um cliente
+// que ia PAGAR para evitar uma comissão indevida é trocar a assinatura inteira
+// pela fração dela.
 //
-// O que ele faz é mais barato e mais justo: tira o BENEFÍCIO repetido e avisa o
-// admin. A conta nasce, a pessoa usa o produto, e quem decide o resto é gente.
+// O que ele faz é segurar a COMISSÃO e avisar o admin. A conta nasce, o plano é
+// cobrado normal, o cliente usa o produto — o que espera é só o repasse.
 //
 // ---------------------------------------------------------------------------
 // POR QUE CADA SINAL PESA O QUE PESA
@@ -26,8 +37,8 @@
 // DOCUMENTO (CPF/CNPJ) — o mais forte que existe aqui. Não se cria um CPF novo
 //   como se cria um e-mail. Duas contas no mesmo documento é a mesma pessoa ou
 //   a mesma empresa, quase sem exceção. Mesmo assim NÃO bloqueia: um MEI pode
-//   tocar dois negócios no próprio CPF, e isso é legítimo. O que ele perde é o
-//   segundo teste grátis, não o direito de existir.
+//   tocar dois negócios no próprio CPF, e isso é legítimo. O que fica preso é a
+//   comissão, não o direito de existir.
 //
 // TELEFONE — quase tão forte quanto. Número é caro de multiplicar e é o mesmo
 //   raciocínio do documento.
@@ -38,12 +49,19 @@
 //   do seu cliente. Aqui ele só SINALIZA, e só conta junto com outro sinal.
 //
 // ---------------------------------------------------------------------------
-// A COMISSÃO É OUTRO ASSUNTO
+// PARA A COMISSÃO, ATÉ O SINAL FRACO DECIDE
 // ---------------------------------------------------------------------------
-// Para o trial, um sinal fraco não decide nada. Para a COMISSÃO, decide: se
-// quem indicou e quem foi indicado dividem IP, documento ou telefone, o
-// dinheiro fica RETIDO até alguém olhar. Não é acusação — é não pagar antes de
+// Se quem indicou e quem foi indicado dividem IP, documento ou telefone, o
+// repasse fica RETIDO até alguém olhar. Não é acusação — é não pagar antes de
 // conferir, que é o contrário de estornar depois de ter pago.
+//
+// O IP entra aqui sozinho, e não entra em mais lugar nenhum. A razão é o custo
+// do engano: segurar um repasse por engano faz um afiliado honesto esperar;
+// pagar por engano manda dinheiro embora todo mês e depois é preciso pedir de
+// volta, o que quase nunca acontece.
+//
+// E a retenção vale para a PRIMEIRA e para as RENOVAÇÕES. Segurar só a primeira
+// resolveria 30% do problema uma vez e deixaria 15% escapando para sempre.
 // ============================================================================
 
 const db = require('./db');
@@ -180,9 +198,18 @@ function avaliar(sinais, { ignorar } = {}) {
     risco: Math.min(100, risco),
     motivos,
     parentes: [...parentes],
-    // O TESTE GRÁTIS SÓ SAI UMA VEZ POR PESSOA, e "pessoa" aqui é documento ou
-    // telefone — nunca IP sozinho, que negaria o teste ao colega de escritório
-    // de quem já é cliente.
+    // TESTE GRÁTIS: RESGUARDO DORMENTE, e é honesto dizer que é isso.
+    //
+    // Hoje o cadastro que as pessoas usam (/assinar) nasce PAGO — não há teste
+    // a negar. Este sinal só tem efeito em /api/register, que é rota de API e
+    // nenhuma tela chama, e só se o admin ligar `trialDays`.
+    //
+    // Fica porque é a regra certa para o dia em que houver trial, e porque
+    // custa quatro linhas. O que NÃO fica é a ideia de que isto é a defesa
+    // principal: a defesa é a comissão, logo abaixo.
+    //
+    // "Pessoa" aqui é documento ou telefone — nunca IP sozinho, que negaria o
+    // teste ao colega de escritório de quem já é cliente.
     semTrial: motivos.some(m => m.chave === 'documento' || m.chave === 'telefone')
   };
 }
