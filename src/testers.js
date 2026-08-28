@@ -120,13 +120,51 @@ function limiteDe(acc, chave) {
 // ---------------------------------------------------------------------------
 // CRIAÇÃO — só pelo admin, e só até o teto
 // ---------------------------------------------------------------------------
-function criar({ name, email, pass }) {
+// O CADASTRO É O MESMO DO CLIENTE, e não uma versão curta.
+//
+// Um tester existe para produzir a experiência de um cliente de verdade — e
+// metade do produto se comporta a partir do que foi preenchido no cadastro: o
+// segmento decide se o Modo Bet aparece, o documento é o que o Koonpay usa para
+// abrir a conta de recebimento, o telefone é para onde vão os avisos, o porte
+// muda o que a tela sugere. Um tester com o cadastro pela metade testa um
+// produto que nenhum cliente vê.
+//
+// AS VALIDAÇÕES SÃO AS MESMAS FUNÇÕES do cadastro público — `paises.paraE164`,
+// `documento.erroDoc`, `segmentos.aplicar`. Repetir a regra aqui faria as duas
+// portas aceitarem coisas diferentes com o tempo, e a diferença apareceria
+// justamente onde ninguém procura: numa conta de teste.
+//
+// A SUPERCONTA continua com o cadastro curto, de propósito: ela é do dono da
+// plataforma, não é ninguém a quem se vende, e pedir segmento e CPF de si mesmo
+// é formulário sem função.
+function criar(b) {
   const t = cfg();
-  const mail = String(email || '').toLowerCase().trim();
+  const paises = require('./paises');
+  const documento = require('./documento');
+  const segmentos = require('./segmentos');
+
+  const nome = String(b.nome || b.name || '').trim();
+  const mail = String(b.email || '').toLowerCase().trim();
+  const pass = String(b.pass || b.senha || '');
+  const empresa = String(b.empresa || '').trim();
+
+  if (nome.length < 3) throw erro('Informe o nome completo de quem vai testar');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) throw erro('Informe um e-mail válido');
-  if (!pass || String(pass).length < 6) throw erro('A senha deve ter pelo menos 6 caracteres');
+  if (pass.length < 6) throw erro('A senha deve ter pelo menos 6 caracteres');
+  if (empresa.length < 2) throw erro('Informe o nome da empresa');
   if (db.findAccountByEmail(mail)) throw erro('Já existe uma conta com este e-mail', 409);
 
+  const pais = String(b.pais || 'BR').toUpperCase().slice(0, 2);
+  const tel = paises.paraE164(pais, b.telefone);
+  if (!tel.ok) throw erro(tel.erro || 'Informe um WhatsApp válido');
+
+  const doc = String(b.documento || '').replace(/\D/g, '');
+  const eDoc = documento.erroDoc(doc);
+  if (eDoc) throw erro(eDoc);
+
+  // O TETO É CONFERIDO DEPOIS DA VALIDAÇÃO, e antes de criar qualquer coisa.
+  // Antes, um formulário com erro consumiria a vaga na cabeça de quem preencheu
+  // ("o limite acabou") quando o problema era um CPF digitado errado.
   const usados = todos().length;
   const limite = Math.max(0, Math.round(Number(t.limite) || 0));
   if (usados >= limite) {
@@ -135,8 +173,21 @@ function criar({ name, email, pass }) {
       : `Limite de ${limite} tester(s) atingido. Aumente o limite ou remova um existente.`, 409);
   }
 
-  const acc = db.newAccount({ name: String(name || '').trim() || mail, email: mail, pass: String(pass) });
+  const acc = db.newAccount({ name: empresa.slice(0, 120), email: mail, pass });
   acc.tester = true;
+  acc.profile.country = pais;
+  acc.profile.phone = tel.e164;
+  acc.profile.document = doc;
+  for (const k of ['size', 'goal']) {
+    if (b[k] !== undefined) acc.profile[k] = String(b[k] || '').trim().slice(0, 60);
+  }
+  // Segmento e site andam juntos: iGaming sem site não passa, aqui como no
+  // cadastro público. É a MESMA função, e por isso a regra não pode divergir.
+  const seg = segmentos.aplicar(acc.profile, { segment: b.segment, site: b.site });
+  if (!seg.ok) throw erro(seg.erro);
+  // O nome da PESSOA fica guardado: `acc.name` é o da empresa, e sem isto se
+  // perderia quem é que está testando.
+  acc.profile.responsavel = nome.slice(0, 120);
   // SEM PRAZO E SEM PLANO. Não há trial no que não é cobrado, e um
   // `periodEnd` no passado faria a conta nascer bloqueada por falta de
   // assinatura — de uma assinatura que ela nunca vai ter.

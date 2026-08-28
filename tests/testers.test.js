@@ -78,6 +78,26 @@ const BASE = 'http://127.0.0.1:3985';
   db.get().platform.billing.requirePlan = true;
   db.save();
 
+  // O cadastro do tester é o MESMO do cliente (ver seção 13), então criar um
+  // exige a ficha inteira. Esta fábrica existe para os blocos que testam OUTRA
+  // coisa — limite, módulos, promoção — não repetirem a ficha a cada chamada,
+  // e para o dia em que o cadastro ganhar um campo mexer num lugar só.
+  //
+  // Os CPFs são de teste e válidos no dígito verificador: um inválido faria
+  // estes blocos falharem pelo motivo errado.
+  const CPFS = ['39053344705', '11144477735', '52998224725', '87748248800', '15350946056'];
+  let nCpf = 0;
+  const criarTester = (nome, email, extra) => fetch(BASE + '/api/adm/testers', {
+    method: 'POST', headers: aut,
+    body: JSON.stringify({
+      nome: nome + ' Sobrenome', email, pass: 'segredo123',
+      telefone: '(11) 9' + String(80000000 + (nCpf * 1111)).slice(0, 8),
+      documento: CPFS[nCpf++ % CPFS.length],
+      empresa: nome, pais: 'BR',
+      ...(extra || {})
+    })
+  });
+
   console.log('=== 1. Só o admin cria tester ===');
   const semAuth = await fetch(BASE + '/api/adm/testers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
   ok(semAuth.status === 401, `sem sessão: ${semAuth.status}`);
@@ -91,10 +111,7 @@ const BASE = 'http://127.0.0.1:3985';
      'todos LIGADOS por padrão — um produto pela metade não se avalia');
 
   console.log('\n=== 2. Criar, e o tester nasce sem plano e sem cobrança ===');
-  const r1 = await (await fetch(BASE + '/api/adm/testers', {
-    method: 'POST', headers: aut,
-    body: JSON.stringify({ name: 'Testador Um', email: 't1@ex.com', pass: 'segredo123' })
-  })).json();
+  const r1 = await (await criarTester('Testador Um', 't1@ex.com')).json();
   ok(!!r1.id, 'criado');
   const t1 = db.findAccountByEmail('t1@ex.com');
   ok(t1.tester === true, 'marcado como tester');
@@ -162,15 +179,9 @@ const BASE = 'http://127.0.0.1:3985';
   await fetch(BASE + '/api/adm/testers', {
     method: 'PUT', headers: aut, body: JSON.stringify({ limite: 2 })
   });
-  const r2 = await fetch(BASE + '/api/adm/testers', {
-    method: 'POST', headers: aut,
-    body: JSON.stringify({ name: 'Dois', email: 't2@ex.com', pass: 'segredo123' })
-  });
+  const r2 = await criarTester('Dois', 't2@ex.com');
   ok(r2.status === 200, 'o segundo entra');
-  const r3 = await fetch(BASE + '/api/adm/testers', {
-    method: 'POST', headers: aut,
-    body: JSON.stringify({ name: 'Tres', email: 't3@ex.com', pass: 'segredo123' })
-  });
+  const r3 = await criarTester('Tres', 't3@ex.com');
   ok(r3.status === 409, `o terceiro é recusado: ${r3.status}`);
   const err = await r3.json();
   ok(/Limite de 2/.test(err.error), 'com o motivo e a saída: ' + err.error);
@@ -180,10 +191,7 @@ const BASE = 'http://127.0.0.1:3985';
   await fetch(BASE + '/api/adm/testers', {
     method: 'PUT', headers: aut, body: JSON.stringify({ limite: 0 })
   });
-  const r4 = await fetch(BASE + '/api/adm/testers', {
-    method: 'POST', headers: aut,
-    body: JSON.stringify({ name: 'Quatro', email: 't4@ex.com', pass: 'segredo123' })
-  });
+  const r4 = await criarTester('Quatro', 't4@ex.com');
   ok(r4.status === 409, 'com limite zero, ninguém novo entra');
   ok(testers.todos().length === 2, 'e os que já existiam continuam de pé');
   await fetch(BASE + '/api/adm/testers', {
@@ -287,6 +295,106 @@ const BASE = 'http://127.0.0.1:3985';
   ok(/Sem vagas/.test(tela), 'que avisa quando o limite acabou em vez de deixar clicar e falhar');
   ok(/A conta é apagada com tudo o que houver dentro dela/.test(tela),
      'e a remoção diz que é irreversível antes de apagar');
+
+  console.log('\n=== 13. O cadastro do tester é o MESMO do cliente ===');
+  // Um tester existe para produzir a experiência de um cliente de verdade, e
+  // metade do produto se comporta a partir do cadastro: o segmento decide se o
+  // Modo Bet aparece, o documento é o que o Koonpay usa para abrir a conta de
+  // recebimento, o telefone é para onde vão os avisos. Um tester com cadastro
+  // pela metade testa um produto que nenhum cliente vê.
+  await fetch(BASE + '/api/adm/testers', {
+    method: 'PUT', headers: aut, body: JSON.stringify({ limite: 10 })
+  });
+
+  const completo = await (await fetch(BASE + '/api/adm/testers', {
+    method: 'POST', headers: aut,
+    body: JSON.stringify({
+      nome: 'Carla Testadora', email: 'carla@ex.com', pass: 'segredo123',
+      telefone: '(11) 98765-4321', documento: '39053344705',
+      empresa: 'Loja da Carla', pais: 'BR',
+      size: '2 a 5', segment: 'ecommerce'
+    })
+  })).json();
+  ok(!!completo.id, 'criado com o cadastro inteiro');
+  const c = db.findAccountByEmail('carla@ex.com');
+  ok(c.name === 'Loja da Carla', `o nome da CONTA é o da empresa: ${c.name}`);
+  ok(c.profile.responsavel === 'Carla Testadora',
+     `e o nome da PESSOA fica guardado: ${c.profile.responsavel}`);
+  ok(c.profile.phone === '+5511987654321',
+     `o WhatsApp sai em E.164, como no cadastro público: ${c.profile.phone}`);
+  ok(c.profile.document === '39053344705', 'o documento fica só com os dígitos');
+  ok(c.profile.size === '2 a 5', 'o porte é guardado');
+  ok(c.profile.segment === 'ecommerce', 'e o segmento');
+
+  console.log('\n=== 14. As validações são as MESMAS funções do cadastro público ===');
+  // Repetir a regra aqui faria as duas portas aceitarem coisas diferentes com o
+  // tempo — e a diferença apareceria justamente onde ninguém procura.
+  const ruim = async (campos, oque) => {
+    const base = {
+      nome: 'Fulano de Tal', email: 'novo' + Math.random().toString(36).slice(2, 7) + '@ex.com',
+      pass: 'segredo123', telefone: '(11) 98765-4321', documento: '39053344705',
+      empresa: 'Empresa', pais: 'BR'
+    };
+    const r = await fetch(BASE + '/api/adm/testers', {
+      method: 'POST', headers: aut, body: JSON.stringify({ ...base, ...campos })
+    });
+    const j = await r.json().catch(() => ({}));
+    return { status: r.status, erro: j.error || '' };
+  };
+
+  const semCpf = await ruim({ documento: '111' }, 'cpf');
+  ok(semCpf.status === 400, `CPF inválido é recusado: ${semCpf.status}`);
+  ok(/CPF|CNPJ|documento/i.test(semCpf.erro), 'com a mensagem do validador de sempre: ' + semCpf.erro);
+
+  const semTel = await ruim({ telefone: '123' }, 'tel');
+  ok(semTel.status === 400, `WhatsApp inválido é recusado: ${semTel.status}`);
+
+  const semNome = await ruim({ nome: 'Jo' }, 'nome');
+  ok(semNome.status === 400, 'nome curto demais é recusado');
+
+  const semEmpresa = await ruim({ empresa: '' }, 'empresa');
+  ok(semEmpresa.status === 400, 'sem nome de empresa não passa');
+
+  // iGAMING SEM SITE não entra, aqui como no cadastro público — é a mesma
+  // função `segmentos.aplicar` decidindo.
+  const bet = await ruim({ segment: 'igaming' }, 'igaming');
+  ok(bet.status === 400, `iGaming sem site é recusado: ${bet.status}`);
+  ok(/site/i.test(bet.erro), 'pelo motivo certo: ' + bet.erro);
+
+  const betOk = await ruim({ segment: 'igaming', site: 'minhabet.com' }, 'igaming ok');
+  ok(betOk.status === 200, 'e com site, entra');
+
+  console.log('\n=== 15. Um formulário recusado NÃO consome vaga ===');
+  // A conferência do teto vem DEPOIS da validação. Ao contrário, um CPF
+  // digitado errado gastaria a vaga e a pessoa leria "o limite acabou" quando o
+  // problema era outro.
+  const antesVagas = (await (await fetch(BASE + '/api/adm/testers', { headers: aut })).json()).usados;
+  await ruim({ documento: '999' }, 'cpf ruim');
+  const depoisVagas = (await (await fetch(BASE + '/api/adm/testers', { headers: aut })).json()).usados;
+  ok(antesVagas === depoisVagas, `nenhuma vaga foi gasta: ${antesVagas} → ${depoisVagas}`);
+
+  console.log('\n=== 16. A SUPERCONTA segue com o cadastro curto ===');
+  // De propósito: ela é do dono da plataforma, não é ninguém a quem se vende, e
+  // pedir segmento e CPF de si mesmo é formulário sem função.
+  const sup = await fetch(BASE + '/api/adm/supers', {
+    method: 'POST', headers: aut,
+    body: JSON.stringify({ name: 'Minha Outra Empresa', email: 'outra@ex.com', pass: 'segredo123' })
+  });
+  ok(sup.status === 200, `superconta criada só com nome, e-mail e senha: ${sup.status}`);
+  const s2 = db.findAccountByEmail('outra@ex.com');
+  ok(s2.unlimited === true && s2.tester === false, 'e continua sendo superconta, não tester');
+
+  console.log('\n=== 17. A tela pede os mesmos campos ===');
+  const telaT = fs.readFileSync(R + 'public/app/app.js', 'utf8');
+  for (const campo of ['tst-nome', 'tst-email', 'tst-tel', 'tst-doc', 'tst-empresa', 'tst-senha', 'tst-size', 'tst-seg', 'tst-site']) {
+    ok(telaT.includes(campo), `o formulário tem ${campo}`);
+  }
+  ok(/TST_SEGS = \(await api\(.\/public\/segmentos.\)\)/.test(telaT.replace(/'/g, '.')),
+     'e a lista de segmentos vem do servidor, a mesma do cadastro público');
+  ok(/function admTstSegMudou/.test(telaT),
+     'com o campo do site aparecendo só para o segmento que o exige');
+  ok(/ecVal\('tst-seg'\)/.test(telaT),
+     'lendo o seletor por ecVal — o seletor do app é uma div com data-val, não um <select>');
 
   srv.close();
   await encerrar(srv, falhas);

@@ -2585,10 +2585,18 @@ async function renderAdmUsuarios() {
 // último passo, não o primeiro.
 // ===========================================================================
 let ADM_TST = null;
+// A LISTA DE SEGMENTOS VEM DO SERVIDOR, a mesma de /api/public/segmentos que
+// o cadastro público usa. Uma cópia escrita aqui ficaria desatualizada no dia
+// em que um segmento novo entrasse — e ninguém repara numa lista que só
+// aparece no painel.
+let TST_SEGS = [];
 
 async function renderAdmTesters() {
   $('#view').innerHTML = `<div class="page"><div class="page-head"><h1>Testers</h1>` +
     `<p class="muted">Contas de teste: usam o produto de verdade, sem pagar e com teto.</p></div>` + skel(3) + `</div>`;
+  if (!TST_SEGS.length) {
+    try { TST_SEGS = (await api('/public/segmentos')).segmentos || []; } catch { TST_SEGS = []; }
+  }
   try { ADM_TST = await api('/adm/testers'); }
   catch (e) { $('#view').innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
   admTstPaint();
@@ -2657,15 +2665,49 @@ function admTstPaint() {
     <div class="card">
       <h2>${ico('plus')} Criar um tester</h2>
       <p class="muted" style="margin:0 0 12px;font-size:12.5px">
-        Ele entra pelo <b>painel do cliente</b>, em <code>/app/</code>, com o e-mail e a senha
-        definidos aqui. Não há cadastro por fora: tester só nasce nesta tela.</p>
+        São os <b>mesmos campos do cadastro do cliente</b>, e não uma versão curta: metade do produto
+        se comporta a partir daqui — o segmento decide se o Modo Bet aparece, o documento é o que o
+        Koonpay usa para abrir a conta de recebimento, o telefone é para onde vão os avisos.
+        Um tester com cadastro pela metade testa um produto que nenhum cliente vê.</p>
+      <p class="muted" style="margin:0 0 12px;font-size:12.5px">
+        Ele entra pelo <b>painel do cliente</b>, em <code>/app/</code>, com o e-mail e a senha daqui.</p>
       ${cheio ? `<div class="card warn-card" style="margin-bottom:10px">
         ${ico('alert', 14)} <b>Sem vagas.</b> Aumente o limite acima ou remova um tester existente.</div>` : ''}
-      <div class="row" style="align-items:flex-end">
-        <label style="flex:1.2">Nome<input id="tst-nome" placeholder="Quem vai testar"></label>
-        <label style="flex:1.2">E-mail de acesso<input id="tst-email" placeholder="pessoa@email.com"></label>
-        <label style="flex:1">Senha<input id="tst-senha" type="password" placeholder="mínimo 6 caracteres"></label>
-        <button class="btn primary no-grow" ${cheio ? 'disabled' : ''} onclick="admTstCriar(this)">${ico('plus', 14)} Criar</button>
+
+      <div class="row">
+        <label style="flex:1.2">Nome completo de quem vai testar
+          <input id="tst-nome" placeholder="Como no documento"></label>
+        <label style="flex:1.2">E-mail de acesso
+          <input id="tst-email" placeholder="pessoa@email.com"></label>
+      </div>
+      <div class="row" style="margin-top:9px">
+        <label style="flex:1">WhatsApp
+          <input id="tst-tel" placeholder="(11) 91234-5678" inputmode="tel"></label>
+        <label style="flex:1">CPF ou CNPJ
+          <input id="tst-doc" placeholder="000.000.000-00" inputmode="numeric"></label>
+      </div>
+      <div class="row" style="margin-top:9px">
+        <label style="flex:1.2">Nome da empresa
+          <input id="tst-empresa" placeholder="Como o cliente conhece"></label>
+        <label style="flex:1">Senha
+          <input id="tst-senha" type="password" placeholder="mínimo 6 caracteres"></label>
+      </div>
+      <div class="row" style="margin-top:9px">
+        <label style="flex:1">Quantas pessoas vão atender
+          ${ecSelect('tst-size', [{ value: '', label: 'Prefiro não dizer' },
+            { value: 'Só eu', label: 'Só eu' }, { value: '2 a 5', label: '2 a 5' },
+            { value: '6 a 20', label: '6 a 20' }, { value: 'Mais de 20', label: 'Mais de 20' }], '')}</label>
+        <label style="flex:1">O que vende
+          ${ecSelect('tst-seg', [{ value: '', label: 'Prefiro não dizer' }].concat(
+            (TST_SEGS || []).map(x => ({ value: x.id, label: x.nome }))), '', 'admTstSegMudou()')}</label>
+      </div>
+      <!-- SÓ APARECE para o segmento que exige (hoje, iGaming). É a mesma regra
+           do cadastro público, e quem decide é o servidor: a lista vem de lá com
+           a marca pedeSite. -->
+      <label id="tst-campo-site" style="margin-top:9px;display:none">Site da plataforma
+        <input id="tst-site" placeholder="minhaplataforma.com"></label>
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary no-grow" ${cheio ? 'disabled' : ''} onclick="admTstCriar(this)">${ico('plus', 14)} Criar tester</button>
       </div>
     </div>
 
@@ -2688,6 +2730,22 @@ function admTstPaint() {
       </tr>`).join('')}
       </tbody></table></div>` : '<p class="muted">Nenhum tester ainda. Crie o primeiro acima.</p>'}
     </div></div>`;
+}
+
+// O campo do site nasce escondido e só aparece para o segmento que o exige.
+// Ligado sempre, seria um campo a mais que 90% das pessoas não entende; sem
+// ele, um tester de iGaming não conseguiria ser criado — a validação (a mesma
+// do cadastro público) recusa iGaming sem site.
+function admTstSegMudou() {
+  const campo = $('#tst-campo-site');
+  if (!campo) return;
+  // `ecVal` e não `.value`: o seletor do app é uma <div> com data-val, não um
+  // <select>. Lendo `.value` vinha undefined e o campo do site nunca aparecia —
+  // e aí um tester de iGaming era impossível de criar, porque a validação (a
+  // mesma do cadastro público) recusa iGaming sem site.
+  const escolhido = ecVal('tst-seg');
+  const s = TST_SEGS.find(x => x.id === escolhido);
+  campo.style.display = (s && s.pedeSite) ? '' : 'none';
 }
 
 // Nomes e ícones dos módulos, para a grade não mostrar as chaves cruas.
@@ -2735,18 +2793,31 @@ async function admTstSalvar(patch) {
 
 async function admTstCriar(btn) {
   const body = {
-    name: $('#tst-nome').value.trim(),
+    nome: $('#tst-nome').value.trim(),
     email: $('#tst-email').value.trim(),
-    pass: $('#tst-senha').value
+    telefone: $('#tst-tel').value.trim(),
+    documento: $('#tst-doc').value.trim(),
+    empresa: $('#tst-empresa').value.trim(),
+    pass: $('#tst-senha').value,
+    pais: 'BR',
+    size: ecVal('tst-size') || '',
+    segment: ecVal('tst-seg') || '',
+    site: ($('#tst-site') || {}).value || ''
   };
-  if (!body.email || !body.pass) return toast('Informe e-mail e senha', 'error');
   btn.disabled = true;
   try {
     const r = await api('/adm/testers', { method: 'POST', body });
     toast('Tester criado');
     ADM_TST = r.visao;
     admTstPaint();
-  } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
+  } catch (e) {
+    // O ERRO VOLTA DO SERVIDOR JÁ EXPLICADO (CPF inválido, WhatsApp inválido,
+    // e-mail repetido) porque a validação é a mesma do cadastro público. O
+    // botão volta a funcionar: o formulário continua preenchido, e a pessoa
+    // corrige o campo em vez de digitar tudo de novo.
+    toast(e.message, 'error');
+    btn.disabled = false;
+  }
 }
 
 async function admTstRemover(id, nome) {

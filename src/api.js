@@ -4637,9 +4637,12 @@ module.exports = function (broadcast, clients) {
     res.json(testers.salvar(req.body || {}));
   });
 
+  // O CORPO INTEIRO SEGUE ADIANTE. Listar campo a campo aqui obrigaria a mexer
+  // nesta linha toda vez que o cadastro ganhasse um campo — e o que acontece na
+  // prática é que ninguém lembra, e o campo novo chega vazio sem erro nenhum.
+  // Quem valida é `testers.criar`, com as mesmas funções do cadastro público.
   router.post('/adm/testers', auth, adminOnly, h(async (req, res) => {
-    const b = req.body || {};
-    const acc = testers.criar({ name: b.name, email: b.email, pass: b.pass });
+    const acc = testers.criar(req.body || {});
     res.json({ ok: true, id: acc.id, visao: testers.visao() });
   }));
 

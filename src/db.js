@@ -317,7 +317,10 @@ function newAccount({ name, email, pass }) {
     // serve para o onboarding e para o time comercial saber com quem fala.
     // phone em E.164. document/pixKey vêm da etapa de recebimento do cadastro e
     // ficam aqui para o formulário do Pagamentos já nascer preenchido.
-    profile: { segment: '', site: '', size: '', phone: '', country: 'BR', goal: '', document: '', pixKey: '', pixKeyType: '' },
+    // `responsavel` é o nome da PESSOA; `name` na conta é o da empresa. No
+    // cadastro público os dois são pedidos e só o segundo sobrevivia — quem
+    // preencheu o formulário se perdia. Testers guardam os dois.
+    profile: { segment: '', site: '', size: '', phone: '', country: 'BR', goal: '', document: '', pixKey: '', pixKeyType: '', responsavel: '' },
     // CONTA INTERNA: ligada pelo admin, roda sem plano, sem cota e sem
     // cobrança, e fica fora das métricas do SaaS. É para os negócios do
     // próprio dono, não para um cliente.
