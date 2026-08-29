@@ -154,6 +154,69 @@ async function syncSubscription(acc, motivo) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// COMISSÃO DE AFILIADO — a regra, num lugar só
+//
+// Ela morava DENTRO do ramo que ativa assinatura, dentro de `applyPayment`. E
+// isso escondeu um defeito caro: o pagamento de um cadastro NOVO chega com
+// correlationID `nov-`, que `applyPayment` desvia para
+// `preassinatura.confirmar` na primeira linha e retorna ali mesmo — sem nunca
+// alcançar este trecho.
+//
+// O efeito era parcial, que é o pior tipo: a conta nascia certa, o `refBy` era
+// gravado, a receita entrava no relatório. Só a comissão da PRIMEIRA venda — a
+// maior, 30% — sumia. As renovações pagavam normal, porque passam por
+// `applyPayment` inteiro. Quem indicou via o indicado aparecer e o dinheiro
+// não.
+//
+// Como função, os dois caminhos chamam a mesma coisa, e o próximo caminho de
+// pagamento que aparecer também chama em vez de esquecer de copiar.
+function pagarComissao(acc, valorPago, kind, broadcast) {
+  const data = db.get();
+  const refCode = acc.affiliate && acc.affiliate.refBy;
+  if (!refCode) return { ok: false, motivo: 'sem indicação' };
+
+  const aff = db.findAccountByRefCode(refCode);
+  // Indicar a si mesmo não paga. O antiabuso já retém o caso disfarçado (mesmo
+  // IP, mesmo documento); esta linha cobre o descarado.
+  if (!aff || aff.id === acc.id) return { ok: false, motivo: 'afiliado inválido' };
+
+  const cfg = data.platform.affiliate || {};
+  const pct = kind === 'first' ? (cfg.percentFirst || 0) : (cfg.percentRenewal || 0);
+  const cut = Math.floor(valorPago * pct / 100);
+  if (cut <= 0) return { ok: false, motivo: 'percentual zero' };
+
+  // COMISSÃO RETIDA não é paga. Quando quem indicou e quem foi indicado
+  // dividem IP, CPF/CNPJ ou WhatsApp, o dinheiro espera alguém olhar — ver
+  // src/antiabuso.js.
+  //
+  // Reter e conferir custa uma espera; pagar e descobrir depois custa pedir
+  // dinheiro de volta, que quase nunca volta. O evento fica no log para o valor
+  // não sumir da história.
+  if (!require('./antiabuso').comissaoLiberada(acc)) {
+    store.logEvent({ type: 'comissao_retida', accountId: acc.id, afiliado: aff.id, valor: cut, kind });
+    return { ok: false, motivo: 'retida', valor: cut };
+  }
+
+  aff.wallet.balance += cut;
+  aff.affiliate.earned += cut;
+  aff.wallet.transactions.push({
+    id: db.genId('tx'), ts: Date.now(), amount: cut, type: 'commission',
+    label: `Comissão ${pct}%, ${kind === 'first' ? 'nova assinatura' : 'renovação'} (${acc.name})`
+  });
+  // Notificação nos aparelhos do afiliado. O SSE abaixo só chega em quem está
+  // com o app aberto naquele instante; a comissão cai a qualquer hora do dia.
+  try { require('./avisos').avisarComissao(aff, { amount: cut, percent: pct, kind, indicado: acc.name }); } catch {}
+  if (broadcast) {
+    broadcast('wallet', { accountId: aff.id });
+    // Venda do indicado aprovada: o afiliado é avisado na hora, com o valor que
+    // entrou. Vale para assinatura nova e para renovação.
+    broadcast('commission', { accountId: aff.id, amount: cut, percent: pct, kind, indicado: acc.name });
+  }
+  store.logEvent({ type: 'comissao_paga', accountId: acc.id, afiliado: aff.id, valor: cut, kind });
+  return { ok: true, valor: cut, afiliado: aff.id };
+}
+
 // ============ Processamento de pagamento confirmado ============
 // Chamado pelo webhook (após verificação server-side) e pelo polling do painel.
 // Formatos de correlationID que chegam aqui (separador "-" porque os IDs
@@ -245,47 +308,7 @@ function applyPayment(charge, broadcast) {
     // formulário nenhum. Não trava a ativação se o gateway estiver fora.
     try { require('./pagamentos').garantirPagamentos(acc).catch(() => {}); } catch {}
 
-    // ---- comissão de afiliado (assinatura E renovação) ----
-    const refCode = acc.affiliate && acc.affiliate.refBy;
-    if (refCode) {
-      const aff = db.findAccountByRefCode(refCode);
-      if (aff && aff.id !== acc.id) {
-        const cfg = data.platform.affiliate || {};
-        const pct = kind === 'first' ? (cfg.percentFirst || 0) : (cfg.percentRenewal || 0);
-        const cut = Math.floor(paid * pct / 100);
-        // COMISSÃO RETIDA não é paga. Quando quem indicou e quem foi
-        // indicado dividem IP, CPF/CNPJ ou WhatsApp, o dinheiro espera
-        // alguém olhar — ver src/antiabuso.js.
-        //
-        // Reter e conferir custa uma espera; pagar e descobrir depois custa
-        // pedir dinheiro de volta, que quase nunca volta. O evento fica no
-        // log para o valor não sumir da história.
-        if (cut > 0 && !require('./antiabuso').comissaoLiberada(acc)) {
-          store.logEvent({ type: 'comissao_retida', accountId: acc.id, afiliado: aff.id, valor: cut, kind });
-        } else
-        if (cut > 0) {
-          aff.wallet.balance += cut;
-          aff.affiliate.earned += cut;
-          aff.wallet.transactions.push({
-            id: db.genId('tx'), ts: Date.now(), amount: cut, type: 'commission',
-            label: `Comissão ${pct}%, ${kind === 'first' ? 'nova assinatura' : 'renovação'} (${acc.name})`
-          });
-          // Notificação nos aparelhos do afiliado. O SSE abaixo só chega em
-          // quem está com o app aberto naquele instante; a comissão cai a
-          // qualquer hora do dia.
-          try { require('./avisos').avisarComissao(aff, { amount: cut, percent: pct, kind, indicado: acc.name }); } catch {}
-          if (broadcast) {
-            broadcast('wallet', { accountId: aff.id });
-            // Venda do indicado aprovada: o afiliado é avisado na hora, com o
-            // valor que entrou. Vale para assinatura nova e para renovação.
-            broadcast('commission', {
-              accountId: aff.id, amount: cut, percent: pct,
-              kind, indicado: acc.name
-            });
-          }
-        }
-      }
-    }
+    pagarComissao(acc, paid, kind, broadcast);
   }
 
   data.revenue.push({ ts: Date.now(), accountId: acc.id, planId, amount: paid, kind, chargeId: cid });
@@ -346,5 +369,5 @@ function webhookHandler(broadcast) {
 
 module.exports = {
   configured, ambiente, base, call, createCharge, getCharge, deleteCharge,
-  createSubscription, cancelSubscription, syncSubscription, applyPayment, webhookHandler
+  createSubscription, cancelSubscription, syncSubscription, applyPayment, pagarComissao, webhookHandler
 };

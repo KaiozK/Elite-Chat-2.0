@@ -168,6 +168,21 @@ function confirmar(cid, valorPago, broadcast) {
   // adquirente estiver fora do ar.
   try { pagamentos.garantirPagamentos(acc).catch(() => {}); } catch {}
 
+  // A COMISSÃO DO AFILIADO — era exatamente isto que faltava aqui.
+  //
+  // Este caminho cria a conta por conta própria e devolve o controle antes de
+  // `applyPayment` chegar ao trecho que paga a comissão. O resultado era um
+  // defeito parcial, do pior tipo: a conta nascia certa, o `refBy` era gravado
+  // e a receita entrava no relatório — só o dinheiro de quem indicou não saía.
+  //
+  // A chamada é da MESMA função que a renovação usa. Copiar a regra para cá
+  // resolveria hoje e criaria duas versões para divergirem amanhã.
+  //
+  // Depois de `db.save()` e fora dele de propósito: a função grava o que
+  // precisa, e uma falha na comissão não pode desfazer uma conta já paga.
+  try { require('./woovi').pagarComissao(acc, valorPago, 'first', broadcast); }
+  catch (e) { store.logEvent({ type: 'comissao_erro', accountId: acc.id, error: e.message }); }
+
   store.logEvent({ type: 'preassinatura_paga', preId: pre.id, accountId: acc.id, valor: valorPago });
   if (broadcast) broadcast('billing', { accountId: acc.id });
   return { ok: true, kind: 'first', accountId: acc.id };
