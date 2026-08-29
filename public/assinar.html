@@ -160,7 +160,7 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
         <!-- SEGUNDO botão, e por isso discreto: o caminho normal é a tela
              avançar sozinha, e quem der destaque igual ao Copiar faz parecer
              que é preciso clicar aqui para o pagamento valer. -->
-        <button class="btn-secundario" id="btn-japaguei" type="button">Já fiz o pagamento</button>
+        <button class="btn-secundario oculto" id="btn-japaguei" type="button">Já fiz o pagamento</button>
         <p class="mudo" style="font-size:14px" id="pix-status">Aguardando o pagamento…</p>
       </div>
     </section>
@@ -391,12 +391,25 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
         token = r.j.token;
         guardarToken(token);
         history.replaceState(null, '', '?plano=' + planId + '&token=' + token);
+        // O servidor diz se existe a quem perguntar. Na Simplify não existe, e
+        // o botão nem aparece — ver mostrarJaPaguei.
+        mostrarJaPaguei(!!r.j.podeReconsultar);
         verPix(r.j.cobranca);
       }).catch(function () {
         $('btn-pagar').disabled = false;
         $('erro-dados').textContent = 'Falha de conexão. Tente de novo.';
       });
   });
+
+  /* O BOTÃO SÓ EXISTE SE HOUVER A QUEM PERGUNTAR.
+     A Woovi tem consulta de cobrança; a Simplify, na integração que temos, não
+     — lá a confirmação vem só pelo webhook. Mostrar o botão nesse caso seria
+     oferecer um "verificar agora" que responde sempre "não consegui", e isso é
+     pior do que não ter botão nenhum. Quem decide é o servidor. */
+  function mostrarJaPaguei(pode) {
+    var b = document.getElementById('btn-japaguei');
+    if (b) b.classList.toggle('oculto', !pode);
+  }
 
   function verPix(c) {
     mostrar('pix');
@@ -525,7 +538,7 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
       // retomar um cadastro que não existe, e a pessoa nunca mais veria o
       // formulário do começo.
       if (!d || !d.status) { esquecerToken(); return; }
-      if (d.status === 'pending') { verPix(d.cobranca || {}); return; }
+      if (d.status === 'pending') { mostrarJaPaguei(!!d.podeReconsultar); verPix(d.cobranca || {}); return; }
       if (d.status === 'done') { esquecerToken(); location.href = '/app/'; return; }
       // Pago e ainda sem cadastro: é exatamente aqui que quem voltou precisa
       // cair, com os dados do pagamento já reconhecidos.

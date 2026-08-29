@@ -282,11 +282,87 @@ const BASE = 'http://127.0.0.1:3987';
   ok(/id="btn-japaguei"/.test(tela), 'o botão existe');
   ok(tela.indexOf('id="btn-japaguei"') > tela.indexOf('id="btn-copiar"'),
      'abaixo do Copiar código Pix');
-  ok(/class="btn-secundario" id="btn-japaguei"/.test(tela),
+  ok(/class="btn-secundario[^"]*" id="btn-japaguei"/.test(tela),
      'com peso visual menor — o caminho normal é a tela avançar sozinha, e um botão');
   ok(/reconsultar/.test(tela), 'e chama a rota que pergunta à Woovi');
   ok(!/btn-japaguei[\s\S]{0,400}\/api\/public\/assinatura\/' \+ token'/.test(tela),
      'não a consulta local, que seria placebo');
+
+  console.log('\n=== 12. Com a SIMPLIFY, o botão nem aparece ===');
+  // A Simplify é o adquirente em uso. A documentação dela não expõe consulta de
+  // transação — o driver devolve `null` de propósito —, então a confirmação vem
+  // só pelo webhook.
+  //
+  // Um "verificar agora" ali responderia SEMPRE que não conseguiu. Botão que
+  // nunca funciona é pior do que botão nenhum: a pessoa clica, nada acontece, e
+  // passa a duvidar da tela inteira num momento em que acabou de pagar.
+
+  // Uma pré-assinatura NOVA e ainda pendente. A do bloco 10 já foi resolvida, e
+  // `reconsultar` responde de cara para o que já está pago — o teste estaria
+  // medindo outra coisa.
+  const pend = await (await fetch(BASE + '/api/public/assinatura', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '203.0.113.150' },
+    body: JSON.stringify({
+      planId: 'pro', nome: 'Ainda Pendente', email: 'pendente@ex.com',
+      telefone: '(51) 98877-6655', documento: '87748248800', pais: 'BR', ref: codigo
+    })
+  })).json();
+  ok(!!pend.token, 'uma pré-assinatura pendente para o teste');
+  ok(pend.podeReconsultar === true, 'com a Woovi ativa, a criação já diz que dá para perguntar');
+
+  // Agora o adquirente vira a Simplify.
+  db.get().platform.pagamentos.gateway = 'simplify';
+  db.save();
+
+  ok(preassinatura.publico(pend.token).podeReconsultar === false,
+     'a visão pública passa a dizer que não há a quem perguntar');
+
+  const rS = await (await fetch(BASE + '/api/public/assinatura/' + pend.token + '/reconsultar',
+    { method: 'POST' })).json();
+  ok(rS.semConsulta === true, 'e a rota responde isso em vez de tentar');
+  ok(rS.pago === false, 'sem inventar um pagamento');
+
+  // E não gasta chamada no adquirente errado. Antes disto a função chamava a
+  // Woovi na mão: com a Simplify ligada, a Woovi nem está configurada, e a
+  // resposta era sempre "não conseguimos verificar".
+  const srcPre = fs.readFileSync(R + 'src/preassinatura.js', 'utf8');
+  const rec = srcPre.slice(srcPre.indexOf('async function reconsultar'), srcPre.indexOf('async function reconsultar') + 1800);
+  ok(/pagamentos\.gateway\(\)\.getCharge/.test(rec),
+     'a consulta vai ao gateway ATIVO, e não à Woovi na mão');
+  ok(!/require\('\.\/woovi'\)\.getCharge/.test(rec), 'sem a Woovi presa no código');
+
+  // A tela esconde o botão a partir dessa bandeira.
+  const telaS = fs.readFileSync(R + 'public/assinar.html', 'utf8');
+  ok(/class="btn-secundario oculto" id="btn-japaguei"/.test(telaS), 'o botão nasce escondido');
+  ok(/function mostrarJaPaguei/.test(telaS), 'e só aparece quando o servidor libera');
+  ok((telaS.match(/mostrarJaPaguei\(/g) || []).length >= 3,
+     'nos dois caminhos que mostram o Pix — criar a cobrança e voltar a ela');
+
+  console.log('\n=== 13. E a comissão CONTINUA caindo na Simplify ===');
+  // O ponto que mais importa. Se isto quebrasse, a correção da comissão valeria
+  // só para quem usa Woovi — ou seja, para ninguém hoje.
+  //
+  // O webhook da Simplify reconhece o prefixo `nov-` e liquida pela MESMA regra
+  // de faturamento; `saaspix.confirmar` é exatamente o que ele chama.
+  const saaspix = require(R + 'src/saaspix');
+  ok(saaspix.ehCobrancaSaaS('nov-abc-123'),
+     'o webhook da Simplify reconhece o cadastro novo pelo prefixo');
+
+  const preP = db.get().preassinaturas.find(x => x.token === pend.token);
+  const saldoAntesSimplify = aff.wallet.balance;
+  avisos.length = 0;
+
+  saaspix.confirmar(preP.correlationID, 19700, broadcast);
+
+  ok(!!db.findAccountByEmail('pendente@ex.com'), 'a conta nasce pelo caminho da Simplify');
+  ok(aff.wallet.balance === saldoAntesSimplify + Math.floor(19700 * 30 / 100),
+     `e a comissão cai igual: +${aff.wallet.balance - saldoAntesSimplify}`);
+  ok(avisos.length === 1 && avisos[0].kind === 'first',
+     'com o aviso da primeira venda para o afiliado');
+
+  db.get().platform.pagamentos.gateway = 'woovi';
+  db.save();
 
   srv.close();
   global.fetch = fetchReal;

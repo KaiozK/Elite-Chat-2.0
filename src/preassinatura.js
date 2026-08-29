@@ -99,7 +99,10 @@ async function criar(b) {
   if (lista().length > 500) lista().splice(0, lista().length - 500);
   db.save();
   store.logEvent({ type: 'preassinatura_criada', preId: pre.id, planId: plano.id, valor: plano.price });
-  return { token: pre.token, cobranca, plano: { id: plano.id, nome: plano.name, preco: plano.price } };
+  // A tela precisa saber, já na criação, se o botão "Já fiz o pagamento" tem
+  // a quem perguntar — senão ela o desenharia e só descobriria no clique.
+  return { token: pre.token, cobranca, podeReconsultar: podeReconsultar(),
+           plano: { id: plano.id, nome: plano.name, preco: plano.price } };
 }
 
 function ehPreAssinatura(cid) { return String(cid || '').startsWith('nov-'); }
@@ -246,9 +249,23 @@ function pendenteDaConta(accountId) {
 //
 // Aqui a pergunta vai à Woovi, e a resposta dela decide.
 //
-// COM FREIO. Esta rota é PÚBLICA (o token é o que identifica), e cada chamada
-// é uma ida à API da Woovi. Sem limite, uma aba esquecida com um laço, ou
-// alguém batendo de propósito, viraria conta de API — e a Woovi passando a
+// NEM TODO ADQUIRENTE RESPONDE ESTA PERGUNTA, e é preciso dizer isso em vez de
+// fingir. A Woovi tem consulta de cobrança; a Simplify, na integração que
+// temos, NÃO — a documentação dela não expõe consulta de transação, e o driver
+// devolve `null` de propósito (ver DRIVERS.simplify.getCharge em pagamentos.js).
+//
+// Com a Simplify ativa, a confirmação vem só pelo webhook. Um botão de
+// "verificar agora" ali não teria a quem perguntar: responderia sempre "não
+// consegui", o que é pior do que não existir. Por isso `podeReconsultar` sai na
+// visão pública e a tela só desenha o botão quando há resposta possível.
+function podeReconsultar() {
+  try { return typeof pagamentos.gateway().getCharge === 'function' && pagamentos.gateway().id === 'woovi'; }
+  catch { return false; }
+}
+
+// COM FREIO. Esta rota é PÚBLICA (o token é o que identifica), e cada chamada é
+// uma ida à API do adquirente. Sem limite, uma aba esquecida com um laço, ou
+// alguém batendo de propósito, viraria conta de API — e o adquirente passando a
 // recusar por excesso derrubaria o caminho de todo mundo, não só o dele.
 const ESPERA_RECONSULTA_MS = 6000;
 
@@ -257,6 +274,9 @@ async function reconsultar(token) {
   if (!pre) throw erro('Cadastro não encontrado', 404);
   // Já resolvido: responde com o estado, sem gastar chamada.
   if (pre.status !== 'pending') return { pago: true, status: pre.status };
+
+  // Sem consulta possível, a resposta é honesta e nenhuma chamada é gasta.
+  if (!podeReconsultar()) return { pago: false, semConsulta: true };
 
   const agora = Date.now();
   if (pre.ultimaConsulta && agora - pre.ultimaConsulta < ESPERA_RECONSULTA_MS) {
@@ -267,16 +287,23 @@ async function reconsultar(token) {
   db.save();
 
   let charge = null;
-  try { charge = await require('./woovi').getCharge(pre.correlationID); }
+  // O gateway ATIVO, e não a Woovi na mão: quem processa o Pix é quem o admin
+  // escolheu, e perguntar ao outro devolveria "cobrança não encontrada" — ou
+  // "não configurado", que é o que acontecia com a Simplify ligada.
+  try { charge = await pagamentos.gateway().getCharge(pre.correlationID); }
   catch (e) {
     store.logEvent({ type: 'preassinatura_reconsulta_erro', preId: pre.id, error: e.message });
     return { pago: false, erro: true };
   }
 
   if (charge && /COMPLETED|CONFIRMED|PAID/i.test(charge.status || '')) {
-    // O MESMO caminho do webhook, e não um atalho: é ele que cria a conta,
-    // paga a comissão e manda o link. Um segundo caminho aqui significaria
-    // duas versões da coisa mais delicada do produto.
+    // O MESMO caminho do webhook, e não um atalho: é ele que cria a conta, paga
+    // a comissão e manda o link. Um segundo caminho aqui significaria duas
+    // versões da coisa mais delicada do produto.
+    //
+    // `applyPayment` mora em woovi.js por história, mas o que ele faz não tem
+    // nada de Woovi: é a regra de faturamento, e é por ela que a Simplify
+    // também passa (ver saaspix.confirmar).
     require('./woovi').applyPayment(
       { correlationID: pre.correlationID, value: charge.value || pre.valor }, null);
     return { pago: true, status: 'paid' };
@@ -341,7 +368,11 @@ function publico(token) {
     plano: plano ? { nome: plano.name, preco: plano.price, dias: plano.periodDays || 30 } : null,
     // travados no formulário: são os dados que abriram a conta de Pagamentos
     dados: { nome: pre.nome, email: pre.email, telefone: pre.telefone, documento: pre.documento },
-    cobranca: pre.status === 'pending' ? { brCode: pre.brCode, qrCodeImage: pre.qrCodeImage } : null
+    cobranca: pre.status === 'pending' ? { brCode: pre.brCode, qrCodeImage: pre.qrCodeImage } : null,
+    // A tela só desenha o "Já fiz o pagamento" quando existe a quem perguntar.
+    // Com a Simplify ativa isso é falso, e o botão nem aparece — em vez de
+    // aparecer e responder sempre que não conseguiu.
+    podeReconsultar: podeReconsultar()
   };
 }
 
