@@ -590,6 +590,18 @@ module.exports = function (broadcast, clients) {
     res.json(d);
   });
 
+  // "JÁ FIZ O PAGAMENTO" — pergunta à Woovi em vez de esperar o webhook.
+  //
+  // A consulta de 4 em 4 segundos só lê o que já está gravado; quem vira a
+  // chave é o webhook. Esta rota vai à fonte, e com isso resolve também o caso
+  // em que o webhook NUNCA chega — aí não é lentidão, é a pessoa presa na tela
+  // do Pix tendo pago.
+  //
+  // O freio contra excesso de chamadas está em `reconsultar`.
+  router.post('/public/assinatura/:token/reconsultar', h(async (req, res) => {
+    res.json(await preassinatura.reconsultar(req.params.token));
+  }));
+
   router.post('/public/assinatura/:token/concluir', h(async (req, res) => {
     const acc = preassinatura.concluir(req.params.token, req.body || {}, broadcast);
     // Já entra logado: quem acabou de pagar não deve ter que digitar a senha

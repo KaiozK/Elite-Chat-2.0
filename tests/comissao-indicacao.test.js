@@ -41,12 +41,15 @@ Module._load = function (m) { if (m === 'mysql2/promise') return { createPool: (
 process.env.DB_DRIVER = 'mysql';
 process.env.DATABASE_URL = 'mysql://u:p@localhost/koonfy';
 
-// Woovi de mentira: gera o Pix sem rede.
+// Woovi de mentira: gera o Pix sem rede.  é o que a consulta da
+// cobrança devolve — é como o teste simula "ainda não caiu" e "caiu".
 const fetchReal = global.fetch;
+let wooviStatus = 'ACTIVE';
 global.fetch = async (u, o = {}) => {
   if (!/woovi/.test(String(u))) return fetchReal(u, o);
   return { ok: true, status: 200, text: async () => JSON.stringify({
-    charge: { brCode: '00020126BR...', qrCodeImage: '', identifier: 'x', status: 'ACTIVE' }
+    charge: { brCode: '00020126BR...', qrCodeImage: '', identifier: 'x',
+              status: wooviStatus, value: 19700 }
   }) };
 };
 
@@ -216,6 +219,74 @@ const BASE = 'http://127.0.0.1:3987';
   ok(/pagarComissao/.test(pre_src), 'e o caminho da pré-assinatura a chama');
   ok((src.match(/aff\.wallet\.balance \+= cut/g) || []).length === 1,
      'com um único lugar creditando o afiliado — não duas cópias para divergir');
+
+  console.log('\n=== 10. "Já fiz o pagamento" pergunta à WOOVI, não a nós mesmos ===');
+  // A consulta automática da tela lê só o que já está gravado aqui: quem vira
+  // a chave é o webhook. Um botão que refizesse essa mesma consulta seria
+  // placebo — e placebo em tela de pagamento gasta confiança.
+  //
+  // O caso que justifica o botão não é lentidão, é PAREDE: se o webhook não
+  // chegar (URL mal configurada, instabilidade), a pessoa pagou e fica presa
+  // naquela tela para sempre. Aqui o webhook NUNCA é chamado de propósito.
+  const nova = await (await fetch(BASE + '/api/public/assinatura', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '203.0.113.99' },
+    body: JSON.stringify({
+      planId: 'pro', nome: 'Pagou e Esperou', email: 'esperou@ex.com',
+      telefone: '(41) 98888-1111', documento: '15350946056', pais: 'BR', ref: codigo
+    })
+  })).json();
+  const preN = db.get().preassinaturas.find(p => p.token === nova.token);
+
+  // A Woovi ainda não recebeu: a resposta é honesta e a conta não nasce.
+  wooviStatus = 'ACTIVE';
+  const r1 = await (await fetch(BASE + '/api/public/assinatura/' + nova.token + '/reconsultar',
+    { method: 'POST' })).json();
+  ok(r1.pago === false, 'sem pagamento, responde que não caiu');
+  ok(!db.findAccountByEmail('esperou@ex.com'), 'e nenhuma conta é criada');
+
+  // O FREIO: a rota é pública e cada chamada vai à API da Woovi. Uma aba
+  // esquecida em laço, ou alguém batendo de propósito, viraria conta de API —
+  // e a Woovi recusando por excesso derrubaria o caminho de todo mundo.
+  const r2 = await (await fetch(BASE + '/api/public/assinatura/' + nova.token + '/reconsultar',
+    { method: 'POST' })).json();
+  ok(r2.aguarde === true, 'a segunda chamada seguida é freada, não repassada à Woovi');
+
+  // Agora o Pix caiu na Woovi — e o webhook continua sem chegar.
+  wooviStatus = 'COMPLETED';
+  preN.ultimaConsulta = 0;   // passa o freio, como passaria com o tempo
+  db.save();
+  const saldoAntesJ = aff.wallet.balance;
+  const r3 = await (await fetch(BASE + '/api/public/assinatura/' + nova.token + '/reconsultar',
+    { method: 'POST' })).json();
+  ok(r3.pago === true, 'com o Pix pago na Woovi, a rota resolve sem o webhook');
+
+  const contaN = db.findAccountByEmail('esperou@ex.com');
+  ok(!!contaN, 'a conta nasce por este caminho também');
+  ok(contaN.billing.status === 'active', 'com o plano ativo');
+
+  // E PASSA PELO MESMO CAMINHO do webhook: a comissão sai igual. Um atalho
+  // aqui significaria duas versões da coisa mais delicada do produto.
+  ok(aff.wallet.balance === saldoAntesJ + Math.floor(19700 * 30 / 100),
+     `a comissão do afiliado cai igual: +${aff.wallet.balance - saldoAntesJ}`);
+
+  // Perguntar de novo depois de resolvido não gasta chamada nem repete nada.
+  const r4 = await (await fetch(BASE + '/api/public/assinatura/' + nova.token + '/reconsultar',
+    { method: 'POST' })).json();
+  ok(r4.pago === true, 'já resolvido responde direto');
+  ok(aff.wallet.balance === saldoAntesJ + Math.floor(19700 * 30 / 100),
+     'e não paga a comissão de novo');
+
+  console.log('\n=== 11. O botão está na tela, e é secundário ===');
+  const tela = fs.readFileSync(R + 'public/assinar.html', 'utf8');
+  ok(/id="btn-japaguei"/.test(tela), 'o botão existe');
+  ok(tela.indexOf('id="btn-japaguei"') > tela.indexOf('id="btn-copiar"'),
+     'abaixo do Copiar código Pix');
+  ok(/class="btn-secundario" id="btn-japaguei"/.test(tela),
+     'com peso visual menor — o caminho normal é a tela avançar sozinha, e um botão');
+  ok(/reconsultar/.test(tela), 'e chama a rota que pergunta à Woovi');
+  ok(!/btn-japaguei[\s\S]{0,400}\/api\/public\/assinatura\/' \+ token'/.test(tela),
+     'não a consulta local, que seria placebo');
 
   srv.close();
   global.fetch = fetchReal;

@@ -232,6 +232,58 @@ function pendenteDaConta(accountId) {
   return lista().find(p => p.accountId === accountId && p.status === 'paid') || null;
 }
 
+// PERGUNTAR À WOOVI EM VEZ DE ESPERAR O WEBHOOK
+//
+// A tela do Pix consulta o servidor a cada 4 segundos, mas essa consulta só lê
+// o que já está gravado aqui: quem vira a chave é o WEBHOOK da Woovi. Enquanto
+// ele não chega, a página fica dizendo "aguardando" mesmo que o dinheiro já
+// tenha entrado.
+//
+// E há o caso pior, que não é lentidão e sim uma parede: se o webhook NÃO
+// CHEGAR — URL mal configurada, instabilidade, uma máquina sem endereço
+// público — a pessoa pagou e fica presa naquela tela para sempre. É a mesma
+// razão pela qual /billing/pending existe para quem já tem conta.
+//
+// Aqui a pergunta vai à Woovi, e a resposta dela decide.
+//
+// COM FREIO. Esta rota é PÚBLICA (o token é o que identifica), e cada chamada
+// é uma ida à API da Woovi. Sem limite, uma aba esquecida com um laço, ou
+// alguém batendo de propósito, viraria conta de API — e a Woovi passando a
+// recusar por excesso derrubaria o caminho de todo mundo, não só o dele.
+const ESPERA_RECONSULTA_MS = 6000;
+
+async function reconsultar(token) {
+  const pre = porToken(token);
+  if (!pre) throw erro('Cadastro não encontrado', 404);
+  // Já resolvido: responde com o estado, sem gastar chamada.
+  if (pre.status !== 'pending') return { pago: true, status: pre.status };
+
+  const agora = Date.now();
+  if (pre.ultimaConsulta && agora - pre.ultimaConsulta < ESPERA_RECONSULTA_MS) {
+    // Não é erro: é "pergunte daqui a pouco". A tela trata como ainda-pendente.
+    return { pago: false, aguarde: true };
+  }
+  pre.ultimaConsulta = agora;
+  db.save();
+
+  let charge = null;
+  try { charge = await require('./woovi').getCharge(pre.correlationID); }
+  catch (e) {
+    store.logEvent({ type: 'preassinatura_reconsulta_erro', preId: pre.id, error: e.message });
+    return { pago: false, erro: true };
+  }
+
+  if (charge && /COMPLETED|CONFIRMED|PAID/i.test(charge.status || '')) {
+    // O MESMO caminho do webhook, e não um atalho: é ele que cria a conta,
+    // paga a comissão e manda o link. Um segundo caminho aqui significaria
+    // duas versões da coisa mais delicada do produto.
+    require('./woovi').applyPayment(
+      { correlationID: pre.correlationID, value: charge.value || pre.valor }, null);
+    return { pago: true, status: 'paid' };
+  }
+  return { pago: false, status: (charge && charge.status) || 'pending' };
+}
+
 function concluir(token, b, broadcast) {
   const pre = porToken(token);
   if (!pre) throw erro('Cadastro não encontrado', 404);
@@ -294,4 +346,5 @@ function publico(token) {
 }
 
 module.exports = {
-  linkDeConclusao, mandarLink, pendenteDaConta, criar, confirmar, concluir, publico, porToken, ehPreAssinatura };
+  linkDeConclusao, mandarLink, pendenteDaConta, reconsultar,
+  criar, confirmar, concluir, publico, porToken, ehPreAssinatura };

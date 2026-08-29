@@ -106,6 +106,13 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
 .processa b{display:block;width:66px;height:17px;background:currentColor;transform:translateY(11.5%);
             -webkit-mask:url(/assets/koonfy-marca.webp) center/contain no-repeat;
             mask:url(/assets/koonfy-marca.webp) center/contain no-repeat}
+/* O "já paguei" é uma saída, não o caminho. Com o peso do botão principal, ele
+   viraria uma etapa que ninguém precisa cumprir. */
+.btn-secundario{margin-top:10px;width:100%;padding:12px 16px;border-radius:12px;
+                border:1px solid var(--fio);background:transparent;color:var(--mudo);
+                font:inherit;font-size:14px;cursor:pointer;transition:color .15s,border-color .15s}
+.btn-secundario:hover:not(:disabled){color:var(--texto);border-color:var(--mudo)}
+.btn-secundario:disabled{opacity:.55;cursor:default}
 .oculto{display:none}
 @media (max-width:980px){
   .grade{grid-template-columns:1fr} h1{font-size:34px} .dupla{grid-template-columns:1fr}
@@ -150,6 +157,10 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
         <img id="pix-qr" alt="QR Code do Pix">
         <div class="codigo" id="pix-codigo"></div>
         <button class="btn" id="btn-copiar" type="button">Copiar código Pix</button>
+        <!-- SEGUNDO botão, e por isso discreto: o caminho normal é a tela
+             avançar sozinha, e quem der destaque igual ao Copiar faz parecer
+             que é preciso clicar aqui para o pagamento valer. -->
+        <button class="btn-secundario" id="btn-japaguei" type="button">Já fiz o pagamento</button>
         <p class="mudo" style="font-size:14px" id="pix-status">Aguardando o pagamento…</p>
       </div>
     </section>
@@ -401,6 +412,46 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
   });
 
   // ---- espera o webhook confirmar ----
+  /* ---------------- "JÁ FIZ O PAGAMENTO" ----------------
+     A consulta automática de 4 em 4 segundos só lê o que já está gravado aqui;
+     quem vira a chave é o webhook da Woovi. Este botão vai à FONTE: pede ao
+     servidor para perguntar à Woovi agora.
+
+     É por isso que ele não é enfeite. Se o webhook demora, corta a espera; e se
+     ele NÃO CHEGAR — URL mal configurada, instabilidade — este é o único jeito
+     de sair da tela tendo pago. Um botão que só refizesse a consulta local
+     seria placebo, e placebo em tela de pagamento gasta confiança.
+
+     O servidor tem um freio de 6 segundos entre consultas: a rota é pública e
+     cada chamada é uma ida à API da Woovi. Quando ele responde aguarde, a
+     tela não trata como erro — só continua esperando. */
+  var conferindo = false;
+  function jaPaguei() {
+    if (!token || conferindo) return;
+    var b = document.getElementById('btn-japaguei');
+    conferindo = true;
+    if (b) { b.disabled = true; b.textContent = 'Verificando…'; }
+    fetch('/api/public/assinatura/' + token + '/reconsultar', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.pago) { clearInterval(relogio); mostrar('conta'); return; }
+        // NÃO ACHOU AINDA não é falha da pessoa, e o texto não pode soar como
+        // se fosse: o Pix leva alguns segundos, e ela acabou de pagar.
+        $('pix-status').textContent = d && d.erro
+          ? 'Não conseguimos verificar agora. A tela continua tentando sozinha.'
+          : 'Ainda não caiu aqui. Assim que cair, esta tela avança sozinha.';
+      })
+      .catch(function () {
+        $('pix-status').textContent = 'Falha de conexão. A tela continua tentando sozinha.';
+      })
+      .then(function () {
+        conferindo = false;
+        if (b) { b.disabled = false; b.textContent = 'Já fiz o pagamento'; }
+      });
+  }
+  var btnJa = document.getElementById('btn-japaguei');
+  if (btnJa) btnJa.addEventListener('click', jaPaguei);
+
   var relogio = null;
   function aguardar() {
     clearInterval(relogio);
