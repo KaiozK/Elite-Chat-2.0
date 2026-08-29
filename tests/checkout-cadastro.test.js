@@ -242,5 +242,31 @@ const BASE = 'http://127.0.0.1:3986';
      'sem poder derrubar nada: o pagamento já entrou, e falha de e-mail não desfaz pagamento');
 
   srv.close();
+  console.log('\n=== 13. A faixa do rodapé usa a marca da vitrine que está no ar ===');
+  // A joia é a marca de nova.html, que é a vitrine servida hoje (o index.html
+  // ficou como /antiga). O quadrado verde chapado é o desenho anterior.
+  const pay = fs.readFileSync(R + 'public/pay.html', 'utf8');
+  for (const [nome, src] of [['assinar', assinar], ['pay', pay]]) {
+    const faixa = src.slice(src.indexOf('.processa i'), src.indexOf('.processa i') + 260);
+    ok(/koonfy-joia.webp/.test(faixa), `${nome}.html: a faixa usa a joia`);
+    ok(!/koonfy-192.png/.test(faixa), `  e não o desenho antigo`);
+
+    // A COMPENSAÇÃO DE TAMANHO, que é o que se perde ao "simplificar" isto.
+    // Medido no navegador: o desenho ocupa 75% dos 800x800 do arquivo, e o
+    // resto é margem transparente para a sombra do render 3D. Com `contain`,
+    // a joia sairia com 15px numa caixa de 20 — a marca encolheria um quarto
+    // sem ninguém pedir, e ninguém notaria olhando o código.
+    ok(/133%/.test(faixa),
+       `  com 133% de fundo (1 ÷ 0,75), que devolve à marca os 20px`);
+    ok(!/border-radius/.test(faixa),
+       `  e sem border-radius: existia para arredondar um PNG que ia de ponta a ponta`);
+  }
+
+  // O desenho chapado CONTINUA onde ele é o certo: favicon e ícone de
+  // notificação. Um render 3D com margem e sombra vira mancha a 16px, e o
+  // Android ainda recorta o ícone de push num círculo.
+  ok(/rel="icon"[^>]*koonfy-192.png/.test(assinar),
+     'o favicon segue com o desenho chapado, que é o que funciona a 16px');
+
   await encerrar(null, falhas);
 })();

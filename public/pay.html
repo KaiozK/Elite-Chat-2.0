@@ -287,9 +287,13 @@
     margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line);
     font-size: 12px; color: var(--mut);
   }
+  /* A JOIA, e não o quadrado chapado: é a marca da vitrine que está no ar.
+     O desenho ocupa 75% do arquivo (o resto é margem para a sombra do render),
+     então `133%` devolve à marca o tamanho que ela tinha — sem isso ela
+     apareceria com 15px numa caixa de 20. */
   .processa i {
-    width: 20px; height: 20px; border-radius: 6px; flex: none;
-    background: url(/assets/koonfy-192.png) center/contain no-repeat;
+    width: 20px; height: 20px; flex: none;
+    background: url(/assets/koonfy-joia.webp) center/133% no-repeat;
   }
   .processa b {
     display: block; width: 66px; height: 17px; background: currentColor;
