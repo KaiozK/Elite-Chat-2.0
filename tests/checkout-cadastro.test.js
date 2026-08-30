@@ -268,5 +268,37 @@ const BASE = 'http://127.0.0.1:3986';
   ok(/rel="icon"[^>]*koonfy-192.png/.test(assinar),
      'o favicon segue com o desenho chapado, que é o que funciona a 16px');
 
+  console.log('\n=== A confirmação do pagamento, antes da etapa 3 ===');
+  // Entre "paguei" e "estou dentro" existe um vão de dúvida, e é nele que a
+  // pessoa aperta F5 ou liga para o suporte. A confirmação fecha esse vão.
+  ok(/id="confirmado"/.test(assinar), 'a tela de confirmação existe');
+  ok(/Pagamento confirmado/.test(assinar), 'dizendo o que aconteceu, sem rodeio');
+  ok(/role="status" aria-live="polite"/.test(assinar),
+     'e sendo anunciada por leitor de tela — quem não vê a animação recebe o mesmo aviso');
+
+  // UMA PORTA SÓ. A consulta automática e o botão "já paguei" podem disparar
+  // quase juntos; sem a tranca, a animação recomeçaria no meio dela mesma.
+  const corpoIr = assinar.slice(assinar.indexOf('function irParaCadastro'));
+  ok(/function irParaCadastro/.test(assinar), 'a passagem para a etapa 3 é uma função só');
+  ok(/var passou = false/.test(assinar) && /if \(passou\) return/.test(corpoIr),
+     'com tranca contra disparo duplo');
+  ok(/if \(d && d\.pago\) \{ irParaCadastro\(\); return; \}/.test(assinar),
+     'o botão "já fiz o pagamento" passa por ela');
+  ok(/if \(d\.status === 'pending'\) return;\s*[\r\n]+\s*irParaCadastro\(\);/.test(assinar),
+     'e a consulta automática também');
+
+  // QUEM PEDIU MENOS MOVIMENTO continua tendo a MESMA informação: o visto
+  // aparece pronto. Confirmação de pagamento não é enfeite que se suprima.
+  ok(/prefers-reduced-motion:reduce\)\{[\s\S]{0,200}#confirmado/.test(assinar),
+     'com movimento reduzido, a animação some mas o visto fica');
+  ok(/quieto \? 450 : 1500/.test(assinar),
+     'e a espera encurta em vez de segurar a pessoa por nada');
+
+  // QUEM VOLTOU DEPOIS não vê animação: nada acabou de acontecer, e comemorar
+  // um pagamento de ontem só atrasaria quem quer terminar o cadastro.
+  const retomada = assinar.slice(assinar.indexOf("if (d.status === 'done')"));
+  ok(/mostrar\('conta'\)/.test(retomada) && !/irParaCadastro/.test(retomada),
+     'a retomada cai direto no formulário');
+
   await encerrar(null, falhas);
 })();

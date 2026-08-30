@@ -113,6 +113,33 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
                 font:inherit;font-size:14px;cursor:pointer;transition:color .15s,border-color .15s}
 .btn-secundario:hover:not(:disabled){color:var(--texto);border-color:var(--mudo)}
 .btn-secundario:disabled{opacity:.55;cursor:default}
+/* ---------------- CONFIRMAÇÃO DO PAGAMENTO ----------------
+   Cobre a tela inteira porque o recado é um só, e qualquer outra coisa visível
+   convidaria a pessoa a clicar no meio da transição. */
+#confirmado{position:fixed;inset:0;z-index:50;background:var(--tela);
+            display:grid;place-content:center;justify-items:center;gap:10px;
+            text-align:center;padding:24px;animation:surgir .3s ease both}
+#confirmado strong{font-size:22px;font-weight:600;letter-spacing:-.01em;margin-top:14px}
+#confirmado span{color:var(--mudo);font-size:14px}
+#confirmado .selo{width:96px;height:96px}
+#confirmado svg{width:100%;height:100%;fill:none;stroke-linecap:round;stroke-linejoin:round}
+#confirmado .anel{stroke:var(--fio);stroke-width:3}
+/* 277 é o perímetro do círculo de raio 44: o traço nasce todo recolhido e se
+   fecha em volta do visto. */
+#confirmado .risco{stroke:var(--sinal);stroke-width:3;stroke-dasharray:277;
+                   stroke-dashoffset:277;transform:rotate(-90deg);transform-origin:50% 50%;
+                   animation:fechar .55s cubic-bezier(.2,.7,.3,1) .05s forwards}
+#confirmado .visto{stroke:var(--sinal);stroke-width:5;stroke-dasharray:56;stroke-dashoffset:56;
+                   animation:riscar .32s cubic-bezier(.25,.9,.3,1) .5s forwards}
+@keyframes surgir{from{opacity:0}to{opacity:1}}
+@keyframes fechar{to{stroke-dashoffset:0}}
+@keyframes riscar{to{stroke-dashoffset:0}}
+/* Quem pediu menos movimento continua tendo a MESMA informação — o visto
+   aparece pronto. A confirmação não é enfeite que se possa suprimir. */
+@media (prefers-reduced-motion:reduce){
+  #confirmado,#confirmado .risco,#confirmado .visto{animation:none}
+  #confirmado .risco,#confirmado .visto{stroke-dashoffset:0}
+}
 .oculto{display:none}
 @media (max-width:980px){
   .grade{grid-template-columns:1fr} h1{font-size:34px} .dupla{grid-template-columns:1fr}
@@ -264,6 +291,25 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
     <span>Pagamento processado por</span>
     <b role="img" aria-label="Koonfy"></b>
   </div>
+</div>
+
+<!-- A CONFIRMAÇÃO. Ela cobre a tela inteira de propósito: entre "paguei" e
+     "estou dentro" existe um vão de dúvida, e é nele que a pessoa aperta F5,
+     abre o app do banco de novo ou liga para o suporte. Um segundo e meio de
+     resposta inequívoca fecha esse vão.
+
+     O visto é DESENHADO, não estampado: o traço leva o olho e faz o tempo
+     parecer trabalho, não espera. Depois dele a tela avança sozinha. -->
+<div id="confirmado" class="oculto" role="status" aria-live="polite">
+  <div class="selo">
+    <svg viewBox="0 0 96 96" aria-hidden="true">
+      <circle class="anel" cx="48" cy="48" r="44"></circle>
+      <circle class="risco" cx="48" cy="48" r="44"></circle>
+      <path class="visto" d="M30 49.5 L43 62 L67 36"></path>
+    </svg>
+  </div>
+  <strong>Pagamento confirmado</strong>
+  <span>Preparando a sua conta…</span>
 </div>
 
 <script>
@@ -447,7 +493,7 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
     fetch('/api/public/assinatura/' + token + '/reconsultar', { method: 'POST' })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        if (d && d.pago) { clearInterval(relogio); mostrar('conta'); return; }
+        if (d && d.pago) { irParaCadastro(); return; }
         // NÃO ACHOU AINDA não é falha da pessoa, e o texto não pode soar como
         // se fosse: o Pix leva alguns segundos, e ela acabou de pagar.
         $('pix-status').textContent = d && d.erro
@@ -465,6 +511,32 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
   var btnJa = document.getElementById('btn-japaguei');
   if (btnJa) btnJa.addEventListener('click', jaPaguei);
 
+  /* ---------------- A PASSAGEM PARA A ETAPA 3 ----------------
+     Uma porta só. Antes havia dois lugares chamando `mostrar('conta')` direto
+     — a consulta automática e o botão —, e as duas podem disparar quase juntas:
+     sem a tranca, a animação recomeçaria no meio dela mesma.
+
+     A espera é curta de propósito. Ela existe para o visto ser LIDO, não para
+     encher tempo; passar disso vira lentidão fabricada logo depois de a pessoa
+     ter pagado. Quem pediu menos movimento vai direto. */
+  var passou = false;
+  function irParaCadastro() {
+    if (passou) return;
+    passou = true;
+    clearInterval(relogio);
+    var quieto = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var tela = $('confirmado');
+    if (!tela) { mostrar('conta'); return; }
+    tela.classList.remove('oculto');
+    setTimeout(function () {
+      tela.classList.add('oculto');
+      mostrar('conta');
+      // O topo, porque a etapa 3 é um formulário e a pessoa precisa ver o
+      // primeiro campo — não o meio dele.
+      window.scrollTo(0, 0);
+    }, quieto ? 450 : 1500);
+  }
+
   var relogio = null;
   function aguardar() {
     clearInterval(relogio);
@@ -476,8 +548,7 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
     fetch('/api/public/assinatura/' + token).then(function (r) { return r.json(); }).then(function (d) {
       if (!d || !d.status) return;
       if (d.status === 'pending') return;
-      clearInterval(relogio);
-      mostrar('conta');
+      irParaCadastro();
     }).catch(function () {});
   }
   // A LISTA DE SEGMENTOS VEM DO SERVIDOR (/api/public/segmentos), que é a mesma
