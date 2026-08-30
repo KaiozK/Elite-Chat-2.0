@@ -150,6 +150,47 @@ module.exports = function (broadcast, clients) {
 
   // GUARD DE FUNCIONALIDADE DO PLANO — módulo desligado no plano responde 402.
   // O admin da plataforma nunca é barrado (precisa operar qualquer conta).
+  // ---------------------------------------------------------------------------
+  // O INTERRUPTOR DA PLATAFORMA, aplicado ao MÓDULO INTEIRO.
+  //
+  // `feat(key)` existe há tempos, mas protege quase só as rotas de ESCRITA — as
+  // de leitura passam. Isso é adequado para a regra de PLANO (quem não comprou
+  // campanhas ainda pode ver o que já criou), e é inadequado para um
+  // interruptor de emergência: se o módulo está quebrado, ninguém deve entrar
+  // nele, nem para ler.
+  //
+  // Por isso o desligamento é uma camada à parte, por CAMINHO, e não uma
+  // mudança em `feat` — mexer lá alteraria o que cada plano libera, que é outro
+  // assunto e outro risco.
+  //
+  // 503, e não 402: não é falta de plano, é serviço fora do ar. O código diz
+  // isso a qualquer cliente de API, inclusive aos que não leem a mensagem.
+  const CAMINHO_MODULO = [
+    [/^\/campaigns/, 'campaigns'],
+    [/^\/flows/, 'flows'],
+    [/^\/schedules?/, 'schedule'],
+    [/^\/(team|chat-interno)/, 'team'],
+    [/^\/agents/, 'agents'],
+    [/^\/links/, 'links'],
+    [/^\/pixels/, 'pixels'],
+    [/^\/tracking/, 'tracking'],
+    [/^\/(integrations|webhooks|nuvemshop)/, 'integrations'],
+    [/^\/sms/, 'sms'],
+    [/^\/(pagamentos|checkouts|produtos)/, 'pagamentos']
+  ];
+  router.use((req, res, next) => {
+    // O ADMIN SaaS continua entrando: é ele quem precisa conferir se o módulo
+    // voltou antes de religar para todo mundo.
+    if (req.session && req.session.kind === 'admin') return next();
+    const par = CAMINHO_MODULO.find(([re]) => re.test(req.path));
+    if (!par || limits.moduloDaPlataforma(par[1])) return next();
+    res.status(503).json({
+      error: (limits.FEATURE_LABEL[par[1]] || par[1]) +
+        ' está temporariamente indisponível. Estamos trabalhando nisso — nada do que você já configurou foi perdido.',
+      code: 'modulo_desligado', feature: par[1]
+    });
+  });
+
   const feat = key => (req, res, next) => {
     if (req.session.kind === 'admin') return next();
     const msg = limits.checkFeature(req.acc, key);
@@ -779,7 +820,15 @@ module.exports = function (broadcast, clients) {
       wa: waPublic(req.wctx),
       // toggles do plano: o menu esconde o que o plano nao inclui (o backend
       // tambem recusa com 402, o front e so conforto)
-      planFeatures: req.session.kind === 'admin' ? null : limits.featuresOf(req.acc),
+      // OS TOGGLES DO PLANO, já COM o interruptor da plataforma aplicado. O
+      // menu esconde o que o plano não inclui — e agora também o que o dono do
+      // SaaS desligou por estar quebrado. Mostrar a aba de um módulo desligado
+      // é convidar o cliente a bater numa porta fechada e abrir um chamado.
+      planFeatures: req.session.kind === 'admin' ? null : (() => {
+        const f = { ...limits.featuresOf(req.acc) };
+        for (const k of Object.keys(f)) if (!limits.moduloDaPlataforma(k)) f[k] = false;
+        return f;
+      })(),
       // O SMS depende de DUAS chaves: o módulo no plano do cliente e o
       // provedor ligado na plataforma. Faltava a segunda aqui, e o menu
       // mostrava a aba de quem não tinha como enviar nada.
@@ -5714,6 +5763,49 @@ module.exports = function (broadcast, clients) {
     res.json({ ok: true });
   });
 
+  // ---- MÓDULOS DA PLATAFORMA: o interruptor geral ----
+  //
+  // Diferente dos módulos do PLANO (o que cada cliente comprou), aqui é o dono
+  // do SaaS desligando um recurso para TODO MUNDO — o dia em que uma integração
+  // começa a falhar e a escolha é entre desligar ou deixar cada cliente
+  // descobrir o defeito sozinho.
+  router.get('/admin/modulos', auth, adminOnly, (req, res) => {
+    const m = db.get().platform.modulos || {};
+    res.json({
+      modulos: db.FEATURE_KEYS.map(k => ({
+        key: k,
+        label: limits.FEATURE_LABEL[k] || k,
+        ligado: m[k] !== false,   // ausente = ligado
+        // Quantos clientes perdem o acesso se este for desligado agora. Desligar
+        // às cegas é o que transforma uma manutenção em surpresa.
+        contas: db.get().accounts.filter(a => !a.isAdmin && limits.featuresOf(a)[k]).length
+      }))
+    });
+  });
+
+  router.put('/admin/modulos', auth, adminOnly, (req, res) => {
+    const b = req.body || {};
+    const p = db.get().platform;
+    if (!p.modulos || typeof p.modulos !== 'object') p.modulos = {};
+    const mudou = [];
+    for (const k of db.FEATURE_KEYS) {
+      if (b[k] === undefined) continue;
+      const ligado = !!b[k];
+      if ((p.modulos[k] !== false) === ligado) continue;
+      // LIGADO NÃO É GRAVADO: ausente já quer dizer ligado, e assim um módulo
+      // novo no código nunca nasce desligado por causa de um registro velho.
+      if (ligado) delete p.modulos[k]; else p.modulos[k] = false;
+      mudou.push((ligado ? '+' : '-') + k);
+    }
+    db.save();
+    if (mudou.length) {
+      // FICA REGISTRADO. Um módulo desligado e esquecido vira "o sistema não
+      // funciona" semanas depois, sem ninguém lembrar do porquê.
+      store.logEvent({ type: 'modulos_plataforma', detail: mudou.join(' '), ok: true });
+    }
+    res.json({ ok: true, modulos: p.modulos });
+  });
+
   router.put('/admin/config', auth, adminOnly, (req, res) => {
     const b = req.body || {};
     const p = db.get().platform;
@@ -6964,6 +7056,99 @@ module.exports = function (broadcast, clients) {
   });
 
   // ---- Admin SaaS: gestão financeira da plataforma ----
+  // ============ FINANCEIRO: TODAS AS TRANSAÇÕES, COM O MÉTODO ============
+  //
+  // O painel mostrava totais e uma linha por conta. Faltava a pergunta mais
+  // simples de quem toca um SaaS: "o que entrou, quando, de quem, e por qual
+  // meio?" — e sem ela não dá para conferir um repasse, achar uma cobrança
+  // reclamada, nem saber quanto do faturamento passa por cartão (que custa
+  // taxa diferente do Pix).
+  //
+  // DOIS DINHEIROS DIFERENTES, no mesmo lugar e marcados:
+  //   · KOONFY  — o que os CLIENTES pagam para você (assinatura, extra, recarga);
+  //   · CLIENTE — o que os clientes DELES pagam a eles, de onde sai a sua taxa.
+  // Somá-los seria inventar um faturamento que não existe; separá-los em duas
+  // telas obrigaria a abrir as duas para entender um dia.
+  router.get('/adm/financeiro', auth, adminOnly, (req, res) => {
+    const data = db.get();
+    const saaspix = require('./saaspix');
+    const nomes = {};
+    for (const a of data.accounts) nomes[a.id] = a.name || a.email;
+
+    const dias = Math.min(365, Math.max(1, Number(req.query.dias) || 30));
+    const desde = Date.now() - dias * 86400000;
+
+    const KIND = { first: 'Assinatura (1ª)', renewal: 'Renovação', extra: 'Extra',
+                   topup: 'Recarga de saldo', sub: 'Assinatura' };
+
+    // ---- o que entrou para a KOONFY ----
+    const koonfy = (data.revenue || []).filter(r => (r.ts || 0) >= desde).map(r => {
+      const acc = data.accounts.find(a => a.id === r.accountId);
+      // `metodo` passou a ser gravado na hora; para os registros antigos, a
+      // dedução pelo prefixo do correlationID é o mesmo cálculo.
+      const metodo = r.metodo || saaspix.metodoDeCid(r.chargeId, acc);
+      return {
+        origem: 'koonfy', ts: r.ts, accountId: r.accountId, conta: nomes[r.accountId] || r.accountId,
+        tipo: KIND[r.kind] || r.kind || 'Receita', valor: r.amount || 0,
+        metodo, metodoLabel: saaspix.METODOS[metodo] || metodo,
+        planId: r.planId || '', ref: r.chargeId || '', status: 'paid', taxa: 0
+      };
+    });
+
+    // ---- o que entrou para os CLIENTES (e a taxa que ficou com você) ----
+    const doCliente = [];
+    for (const a of data.accounts) {
+      for (const c of ((a.pagamentos || {}).charges || [])) {
+        if ((c.paidAt || c.createdAt || 0) < desde) continue;
+        const metodo = c.method === 'card' ? 'card' : c.method === 'boleto' ? 'bol' : 'pix';
+        doCliente.push({
+          origem: 'cliente', ts: c.paidAt || c.createdAt || 0, accountId: a.id, conta: nomes[a.id] || a.id,
+          tipo: 'Venda do cliente', valor: c.value || 0,
+          metodo, metodoLabel: saaspix.METODOS[metodo] || metodo,
+          // A TAXA É A SUA RECEITA nesta linha. O valor cheio é do cliente; sem
+          // separar os dois, a soma da tela viraria dinheiro que não é seu.
+          taxa: c.platformCut || 0,
+          status: c.status || '', ref: c.id || '', pagador: c.waId || c.payerName || ''
+        });
+      }
+    }
+
+    let lista = koonfy.concat(doCliente).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+
+    const fOrigem = String(req.query.origem || '');
+    const fMetodo = String(req.query.metodo || '');
+    const fConta = String(req.query.conta || '');
+    if (fOrigem) lista = lista.filter(t => t.origem === fOrigem);
+    if (fMetodo) lista = lista.filter(t => t.metodo === fMetodo);
+    if (fConta) lista = lista.filter(t => t.accountId === fConta);
+
+    // AS SOMAS SÃO DA FATIA FILTRADA — é o que o olho está vendo. Uma soma que
+    // ignora o filtro faz a tela mentir para quem confere um período.
+    const pagas = lista.filter(t => t.status === 'paid');
+    const porMetodo = {};
+    for (const t of pagas) {
+      const m = (porMetodo[t.metodo] = porMetodo[t.metodo] || { metodo: t.metodo, label: t.metodoLabel, n: 0, koonfy: 0, cliente: 0, taxa: 0 });
+      m.n++;
+      if (t.origem === 'koonfy') m.koonfy += t.valor; else { m.cliente += t.valor; m.taxa += t.taxa; }
+    }
+
+    res.json({
+      dias,
+      totais: {
+        koonfy: pagas.filter(t => t.origem === 'koonfy').reduce((s, t) => s + t.valor, 0),
+        cliente: pagas.filter(t => t.origem === 'cliente').reduce((s, t) => s + t.valor, 0),
+        taxas: pagas.reduce((s, t) => s + (t.taxa || 0), 0),
+        transacoes: pagas.length
+      },
+      porMetodo: Object.values(porMetodo).sort((a, b) => (b.koonfy + b.cliente) - (a.koonfy + a.cliente)),
+      metodos: Object.entries(saaspix.METODOS).map(([k, v]) => ({ key: k, label: v })),
+      contas: [...new Set(lista.map(t => t.accountId))].map(id => ({ id, nome: nomes[id] || id })),
+      // 300 é o teto da tela; os totais acima já são do período inteiro.
+      transacoes: lista.slice(0, 300),
+      cortadas: Math.max(0, lista.length - 300)
+    });
+  });
+
   router.get('/admin/pagamentos', auth, adminOnly, (req, res) => {
     // `card` vem junto porque as taxas de Pix e de CARTÃO moram no mesmo painel
     res.json({ ...pagamentos.adminOverview(), card: require('./cardgateways').adminCard(pagamentos.cardConfig()) });

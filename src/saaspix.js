@@ -111,6 +111,37 @@ async function criarCobranca(acc, { correlationID, valueCents, comment }) {
 // ---------------------------------------------------------------------------
 const PREFIXOS = ['topup-', 'xtr-', 'sub-', 'ren-', 'card-', 'wallet-', 'bol-', 'nov-'];
 
+// COMO O DINHEIRO ENTROU, lido do próprio identificador da cobrança.
+//
+// O prefixo do correlationID já dizia isso desde sempre — `card-sub-…`,
+// `bol-sub-…`, `wallet-ren-…` —, mas a informação morria ali: o registro de
+// receita guardava só o valor, e o painel não tinha como responder "quanto
+// entrou por cartão?". Uma pergunta básica de quem cobra por gateway.
+//
+// A regra fica AQUI porque é aqui que os prefixos são conhecidos. Espalhada,
+// ela divergiria no primeiro método novo.
+const METODOS = {
+  card: 'Cartão de crédito',
+  bol: 'Boleto',
+  wallet: 'Saldo da carteira',
+  pix: 'Pix',
+  pixauto: 'Pix Automático'
+};
+
+function metodoDeCid(cid, acc) {
+  const c = String(cid || '');
+  if (c.startsWith('card-')) return 'card';
+  if (c.startsWith('bol-')) return 'bol';
+  if (c.startsWith('wallet-')) return 'wallet';
+  // O RESTO É PIX. `sub-` e `ren-` viram "Pix Automático" quando a conta tem
+  // uma assinatura de débito em conta: aí o dinheiro não veio de alguém lendo
+  // um QR, veio do banco sozinho — e são coisas diferentes de se acompanhar.
+  if (acc && acc.billing && acc.billing.wooviSubId && (c.startsWith('sub-') || c.startsWith('ren-'))) {
+    return 'pixauto';
+  }
+  return 'pix';
+}
+
 function ehCobrancaSaaS(correlationID) {
   const cid = String(correlationID || '');
   return PREFIXOS.some(p => cid.startsWith(p));
@@ -123,4 +154,5 @@ function confirmar(correlationID, valueCents, broadcast) {
   );
 }
 
-module.exports = { criarCobranca, ehCobrancaSaaS, confirmar, faltando, pagadorDaConta, fixarNoCadastro };
+module.exports = {
+  METODOS, metodoDeCid, criarCobranca, ehCobrancaSaaS, confirmar, faltando, pagadorDaConta, fixarNoCadastro };

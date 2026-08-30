@@ -209,7 +209,17 @@ function featuresOf(acc) {
 // mas não decide mais nada.
 const SEMPRE_LIBERADOS = ['sms'];
 
+// O INTERRUPTOR DA PLATAFORMA VEM ANTES DE TUDO — inclusive de superconta e
+// tester. Se o recurso está quebrado, ele está quebrado para todo mundo, e
+// deixar o dono do SaaS entrar num módulo desligado é justamente o caminho de
+// descobrir o problema pelo cliente.
+function moduloDaPlataforma(key) {
+  const m = (db.get().platform || {}).modulos || {};
+  return m[key] !== false;   // ausente = ligado
+}
+
 function featureOn(acc, key) {
+  if (!moduloDaPlataforma(key)) return false;
   if (isUnlimited(acc)) return true;
   if (SEMPRE_LIBERADOS.includes(key)) return true;
   if (!db.FEATURE_KEYS.includes(key)) return true;   // módulo essencial: sempre on
@@ -219,6 +229,12 @@ function featureOn(acc, key) {
 // null = liberado; string = mensagem de bloqueio.
 function checkFeature(acc, key) {
   if (featureOn(acc, key)) return null;
+  // DUAS RECUSAS DIFERENTES, e confundi-las é caro. "Faça upgrade" para um
+  // módulo que a plataforma desligou manda o cliente pagar por algo que não vai
+  // funcionar — e ele volta pedindo reembolso.
+  if (!moduloDaPlataforma(key)) {
+    return `${FEATURE_LABEL[key] || key} está temporariamente indisponível. Estamos trabalhando nisso — nada do que você já configurou foi perdido.`;
+  }
   return `${FEATURE_LABEL[key] || key} não faz parte do seu plano. Faça upgrade em Assinatura para liberar.`;
 }
 
@@ -226,5 +242,5 @@ module.exports = {
   isUnlimited,
   PAID_EXTRAS, LABEL, FEATURE_LABEL, planOf, extraPrices, limitOf, usage, report,
   check, enforce, extrasCost, chargeTotal,
-  featuresOf, featureOn, checkFeature
+  featuresOf, featureOn, checkFeature, moduloDaPlataforma
 };

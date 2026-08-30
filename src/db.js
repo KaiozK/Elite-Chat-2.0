@@ -157,6 +157,18 @@ const DEFAULTS = {
     // Verificação em duas etapas do login, ligada pelo admin.
     security: { twoFactor: false },
     landing: { ctaText: '' }, // copy do botão principal da landing (vazio = automático pelos dias de teste)
+    // ---- MÓDULOS DA PLATAFORMA (interruptor geral) ----
+    //
+    // Diferente dos módulos do PLANO, que dizem o que cada cliente comprou:
+    // aqui é o dono do SaaS desligando um recurso para TODO MUNDO. Existe para
+    // o dia em que uma integração começa a falhar — um adquirente fora do ar,
+    // uma API que a Meta mudou sem avisar — e a escolha é entre desligar o
+    // recurso ou deixar cada cliente descobrir o defeito sozinho.
+    //
+    // Vazio quer dizer LIGADO: uma instalação nova não depende de ninguém
+    // marcar nada, e um módulo novo no código não nasce desligado por
+    // esquecimento.
+    modulos: {},
     // ---- SUPORTE ----
     // O WhatsApp que aparece no rodapé do checkout. Configurável porque é o
     // número que o dono atende, e um número escrito no HTML vira telefone

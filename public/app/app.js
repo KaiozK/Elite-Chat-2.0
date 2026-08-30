@@ -1929,6 +1929,8 @@ const ADM_ABAS = {
   'adm/kyc':            { aba: 'adm-kyc', titulo: 'KYC',                 sub: 'Verificação de identidade das contas do Koonpay' },
   'adm/saques':         { aba: 'adm-wd',   titulo: 'Saques',              sub: 'Pedidos de saque dos clientes' },
   'adm/pagamentos':     { aba: 'adm-ep',   titulo: 'Koonpay',             sub: 'Subcontas, cobranças e taxas recebidas' },
+  'adm/financeiro':     { aba: 'adm-fin',  titulo: 'Financeiro',          sub: 'Todas as transações, por método de pagamento' },
+  'adm/modulos':        { aba: 'adm-mod',  titulo: 'Módulos',             sub: 'Ligar e desligar funcionalidades da plataforma' },
   'adm/integracoes':    { aba: 'adm-int',  titulo: 'Integrações',         sub: 'Serviços externos e SMS' },
   'adm/plataforma':     { aba: 'adm-plat', titulo: 'Plataforma',          sub: 'Credenciais do app da Meta' },
   'adm/marketing':      { aba: 'adm-mkt',  titulo: 'Marketing',           sub: 'Pixels e rastreamento da vitrine' },
@@ -9661,6 +9663,8 @@ async function renderAdmin() {
       <button data-tab="adm-kyc" onclick="showSettingsTab('adm-kyc');admKycLoad()">KYC</button>
       <button data-tab="adm-wd" onclick="showSettingsTab('adm-wd')">Saques</button>
       <button data-tab="adm-ep" onclick="showSettingsTab('adm-ep');admEpPaint()">Koonpay</button>
+      <button data-tab="adm-fin" onclick="showSettingsTab('adm-fin');admFinLoad()">Financeiro</button>
+      <button data-tab="adm-mod" onclick="showSettingsTab('adm-mod');admModLoad()">Módulos</button>
       <button data-tab="adm-int" onclick="showSettingsTab('adm-int');admIntLoad()">Integrações</button>
       <button data-tab="adm-plat" onclick="showSettingsTab('adm-plat')">Plataforma</button>
       <button data-tab="adm-mkt" onclick="showSettingsTab('adm-mkt');admMktLoad()">Marketing</button>
@@ -10352,6 +10356,14 @@ async function paintAdmin() {
 
       <div class="tabpane ${activeTab === 'adm-ep' ? 'show' : ''}" data-pane="adm-ep">
         <div id="adm-ep-box">${skel(5)}</div>
+      </div>
+
+      <div class="tabpane ${activeTab === 'adm-fin' ? 'show' : ''}" data-pane="adm-fin">
+        <div id="adm-fin-box">${skel(5)}</div>
+      </div>
+
+      <div class="tabpane ${activeTab === 'adm-mod' ? 'show' : ''}" data-pane="adm-mod">
+        <div id="adm-mod-box">${skel(4)}</div>
       </div>
 
       <div class="tabpane ${activeTab === 'adm-int' ? 'show' : ''}" data-pane="adm-int">
@@ -12819,6 +12831,146 @@ async function admFeesPaint() {
     const d = await api('/admin/pagamentos');
     box.innerHTML = admFeesSection(d.config, d.card || {}, d.totals || {});
   } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+}
+
+// ===========================================================================
+// FINANCEIRO — todas as transações, com o método de pagamento
+//
+// O painel mostrava totais e uma linha por conta. Faltava a pergunta mais
+// simples de quem toca um SaaS: "o que entrou, quando, de quem, e por qual
+// meio?" — e sem ela não dá para conferir um repasse, achar uma cobrança
+// reclamada, nem saber quanto do faturamento passa por cartão (que custa taxa
+// diferente do Pix).
+//
+// DOIS DINHEIROS, marcados e nunca somados: o que os clientes pagam à KOONFY, e
+// o que os clientes DELES pagam a eles — de onde sai a sua taxa. Somar os dois
+// inventaria um faturamento que não existe.
+// ===========================================================================
+let admFin = { dias: 30, origem: '', metodo: '', conta: '' };
+
+async function admFinLoad() {
+  const box = $('#adm-fin-box'); if (!box) return;
+  box.innerHTML = skel(4);
+  try {
+    const q = new URLSearchParams({ dias: admFin.dias });
+    if (admFin.origem) q.set('origem', admFin.origem);
+    if (admFin.metodo) q.set('metodo', admFin.metodo);
+    if (admFin.conta) q.set('conta', admFin.conta);
+    admFinPaint(await api('/adm/financeiro?' + q.toString()));
+  } catch (e) { box.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+}
+
+function admFinPaint(d) {
+  const box = $('#adm-fin-box'); if (!box) return;
+  const t = d.totais;
+  const opt = (v, r, atual) => `<option value="${esc(v)}" ${atual === v ? 'selected' : ''}>${esc(r)}</option>`;
+
+  box.innerHTML = `
+    <div class="card">
+      <h2>${ico('card')} Financeiro</h2>
+      <div class="row" style="gap:10px;align-items:flex-end;margin-bottom:14px">
+        <label style="max-width:150px">Período
+          <select onchange="admFin.dias=this.value;admFinLoad()">
+            ${[7, 30, 90, 365].map(n => opt(n, n + ' dias', String(admFin.dias))).join('')}
+          </select></label>
+        <label style="max-width:190px">Dinheiro
+          <select onchange="admFin.origem=this.value;admFinLoad()">
+            ${opt('', 'Tudo', admFin.origem)}${opt('koonfy', 'Recebido pela Koonfy', admFin.origem)}${opt('cliente', 'Vendas dos clientes', admFin.origem)}
+          </select></label>
+        <label style="max-width:190px">Método
+          <select onchange="admFin.metodo=this.value;admFinLoad()">
+            ${opt('', 'Todos', admFin.metodo)}${(d.metodos || []).map(m => opt(m.key, m.label, admFin.metodo)).join('')}
+          </select></label>
+        <label style="max-width:220px">Conta
+          <select onchange="admFin.conta=this.value;admFinLoad()">
+            ${opt('', 'Todas', admFin.conta)}${(d.contas || []).map(c => opt(c.id, c.nome, admFin.conta)).join('')}
+          </select></label>
+      </div>
+
+      <div class="grid-cards">
+        <div class="stat"><div class="lbl">Recebido pela Koonfy</div>${kpiNum(fmtBRL(t.koonfy), fmtBRL(t.koonfy))}</div>
+        <div class="stat"><div class="lbl">Vendas dos clientes</div>${kpiNum(fmtBRL(t.cliente), fmtBRL(t.cliente))}</div>
+        <div class="stat"><div class="lbl">Taxas sobre essas vendas</div>${kpiNum(fmtBRL(t.taxas), fmtBRL(t.taxas))}</div>
+        <div class="stat"><div class="lbl">Transações</div>${kpiNum(fmtN(t.transacoes), fmtN(t.transacoes))}</div>
+      </div>
+      <p class="muted" style="font-size:11.5px;margin:10px 0 0">
+        As duas primeiras <b>não se somam</b>: a segunda é dinheiro dos clientes, e o que é seu ali é a taxa.</p>
+    </div>
+
+    <div class="card">
+      <h2>${ico('zap')} Por método de pagamento</h2>
+      ${(d.porMetodo || []).length ? `<table>
+        <thead><tr><th>Método</th><th style="text-align:right">Transações</th>
+          <th style="text-align:right">Koonfy</th><th style="text-align:right">Vendas dos clientes</th>
+          <th style="text-align:right">Suas taxas</th></tr></thead>
+        <tbody>${d.porMetodo.map(m => `<tr>
+          <td><b>${esc(m.label)}</b></td>
+          <td style="text-align:right">${fmtN(m.n)}</td>
+          <td style="text-align:right">${fmtBRL(m.koonfy)}</td>
+          <td style="text-align:right">${fmtBRL(m.cliente)}</td>
+          <td style="text-align:right">${fmtBRL(m.taxa)}</td>
+        </tr>`).join('')}</tbody></table>`
+      : '<p class="muted">Nenhum pagamento no período.</p>'}
+    </div>
+
+    <div class="card">
+      <h2>${ico('file')} Transações</h2>
+      ${(d.transacoes || []).length ? `<table>
+        <thead><tr><th>Quando</th><th>Conta</th><th>O quê</th><th>Método</th>
+          <th style="text-align:right">Valor</th><th style="text-align:right">Sua taxa</th></tr></thead>
+        <tbody>${d.transacoes.map(x => `<tr>
+          <td class="muted" style="white-space:nowrap">${fmtDataHora(x.ts)}</td>
+          <td>${esc(x.conta)}
+            <span class="fin-org ${x.origem}">${x.origem === 'koonfy' ? 'Koonfy' : 'Cliente'}</span></td>
+          <td>${esc(x.tipo)}${x.status && x.status !== 'paid' ? ` <span class="muted">(${esc(x.status)})</span>` : ''}</td>
+          <td>${esc(x.metodoLabel)}</td>
+          <td style="text-align:right">${fmtBRL(x.valor)}</td>
+          <td style="text-align:right">${x.taxa ? fmtBRL(x.taxa) : '—'}</td>
+        </tr>`).join('')}</tbody></table>
+        ${d.cortadas ? `<p class="muted" style="font-size:12px;margin-top:10px">
+          Mostrando as 300 mais recentes; outras ${fmtN(d.cortadas)} no período não couberam na tela.
+          Os totais acima são do período inteiro.</p>` : ''}`
+      : '<p class="muted">Nenhuma transação no período com estes filtros.</p>'}
+    </div>`;
+}
+
+// ===========================================================================
+// MÓDULOS DA PLATAFORMA — o interruptor geral
+//
+// Diferente dos módulos do PLANO (o que cada cliente comprou), aqui é o dono do
+// SaaS desligando um recurso para TODO MUNDO. Existe para o dia em que uma
+// integração começa a falhar e a escolha é entre desligar o recurso ou deixar
+// cada cliente descobrir o defeito sozinho.
+// ===========================================================================
+async function admModLoad() {
+  const box = $('#adm-mod-box'); if (!box) return;
+  box.innerHTML = skel(3);
+  try {
+    const d = await api('/admin/modulos');
+    box.innerHTML = `
+      <div class="card">
+        <h2>${ico('gear')} Funcionalidades da plataforma</h2>
+        <p class="muted" style="margin:0 0 14px;font-size:13px">
+          Desligar aqui vale para <b>todos os clientes</b>, independente do plano — inclusive supercontas.
+          Serve para quando algo quebra: o módulo some do menu e as rotas recusam com um aviso de
+          indisponibilidade, e não com "faça upgrade". <b>Nada do que os clientes configuraram é apagado.</b></p>
+        <div class="mod-lista">${d.modulos.map(m => `
+          <label class="chk" style="margin-top:10px">
+            <input type="checkbox" ${m.ligado ? 'checked' : ''} onchange="admModSalvar('${m.key}', this.checked)">
+            <span><b>${esc(m.label)}</b><em>${m.ligado
+              ? `Ligado · ${fmtN(m.contas)} conta(s) com acesso pelo plano`
+              : 'DESLIGADO para todos — o módulo não aparece no painel de ninguém'}</em></span>
+          </label>`).join('')}</div>
+      </div>`;
+  } catch (e) { box.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+}
+
+async function admModSalvar(key, ligado) {
+  try {
+    await api('/admin/modulos', { method: 'PUT', body: { [key]: ligado } });
+    toast(ligado ? 'Módulo ligado' : 'Módulo desligado para todos');
+    admModLoad();
+  } catch (e) { toast(e.message, 'error'); admModLoad(); }
 }
 
 async function admEpPaint() {

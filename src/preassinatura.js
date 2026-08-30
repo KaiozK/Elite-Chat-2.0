@@ -171,7 +171,8 @@ function confirmar(cid, valorPago, broadcast) {
   } catch (e) { /* uma verificação que falha não pode derrubar uma conta paga */ }
 
   data.accounts.push(acc);
-  data.revenue.push({ ts: Date.now(), accountId: acc.id, planId: pre.planId, amount: valorPago, kind: 'first', chargeId: cid });
+  data.revenue.push({ ts: Date.now(), accountId: acc.id, planId: pre.planId, amount: valorPago, kind: 'first', chargeId: cid,
+    metodo: saaspix.metodoDeCid(cid, acc) });
 
   pre.status = 'paid';
   pre.pagoEm = Date.now();

@@ -67,7 +67,8 @@ function creditar(acc, valor, label, cid, broadcast) {
   w.transactions.push({ id: db.genId('tx'), ts: Date.now(), amount: valor, type: 'topup', label });
   db.get().revenue.push({
     ts: Date.now(), accountId: acc.id, planId: acc.billing.planId || '',
-    amount: valor, kind: 'topup', chargeId: cid
+    amount: valor, kind: 'topup', chargeId: cid,
+    metodo: require('./saaspix').metodoDeCid(cid, acc)
   });
   db.save();
   if (broadcast) broadcast('wallet', { accountId: acc.id });

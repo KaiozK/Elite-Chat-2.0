@@ -815,6 +815,16 @@ tbody tr:last-child td { border-bottom: none; }
 /* A contagem dentro da aba: número pequeno, sem competir com o rótulo. */
 .log-cont { font-size: 11px; opacity: .7; font-variant-numeric: tabular-nums; }
 
+/* De qual dinheiro é a linha. Os dois nunca se somam — o valor da venda é do
+   cliente, e o que é seu ali é a taxa —, e sem a marca a tabela vira uma pilha
+   de números que parecem todos seus. */
+.fin-org {
+  font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px;
+  margin-left: 6px; letter-spacing: .02em; white-space: nowrap;
+}
+.fin-org.koonfy { background: var(--brand-bg); color: var(--verde-deep); }
+.fin-org.cliente { background: var(--bg2); color: var(--muted); }
+
 #toast-root { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 9px; z-index: 400; }
 .toast {
   background: var(--card); color: var(--text); border: 1px solid var(--border2);
@@ -3637,7 +3647,9 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .ia-switch.on .ia-knob { transform: translateX(13px); }
 .ia-switch.off .ia-track { display: none; }
 .ia-canais { display: grid; gap: 10px; }
-.ia-canais .chk span { display: flex; flex-direction: column; }
+.ia-canais .chk span, .mod-lista .chk span { display: flex; flex-direction: column; gap: 2px; }
+.mod-lista .chk { align-items: flex-start; }
+.mod-lista .chk em { font-style: normal; font-size: 11.5px; color: var(--muted); }
 .ia-canais .chk em { font-style: normal; font-size: 11.5px; color: var(--muted); }
 
 /* ---- Cadastro em etapas ---- */

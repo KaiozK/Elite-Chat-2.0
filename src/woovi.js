@@ -289,7 +289,8 @@ function applyPayment(charge, broadcast) {
     db.save();
     syncSubscription(acc, 'extra pago no Pix').catch(() => {});
     store.logEvent({ type: 'saas_extra_paid', accountId: acc.id, key: extraKey, qty: extraQty, value: paid, via: 'pix' });
-    data.revenue.push({ ts: Date.now(), accountId: acc.id, planId: acc.billing.planId, amount: paid, kind: 'extra', chargeId: cid });
+    data.revenue.push({ ts: Date.now(), accountId: acc.id, planId: acc.billing.planId, amount: paid, kind: 'extra', chargeId: cid,
+      metodo: require('./saaspix').metodoDeCid(cid, acc) });
     db.save();
     if (broadcast) { broadcast('billing', { accountId: acc.id }); broadcast('channels', { accountId: acc.id }); }
     return { ok: true, kind, accountId: acc.id, key: extraKey, qty: limits.limitOf(acc, extraKey) };
@@ -311,7 +312,11 @@ function applyPayment(charge, broadcast) {
     pagarComissao(acc, paid, kind, broadcast);
   }
 
-  data.revenue.push({ ts: Date.now(), accountId: acc.id, planId, amount: paid, kind, chargeId: cid });
+  // O MÉTODO É GRAVADO NA HORA. Deduzir depois pelo prefixo continua
+  // funcionando (é o mesmo cálculo), mas o registro histórico não muda quando a
+  // conta troca de forma de pagamento — e é o histórico que o painel soma.
+  data.revenue.push({ ts: Date.now(), accountId: acc.id, planId, amount: paid, kind, chargeId: cid,
+    metodo: require('./saaspix').metodoDeCid(cid, acc) });
   db.save();
   store.logEvent({ type: 'woovi_paid', accountId: acc.id, kind, value: paid, correlationID: cid });
   if (broadcast) broadcast('billing', { accountId: acc.id });

@@ -312,7 +312,8 @@ async function buyExtra(acc, key, qty, body, broadcast) {
   acc.billing.extras[key] = (Number(acc.billing.extras[key]) || 0) + n;
   db.get().revenue.push({
     ts: Date.now(), accountId: acc.id, planId: acc.billing.planId,
-    amount: total, kind: 'extra', chargeId: cid
+    amount: total, kind: 'extra', chargeId: cid,
+    metodo: require('./saaspix').metodoDeCid(cid, acc)
   });
   db.save();
   // O extra é RECORRENTE: entra no valor de toda renovação. No cartão isso é
