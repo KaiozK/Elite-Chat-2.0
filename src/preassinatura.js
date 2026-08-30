@@ -124,11 +124,25 @@ function confirmar(cid, valorPago, broadcast) {
 
   const data = db.get();
   const plano = data.plans.find(p => p.id === pre.planId);
-  const acc = db.newAccount({ name: pre.nome, email: pre.email, pass: crypto.randomBytes(24).toString('hex') });
+  // A SENHA PROVISÓRIA É O DOCUMENTO que a pessoa digitou no checkout.
+  //
+  // Ela nascia com bytes aleatórios que ninguém conhecia. Na teoria era mais
+  // seguro; na prática, quem não terminasse o formulário — fechou a aba, caiu
+  // a internet, o filho puxou o cabo — ficava TRANCADO FORA de uma conta que
+  // acabou de pagar, e a única saída era o suporte. Perder o cliente na porta,
+  // depois de ele ter pago, é o pior resultado possível.
+  //
+  // Agora ele entra com o e-mail e o CPF/CNPJ do checkout, e cai direto na
+  // etapa que faltava.
+  //
+  // O QUE ISSO CUSTA, dito sem rodeio: CPF no Brasil não é segredo. Quem
+  // souber o e-mail E o documento da pessoa consegue entrar. Por isso a conta
+  // continua marcada como pendente: quem entra assim vai para o formulário e
+  // define uma senha de verdade — e é isso que fecha a janela. Ver o ramo de
+  // `pendenteCadastro` em /login.
+  const acc = db.newAccount({ name: pre.nome, email: pre.email, pass: pre.documento });
   acc.profile.phone = pre.telefone;
   acc.profile.document = pre.documento;
-  // Nasce SEM senha utilizável: a de verdade é definida no cadastro, e até lá
-  // ninguém entra com um palpite.
   acc.pendenteCadastro = true;
 
   const dias = (plano && plano.periodDays ? plano.periodDays : 30) * 86400000;
@@ -207,10 +221,20 @@ function confirmar(cid, valorPago, broadcast) {
 // Falha de e-mail não pode derrubar nada: o pagamento já entrou, e o cadastro
 // ainda pode ser concluído pelo link que está na aba dela ou guardado no
 // navegador. Por isso todo chamador ignora o erro.
+// O CAMINHO, sem o domínio. Serve a quem já está no site — o navegador
+// completa o resto. É o que o login usa: exigir `baseUrl` configurado ali
+// deixaria a pessoa parada numa mensagem sem link, numa instalação onde o
+// endereço público ainda não foi preenchido.
+function caminhoDeConclusao(pre) {
+  return '/assinar?plano=' + encodeURIComponent(pre.planId) + '&token=' + encodeURIComponent(pre.token);
+}
+
+// O ENDEREÇO INTEIRO, para o e-mail: um link relativo numa caixa de entrada
+// não leva a lugar nenhum.
 function linkDeConclusao(pre) {
   const base = (db.get().platform.baseUrl || '').replace(/\/+$/, '');
   if (!base) return '';
-  return base + '/assinar?plano=' + encodeURIComponent(pre.planId) + '&token=' + encodeURIComponent(pre.token);
+  return base + caminhoDeConclusao(pre);
 }
 
 async function mandarLink(pre) {
@@ -377,5 +401,5 @@ function publico(token) {
 }
 
 module.exports = {
-  linkDeConclusao, mandarLink, pendenteDaConta, reconsultar,
+  linkDeConclusao, caminhoDeConclusao, mandarLink, pendenteDaConta, reconsultar,
   criar, confirmar, concluir, publico, porToken, ehPreAssinatura };

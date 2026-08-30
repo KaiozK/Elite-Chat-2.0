@@ -344,5 +344,26 @@ const BASE = 'http://127.0.0.1:3986';
   const previa = assinar.slice(assinar.indexOf("qs.get('previa')"), assinar.indexOf("qs.get('previa')") + 200);
   ok(!/fetch\(/.test(previa), 'sem nenhuma chamada ao servidor');
 
+  console.log('\n=== E ELA FICA ESCONDIDA ATÉ A HORA ===');
+  // ISTO JÁ QUEBROU, e do jeito mais caro possível: `#confirmado` define
+  // `display:grid` e `.oculto` define `display:none`. Um seletor de id ganha
+  // de um de classe, então a confirmação ficava POR CIMA DO CHECKOUT o tempo
+  // todo — com a classe "oculto" aplicada, e visível assim mesmo. Ninguém
+  // conseguia pagar.
+  //
+  // O HTML parecia certo em qualquer leitura do arquivo; só apareceu abrindo
+  // a página. Esta asserção é o que faz a leitura bastar da próxima vez.
+  ok(/#confirmado\.oculto\{display:none\}/.test(assinar),
+     'a regra que esconde é tão específica quanto a que mostra (#id, não só .classe)');
+
+  // A mesma armadilha para qualquer outro `#id` que também desenhe display:
+  // se um dia aparecer outro, ou ele traz o par `#id.oculto`, ou o teste avisa.
+  const idsComDisplay = [...assinar.matchAll(/#([a-z-]+)\{[^}]*display:/g)].map(m => m[1]);
+  const semGuarda = idsComDisplay.filter(id =>
+    new RegExp('id="' + id + '"[^>]*class="[^"]*oculto').test(assinar) &&
+    !new RegExp('#' + id + '\\.oculto').test(assinar));
+  ok(semGuarda.length === 0,
+     'nenhum elemento escondido por classe é desenhado por id sem o par: ' + (semGuarda.join(', ') || 'nenhum'));
+
   await encerrar(null, falhas);
 })();

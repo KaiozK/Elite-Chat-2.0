@@ -157,6 +157,13 @@ const DEFAULTS = {
     // Verificação em duas etapas do login, ligada pelo admin.
     security: { twoFactor: false },
     landing: { ctaText: '' }, // copy do botão principal da landing (vazio = automático pelos dias de teste)
+    // ---- SUPORTE ----
+    // O WhatsApp que aparece no rodapé do checkout. Configurável porque é o
+    // número que o dono atende, e um número escrito no HTML vira telefone
+    // errado no dia em que ele mudar — no pior lugar possível, que é a tela de
+    // quem está pagando. Vazio = o rodapé não mostra suporte nenhum, e é
+    // melhor assim: link para número que ninguém atende é pior que a ausência.
+    suporte: { whatsapp: '' },
     // ---- PERSONALIZAÇÃO (cores da marca) ----
     // Mesma ideia da logo: o admin muda no painel e vale para o app inteiro e
     // para a landing, sem deploy. Vazio = usa o padrão do CSS, então uma

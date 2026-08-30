@@ -113,12 +113,23 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
                 font:inherit;font-size:14px;cursor:pointer;transition:color .15s,border-color .15s}
 .btn-secundario:hover:not(:disabled){color:var(--texto);border-color:var(--mudo)}
 .btn-secundario:disabled{opacity:.55;cursor:default}
+.suporte{margin:26px 0 0;font-size:13px;color:var(--mudo);text-align:center}
+.suporte a{color:var(--texto);text-decoration:underline;text-underline-offset:3px}
+.suporte a:hover{color:var(--sinal)}
+
 /* ---------------- CONFIRMAÇÃO DO PAGAMENTO ----------------
    Cobre a tela inteira porque o recado é um só, e qualquer outra coisa visível
    convidaria a pessoa a clicar no meio da transição. */
 #confirmado{position:fixed;inset:0;z-index:50;background:var(--tela);
             display:grid;place-content:center;justify-items:center;gap:10px;
             text-align:center;padding:24px;animation:surgir .3s ease both}
+/* ESTA LINHA É O QUE FAZ A TELA SUMIR, e ela precisa do #id.
+   `.oculto{display:none}` sozinho NÃO vencia `#confirmado{display:grid}`: um
+   seletor de id ganha de um de classe, e a confirmação ficava por cima do
+   checkout o tempo todo — com a classe "oculto" aplicada e visível assim
+   mesmo. Ninguém conseguia pagar, e o HTML parecia correto em qualquer leitura
+   do arquivo. Só apareceu abrindo a página. */
+#confirmado.oculto{display:none}
 #confirmado strong{font-size:22px;font-weight:600;letter-spacing:-.01em;margin-top:14px}
 #confirmado span{color:var(--mudo);font-size:14px}
 #confirmado .selo{width:96px;height:96px}
@@ -286,6 +297,14 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
 
   <!-- Quem chega numa página de pagamento de uma loja que não conhece procura,
        no rodapé, quem está por trás da cobrança. -->
+  <!-- SUPORTE. Nasce escondido e só aparece com número configurado: um link
+       para quem não atende é pior do que rodapé sem suporte.
+       Aqui, e não numa página de ajuda, porque é ESTA a tela onde a dúvida
+       custa uma venda — a pessoa está com o dinheiro na mão. -->
+  <p class="suporte oculto" id="suporte">
+    Alguma dúvida? <a id="suporte-link" target="_blank" rel="noopener">Falar com o suporte no WhatsApp</a>
+  </p>
+
   <div class="processa">
     <i aria-hidden="true"></i>
     <span>Pagamento processado por</span>
@@ -316,6 +335,14 @@ html[data-botao="chapado"] .btn{background:var(--btn-base,#1c834a);background-si
 // O BOTÃO BRILHANTE vem do Admin, pela mesma rota pública que a vitrine usa.
 // Falhou a busca, fica o padrão de fábrica que já está na folha de estilo.
 fetch('/api/public/landing').then(function (r) { return r.json(); }).then(function (c) {
+  // O SUPORTE vem da mesma resposta que a página já busca: um segundo pedido
+  // só para um número seria uma ida à rede por um dado que já está aqui.
+  if (c && c.suporte && c.suporte.link) {
+    var elo = document.getElementById('suporte-link');
+    if (elo) elo.href = c.suporte.link;
+    var bloco = document.getElementById('suporte');
+    if (bloco) bloco.classList.remove('oculto');
+  }
   var b = c.brilho || {};
   if (b.gradiente) document.documentElement.style.setProperty('--btn-grad', b.gradiente);
   if (b.base) document.documentElement.style.setProperty('--btn-base', b.base);

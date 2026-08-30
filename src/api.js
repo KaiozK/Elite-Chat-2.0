@@ -432,6 +432,30 @@ module.exports = function (broadcast, clients) {
       // e-mail seria entregar uma conta já paga a um estranho. A caixa de
       // entrada é o que prova que a pessoa é ela mesma.
       const pend = preassinatura.pendenteDaConta(acc.id);
+
+      // A SENHA PROVISÓRIA É O DOCUMENTO do checkout. Quem acertou não precisa
+      // de e-mail nenhum: vai direto para a etapa que faltou, com o pagamento
+      // já reconhecido.
+      //
+      // É o caminho que o cliente tenta sozinho — ele clica em "Entrar",
+      // porque do ponto de vista dele a conta existe: ele pagou. Mandá-lo
+      // esperar um e-mail aqui seria transformar um clique certo numa espera.
+      //
+      // NÃO ABRE SESSÃO. O que ele recebe é o endereço do formulário, não um
+      // token de painel: a conta segue pendente até a senha de verdade existir.
+      if (pend && db.verifyPassword(pass || '', acc.passHash)) {
+        store.logEvent({ type: 'login_pendente_documento', accountId: acc.id });
+        return res.status(409).json({
+          code: 'cadastro_pendente',
+          error: 'Falta concluir o seu cadastro. Estamos te levando para a última etapa.',
+          // O CAMINHO, e não o endereço absoluto: quem está vendo esta
+          // resposta já está no site, e o link inteiro depende de o admin ter
+          // preenchido o endereço público — sem isso a pessoa ficaria parada
+          // numa mensagem sem para onde ir.
+          meta: { concluir: preassinatura.caminhoDeConclusao(pend) }
+        });
+      }
+
       let enviado = false;
       if (pend) {
         const r = await preassinatura.mandarLink(pend);
@@ -632,6 +656,10 @@ module.exports = function (broadcast, clients) {
       base: paleta[0],
       gradiente: 'linear-gradient(' + ((Number(br.angulo) || 45) + 'deg') + ', ' + paradas.join(', ') + ')'
     };
+    // O SUPORTE. Vai para o rodapé do checkout — a tela onde a dúvida custa
+    // uma venda. Sai só o número já normalizado; vazio quer dizer "não mostre
+    // suporte nenhum", que é melhor do que um link para quem não atende.
+    const suporte = ((p.suporte || {}).whatsapp || '').trim();
     const ctaText = (p.landing && p.landing.ctaText || '').trim();
     // Os planos da landing eram escritos à mão no HTML e viviam desencontrados
     // dos que o cliente encontra ao assinar. Aqui saem os MESMOS que o painel
@@ -697,6 +725,12 @@ module.exports = function (broadcast, clients) {
       afiliacao: { primeira: Number(aff.percentFirst) || 0, renovacao: Number(aff.percentRenewal) || 0 },
       brilho,
       ctaText: ctaText || 'Começar agora',
+      // O número já vai pronto para virar link e para ser lido em voz alta —
+      // montar o wa.me na página significaria repetir a regra em cada tela que
+      // mostrar o suporte.
+      suporte: suporte
+        ? { whatsapp: suporte, link: 'https://wa.me/' + suporte.replace(/\D/g, ''), exibir: paises.formatar ? paises.formatar(suporte) : suporte }
+        : null,
       planos, recursos
     });
   });
@@ -4984,7 +5018,8 @@ module.exports = function (broadcast, clients) {
         simplify: (() => { const sp = require('./simplify'); const c = sp.cfg();
           return { clientId: c.clientId ? '••••' + c.clientId.slice(-6) : '', configured: sp.configured(),
                    base: sp.BASE }; })(),
-        billing: data.platform.billing, affiliate: data.platform.affiliate, landing: data.platform.landing },
+        billing: data.platform.billing, affiliate: data.platform.affiliate, landing: data.platform.landing,
+        suporte: data.platform.suporte || { whatsapp: '' } },
       // Credenciais do app da Meta (Tech Provider). Rota já é adminOnly, então
       // o cliente nunca recebe isto: a configuração vive só no Admin SaaS.
       platform: {
@@ -5354,6 +5389,21 @@ module.exports = function (broadcast, clients) {
   router.put('/admin/config', auth, adminOnly, (req, res) => {
     const b = req.body || {};
     const p = db.get().platform;
+    // O WHATSAPP DO SUPORTE, guardado em E.164 — o mesmo formato do resto do
+    // sistema. Guardar o que o admin digitou ("(11) 9 9999-8888") faria o link
+    // wa.me nascer quebrado, e ninguém descobriria até um cliente tentar.
+    // Apagar o campo é uma escolha válida: sem número, o rodapé não promete
+    // atendimento que não existe.
+    if (b.supportWhatsapp !== undefined) {
+      if (!p.suporte) p.suporte = { whatsapp: '' };
+      const cru = String(b.supportWhatsapp || '').trim();
+      if (!cru) p.suporte.whatsapp = '';
+      else {
+        const e164 = paises.paraE164('BR', cru);
+        if (!e164.ok) return res.status(400).json({ error: e164.erro || 'WhatsApp do suporte inválido' });
+        p.suporte.whatsapp = e164.e164;
+      }
+    }
     if (b.wooviAppId !== undefined) p.woovi.appId = String(b.wooviAppId).trim();
     if (b.pixAutomatic !== undefined) p.woovi.pixAutomatic = !!b.pixAutomatic;
     if (b.wooviSandbox !== undefined) p.woovi.sandbox = !!b.wooviSandbox;

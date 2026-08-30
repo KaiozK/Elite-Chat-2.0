@@ -1275,6 +1275,16 @@ async function doLogin(e) {
     state.nsConectada = !!r.nsConectada;
     enterApp();
   } catch (err) {
+    // QUEM PAGOU E NÃO TERMINOU O CADASTRO clica em "Entrar" — do ponto de
+    // vista dele a conta existe, porque ele pagou. Se ele acertou a senha
+    // provisória (o CPF/CNPJ do checkout), o servidor devolve o endereço da
+    // etapa que faltou, e o certo é levá-lo até lá em vez de mostrar um erro
+    // sobre uma coisa que ele não tem como resolver nesta tela.
+    if (err.meta && err.meta.concluir) {
+      $('#login-err').textContent = err.message;
+      location.href = err.meta.concluir;
+      return;
+    }
     $('#login-err').textContent = err.message;
   }
 }
@@ -10122,6 +10132,14 @@ async function paintAdmin() {
             <button class="btn primary no-grow" onclick="admSaveConfig({ctaText:$('#bl-cta').value})">${ico('save', 14)} Salvar copy</button>
           </div>
           <p class="muted" style="font-size:11.5px;margin:8px 0 0">Vazio = <b>“Começar agora”</b>.</p>
+          <!-- SUPORTE. Aparece no rodapé do checkout, que é a tela onde a
+               dúvida custa uma venda. Vazio esconde o link: melhor rodapé sem
+               suporte do que um número que ninguém atende. -->
+          <div class="row" style="margin-top:16px;align-items:flex-end">
+            <label style="flex:2">WhatsApp do suporte<input id="bl-sup" value="${esc((d.config.suporte && d.config.suporte.whatsapp) || '')}" placeholder="(11) 99999-8888"></label>
+            <button class="btn primary no-grow" onclick="admSaveConfig({supportWhatsapp:$('#bl-sup').value})">${ico('save', 14)} Salvar suporte</button>
+          </div>
+          <p class="muted" style="font-size:11.5px;margin:8px 0 0">Vai para o rodapé do checkout. Vazio = <b>sem link de suporte</b>.</p>
         </div>
 
         <div class="card">
