@@ -1943,7 +1943,11 @@ function admAbaDaRota() {
 const views = {
   dashboard: renderDashboard, inbox: renderInbox, contacts: renderContacts,
   funnel: renderFunnel, campaigns: renderCampaigns, templates: renderTemplates, quick: renderQuick,
-  logs: renderLogs, settings: renderSettings, team: renderTeam, flows: renderFlows, links: renderLinks,
+  // SÓ NO ADMIN SaaS. No painel do cliente, `#/logs` digitado na barra caía
+  // numa tela que agora responde 403 — um erro seco onde antes havia conteúdo.
+  // Mandar para o começo é a resposta honesta: aquela tela não é dele.
+  logs: (...a) => (ADM ? renderLogs(...a) : (location.hash = '#/dashboard')),
+  settings: renderSettings, team: renderTeam, flows: renderFlows, links: renderLinks,
   pixels: renderPixels, billing: renderBilling, sms: renderSms,
   afiliacao: renderAfiliacao,
   integrations: renderIntegrations, webhooks: renderIntegrations, // #/webhooks continua funcionando
@@ -5776,20 +5780,47 @@ async function delQuick(id) {
   paintQuick();
 }
 
-// ---------- logs ----------
+// ---------- logs (Admin SaaS) ----------
+// A TELA É DO ADMIN, e mostra o SaaS INTEIRO. Ela vivia no painel do cliente,
+// onde só produzia ruído: assinatura recusada, mensagem sem dono, erro de
+// automação são coisas que quem contrata o Koonfy não resolve — e cada linha
+// vermelha ali virava um chamado no suporte.
+//
+// FALHAS SEPARADAS DO RESTO. Num log corrido de 200 eventos, os poucos que
+// importam somem no meio dos que deram certo. As abas existem para a primeira
+// pergunta ser respondida sem rolagem: "está quebrando alguma coisa?"
+let LOG_NIVEL = 'erro';
+
 async function renderLogs() {
+  const abas = [
+    ['erro', 'Falhas'],
+    ['ok',   'Tudo certo'],
+    ['',     'Tudo']
+  ];
   $('#view').innerHTML = `
     <div class="page">
       <div class="page-head row">
-        <div style="flex:1"><h1>Webhook / Logs</h1><p>Últimos eventos recebidos da Meta (útil para depurar a integração)</p></div>
+        <div style="flex:1"><h1>Webhook &amp; Logs</h1>
+          <p>Eventos de toda a plataforma — Meta, gateways e automações de todas as contas</p></div>
         <button class="btn no-grow" onclick="renderLogs()">${ico('refresh', 14)} Atualizar</button>
+      </div>
+      <div class="row" id="log-abas" style="gap:8px;margin-bottom:14px">
+        ${abas.map(([v, r]) => `<button class="btn small no-grow ${LOG_NIVEL === v ? 'primary' : ''}"
+          onclick="LOG_NIVEL='${v}';renderLogs()">${esc(r)}<span class="log-cont" id="cont-${v || 'tudo'}"></span></button>`).join('')}
       </div>
       <div id="log-list"><p class="muted">Carregando...</p></div>
     </div>`;
   try {
-    const { events } = await api('/webhook-log');
+    const { events, contagem } = await api('/webhook-log' + (LOG_NIVEL ? '?nivel=' + LOG_NIVEL : ''));
+    // As contagens são do TOTAL, não da fatia: são elas que dizem se vale
+    // abrir a aba de falhas.
+    const põe = (id, n) => { const el = $('#cont-' + id); if (el) el.textContent = ' ' + n; };
+    põe('erro', contagem.erro); põe('ok', contagem.ok); põe('tudo', contagem.total);
+
     $('#log-list').innerHTML = events.length ? events.map(logLinha).join('')
-      : '<div class="card"><p class="muted">Nenhum evento ainda. Configure a Callback URL no painel da Meta e clique em "Verificar e salvar", a tentativa aparecerá aqui.</p></div>';
+      : `<div class="card"><p class="muted">${LOG_NIVEL === 'erro'
+          ? 'Nenhuma falha registrada. É o resultado que se quer nesta aba.'
+          : 'Nenhum evento ainda. Configure a Callback URL no painel da Meta e clique em "Verificar e salvar", a tentativa aparecerá aqui.'}</p></div>`;
   } catch (e) { $('#log-list').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
 }
 
@@ -5888,11 +5919,20 @@ function logLinha(e) {
     : 'A Meta tentou verificar, mas o Verify Token não confere com o deste servidor.';
   if (e.error) detalhe += ' Erro: ' + e.error;
 
-  const ruim = ruins.includes(e.type) || (e.type === 'verify_attempt' && e.ok === false);
+  // O NÍVEL VEM DO SERVIDOR agora (`e.nivel`), que é quem conta os erros. A
+  // lista local fica como rede de segurança para evento antigo, gravado antes.
+  const ruim = e.nivel ? e.nivel === 'erro'
+    : (ruins.includes(e.type) || (e.type === 'verify_attempt' && e.ok === false));
+  // DE QUEM É O EVENTO. Sem isto, uma tela de todo o SaaS mostra vinte falhas
+  // sem dizer de qual cliente — e a primeira coisa a fazer com uma falha é
+  // saber quem ela atingiu.
+  const conta = e.conta ? `<span class="log-conta">${esc(e.conta)}</span>` : '';
+  const codigo = Number(e.status) ? `<span class="log-cod">HTTP ${Number(e.status)}</span>` : '';
   return `<div class="log-item ${ruim ? 'ruim' : ''}">
     <div class="log-top">
       <span class="log-ic">${ico(icones[e.type] || 'info', 15)}</span>
       <b>${esc(titulo)}</b>
+      ${conta}${codigo}
       <span class="muted log-quando">${fmtDataHora(e.ts)}</span>
     </div>
     <p class="log-desc">${esc(detalhe)}</p>

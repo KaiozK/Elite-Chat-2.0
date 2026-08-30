@@ -4434,12 +4434,64 @@ module.exports = function (broadcast, clients) {
 
   // ============ LOG DO WEBHOOK ============
 
-  router.get('/webhook-log', auth, (req, res) => {
-    let events = db.get().webhookLog;
-    if (req.session.kind !== 'admin') {
-      events = events.filter(e => e.accountId === req.acc.id);
-    }
-    res.json({ events: events.slice(0, 100) });
+  // O QUE É FALHA. A classificação morava na TELA, numa lista de tipos dentro
+  // do `logLinha` — então o servidor não sabia contar erros, e qualquer
+  // contagem teria de repetir a mesma lista noutro lugar para divergir depois.
+  //
+  // Não há "código HTTP" para a maioria destes eventos: o /webhook responde 200
+  // à Meta mesmo quando o processamento falha depois (é o que a Meta exige para
+  // não reenviar em laço). O que separa um do outro é o DESFECHO, e é isso que
+  // fica registrado aqui. Onde existe status de verdade — chamada nossa a um
+  // gateway, por exemplo — ele vem junto no campo `status`.
+  const TIPOS_RUINS = new Set([
+    'signature_invalid', 'process_error', 'unrouted', 'flow_error', 'ia_error',
+    'woovi_webhook_error', 'woovi_unmatched', 'survey_error', 'subscribe_waba_falhou',
+    'business_id_falhou', 'register_pagamentos_falhou', 'opt_out_msg_error',
+    'comissao_erro', 'comissao_retida', 'preassinatura_sem_dono',
+    'preassinatura_reconsulta_erro'
+  ]);
+  function nivelDoEvento(e) {
+    if (e.ok === false) return 'erro';
+    if (e.error) return 'erro';
+    if (Number(e.status) >= 400) return 'erro';
+    if (TIPOS_RUINS.has(e.type)) return 'erro';
+    return 'ok';
+  }
+
+  // DO ADMIN, E DE TODO O SaaS.
+  //
+  // Esta tela existia no painel do CLIENTE, e não é dele: mostra assinatura
+  // recusada, mensagem sem dono, erro de automação — depuração de integração,
+  // que só quem administra a plataforma resolve. Para o cliente era ruído com
+  // cara de problema, e todo evento vermelho ali virava um chamado no suporte.
+  //
+  // `adminOnly` (e não só tirar o link do menu): esconder não é proteger.
+  router.get('/webhook-log', auth, adminOnly, (req, res) => {
+    const contas = {};
+    for (const a of db.get().accounts) contas[a.id] = a.name || a.email;
+
+    const todos = db.get().webhookLog.map(e => ({
+      ...e,
+      nivel: nivelDoEvento(e),
+      conta: e.accountId ? (contas[e.accountId] || e.accountId) : ''
+    }));
+
+    const nivel = String(req.query.nivel || '').toLowerCase();
+    const conta = String(req.query.conta || '');
+    let events = todos;
+    if (nivel === 'erro' || nivel === 'ok') events = events.filter(e => e.nivel === nivel);
+    if (conta) events = events.filter(e => e.accountId === conta);
+
+    res.json({
+      events: events.slice(0, 200),
+      // As contagens são do TOTAL, e não da fatia filtrada: são elas que dizem
+      // se vale a pena abrir a aba de erros.
+      contagem: {
+        total: todos.length,
+        erro: todos.filter(e => e.nivel === 'erro').length,
+        ok: todos.filter(e => e.nivel === 'ok').length
+      }
+    });
   });
 
   // ============ ASSINATURA & CARTEIRA (SaaS via Woovi — Pix / Pix Automático) ============
