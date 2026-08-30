@@ -1956,9 +1956,67 @@ module.exports = function (broadcast, clients) {
     res.json({ calling: r.calling || null });
   }));
 
+  // LIGAR AS CHAMADAS. A Meta recusa isto por vários motivos e devolve sempre a
+  // MESMA frase: "Calling APIs cannot be enabled for this phone number" (erro
+  // 2593145). A tela repetia essa frase ao cliente, que ficava sem saber o que
+  // fazer — e nós também, porque a frase não diz nada.
+  //
+  // Aqui a resposta passa a ser útil de duas formas: o que dá para conferir
+  // ANTES é conferido, e o que só a Meta sabe vira uma lista do que checar.
   router.put('/settings/calling', auth, h(async (req, res) => {
-    const r = await wa.setCallingSettings(req.wctx, !!(req.body || {}).enabled);
-    res.json({ ok: true, result: r });
+    const ligar = !!(req.body || {}).enabled;
+    const w = req.wctx.wa;
+
+    // O PRÉ-REQUISITO QUE DÁ PARA VER DAQUI: número registrado na Cloud API.
+    // Um número compartilhado com o app mas não registrado aparece "Pendente"
+    // no WhatsApp Manager, e a Meta recusa chamadas nele — com a mesma frase
+    // opaca. Perguntar antes evita mandar o cliente atrás do motivo errado.
+    if (ligar) {
+      let situacao = '';
+      try {
+        const st = await meta.phoneStatus(w.accessToken, w.phoneNumberId);
+        situacao = String(st.status || '');
+      } catch { /* sem status, seguimos e deixamos a Meta responder */ }
+      if (situacao && !/CONNECTED/i.test(situacao)) {
+        return res.status(409).json({
+          error: 'O número está como "' + situacao + '" na Meta e ainda não envia, recebe nem ' +
+                 'aceita ligações. Registre-o na Cloud API primeiro (botão "Registrar número na ' +
+                 'Cloud API", aqui em Conexão & API) e tente de novo.',
+          code: 'nao_registrado', status: situacao
+        });
+      }
+    }
+
+    try {
+      const r = await wa.setCallingSettings(req.wctx, ligar);
+      res.json({ ok: true, result: r });
+    } catch (e) {
+      const cod = Number((e.meta && (e.meta.code || e.meta.error_subcode)) || 0);
+      if (cod !== 2593145 && !/calling.*cannot be enabled/i.test(String(e.message || ''))) throw e;
+
+      // O QUE A META NÃO CONTA. Ela recusa e não diz por quê; estes são os
+      // motivos conhecidos, na ordem em que costumam ser a causa. A mesma
+      // recusa acontece no painel da própria Meta — o que descarta ser coisa
+      // nossa, e é a primeira coisa que o cliente precisa saber para não
+      // gastar a tarde procurando defeito aqui.
+      store.logEvent({ type: 'calling_recusado', accountId: req.acc.id,
+        phoneNumberId: w.phoneNumberId, error: e.message, status: 400 });
+      // DENTRO DE `meta`: é o único campo que o ajudante do painel repassa ao
+      // erro (`err.meta = data.meta`). Fora dele, a lista chegaria ao navegador
+      // e se perderia antes de virar tela.
+      return res.status(409).json({
+        code: 'calling_indisponivel',
+        error: 'A Meta recusou habilitar ligações neste número.',
+        meta: { code: 2593145, motivos: [
+          'A API de Chamadas ainda não está liberada para esta conta ou para este país — ela é de disponibilidade limitada, e a liberação é da Meta.',
+          'A verificação do seu negócio (Business Verification) no Gerenciador da Meta pode não estar concluída.',
+          'O nome de exibição do número precisa estar aprovado.',
+          'O número precisa estar registrado e conectado na Cloud API.'
+        ],
+        nota: 'A mesma recusa acontece no painel da própria Meta, em Configurações de ligação — ' +
+              'não é uma limitação do Koonfy. Quando a Meta liberar para o seu número, este botão funciona.' }
+      });
+    }
   }));
 
   // ============ REGISTRO / VERIFICAÇÃO DO NÚMERO ============

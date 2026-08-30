@@ -6771,7 +6771,21 @@ async function toggleCalling(enabled) {
     toast(enabled ? 'Ligações habilitadas!' : 'Ligações desabilitadas');
   } catch (e) {
     const tg = $('#cl-toggle'); if (tg) tg.checked = !enabled; // reverte
-    if (st) st.textContent = 'A Meta recusou: ' + e.message;
+    // A META RECUSA E NÃO DIZ POR QUÊ — sempre a mesma frase, para causas
+    // diferentes. Repeti-la ao cliente deixava a tela sem saída: ele lia
+    // "cannot be enabled" e não tinha o que fazer com aquilo.
+    //
+    // Quando o servidor manda os motivos conhecidos, eles aparecem aqui em
+    // lista. É o mais honesto possível: não sabemos qual dos quatro é, e dizer
+    // isso com as quatro portas é melhor do que uma frase fechada.
+    const m = e.meta || {};
+    if (st) {
+      st.innerHTML = (m.motivos || []).length
+        ? `<b>${esc(e.message)}</b> Motivos possíveis, do mais comum ao menos:
+           <ul style="margin:6px 0 0;padding-left:18px">${m.motivos.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+           ${m.nota ? `<p class="muted" style="margin:8px 0 0;font-size:12px">${esc(m.nota)}</p>` : ''}`
+        : esc(e.message);
+    }
     toast(e.message, 'error');
   }
 }
