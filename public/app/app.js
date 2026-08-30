@@ -1390,7 +1390,7 @@ async function enterApp() {
   refreshWallet();         // saldo no cabeçalho
   initSearch();
   await loadChannels();    // canais (conexões WhatsApp) antes de qualquer listagem
-  try { const st = await api('/settings'); state.settings = st.settings; state.wa = st.wa; } catch {}
+  try { const st = await api('/settings'); state.settings = st.settings; state.wa = st.wa; pintarSuporte(st.suporte); } catch {}
   connectSSE();
   refreshBadge();
   clearInterval(pollTimer);
@@ -1676,6 +1676,15 @@ async function removeChannel(id) {
 // toda chamada e o backend devolve só o que é daquele número.
 let CH_LIMIT = null;
 
+// O SUPORTE NA BARRA. Só aparece com número configurado no Admin: link para
+// quem não atende é pior do que não ter link.
+function pintarSuporte(sup) {
+  const a = document.getElementById('nav-suporte');
+  if (!a) return;
+  if (sup && sup.link) { a.href = sup.link; a.classList.remove('hidden'); }
+  else a.classList.add('hidden');
+}
+
 async function loadChannels() {
   try {
     const d = await api('/channels');
@@ -1772,7 +1781,7 @@ async function switchChannel(id) {
   closeChannelMenu();
   state.currentWaId = null;          // a conversa aberta é de outro número
   await loadChannels();
-  try { const st = await api('/settings'); state.wa = st.wa; } catch {}
+  try { const st = await api('/settings'); state.wa = st.wa; pintarSuporte(st.suporte); } catch {}
   refreshBadge();
   route();                            // repinta a tela atual já filtrada
   toast(`Canal: ${chName(id)}`);
@@ -10951,11 +10960,14 @@ async function admKycAbrir(id) {
     </div>`}
 
     <div class="fb-sub" style="margin-top:16px">As fotos</div>
-    ${f.fotos && (f.fotos.documento || f.fotos.selfie) ? `
+    ${f.fotos && Object.values(f.fotos).some(Boolean) ? `
       <div class="row" style="gap:12px;align-items:flex-start">
-        ${['documento', 'selfie'].map(k => `<div style="flex:1;min-width:0">
+        ${/* AS FOTOS QUE VIERAM, e não duas fixas: uma conta de CNPJ manda
+              três, e a lista fixa escondia justamente o cartão da empresa —
+              de quem precisa conferi-lo. */
+          Object.keys(f.fotos).map(k => `<div style="flex:1;min-width:0">
           <span class="muted" style="font-size:11.5px;display:block;margin-bottom:5px">
-            ${k === 'documento' ? 'Documento' : 'Rosto com o documento'}</span>
+            ${k === 'documento' ? 'Documento' : k === 'selfie' ? 'Rosto com o documento' : 'Cartão CNPJ ou CCMEI'}</span>
           ${f.fotos[k]
             ? `<img class="kyc-foto" src="data:${esc(f.fotos[k].mime)};base64,${f.fotos[k].data}" alt="">`
             : '<p class="muted" style="font-size:12.5px">não enviada</p>'}
@@ -16522,8 +16534,9 @@ async function epRenderKyc(d) {
 
     <div class="card" style="max-width:720px">
       <h2>${ico('camera') || ico('image')} Envie as fotos</h2>
-      <p class="hint" style="margin-top:0">As duas são necessárias: a primeira mostra o documento, a segunda
-      liga o documento a você. Sozinha, a foto do documento só prova que você tem a foto de um documento.</p>
+      <p class="hint" style="margin-top:0">${k.pecas.length > 2
+        ? 'As três são necessárias: as duas primeiras ligam o documento a você; a terceira prova que a empresa existe e que é você quem responde por ela. Com CNPJ o dinheiro entra na conta de uma empresa, e o seu documento sozinho não diz nada sobre ela.'
+        : 'As duas são necessárias: a primeira mostra o documento, a segunda liga o documento a você. Sozinha, a foto do documento só prova que você tem a foto de um documento.'}</p>
       <div class="row" style="align-items:stretch;gap:12px">
         ${k.pecas.map(p => `
           <div style="flex:1;min-width:0">

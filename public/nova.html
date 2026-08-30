@@ -656,6 +656,11 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 .rodape h4{margin:0 0 var(--e16);font-size:var(--t-rotulo);letter-spacing:var(--ls-rotulo);text-transform:uppercase;font-weight:500;color:var(--mudo)}
 .rodape a{display:block;font-size:var(--t-corpo-sm);color:var(--mudo);padding:5px 0}
 .rodape a:hover{color:var(--sinal)}
+/* .rodape a{display:block} VENCE .oculto: os dois são classe, mas o
+   seletor com dois pedaços tem mais peso. Sem esta linha, o link do suporte
+   aparecia mesmo sem número configurado — vazio, levando a lugar nenhum. */
+.rodape a.oculto{display:none}
+.oculto{display:none}
 
 /* ---------- seletor de tema ---------- */
 .tema{display:inline-flex;border:1px solid var(--fio);border-radius:var(--r-botao);overflow:hidden}
@@ -1179,7 +1184,10 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
       <a href="/app/">Agente de IA</a><a href="/app/">Campanhas</a><a href="/app/">Pagamentos</a><a href="/app/">Rastreamento</a>
     </div>
     <div>
-      <h4>Legal</h4>
+      <h4>Ajuda</h4>
+      <!-- SUPORTE. Nasce escondido e só aparece com número configurado no Admin:
+           um link para quem não atende é pior do que rodapé sem suporte. -->
+      <a id="rodape-suporte" class="oculto" target="_blank" rel="noopener">Falar no WhatsApp</a>
       <a href="/termos">Termos de uso</a><a href="/privacidade">Privacidade</a>
     </div>
   </div>
@@ -1216,6 +1224,18 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 // O MESMO NÚMERO ESTÁ EM public/app/app.js, e precisa continuar igual: o
 // cookie é escrito aqui e relido lá. Se o app expirar antes, ele apaga uma
 // marca que esta página ainda considera válida.
+/* O SUPORTE DO RODAPÉ. Vem da mesma rota pública que a página já usa para os
+   planos e a comissão — um segundo pedido só para um número seria uma ida à
+   rede por um dado que já vem junto. Sem número configurado, o link nem
+   aparece. */
+fetch('/api/public/landing').then(function (r) { return r.json(); }).then(function (c) {
+  if (!c || !c.suporte || !c.suporte.link) return;
+  var a = document.getElementById('rodape-suporte');
+  if (!a) return;
+  a.href = c.suporte.link;
+  a.classList.remove('oculto');
+}).catch(function () {});
+
 var REF_DIAS = 30;
 var refCode = '';
 try {

@@ -41,13 +41,41 @@ const ESTADOS = ['nao_enviado', 'em_analise', 'aprovado', 'reprovado'];
 const MAX_BYTES = 1_600_000;
 const MIMES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
-// As duas fotos, e por que cada uma existe.
+// AS FOTOS, E POR QUE CADA UMA EXISTE.
+//
+// As duas primeiras valem sempre: quem responde por uma empresa é uma PESSOA, e
+// é ela que assina. A terceira só aparece para CNPJ.
 const PECAS = [
   { id: 'documento', nome: 'Documento',
     ajuda: 'RG, CNH ou outro documento oficial com foto. A frente, inteira e legível.' },
   { id: 'selfie', nome: 'Rosto com o documento',
     ajuda: 'Uma foto sua segurando o documento ao lado do rosto, com os dois visíveis.' }
 ];
+
+// O DOCUMENTO DA EMPRESA. Só para CNPJ, e obrigatório quando é o caso.
+//
+// Faltava, e a falta era grave: com CNPJ o dinheiro entra na conta de uma
+// EMPRESA, e o documento da pessoa não prova que aquele CNPJ existe, que está
+// ativo, nem que é ela quem responde por ele. Aprovava-se uma empresa olhando a
+// CNH de alguém.
+//
+// Cartão CNPJ (Comprovante de Inscrição e de Situação Cadastral) ou CCMEI, no
+// caso do MEI: são os dois documentos que a Receita emite na hora, de graça, e
+// que trazem CNPJ, razão social, situação cadastral e o nome do responsável —
+// exatamente o que falta conferir.
+const PECA_EMPRESA = {
+  id: 'empresa', nome: 'Cartão CNPJ ou CCMEI',
+  ajuda: 'Cartão CNPJ (Comprovante de Inscrição e de Situação Cadastral) ou, se for MEI, o CCMEI. ' +
+         'Emissão gratuita e na hora no site da Receita Federal. O nome no documento precisa bater com o do responsável.'
+};
+
+// QUAIS FOTOS ESTE CADASTRO PRECISA. A resposta depende do documento, e é ela
+// que manda tanto na validação quanto na tela — em vez de a tela pedir uma
+// coisa e o servidor exigir outra.
+function pecasPara(doc) {
+  const d = String(doc || '').replace(/\D/g, '');
+  return d.length === 14 ? [...PECAS, PECA_EMPRESA] : PECAS;
+}
 
 function ensure(acc) {
   const ep = require('./pagamentos').ensure(acc);
@@ -136,7 +164,7 @@ function validarDados(d) {
 }
 
 function validarFoto(peca, f) {
-  const nome = (PECAS.find(p => p.id === peca) || {}).nome || peca;
+  const nome = ([...PECAS, PECA_EMPRESA].find(p => p.id === peca) || {}).nome || peca;
   if (!f || typeof f !== 'object') return `Envie a foto: ${nome}`;
   const mime = String(f.mime || '').toLowerCase().split(';')[0].trim();
   if (!MIMES[mime]) return `${nome}: use JPG, PNG ou WEBP`;
@@ -156,14 +184,18 @@ function enviar(acc, body, broadcast) {
 
   const d = body.dados || {};
   const errs = validarDados(d);
-  for (const p of PECAS) {
+  // AS PEÇAS SAEM DO DOCUMENTO INFORMADO. Com CNPJ, o cartão da empresa é
+  // obrigatório aqui — e não só sugerido na tela, que é o lugar onde uma
+  // exigência se contorna.
+  const exigidas = pecasPara(d.documento);
+  for (const p of exigidas) {
     const e = validarFoto(p.id, (body.fotos || {})[p.id]);
     if (e) errs.push(e);
   }
   if (errs.length) throw erro(errs.join(' · '));
 
   const pecas = {};
-  for (const p of PECAS) {
+  for (const p of exigidas) {
     const f = body.fotos[p.id];
     const mime = String(f.mime).toLowerCase().split(';')[0].trim();
     pecas[p.id] = {
@@ -321,7 +353,10 @@ function visaoCliente(acc) {
     revisadoEm: k.revisadoEm,
     motivo: k.motivo,
     tentativas: k.tentativas,
-    pecas: PECAS,
+    // A LISTA É A DO DOCUMENTO DA CONTA. A tela desenha o que vier daqui, então
+    // pedir o cartão do CNPJ é uma decisão do servidor — não uma gentileza da
+    // interface.
+    pecas: pecasPara((preenchido(acc) || {}).documento),
     dados: preenchido(acc)
   };
 }
@@ -361,7 +396,9 @@ function fichaAdmin(acc) {
     // "Verificação · [object Object]".
     contaNome: acc.name,
     dados: k.dados || preenchido(acc),
-    fotos: Object.fromEntries(PECAS.map(p => [p.id, a[p.id]
+    // AS FOTOS DAQUELE ENVIO. Uma conta de CNPJ tem três; usar a lista fixa
+    // esconderia o cartão da empresa justamente de quem precisa conferi-lo.
+    fotos: Object.fromEntries(pecasPara((k.dados || preenchido(acc) || {}).documento).map(p => [p.id, a[p.id]
       ? { mime: a[p.id].mime, data: a[p.id].data, bytes: a[p.id].bytes, enviadoEm: a[p.id].enviadoEm }
       : null])),
     // O CONTEXTO DA CONTA, junto. Decidir olhando só a foto é decidir com
@@ -402,7 +439,7 @@ function fila(filtro) {
 }
 
 module.exports = {
-  ESTADOS, PECAS, MAX_BYTES, MIMES,
+  ESTADOS, PECAS, PECA_EMPRESA, pecasPara, MAX_BYTES, MIMES,
   ensure, vazio, preenchido, enviar, revisar, reabrir, modo,
   podeReceber, exigido, visaoCliente, linhaAdmin, fichaAdmin, fila,
   arquivos, apagarArquivos, validarDados, validarFoto

@@ -258,6 +258,17 @@ h3, h4 { font-weight: 500; letter-spacing: -.01em; }
 }
 .nav-item.active .badge { background: var(--menu-tinta); color: var(--menu-ativo); }
 .sidebar-foot { padding: 12px 8px 4px; border-top: 1px solid var(--border); }
+/* SUPORTE no pé da barra. Mesmo desenho dos itens do menu — é um link de
+   navegação como os outros —, mas discreto: não é uma tela do produto, é a
+   saída para quando o produto não resolve. Dar a ele o mesmo peso das
+   funcionalidades convidaria a clicar antes de tentar. */
+.nav-suporte {
+  display: flex; align-items: center; gap: 11px; padding: 8.5px 13px; margin-bottom: 8px;
+  border-radius: 10px; color: var(--faint); text-decoration: none;
+  font-size: 12.5px; font-weight: 500; transition: background .15s, color .15s;
+}
+.nav-suporte svg { width: 16px; height: 16px; flex-shrink: 0; }
+.nav-suporte:hover { background: var(--sidebar-hover); color: var(--sidebar-text); text-decoration: none; }
 .version { font-size: 10.5px; color: var(--faint); font-weight: 600; }
 
 .shell { flex: 1; min-width: 0; display: flex; flex-direction: column; }

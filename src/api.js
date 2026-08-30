@@ -1684,6 +1684,13 @@ module.exports = function (broadcast, clients) {
       timezone: req.acc.timezone || db.get().platform.timezone || datas.PADRAO,
       fusos: datas.FUSOS,
       kind: req.session.kind,
+      // O SUPORTE, para o pé da barra lateral. Sai daqui — que o app já chama ao
+      // abrir — e não de um pedido novo só para um número. Vazio quer dizer "não
+      // mostre link nenhum", que é melhor do que um link para quem não atende.
+      suporte: (() => {
+        const n = ((db.get().platform.suporte || {}).whatsapp || '').trim();
+        return n ? { whatsapp: n, link: 'https://wa.me/' + n.replace(/\D/g, '') } : null;
+      })(),
       webhookPath: '/webhook'
     };
     // A configuração da plataforma (app da Meta, webhook, Meta Ads) e a conexão
