@@ -459,6 +459,7 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
 
   function verPix(c) {
     mostrar('pix');
+    prepararSom();
     if (c.qrCodeImage) $('pix-qr').src = c.qrCodeImage; else $('pix-qr').style.display = 'none';
     $('pix-codigo').textContent = c.brCode || '';
     aguardar();
@@ -519,6 +520,45 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
      A espera é curta de propósito. Ela existe para o visto ser LIDO, não para
      encher tempo; passar disso vira lentidão fabricada logo depois de a pessoa
      ter pagado. Quem pediu menos movimento vai direto. */
+  /* ---------------- O SOM DA CONFIRMAÇÃO ----------------
+     Ele toca NO TRAÇO do visto, não quando a tela aparece: som e desenho
+     acontecendo juntos são um acontecimento só; separados por meio segundo,
+     viram duas interrupções.
+
+     E a hora é LIDA do CSS, não copiada dele: o atraso vem do
+     `animation-delay` computado do próprio traço. Se algum dia esse tempo
+     mudar, o som acompanha sozinho — dois números iguais escritos em lugares
+     diferentes são sincronia que dura até a próxima edição.
+
+     Tentei antes prender o som ao evento `animationstart`, que seria mais
+     bonito. Medido na tela, ele NÃO dispara quando o elemento sai de
+     `display:none` — a animação roda (o traço aparece) e o evento nunca
+     chega. Preso a ele, o som simplesmente não tocaria.
+
+     O ARQUIVO É BAIXADO quando o Pix aparece, e não no carregamento da
+     página: nesse momento a confirmação passa a ser provável, e há a espera
+     do pagamento inteira para ele chegar. Quem só olhou o checkout e saiu não
+     paga o download.
+
+     PODE SER RECUSADO, e tudo bem. O navegador só libera áudio depois de
+     alguma interação; quem voltou por um link e ficou parado esperando o
+     webhook não interagiu com nada. A confirmação é visual — o som é reforço,
+     e reforço que falha não pode derrubar a tela nem virar erro no console. */
+  var sino = null;
+  function prepararSom() {
+    if (sino) return;
+    try { sino = new Audio('/assets/sons/confirmado.mp3'); sino.preload = 'auto'; sino.volume = 0.55; }
+    catch (e) { sino = null; }
+  }
+  function tocarSino() {
+    if (!sino) return;
+    try {
+      sino.currentTime = 0;
+      var pr = sino.play();
+      if (pr && pr.catch) pr.catch(function () {});
+    } catch (e) {}
+  }
+
   var passou = false;
   function irParaCadastro() {
     if (passou) return;
@@ -527,7 +567,15 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
     var quieto = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var tela = $('confirmado');
     if (!tela) { mostrar('conta'); return; }
+    prepararSom();
     tela.classList.remove('oculto');
+    var visto = tela.querySelector('.visto');
+    // Sem animação (movimento reduzido) o atraso lido é zero, e o som cai junto
+    // com o visto, que já aparece pronto. É o mesmo instante nos dois casos.
+    var atraso = 0;
+    try { atraso = (parseFloat(getComputedStyle(visto).animationDelay) || 0) * 1000; }
+    catch (e) {}
+    if (atraso > 0) setTimeout(tocarSino, atraso); else tocarSino();
     setTimeout(function () {
       tela.classList.add('oculto');
       mostrar('conta');

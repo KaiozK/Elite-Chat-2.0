@@ -25,13 +25,29 @@ let falhas = 0;
 const ok = (c, m) => { console.log((c ? '  OK   ' : '  FALHA') + ' ' + m); if (!c) falhas++; };
 const encerrar = require('./_fim');
 
-const landing = fs.readFileSync(R + 'public/index.html', 'utf8');
+// QUAL LANDING? Esta linha vale mais do que parece. O teste antes lia
+// `public/index.html` — e a vitrine no ar é `public/nova.html` desde a troca
+// (ver LANDING_FILE em server.js). O teste passava verde enquanto o link do
+// afiliado morria na primeira tela: a captura do `?ref=` estava toda na página
+// que ninguém mais vê.
+//
+// Agora o arquivo sai do PRÓPRIO servidor. Trocar a vitrine outra vez sem levar
+// a indicação junto quebra este arquivo, que é exatamente o aviso que faltou.
+const servidor = fs.readFileSync(R + 'server.js', 'utf8');
+const mLanding = servidor.match(/const LANDING_FILE = path\.join\(__dirname, 'public', '([^']+)'\)/);
+const ARQ_LANDING = mLanding ? mLanding[1] : 'index.html';
+const landing = fs.readFileSync(R + 'public/' + ARQ_LANDING, 'utf8');
+const landingAntiga = fs.readFileSync(R + 'public/index.html', 'utf8');
 const app = fs.readFileSync(R + 'public/app/app.js', 'utf8');
 const api = fs.readFileSync(R + 'src/api.js', 'utf8');
 const notif = fs.readFileSync(R + 'public/app/notifications.js', 'utf8');
 
 (async () => {
-  console.log('=== 1. O link do afiliado aponta para a landing ===');
+  console.log('=== 0. O teste olha a vitrine QUE ESTÁ NO AR ===');
+  ok(!!mLanding, 'o servidor diz qual arquivo é a vitrine: ' + ARQ_LANDING);
+  ok(/id="planos"|href="\/assinar/.test(landing), 'e ela é uma página de venda de verdade');
+
+  console.log('\n=== 1. O link do afiliado aponta para a landing ===');
   ok(/const refLink = `\$\{API\.webOrigin\}\/\?ref=\$\{a\.code\}`;/.test(app),
      'a tela de Afiliação monta o link para a raiz do site');
   ok(!/webOrigin\}\/app\/\?ref=/.test(app), 'e não mais para a tela de entrada do app');
@@ -60,9 +76,20 @@ const notif = fs.readFileSync(R + 'public/app/notifications.js', 'utf8');
   // A segunda ponte. Cookie bloqueado é o caso de aba anônima — e quem clica em
   // link de indicação está muito frequentemente numa.
   ok(/function comRef\(url\)/.test(landing), 'existe quem monte a URL com o código');
-  ok(/return comRef\('\/app'\);/.test(landing) && /return comRef\('\/app\?novo=1'\);/.test(landing),
+
+  // A COLAGEM ACONTECE NO CLIQUE, em captura. A grade de planos é montada
+  // depois, por fetch: um laço no carregamento deixaria justamente o botão
+  // "Assinar" de cada cartão — o que leva ao checkout — sem o código.
+  ok(/addEventListener\('click'[\s\S]{0,400}comRef\(/.test(landing),
+     'e ela é aplicada no clique, alcançando também o que foi montado depois');
+  ok(/\}, true\);/.test(landing), 'em captura, antes de qualquer handler da página');
+  ok(/\^\\\/\(app\|assinar\)/.test(landing),
+     'só nos destinos que levam ao cadastro — âncora e link externo ficam limpos');
+  ok(/\[\?&\]ref=/.test(landing), 'e sem grudar o código duas vezes');
+
+  ok(/return comRef\('\/app'\);/.test(landingAntiga) && /return comRef\('\/app\?novo=1'\);/.test(landingAntiga),
      'e os DOIS destinos passam por ela — entrar e criar conta');
-  ok(!/return '\/app';/.test(landing) && !/return '\/app\?novo=1';/.test(landing),
+  ok(!/return '\/app';/.test(landingAntiga) && !/return '\/app\?novo=1';/.test(landingAntiga),
      'nenhum botão escapou com o destino cru');
   ok(/url\.indexOf\('\?'\) >= 0 \? '&' : '\?'/.test(landing),
      'juntando com & quando a URL já tem query — /app?novo=1 é exatamente esse caso');

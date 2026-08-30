@@ -1186,6 +1186,72 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 </footer>
 
 <script>
+/* ---------------- INDICAÇÃO DE AFILIADO ----------------
+   O link do afiliado é koonfy.com/?ref=CODIGO, e ele cai AQUI: esta é a
+   vitrine que está no ar (ver LANDING_FILE no server.js). O código de captura
+   existia só na landing antiga, que ninguém mais vê — o clique chegava, o
+   código morria na primeira tela, e o cadastro acontecia sem dono. Era por
+   isso que a comissão não saía.
+
+   São duas pontes até o cadastro, de propósito:
+
+     1. O COOKIE ec_ref, 7 dias, path=/ — o MESMO que o app já lia, e não um
+        segundo parecido. Vale se a pessoa fechar a aba e voltar dias depois
+        por outro caminho.
+     2. O ref grudado no destino, que funciona mesmo com cookie e
+        armazenamento bloqueados — o caso de quem navega em aba anônima, que
+        é justamente quem abre link recebido de outra pessoa.
+
+   A colagem acontece no CLIQUE, em captura, e não só nos links que existem
+   quando a página carrega: a grade de planos é montada depois, por fetch, e
+   o botão "Assinar" de cada cartão nasce fora de qualquer varredura inicial.
+   Um laço no carregamento deixaria justamente o botão que leva ao checkout
+   sem o código. */
+var REF_DIAS = 7;
+var refCode = '';
+try {
+  var vindoRef = new URLSearchParams(location.search).get('ref');
+  if (vindoRef) {
+    refCode = vindoRef.toUpperCase().trim().slice(0, 16);
+    var expRef = new Date(Date.now() + REF_DIAS * 86400000).toUTCString();
+    document.cookie = 'ec_ref=' + encodeURIComponent(refCode) + '; expires=' + expRef + '; path=/; SameSite=Lax';
+    try {
+      localStorage.setItem('ec_ref', refCode);
+      localStorage.setItem('ec_ref_ts', String(Date.now()));
+    } catch (e) {}
+  } else {
+    // Sem o parâmetro na URL, o cookie de uma visita anterior ainda vale: a
+    // pessoa pode ter chegado pela indicação ontem e voltado hoje digitando o
+    // endereço.
+    var mRef = document.cookie.match(/(?:^|;\s*)ec_ref=([^;]+)/);
+    if (mRef) refCode = decodeURIComponent(mRef[1]);
+  }
+} catch (e) {}
+
+function comRef(url) {
+  if (!refCode || !url) return url;
+  // Só os destinos que levam ao cadastro. Grudar o código numa âncora (#planos)
+  // ou num link externo não ajudaria ninguém e vazaria o código do afiliado
+  // para fora do domínio.
+  if (!/^\/(app|assinar)(\/|\?|$)/.test(url)) return url;
+  if (/[?&]ref=/.test(url)) return url;
+  return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'ref=' + encodeURIComponent(refCode);
+}
+
+// Em CAPTURA, para rodar antes de qualquer handler da página e alcançar também
+// o que foi montado depois — a grade de planos, por exemplo.
+document.addEventListener('click', function (e) {
+  if (!refCode) return;
+  var a = e.target;
+  for (var i = 0; a && i < 6; i++, a = a.parentElement) {
+    if (a.tagName !== 'A') continue;
+    var href = a.getAttribute('href');
+    var novo = comRef(href);
+    if (novo && novo !== href) a.setAttribute('href', novo);
+    return;
+  }
+}, true);
+
 // OS ÍCONES SÃO OS DO APP: o mesmo desenho que está na barra lateral do
 // painel, um por funcionalidade. Quem vê a vitrine e depois entra encontra
 // os mesmos símbolos — é a mesma casa, não duas.

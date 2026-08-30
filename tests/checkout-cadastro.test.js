@@ -300,5 +300,32 @@ const BASE = 'http://127.0.0.1:3986';
   ok(/mostrar\('conta'\)/.test(retomada) && !/irParaCadastro/.test(retomada),
      'a retomada cai direto no formulário');
 
+  console.log('\n=== O som da confirmação, junto com o traço ===');
+  ok(fs.existsSync(R + 'public/assets/sons/confirmado.mp3'), 'o arquivo está no lugar');
+  ok(/sons\/confirmado\.mp3/.test(assinar), 'e a tela de confirmação o usa');
+
+  // A HORA É LIDA DO CSS, não copiada dele: o som sai no `animation-delay` do
+  // próprio traço. Dois números iguais escritos em lugares diferentes são
+  // sincronia que dura até a próxima edição de um deles.
+  ok(/parseFloat\(getComputedStyle\(visto\)\.animationDelay\)/.test(assinar),
+     'a hora vem do atraso da animação, e não de um número copiado');
+
+  // `animationstart` seria mais bonito e NÃO FUNCIONA: medido na tela, ele não
+  // dispara quando o elemento sai de display:none. Preso a ele, o som
+  // simplesmente não tocaria.
+  ok(!/addEventListener\('animationstart'/.test(assinar),
+     'sem depender de animationstart, que não dispara ao sair de display:none');
+
+  // O DOWNLOAD começa quando o Pix aparece — daí em diante a confirmação é
+  // provável e há a espera inteira para o arquivo chegar. Quem só olhou o
+  // checkout e saiu não paga por ele.
+  ok(/mostrar\('pix'\);\s*[\r\n]+\s*prepararSom\(\);/.test(assinar),
+     'e o arquivo é buscado quando o Pix entra em cena, não no carregamento');
+
+  // RECUSA DE ÁUDIO não pode derrubar nada: o navegador só libera som depois
+  // de alguma interação, e quem voltou por um link pode não ter interagido.
+  ok(/pr\.catch\(function \(\) \{\}\)/.test(assinar),
+     'e um play() recusado é engolido — a confirmação é visual, o som é reforço');
+
   await encerrar(null, falhas);
 })();
