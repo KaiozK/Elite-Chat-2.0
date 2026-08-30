@@ -123,6 +123,10 @@
      recusado e cai no tom sintetizado, que nunca falha. */
   var ARQUIVOS = { message: '/assets/sons/mensagem.mp3', sale: '/assets/sons/venda.mp3',
                    commission: '/assets/sons/venda.mp3',
+                   // O mesmo toque da confirmação de pagamento no checkout. Ele
+                   // marca "deu certo, acabou" — e é isso que o disparo de uma
+                   // campanha e um agendamento também são.
+                   confirm: '/assets/sons/confirmado.mp3',
                    call: '/assets/sons/chamada.mp3' };
   // O toque da ligação fica FORA do pré-carregamento: é o maior arquivo dos
   // três e a maioria das sessões nunca recebe uma chamada. Baixá-lo na abertura

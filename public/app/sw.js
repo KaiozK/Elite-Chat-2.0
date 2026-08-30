@@ -2,7 +2,7 @@
  * Cache do app shell + offline + Push Notifications + clique abre a conversa.
  * Escopo: /app/  (registrado por notifications.js)
  */
-const VERSION = 'koonfy-v12';  // v12: clique na notificação de chamada abre a tela em vez de atender
+const VERSION = 'koonfy-v13';  // v13: som da confirmação (campanha disparada, agendamento criado)
 const SHELL = 'ec-shell-' + VERSION;
 const RUNTIME = 'ec-runtime-' + VERSION;
 
@@ -19,7 +19,8 @@ const SHELL_ASSETS = [
   // Os avisos sonoros precisam estar prontos ANTES do evento que os dispara:
   // buscar o arquivo na hora faria o som chegar depois da notificação.
   '/assets/sons/mensagem.mp3',
-  '/assets/sons/venda.mp3'
+  '/assets/sons/venda.mp3',
+  '/assets/sons/confirmado.mp3'
 ];
 
 self.addEventListener('install', (e) => {

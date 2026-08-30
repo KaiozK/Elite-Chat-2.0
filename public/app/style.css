@@ -757,6 +757,39 @@ tbody tr:last-child td { border-bottom: none; }
 }
 .modal-x:hover { background: var(--bg2); color: var(--text); }
 
+/* ---------------- CONFIRMAÇÃO DE UMA AÇÃO QUE ACABOU ----------------
+   O mesmo visto desenhado da confirmação de pagamento. Um toast diz "salvo" e
+   some pelo canto; disparar uma campanha manda mensagem para milhares de
+   pessoas e não dá para desfazer — a diferença entre as duas coisas precisa
+   aparecer na tela.
+
+   Ele FECHA SOZINHO: é um aviso, não uma pergunta, e obrigar um clique para
+   confirmar o que já aconteceu é atrito puro. */
+.feito { align-items: center; text-align: center; gap: 0; padding: 34px 26px 30px; }
+.feito .selo { width: 84px; height: 84px; }
+.feito svg { width: 100%; height: 100%; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.feito .anel { stroke: var(--border); stroke-width: 3; }
+/* 277 é o perímetro do círculo de raio 44: o traço nasce recolhido e se fecha
+   em volta do visto. */
+.feito .risco {
+  stroke: var(--verde-esc); stroke-width: 3; stroke-dasharray: 277; stroke-dashoffset: 277;
+  transform: rotate(-90deg); transform-origin: 50% 50%;
+  animation: fechar .55s cubic-bezier(.2, .7, .3, 1) .05s forwards;
+}
+.feito .visto {
+  stroke: var(--verde-esc); stroke-width: 5; stroke-dasharray: 56; stroke-dashoffset: 56;
+  animation: riscar .32s cubic-bezier(.25, .9, .3, 1) .5s forwards;
+}
+@keyframes fechar { to { stroke-dashoffset: 0; } }
+@keyframes riscar { to { stroke-dashoffset: 0; } }
+.feito b { display: block; margin-top: 16px; font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+.feito span { display: block; margin-top: 5px; font-size: 13px; color: var(--muted); }
+/* Quem pediu menos movimento continua tendo a MESMA informação: o visto
+   aparece pronto. A confirmação não é enfeite que se possa suprimir. */
+@media (prefers-reduced-motion: reduce) {
+  .feito .risco, .feito .visto { animation: none; stroke-dashoffset: 0; }
+}
+
 #toast-root { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 9px; z-index: 400; }
 .toast {
   background: var(--card); color: var(--text); border: 1px solid var(--border2);

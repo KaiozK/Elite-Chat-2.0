@@ -207,7 +207,13 @@ pushNative.sendToAccount = async () => 0;
   ok(/doApp\.find\(c => c\.focused\)/.test(sw),
      'prefere a aba em foco — mandar o aviso para uma de fundo tira a pessoa de onde ela estava');
   ok(/visibilityState === .visible./.test(sw), 'depois uma visível');
-  ok(/koonfy-v12/.test(sw), 'e a versão do cache subiu, senão o navegador serve o SW antigo');
+  // A versão do cache precisa ter SUBIDO — sem isso o navegador continua
+  // servindo o Service Worker antigo, e a correção não chega em ninguém.
+  //
+  // O teste compara em vez de fixar o número: preso a "v12", ele falharia em
+  // toda subida legítima seguinte, e o certo passaria a dar erro.
+  const vSw = Number((sw.match(/koonfy-v(\d+)/) || [])[1] || 0);
+  ok(vSw >= 12, `e a versão do cache é pelo menos a v12 desta correção: v${vSw}`);
 
   srv.close();
   await encerrar(srv, falhas);

@@ -821,6 +821,47 @@ function confirmModal({ title, text, ok = 'Confirmar', danger = false }) {
 }
 function closeModal() { $('#modal-root').innerHTML = ''; }
 
+/* ---------------- "DEU CERTO" ----------------
+   O mesmo visto e o mesmo som da confirmação de pagamento no checkout, agora
+   para as ações que também não voltam atrás: disparar uma campanha manda
+   mensagem para milhares de pessoas.
+
+   POR QUE NÃO UM TOAST. Um toast some pelo canto e é fácil de não ver — serve
+   para "copiado" e "salvo". Aqui a pessoa acabou de fazer algo grande e
+   precisa saber que foi, sem procurar confirmação na tela seguinte.
+
+   FECHA SOZINHO em 1,9s: é um aviso, não uma pergunta. Um botão "OK" para
+   confirmar o que já aconteceu é atrito.
+
+   O SOM SAI NO TRAÇO do visto, e a hora é LIDA do animation-delay do CSS, não
+   copiada dele — se o tempo mudar lá, o som acompanha. E passa pela máquina de
+   sons do app, que respeita quem desligou o som nas preferências. */
+function popupFeito(titulo, texto, depois) {
+  openModal(`
+    <div class="selo">
+      <svg viewBox="0 0 96 96" aria-hidden="true">
+        <circle class="anel" cx="48" cy="48" r="44"></circle>
+        <circle class="risco" cx="48" cy="48" r="44"></circle>
+        <path class="visto" d="M30 49.5 L43 62 L67 36"></path>
+      </svg>
+    </div>
+    <b>${esc(titulo)}</b>
+    ${texto ? `<span>${esc(texto)}</span>` : ''}`, 'feito');
+
+  const visto = $('.feito .visto');
+  let atraso = 0;
+  try { atraso = (parseFloat(getComputedStyle(visto).animationDelay) || 0) * 1000; } catch (e) {}
+  const tocar = () => { try { window.ECNotify && ECNotify.playSound('confirm'); } catch (e) {} };
+  if (atraso > 0) setTimeout(tocar, atraso); else tocar();
+
+  setTimeout(() => {
+    // SÓ FECHA O QUE ELE ABRIU. Se a pessoa clicou fora e já abriu outra coisa
+    // nesse meio tempo, fechar aqui derrubaria a tela dela.
+    if ($('.feito')) closeModal();
+    if (depois) depois();
+  }, atraso ? 1900 : 700);
+}
+
 async function copyText(t) {
   try { await navigator.clipboard.writeText(t); toast('Copiado!'); }
   catch { toast('Não foi possível copiar', 'error'); }
@@ -7782,8 +7823,11 @@ async function createCampaign() {
         audience
       }
     });
-    toast(`Campanha iniciada para ${r.total} contato(s)!`);
-    location.hash = '#/campaigns';
+    // A LISTA SÓ ABRE DEPOIS. Trocar de tela por baixo do pop-up faria a
+    // confirmação piscar sobre uma página que já mudou.
+    popupFeito('Campanha disparada',
+      `Saindo agora para ${fmtN(r.total)} contato(s).`,
+      () => { location.hash = '#/campaigns'; });
   } catch (e) { toast(e.message, 'error'); }
 }
 
@@ -13836,7 +13880,12 @@ async function scSave(id) {
   try {
     if (id) await api('/schedules/' + id, { method: 'PUT', body });
     else await api('/schedules', { body });
-    closeModal(); toast('Agendamento salvo'); loadSchedule();
+    closeModal();
+    loadSchedule();
+    // Editar é ajuste; criar é compromisso novo na agenda. O pop-up marca o
+    // segundo, e o toast continua servindo o primeiro.
+    if (id) toast('Agendamento salvo');
+    else popupFeito('Agendamento criado', new Date(start).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }));
   } catch (e) { toast(e.message, 'error'); }
 }
 async function scDelete(id) {
