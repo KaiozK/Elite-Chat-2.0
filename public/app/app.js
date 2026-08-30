@@ -182,11 +182,29 @@ async function notifOptIn(sim) {
 // d = { accountId, waId, notify:{ direction, name, text, type } }
 function maybeNotifyMessage(d) {
   if (!window.ECNotify || !d || !d.notify || d.notify.direction !== 'in') return;
-  // não notifica a conversa que já está aberta e em foco (você está lendo)
-  if (!document.hidden && state.view === 'inbox' && d.waId === state.currentWaId) return;
+
+  // NÃO NOTIFICA A CONVERSA ABERTA — mas "aberta" é (canal, pessoa), e não só a
+  // pessoa. A mesma pessoa pode estar falando com os DOIS números da empresa:
+  // com a conversa de Vendas na tela, a mensagem que ela mandou para o Suporte
+  // era engolida em silêncio, e ninguém ficava sabendo.
+  const mesmaConversa = d.waId === state.currentWaId && (!d.chId || !CH_ID || d.chId === CH_ID);
+  if (!document.hidden && state.view === 'inbox' && mesmaConversa) return;
+
+  // DE QUAL NÚMERO. O webhook já mandava o rótulo do canal e ninguém usava:
+  // com dois números conectados, "Maria" não diz se ela escreveu para Vendas ou
+  // para o Suporte — e a resposta muda conforme a porta por onde ela entrou.
+  // Some quando só há um canal, onde dizer isso seria ruído.
+  const canal = (CHANNELS.length > 1 && d.notify.channel) ? ' · ' + d.notify.channel : '';
+
   ECNotify.notify({
-    type: 'message', title: d.notify.name || 'Nova mensagem', body: d.notify.text || '',
-    waId: d.waId, url: '/app/#/inbox', tag: 'msg:' + d.waId
+    type: 'message',
+    title: (d.notify.name || 'Nova mensagem') + canal,
+    body: d.notify.text || '',
+    waId: d.waId, url: '/app/#/inbox',
+    // A ETIQUETA CARREGA O CANAL. Aviso com a mesma etiqueta SUBSTITUI o
+    // anterior no sistema: com a etiqueta só do telefone, a mensagem para o
+    // Suporte apagava da tela a que tinha chegado em Vendas.
+    tag: 'msg:' + (d.chId || '') + ':' + d.waId
   });
 }
 

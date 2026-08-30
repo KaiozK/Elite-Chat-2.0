@@ -1604,7 +1604,10 @@ module.exports = function (broadcast, clients) {
 
   // Botão do chat: liga/desliga a IA nesta conversa.
   router.put('/ia/conversa/:waId', auth, can('inbox', 'edit'), (req, res) => {
-    const contact = req.acc.contacts.find(c => c.waId === req.params.waId);
+    // O CONTATO DAQUELE CANAL. Sem isto, desligar a IA numa conversa desligava
+    // na conversa da MESMA pessoa no outro número — e a de verdade seguia
+    // respondendo sozinha.
+    const contact = store.findContact(req.wctx, req.params.waId);
     if (!contact) return res.status(404).json({ error: 'Contato não encontrado' });
     const ligada = ia.alternarNaConversa(req.acc, contact, !!(req.body || {}).ligada);
     broadcast('message', { accountId: req.acc.id, waId: contact.waId });
@@ -2036,6 +2039,24 @@ module.exports = function (broadcast, clients) {
     const f = chanFilter(req, alvo);
     return f ? arr.filter(f) : arr;
   }
+
+  // A CAIXA DE ENTRADA É SEMPRE DE UM NÚMERO SÓ.
+  //
+  // `chanFilter` devolve "sem filtro" quando o pedido chega sem canal — o que
+  // faz sentido nas telas de LISTA (contatos, funil), onde ver tudo é útil. Na
+  // conversa, não: responder exige saber por qual número a conversa acontece, e
+  // uma caixa de entrada que mistura dois números leva a responder pelo errado.
+  //
+  // Aqui o canal nunca é opcional. Sem cabeçalho, vale o canal ativo (que
+  // `findChannel` resolve para o primeiro). Só um `ch=all` EXPLÍCITO abre a
+  // visão geral — e ela é para olhar, não para responder.
+  function chanConversa(req) {
+    const raw = req.get('x-channel') || req.query.ch || '';
+    const dflt = ((req.acc.channels || [])[0] || {}).id || '';
+    if (raw === 'all') return { id: 'all', tudo: true, f: () => true, dflt };
+    const id = (raw && (req.acc.channels || []).some(c => c.id === raw)) ? raw : (req.chId || dflt);
+    return { id, tudo: false, dflt, f: o => (o.chId || dflt) === id };
+  }
   // Telas de LISTA (contatos, funil) usam o parâmetro `?ch=` explícito da tela.
   // Sem parâmetro, mostram TUDO: é o comportamento pedido, "se não há filtro,
   // mostre todos os contatos". Já a caixa de entrada segue presa ao canal ativo,
@@ -2053,17 +2074,29 @@ module.exports = function (broadcast, clients) {
 
   router.get('/conversations', auth, can('inbox', 'view'), (req, res) => {
     const acc = req.acc;
-    const msgs = chanList(req, acc.messages);
+    const canal = chanConversa(req);
+
+    // A ÚLTIMA MENSAGEM É POR (CANAL, PESSOA), e não por pessoa.
+    //
+    // A chave era só o `waId`. A mesma pessoa falando com dois números da
+    // empresa tem duas conversas — e as duas mostravam a última mensagem de
+    // quem chegou por último, qualquer que fosse o número. Na visão geral, a
+    // conversa de um número exibia a fala dita ao outro.
+    const chave = m => (canal.tudo ? (m.chId || canal.dflt) + '|' : '') + m.waId;
     const lastBy = {};
-    for (const m of msgs) lastBy[m.waId] = m;
-    const list = chanList(req, acc.contacts).map(c => ({
-      ...c,
-      lastMessage: lastBy[c.waId]
-        ? { text: lastBy[c.waId].text, type: lastBy[c.waId].type, direction: lastBy[c.waId].direction, timestamp: lastBy[c.waId].timestamp, status: lastBy[c.waId].status }
-        : null,
-      session: session.sessionState(c) // janela de 24h + status do atendimento
-    })).sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
-    res.json({ conversations: list });
+    for (const m of acc.messages) if (canal.f(m)) lastBy[chave(m)] = m;
+
+    const list = acc.contacts.filter(canal.f).map(c => {
+      const ult = lastBy[chave(c)];
+      return {
+        ...c,
+        lastMessage: ult
+          ? { text: ult.text, type: ult.type, direction: ult.direction, timestamp: ult.timestamp, status: ult.status }
+          : null,
+        session: session.sessionState(c) // janela de 24h + status do atendimento
+      };
+    }).sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
+    res.json({ conversations: list, chId: canal.id });
   });
 
   // ============ LIGAÇÕES (Calling API — atender, recusar, encerrar, ligar) ============
@@ -2530,17 +2563,29 @@ module.exports = function (broadcast, clients) {
 
   router.delete('/contacts/:waId', auth, can('contacts','delete'), (req, res) => {
     const acc = req.acc;
-    acc.contacts = acc.contacts.filter(c => c.waId !== req.params.waId);
-    acc.messages = acc.messages.filter(m => m.waId !== req.params.waId);
+    // APAGAVA A PESSOA EM TODOS OS CANAIS. Quem falou com dois números da
+    // empresa tem duas conversas separadas; apagar uma levava a outra junto,
+    // com o histórico inteiro, sem aviso e sem volta.
+    //
+    // Um `ch=all` explícito continua apagando em todos — é a visão geral, e lá
+    // a intenção é essa.
+    const canal = chanConversa(req);
+    const alvo = c => c.waId === req.params.waId && canal.f(c);
+    const apagados = acc.contacts.filter(alvo).length;
+    acc.contacts = acc.contacts.filter(c => !alvo(c));
+    acc.messages = acc.messages.filter(m => !alvo(m));
     db.save();
-    res.json({ ok: true });
+    res.json({ ok: true, apagados });
   });
 
   // ============ MENSAGENS ============
 
   router.get('/messages/:waId', auth, (req, res) => {
-    const list = chanList(req, req.acc.messages)
-      .filter(m => m.waId === req.params.waId)
+    // PRESO AO CANAL, sempre: abrir a conversa de alguém que também falou com
+    // o outro número mostrava as duas conversas embaralhadas na mesma tela.
+    const canal = chanConversa(req);
+    const list = req.acc.messages
+      .filter(m => m.waId === req.params.waId && canal.f(m))
       .sort((a, b) => a.timestamp - b.timestamp);
     const contact = store.findContact(req.wctx, req.params.waId) || null;
     res.json({
@@ -2559,13 +2604,20 @@ module.exports = function (broadcast, clients) {
 
   router.post('/messages/:waId/read', auth, h(async (req, res) => {
     const acc = req.acc;
+    const canal = chanConversa(req);
     const c = store.findContact(req.wctx, req.params.waId);
     if (c) { c.unread = 0; db.save(); }
+    // DUAS COISAS ERRADAS MORAVAM AQUI. A última mensagem recebida era
+    // procurada em TODOS os canais, então a leitura podia apontar para uma
+    // mensagem do outro número — e o recibo saía por `acc`, que é o primeiro
+    // canal, e não pelo número em que a conversa acontece. A Meta recusa (a
+    // mensagem não é daquele número) ou, pior, marca lida a conversa errada.
     const lastIn = [...acc.messages].reverse().find(m =>
-      m.waId === req.params.waId && m.direction === 'in' && String(m.id).startsWith('wamid'));
+      m.waId === req.params.waId && canal.f(m) &&
+      m.direction === 'in' && String(m.id).startsWith('wamid'));
     let waReadReceipt = false;
     if (lastIn) {
-      try { await wa.markRead(acc, lastIn.id); waReadReceipt = true; } catch {}
+      try { await wa.markRead(req.wctx, lastIn.id); waReadReceipt = true; } catch {}
     }
     res.json({ ok: true, waReadReceipt });
   }));
