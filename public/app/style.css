@@ -911,6 +911,11 @@ details.log pre { margin: 0; border: 0; border-radius: 0 0 16px 16px; }
 .es-step.wait .dot { background: var(--amber); animation: blinkDot 1.2s infinite; }
 .es-step.ok { color: var(--text); font-weight: 500; }
 .es-step.ok .dot { background: var(--verde-esc); box-shadow: 0 0 0 3px rgba(16, 185, 129, .18); }
+/* NEM TUDO QUE NÃO DEU CERTO É ERRO. Este passo é informativo: a conexão
+   funciona sem ele. Cinza diz "não deu para saber"; vermelho diria "está
+   quebrado", e ensinaria a ignorar os vermelhos de verdade. */
+.es-step.skip { color: var(--muted); font-weight: 500; }
+.es-step.skip .dot { background: var(--border2); }
 .es-step.fail { color: var(--red); font-weight: 500; }
 .es-step.fail .dot { background: var(--red); box-shadow: 0 0 0 3px rgba(229, 72, 77, .14); }
 @keyframes blinkDot { 50% { opacity: .35; } }

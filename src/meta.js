@@ -60,6 +60,16 @@ function exchangeCode(code, redirectUri) {
 const getBusinesses = (token) =>
   graph('/me/businesses?fields=id,name', { token });
 
+// O DONO DA WABA, perguntado à própria WABA.
+//
+// `/me/businesses` responde pelo USUÁRIO, e no Embedded Signup o token quase
+// nunca enxerga business nenhum por ali: ele nasce com escopo da WABA que
+// acabou de ser compartilhada, não da carteira de negócios da pessoa. A lista
+// volta vazia mesmo quando existe um business — e ele está bem aqui, no campo
+// `owner_business_info` da WABA que já sabemos qual é.
+const getWabaOwner = (token, wabaId) =>
+  graph(`/${encodeURIComponent(wabaId)}?fields=id,name,owner_business_info`, { token });
+
 // Passo 5 — GET /{business_id}/owned_whatsapp_business_accounts
 const getOwnedWabas = (token, businessId) =>
   graph(`/${encodeURIComponent(businessId)}/owned_whatsapp_business_accounts?fields=id,name`, { token });
@@ -71,6 +81,27 @@ const getPhoneNumbers = (token, wabaId) =>
 // Passo 7 — POST /{waba_id}/subscribed_apps (assina o app da plataforma na WABA do cliente)
 const subscribeApp = (token, wabaId) =>
   graph(`/${encodeURIComponent(wabaId)}/subscribed_apps`, { method: 'POST', token, body: {} });
+
+// REGISTRAR O NÚMERO NA CLOUD API — sem isto ele não envia nem recebe.
+//
+// Era o passo que faltava, e o sintoma é exatamente o que o WhatsApp Manager
+// mostra: status "Pendente". O Embedded Signup COMPARTILHA o número com o app;
+// registrá-lo na Cloud API é outra coisa, e é um POST que ninguém fazia. A
+// conexão terminava "conectada" do nosso lado e morta do lado da Meta.
+//
+// O PIN é a verificação em duas etapas do número. A Meta exige seis dígitos
+// aqui; guardamos o nosso para poder registrar de novo depois (troca de
+// servidor, reconexão) sem depender de alguém lembrar.
+const registerPhone = (token, phoneNumberId, pin) =>
+  graph(`/${encodeURIComponent(phoneNumberId)}/register`, {
+    method: 'POST', token,
+    body: { messaging_product: 'whatsapp', pin: String(pin) }
+  });
+
+// O ESTADO do número, para saber se ele já está de pé.
+// `status` é o que aparece como "Pendente"/"Conectado" no WhatsApp Manager.
+const phoneStatus = (token, phoneNumberId) =>
+  graph(`/${encodeURIComponent(phoneNumberId)}?fields=id,display_phone_number,verified_name,status,code_verification_status,platform_type,quality_rating`, { token });
 
 const unsubscribeApp = (token, wabaId) =>
   graph(`/${encodeURIComponent(wabaId)}/subscribed_apps`, { method: 'DELETE', token });
@@ -163,6 +194,9 @@ const getAdAccounts = (token) =>
 module.exports = {
   exchangeCode,
   getBusinesses,
+  registerPhone,
+  phoneStatus,
+  getWabaOwner,
   getOwnedWabas,
   getPhoneNumbers,
   subscribeApp,

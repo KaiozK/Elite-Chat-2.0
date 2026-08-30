@@ -1114,14 +1114,24 @@ module.exports = function (broadcast, clients) {
       step('access_token', true);
 
       // 4. businesses
+      //
+      // O RESULTADO NÃO É MARCADO AINDA, e é isso que muda aqui. `/me/businesses`
+      // costuma voltar VAZIO no Embedded Signup: o token nasce com escopo da
+      // WABA compartilhada, não da carteira de negócios da pessoa. O passo
+      // pintava vermelho, a conexão seguia em frente pelo caminho oficial (o
+      // `waba_id` que o popup devolve) e terminava conectada — com um erro
+      // vermelho na tela de quem acabou de conectar com sucesso.
+      //
+      // Um erro que não impede nada é pior do que nenhum aviso: ele ensina a
+      // pessoa a ignorar os vermelhos, inclusive os que importam.
       let businessId = '';
+      let bizErro = '';
       try {
         const biz = await meta.getBusinesses(w.accessToken);
         businessId = (biz.data && biz.data[0] && biz.data[0].id) || '';
-        step('business', !!businessId, businessId || 'nenhum business retornado');
-      } catch (e) {
-        step('business', false, e.message);
-      }
+      } catch (e) { bizErro = e.message; }
+      // Guardado já aqui: se a busca da WABA falhar logo abaixo, o que
+      // descobrimos até agora não se perde junto.
       w.businessId = businessId;
       db.save();
 
@@ -1146,6 +1156,26 @@ module.exports = function (broadcast, clients) {
       w.wabaId = wabaId;
       db.save();
       step('waba', true, wabaId);
+
+      // O BUSINESS, AGORA QUE SABEMOS A WABA. É ela quem sabe de quem é —
+      // `owner_business_info` — e essa resposta chega mesmo quando
+      // `/me/businesses` volta vazia.
+      if (!businessId) {
+        try {
+          const dono = await meta.getWabaOwner(w.accessToken, wabaId);
+          const o = dono && dono.owner_business_info;
+          if (o && o.id) businessId = String(o.id);
+        } catch (e) { bizErro = bizErro || e.message; }
+      }
+      w.businessId = businessId;
+      db.save();
+      // NADA DEPENDE DELE daqui para frente: o número, o webhook e o envio saem
+      // todos da WABA. Por isso, não achar não é falha — é informação que não
+      // veio. O passo fica cinza, e não vermelho.
+      step('business', businessId ? true : 'skip',
+        businessId || (bizErro
+          ? 'Não veio pela API (' + bizErro + '). A conexão não depende disto.'
+          : 'A conta Meta não expôs o business. A conexão não depende disto.'));
 
       // 6. phone numbers
       const phones = await meta.getPhoneNumbers(w.accessToken, wabaId);
@@ -1173,6 +1203,46 @@ module.exports = function (broadcast, clients) {
         step('subscribed_apps', false, e.message);
       }
 
+      // 8. REGISTRAR O NÚMERO NA CLOUD API.
+      //
+      // ERA O PASSO QUE FALTAVA, e o sintoma aparecia só do lado da Meta: no
+      // WhatsApp Manager o número ficava com status "Pendente", sem enviar nem
+      // receber. O Embedded Signup COMPARTILHA o número com o app; registrá-lo
+      // na Cloud API é outra coisa, e é um POST que ninguém fazia. A conexão
+      // terminava "conectada" aqui e morta lá.
+      //
+      // O PIN é a verificação em duas etapas do número. Guardamos o nosso para
+      // registrar de novo depois — troca de servidor, reconexão — sem depender
+      // de alguém lembrar de um número de seis dígitos.
+      if (!w.pin) w.pin = String(Math.floor(100000 + Math.random() * 900000));
+      try {
+        await meta.registerPhone(w.accessToken, w.phoneNumberId, w.pin);
+        w.registered = true;
+        w.registeredAt = Date.now();
+        step('register', true, 'número registrado na Cloud API');
+      } catch (e) {
+        const cod = Number((e.meta && (e.meta.code || e.meta.error_subcode)) || 0);
+        const msg = String(e.message || '');
+        // JÁ REGISTRADO não é falha: é o estado que queríamos. Acontece ao
+        // reconectar um número que já estava de pé.
+        if (cod === 133005 || /already.*registered|already been registered/i.test(msg)) {
+          w.registered = true;
+          step('register', true, 'o número já estava registrado');
+        } else if (cod === 133006 || /two.?step|pin/i.test(msg)) {
+          // PIN DE OUTRA PESSOA. O número tem verificação em duas etapas com um
+          // PIN que não é o nosso — e não há como adivinhar. Quem sabe é o dono,
+          // e o texto precisa dizer exatamente o que ele faz a respeito.
+          w.registered = false;
+          step('register', false,
+            'O número tem verificação em duas etapas com um PIN que não é o nosso. ' +
+            'Desative o PIN em WhatsApp Manager → Configurações → Verificação em duas etapas e conecte de novo.');
+        } else {
+          w.registered = false;
+          step('register', false, msg);
+        }
+      }
+      db.save();
+
       // validação do token (system user id do cliente)
       try {
         const dbg = await meta.debugToken(w.accessToken);
@@ -1180,10 +1250,23 @@ module.exports = function (broadcast, clients) {
       } catch {}
 
       // 11. teste de conexão (health check no número)
+      //
+      // O STATUS ENTRA AQUI porque é ele que aparecia "Pendente" no WhatsApp
+      // Manager enquanto esta tela dizia tudo verde. Um teste de conexão que
+      // não olha o estado do número no lado da Meta não testa a conexão.
       try {
         const health = await meta.phoneHealth(w.accessToken, w.phoneNumberId);
         w.lastHealth = { at: Date.now(), ...health };
-        step('health', true, health.display_phone_number);
+        let situacao = '';
+        try {
+          const st = await meta.phoneStatus(w.accessToken, w.phoneNumberId);
+          situacao = String(st.status || '');
+          w.phoneStatus = situacao;
+        } catch {}
+        const dePe = !situacao || /CONNECTED/i.test(situacao);
+        step('health', dePe, dePe
+          ? (health.display_phone_number || '') + (situacao ? ' · ' + situacao : '')
+          : 'O número está como "' + situacao + '" na Meta: ele ainda não envia nem recebe.');
       } catch (e) {
         step('health', false, e.message);
       }
@@ -1744,6 +1827,52 @@ module.exports = function (broadcast, clients) {
   }));
   router.post('/waba/subscribe', auth, h(async (req, res) => res.json(await wa.subscribeApp(req.wctx))));
   router.get('/waba/subscriptions', auth, h(async (req, res) => res.json(await wa.getSubscriptions(req.wctx))));
+
+  // REGISTRAR O NÚMERO na Cloud API, para quem já está conectado.
+  //
+  // Quem conectou ANTES desta correção tem um número compartilhado com o app e
+  // não registrado: "Pendente" no WhatsApp Manager, sem enviar nem receber.
+  // Refazer o cadastro incorporado inteiro só para isto seria pedir à pessoa
+  // que desfaça o que já deu certo.
+  router.post('/wa/register', auth, h(async (req, res) => {
+    const w = req.wctx.wa;
+    if (!w.accessToken || !w.phoneNumberId) {
+      return res.status(400).json({ error: 'Conecte o número antes de registrá-lo' });
+    }
+    if (!w.pin) w.pin = String(Math.floor(100000 + Math.random() * 900000));
+    try {
+      await meta.registerPhone(w.accessToken, w.phoneNumberId, w.pin);
+      w.registered = true;
+      w.registeredAt = Date.now();
+    } catch (e) {
+      const cod = Number((e.meta && (e.meta.code || e.meta.error_subcode)) || 0);
+      const msg = String(e.message || '');
+      // JÁ REGISTRADO é o estado que queríamos: não é erro.
+      if (cod === 133005 || /already.*registered|already been registered/i.test(msg)) {
+        w.registered = true;
+        w.registeredAt = w.registeredAt || Date.now();
+      } else if (cod === 133006 || /two.?step|pin/i.test(msg)) {
+        db.save();
+        return res.status(409).json({
+          error: 'O número tem verificação em duas etapas com um PIN que não é o nosso. ' +
+                 'Desative o PIN em WhatsApp Manager → Configurações → Verificação em duas etapas e tente de novo.'
+        });
+      } else {
+        db.save();
+        return res.status(400).json({ error: msg });
+      }
+    }
+    // O STATUS confirma do lado da Meta: é ele que aparece "Pendente" lá.
+    let situacao = '';
+    try {
+      const st = await meta.phoneStatus(w.accessToken, w.phoneNumberId);
+      situacao = String(st.status || '');
+      w.phoneStatus = situacao;
+    } catch {}
+    db.save();
+    store.logEvent({ type: 'wa_register', accountId: req.acc.id, phoneNumberId: w.phoneNumberId, status: situacao });
+    res.json({ ok: true, registered: true, status: situacao || 'desconhecido' });
+  }));
   router.delete('/waba/subscribe', auth, h(async (req, res) => res.json(await wa.unsubscribeApp(req.wctx))));
 
   // ============ PERFIL COMERCIAL ============

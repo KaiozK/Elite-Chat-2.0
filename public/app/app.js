@@ -6017,6 +6017,7 @@ async function renderSettings() {
         <div class="row" style="margin-top:12px">
           <button class="btn primary no-grow" onclick="saveManual()">${ico('save', 14)} Salvar e conectar</button>
           <button class="btn no-grow" onclick="subscribeWaba()">${ico('radio', 14)} Assinar app na WABA</button>
+          <button class="btn no-grow" onclick="registrarNumero()">${ico('check-circle', 14)} Registrar número na Cloud API</button>
           <button class="btn no-grow" onclick="metaDiag(this)">${ico('activity', 14)} Diagnosticar app da Meta</button>
         </div>
         <div id="meta-diag-out"></div>
@@ -6575,6 +6576,18 @@ async function testConn() {
     diagOut('ERRO: ' + e.message + (e.meta ? '\n\n' + JSON.stringify(e.meta, null, 2) : ''));
     toast(e.message, 'error');
   }
+}
+
+// Para quem conectou ANTES de o registro existir no fluxo: o número está
+// compartilhado com o app e "Pendente" na Meta. Isto o coloca de pé sem
+// desfazer o cadastro incorporado.
+async function registrarNumero() {
+  diagOut('Registrando o número na Cloud API...');
+  try {
+    const r = await api('/wa/register', { body: {} });
+    diagOut(r);
+    toast('Número registrado' + (r.status ? ' (' + r.status + ')' : '') + '!');
+  } catch (e) { diagOut('ERRO: ' + e.message); toast(e.message, 'error'); }
 }
 
 async function subscribeWaba() {
@@ -16107,6 +16120,10 @@ const ES_STEPS = [
   ['waba', 'Localizar WhatsApp Business Account'],
   ['phone', 'Localizar número de telefone'],
   ['subscribed_apps', 'Assinar app na WABA (webhooks)'],
+  // SEM ESTE PASSO o número fica "Pendente" no WhatsApp Manager: compartilhar
+  // o número com o app e registrá-lo na Cloud API são coisas diferentes, e a
+  // segunda faltava.
+  ['register', 'Registrar número na Cloud API'],
   ['health', 'Testar conexão']
 ];
 
@@ -16120,11 +16137,16 @@ function esProgress() {
     <p class="muted" id="es-msg" style="margin:10px 0 0">Complete o cadastro na janela da Meta…</p>`);
 }
 
+// TRÊS ESTADOS, e não dois. Havia só "verde" e "vermelho", e um passo que não
+// impede nada não cabia em nenhum dos dois: pintado de vermelho, ele fazia uma
+// conexão bem-sucedida parecer quebrada.
+//
+// `skip` é cinza e diz o que é: não deu para saber, e nada depende disso.
 function esMark(name, ok, detail) {
   const el = document.querySelector(`.es-step[data-st="${name}"]`);
   if (el) {
     el.classList.remove('wait');
-    el.classList.add(ok ? 'ok' : 'fail');
+    el.classList.add(ok === 'skip' ? 'skip' : ok ? 'ok' : 'fail');
     if (detail) el.title = detail;
   }
 }
