@@ -510,7 +510,7 @@
      Mas a landing é o meio do caminho, não o destino — o código precisa
      chegar ao CADASTRO. São duas pontes, de propósito:
 
-       1. O COOKIE que o app já lia: ec_ref, 7 dias, path=/. Vale mesmo se a
+       1. O COOKIE que o app já lia: ec_ref, 30 dias, path=/. Vale mesmo se a
           pessoa fechar a aba e voltar dias depois por outro caminho.
        2. O ref grudado nos botões, que funciona mesmo com cookie e
           armazenamento bloqueados — o caso de quem navega em aba anônima,
@@ -519,7 +519,7 @@
      Sem essas duas pontes, trocar o destino do link teria custado a comissão
      de todo mundo: o clique chegaria à landing, o código morreria ali, e o
      cadastro aconteceria sem dono. */
-  var REF_DIAS = 7;
+  var REF_DIAS = 30;
   var refCode = '';
   try {
     var vindo = new URLSearchParams(location.search).get('ref');

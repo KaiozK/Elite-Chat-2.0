@@ -585,6 +585,22 @@ fetch('/api/public/landing').then(function (r) { return r.json(); }).then(functi
     }, quieto ? 450 : 1500);
   }
 
+  /* PRÉ-VISUALIZAÇÃO: /assinar?previa=confirmacao
+     Confirmação de pagamento é a tela mais difícil de ver de novo — só aparece
+     depois de alguém pagar de verdade, e não dá para pedir um Pix a cada
+     ajuste de tempo ou de som.
+
+     Ela chama a MESMA função do caminho real, e não uma imitação: uma cópia
+     para demonstração passaria a mostrar uma coisa enquanto quem paga vê
+     outra, e a demonstração continuaria bonita depois de a de verdade
+     quebrar.
+
+     NÃO CRIA E NÃO MUDA NADA — nenhuma conta, nenhum pagamento, nenhuma
+     chamada ao servidor. É só a tela. */
+  if (qs.get('previa') === 'confirmacao') {
+    setTimeout(irParaCadastro, 300);
+  }
+
   var relogio = null;
   function aguardar() {
     clearInterval(relogio);

@@ -327,5 +327,22 @@ const BASE = 'http://127.0.0.1:3986';
   ok(/pr\.catch\(function \(\) \{\}\)/.test(assinar),
      'e um play() recusado é engolido — a confirmação é visual, o som é reforço');
 
+  console.log('\n=== Dá para VER a confirmação sem pagar ===');
+  // É a tela mais difícil de rever: só aparece depois de alguém pagar de
+  // verdade, e não dá para pedir um Pix a cada ajuste de tempo ou de som.
+  ok(/previa'\) === 'confirmacao'/.test(assinar),
+     '/assinar?previa=confirmacao mostra a confirmação');
+
+  // A MESMA FUNÇÃO do caminho real, e não uma imitação: uma cópia para
+  // demonstração passaria a mostrar uma coisa enquanto quem paga vê outra, e
+  // continuaria bonita depois de a de verdade quebrar.
+  ok(/setTimeout\(irParaCadastro, 300\)/.test(assinar),
+     'chamando o mesmo caminho que o pagamento chama');
+
+  // E NÃO CRIA NADA: sem isso, um endereço público viraria um jeito de
+  // fabricar cadastro sem pagar.
+  const previa = assinar.slice(assinar.indexOf("qs.get('previa')"), assinar.indexOf("qs.get('previa')") + 200);
+  ok(!/fetch\(/.test(previa), 'sem nenhuma chamada ao servidor');
+
   await encerrar(null, falhas);
 })();

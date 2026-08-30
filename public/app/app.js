@@ -20,7 +20,7 @@ let TOKEN = localStorage.getItem(TOKEN_KEY) || '';
 // Assim o afiliado continua recebendo a comissão mesmo se a pessoa só voltar
 // para assinar dias depois.
 // ---------------------------------------------------------------------------
-const REF_DIAS = 7;
+const REF_DIAS = 30;
 
 function setRefCookie(code) {
   const exp = new Date(Date.now() + REF_DIAS * 86400000).toUTCString();
@@ -1235,7 +1235,7 @@ async function doLogin(e) {
     const user = $('#login-user').value.trim();
     const pass = $('#login-pass').value;
     const r = registerMode
-      // o código da janela de 7 dias tem prioridade sobre o que estiver no campo
+      // o código da janela de indicação tem prioridade sobre o que estiver no campo
       ? await api('/register', { body: {
           name: $('#reg-name').value.trim(), email: user, pass,
           refCode: refAtivo() || ($('#reg-ref')?.value || '').trim(),

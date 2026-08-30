@@ -68,7 +68,17 @@ const notif = fs.readFileSync(R + 'public/app/notifications.js', 'utf8');
      'e grava o cookie que o app já lia');
   ok(/path=\/; SameSite=Lax/.test(landing),
      'com path=/ — sem isso o cookie da raiz não seria visto em /app');
-  ok(/var REF_DIAS = 7;/.test(landing), 'e a mesma validade de 7 dias do app');
+  // A JANELA precisa ser a MESMA nos três arquivos. O cookie é escrito na
+  // vitrine e relido no app: se o app expirar antes, ele apaga uma marca que a
+  // vitrine ainda considera válida, e a comissão some no meio do caminho.
+  // Por isso o teste compara os números em vez de repetir um valor — assim ele
+  // pega a divergência, que é o defeito de verdade, e não a troca do prazo.
+  const appJs = fs.readFileSync(R + 'public/app/app.js', 'utf8');
+  const diasDa = txt => { const m = txt.match(/REF_DIAS = (\d+);/); return m && Number(m[1]); };
+  const dias = diasDa(landing);
+  ok(dias >= 30, `a janela da indicação é longa o bastante: ${dias} dias`);
+  ok(diasDa(appJs) === dias, `e o app usa a MESMA: ${diasDa(appJs)}`);
+  ok(diasDa(landingAntiga) === dias, `a landing antiga também, para não marcar por prazos diferentes: ${diasDa(landingAntiga)}`);
   ok(/localStorage\.setItem\('ec_ref'/.test(landing) && /localStorage\.setItem\('ec_ref_ts'/.test(landing),
      'guardando também no localStorage, com as mesmas chaves');
 

@@ -1195,7 +1195,7 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 
    São duas pontes até o cadastro, de propósito:
 
-     1. O COOKIE ec_ref, 7 dias, path=/ — o MESMO que o app já lia, e não um
+     1. O COOKIE ec_ref, 30 dias, path=/ — o MESMO que o app já lia, e não um
         segundo parecido. Vale se a pessoa fechar a aba e voltar dias depois
         por outro caminho.
      2. O ref grudado no destino, que funciona mesmo com cookie e
@@ -1207,7 +1207,16 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
    o botão "Assinar" de cada cartão nasce fora de qualquer varredura inicial.
    Um laço no carregamento deixaria justamente o botão que leva ao checkout
    sem o código. */
-var REF_DIAS = 7;
+// TRINTA DIAS, e não sete: quem recebe uma indicação quase nunca conhece o
+// produto e raramente assina no mesmo dia — pesquisa, conversa com o sócio,
+// espera o mês virar. Com sete dias, boa parte da venda que o afiliado trouxe
+// chegava depois de a marca ter expirado, e ele via o indicado assinar sem
+// receber nada.
+//
+// O MESMO NÚMERO ESTÁ EM public/app/app.js, e precisa continuar igual: o
+// cookie é escrito aqui e relido lá. Se o app expirar antes, ele apaga uma
+// marca que esta página ainda considera válida.
+var REF_DIAS = 30;
 var refCode = '';
 try {
   var vindoRef = new URLSearchParams(location.search).get('ref');
