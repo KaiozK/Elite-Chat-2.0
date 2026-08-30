@@ -1099,7 +1099,34 @@ module.exports = function (broadcast, clients) {
 
     const steps = [];
     const step = (name, ok, detail) => steps.push({ name, ok, detail: detail || null });
-    const w = acc.wa;
+
+    // O CANAL ESCOLHIDO, e não o primeiro da lista.
+    //
+    // Aqui estava `acc.wa`, que é APELIDO de `channels[0].wa` (ver
+    // attachWaAlias em src/db.js). Conectar um número com o segundo canal
+    // selecionado gravava por cima do PRIMEIRO: o número que estava lá sumia
+    // do painel, o novo aparecia no lugar errado, e o canal que a pessoa tinha
+    // escolhido continuava "número não conectado".
+    //
+    // Pior do que não conectar: DESCONECTAVA uma conexão que estava
+    // funcionando, sem avisar ninguém.
+    const w = req.wctx.wa;
+    const canal = req.ch;
+
+    // O MESMO NÚMERO EM DOIS CANAIS não pode existir. Cada canal tem conversas
+    // e contatos próprios, e o webhook encontra o canal pelo phoneNumberId
+    // (channelByPhoneId): com o número repetido, a mesma mensagem cairia num
+    // canal decidido por ordem de lista — e as respostas sairiam do outro.
+    const jaUsado = (acc.channels || []).find(c =>
+      c !== canal && c.wa && c.wa.phoneNumberId &&
+      sessionInfo && String(sessionInfo.phone_number_id || '') === c.wa.phoneNumberId);
+    if (jaUsado) {
+      return res.status(409).json({
+        error: 'Este número já está conectado no canal "' + (jaUsado.label || jaUsado.name || 'outro') +
+               '". Desconecte-o lá antes de conectá-lo aqui.'
+      });
+    }
+
     w.authorizationCode = code;
     w.callbackUrl = redirectUri || '';
     w.updatedAt = Date.now();
@@ -1277,9 +1304,12 @@ module.exports = function (broadcast, clients) {
       w.connectedAt = w.connectedAt || Date.now();
       w.updatedAt = Date.now();
       db.save();
-      store.logEvent({ type: 'embedded_signup', ok: true, accountId: acc.id, wabaId: w.wabaId, phoneNumberId: w.phoneNumberId });
-      broadcast('wa_status', { accountId: acc.id, connected: true });
-      res.json({ ok: true, connected: true, steps, wa: waPublic(acc) });
+      store.logEvent({ type: 'embedded_signup', ok: true, accountId: acc.id,
+        canal: canal && canal.id, wabaId: w.wabaId, phoneNumberId: w.phoneNumberId });
+      broadcast('wa_status', { accountId: acc.id, chId: canal && canal.id, connected: true });
+      // A VISÃO É A DO CANAL. Devolver `acc` aqui mostraria o primeiro canal na
+      // tela de quem acabou de conectar o segundo.
+      res.json({ ok: true, connected: true, steps, chId: canal && canal.id, wa: waPublic(req.wctx) });
     } catch (e) {
       w.connected = false;
       w.updatedAt = Date.now();

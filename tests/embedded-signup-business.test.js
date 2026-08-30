@@ -206,13 +206,79 @@ const BASE = 'http://127.0.0.1:3993';
   ok(r8.status === 'CONNECTED', 'e confirma o estado na Meta: ' + r8.status);
 
   registro = 'pin';
-  const r9 = await fetch(BASE + '/api/wa/register', { method: 'POST', headers: cab, body: '{}' });
-  const c9 = await r9.json();
-  ok(r9.status === 409, `PIN de outra pessoa não vira 200: ${r9.status}`);
-  ok(/duas etapas/i.test(c9.error || ''), 'com a instrução de como resolver');
+  const rPin = await fetch(BASE + '/api/wa/register', { method: 'POST', headers: cab, body: '{}' });
+  const cPin = await rPin.json();
+  ok(rPin.status === 409, `PIN de outra pessoa não vira 200: ${rPin.status}`);
+  ok(/duas etapas/i.test(cPin.error || ''), 'com a instrução de como resolver');
   registro = 'ok';
 
-  console.log('\n=== 9. A tela sabe desenhar o terceiro estado ===');
+  console.log('\n=== 9. CONECTAR NUM CANAL NÃO DERRUBA O OUTRO ===');
+  // O caso relatado, e o mais grave de todos: o cliente tinha "WhatsApp
+  // principal" com um número funcionando. Conectou OUTRO número escolhendo o
+  // canal "Whatsapp Video Meta" — e o número novo apareceu no PRINCIPAL, por
+  // cima do que estava lá. O canal escolhido continuou "número não conectado".
+  //
+  // A causa: `acc.wa` é APELIDO de `channels[0].wa`. A rota gravava nele, então
+  // toda conexão caía no primeiro canal, qualquer que fosse o escolhido.
+  //
+  // Não é só "conectou no lugar errado": DESCONECTOU uma conexão que estava
+  // funcionando, sem avisar ninguém.
+  const conta9 = db.findAccountByEmail('dono@ex.com');
+  conta9.channels = [
+    { id: 'ch_principal', label: 'WhatsApp principal', createdAt: Date.now(), archived: false,
+      canceledAt: 0, cancelAt: 0,
+      wa: { connected: true, accessToken: 'TOKEN_ANTIGO', wabaId: 'WABA_ANTIGA',
+            phoneNumberId: 'PHONE_KAIO', displayPhoneNumber: '+55 11 93623-5758',
+            verifiedName: 'Kaio Caglioni' },
+      templatesCache: { fetchedAt: 0, list: [] }, contacts: [], conversations: [] },
+    { id: 'ch_video', label: 'Whatsapp Video Meta', createdAt: Date.now(), archived: false,
+      canceledAt: 0, cancelAt: 0,
+      wa: { connected: false }, templatesCache: { fetchedAt: 0, list: [] },
+      contacts: [], conversations: [] }
+  ];
+  db.save();
+
+  // A conexão é feita COM O SEGUNDO CANAL selecionado — é o que o painel manda
+  // no cabeçalho `x-channel`.
+  const r9 = await (await fetch(BASE + '/api/wa/connect', {
+    method: 'POST',
+    headers: { ...cab, 'x-channel': 'ch_video' },
+    body: JSON.stringify({ code: 'CODE', sessionInfo: { waba_id: 'WABA1', phone_number_id: 'PHONE1' } })
+  })).json();
+  ok(r9.connected === true, 'a conexão termina');
+
+  const depois = db.findAccountByEmail('dono@ex.com');
+  const principal = depois.channels.find(c => c.id === 'ch_principal');
+  const video = depois.channels.find(c => c.id === 'ch_video');
+
+  ok(video.wa.phoneNumberId === 'PHONE1',
+     'o número novo vai para o canal ESCOLHIDO: ' + video.wa.displayPhoneNumber);
+  ok(video.wa.connected === true, 'que passa a estar conectado');
+  ok(principal.wa.phoneNumberId === 'PHONE_KAIO',
+     'e o canal principal fica INTACTO: ' + principal.wa.displayPhoneNumber);
+  ok(principal.wa.connected === true, 'ainda conectado — ninguém foi derrubado');
+  ok(principal.wa.accessToken === 'TOKEN_ANTIGO', 'com o token dele preservado');
+  ok(r9.chId === 'ch_video', 'e a resposta diz em qual canal foi: ' + r9.chId);
+
+  console.log('\n=== 10. O MESMO número em dois canais é recusado ===');
+  // Cada canal tem conversas e contatos próprios, e o webhook encontra o canal
+  // pelo phoneNumberId. Com o número repetido, a mesma mensagem cairia num
+  // canal decidido por ordem de lista — e a resposta sairia do outro.
+  const r10 = await fetch(BASE + '/api/wa/connect', {
+    method: 'POST',
+    headers: { ...cab, 'x-channel': 'ch_principal' },
+    body: JSON.stringify({ code: 'CODE', sessionInfo: { waba_id: 'WABA1', phone_number_id: 'PHONE1' } })
+  });
+  const c10 = await r10.json();
+  ok(r10.status === 409, `recusado com 409: ${r10.status}`);
+  ok(/já está conectado no canal/i.test(c10.error || ''), 'dizendo onde ele já está');
+  ok(/Whatsapp Video Meta/.test(c10.error || ''), 'com o nome do canal: ' + c10.error);
+
+  const aindaLa = db.findAccountByEmail('dono@ex.com').channels.find(c => c.id === 'ch_principal');
+  ok(aindaLa.wa.phoneNumberId === 'PHONE_KAIO',
+     'e a recusa acontece ANTES de gravar qualquer coisa — o principal segue intocado');
+
+  console.log('\n=== 11. A tela sabe desenhar o terceiro estado ===');
   const app_js = fs.readFileSync(R + 'public/app/app.js', 'utf8');
   const css = fs.readFileSync(R + 'public/app/style.css', 'utf8');
   ok(/ok === 'skip' \? 'skip'/.test(app_js), 'esMark trata "skip" separado de falha');
@@ -220,7 +286,7 @@ const BASE = 'http://127.0.0.1:3993';
   ok(/\.es-step\.skip \.dot \{ background: var\(--border2\); \}/.test(css),
      'com o ponto apagado, não vermelho');
 
-  console.log('\n=== 10. A pergunta certa, ao lugar certo ===');
+  console.log('\n=== 12. A pergunta certa, ao lugar certo ===');
   const metaSrc = fs.readFileSync(R + 'src/meta.js', 'utf8');
   ok(/owner_business_info/.test(metaSrc),
      'a WABA é quem responde de quem ela é');
