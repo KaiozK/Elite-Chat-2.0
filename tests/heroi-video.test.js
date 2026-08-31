@@ -47,20 +47,31 @@ const html = fs.readFileSync(R + 'public/nova.html', 'utf8');
   ok(/aria-hidden="true"/.test(tag) && /tabindex="-1"/.test(tag),
      'e invisível para leitor de tela e para o Tab: é decoração, não conteúdo');
 
-  console.log('\n=== 3. NÃO baixa 3 MB no celular ===');
-  // Com <source> no HTML e preload="auto", o navegador baixa antes de qualquer
-  // decisão nossa — e `display:none` não impede o download.
-  ok(/preload="none"/.test(tag), 'preload="none": nada baixa por conta própria');
+  console.log('\n=== 3. Baixa depois da página, e toca no celular também ===');
+  // Com <source> no HTML o navegador começa a baixar DURANTE o carregamento,
+  // competindo com o texto e a marca. Em data-src, ele só entra depois que a
+  // página está de pé.
+  ok(/preload="none"/.test(tag), 'preload="none": não baixa junto com a página');
   ok(/data-src="\/assets\/heroi-universo\.mp4"/.test(tag),
-     'o endereço fica em data-src, fora do alcance do navegador');
+     'o endereço fica em data-src');
   ok(!/<source/.test(tag), 'e não há <source>, que baixaria de todo jeito');
 
-  const script = html.slice(html.indexOf('O UNIVERSO EM VÍDEO'), html.indexOf('O UNIVERSO EM VÍDEO') + 1400);
-  ok(/max-width: 760px/.test(script), 'a tela estreita não recebe vídeo');
-  ok(/prefers-reduced-motion/.test(script), 'quem pediu menos movimento também não');
-  ok(/v\.src = v\.dataset\.src/.test(script), 'e só aí o endereço vira src');
+  const script = html.slice(html.indexOf('O UNIVERSO EM VÍDEO'), html.indexOf('O UNIVERSO EM VÍDEO') + 1600);
+  // O CELULAR RECEBE O VÍDEO. Cortei antes por peso e reverti: a vitrine
+  // vende, e metade das visitas chega pelo celular — um herói parado ali é o
+  // primeiro contato de metade das pessoas.
+  ok(!/max-width: 760px/.test(script), 'a tela estreita TAMBÉM recebe o vídeo');
+  // Só "menos movimento" barra: é preferência declarada do sistema, e
+  // insistir seria ignorá-la.
+  ok(/prefers-reduced-motion/.test(script) && /if \(quieto\) return;/.test(script),
+     'e só "menos movimento" barra');
+  ok(/v\.src = v\.dataset\.src/.test(script), 'aí o endereço vira src');
   ok(/p\.catch\(function \(\) \{\}\)/.test(script),
      'um play() recusado é engolido: o pôster continua, e a tela não perde nada');
+
+  // O PESO importa mais agora que o celular baixa: um herói de 5 MB é a
+  // primeira visita inteira gasta antes de a pessoa ler a primeira linha.
+  ok(kbVideo < 2600, `e o vídeo cabe num celular: ${kbVideo} KB`);
 
   console.log('\n=== 4. O texto continua legível por cima ===');
   ok(/\.heroi-veu\{/.test(html), 'existe um véu entre o vídeo e o texto');

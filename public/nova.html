@@ -1264,19 +1264,24 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
    celular no 4G é o preço da primeira visita gasto num enfeite, antes de a
    pessoa saber o que a Koonfy faz.
 
-   O endereço mora em `data-src` justamente por isso — com `<source>` no
-   HTML o navegador baixa antes de qualquer decisão nossa, e `display:none`
-   não impede o download. Quem não recebe o vídeo fica com o pôster de
-   25 KB, que é o mesmo universo, parado.
+   O endereço mora em `data-src` porque com `<source>` no HTML o navegador
+   começa a baixar durante o carregamento da página, competindo com o texto
+   e a marca. Aqui ele só entra depois que a página está de pé.
+
+   O CELULAR RECEBE O VÍDEO. Cortei antes por causa do peso, e reverti: a
+   vitrine vende, e metade das visitas chega pelo celular — um herói parado
+   ali é o primeiro contato de metade das pessoas. Enquanto o vídeo não
+   chega, o pôster já é a mesma cena, parada; a tela nunca fica preta.
 
    `play()` pode ser recusado (aba em segundo plano, economia de bateria).
    Não é erro: o pôster continua lá, e a tela não perde nada. */
 (function () {
   var v = document.querySelector('.heroi-video');
   if (!v || !v.dataset.src) return;
+  // SÓ 'menos movimento' barra o vídeo. Quem pede isso não quer animação
+  // nenhuma, e insistir seria ignorar uma preferência declarada do sistema.
   var quieto = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var estreito = window.matchMedia && window.matchMedia('(max-width: 760px)').matches;
-  if (quieto || estreito) return;
+  if (quieto) return;
   v.src = v.dataset.src;
   var p = v.play();
   if (p && p.catch) p.catch(function () {});
