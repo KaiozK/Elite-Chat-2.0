@@ -38,9 +38,15 @@ async function graph(path, { method = 'GET', token, body, formParams } = {}) {
   let data;
   try { data = JSON.parse(text); } catch { data = { raw: text }; }
   if (!res.ok) {
-    const err = new Error((data.error && data.error.message) || `Graph API retornou ${res.status}`);
+    // EM PORTUGUÊS. A frase da Graph API é escrita para quem programa, e chegava
+    // crua na tela do cliente — outro idioma, sobre um sistema que não é o
+    // nosso, e sem o que fazer a respeito. O original não se perde: fica em
+    // `metaOriginal`, que é o que alguém usa para procurar na documentação.
+    const cru = (data.error && data.error.message) || `Graph API retornou ${res.status}`;
+    const err = new Error(require('./metaerros').mensagem(data.error, cru));
     err.status = res.status;
     err.meta = data.error || data;
+    err.metaOriginal = cru;
     throw err;
   }
   return data;

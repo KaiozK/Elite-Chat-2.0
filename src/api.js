@@ -2121,7 +2121,11 @@ module.exports = function (broadcast, clients) {
       res.json({ ok: true, result: r });
     } catch (e) {
       const cod = Number((e.meta && (e.meta.code || e.meta.error_subcode)) || 0);
-      if (cod !== 2593145 && !/calling.*cannot be enabled/i.test(String(e.message || ''))) throw e;
+      // A FRASE AGORA VEM TRADUZIDA (ver src/metaerros.js), então o texto que se
+      // compara aqui é o ORIGINAL da Meta — comparar com a tradução amarraria
+      // esta regra à redação em português, que muda quando alguém melhora o texto.
+      const bruto = String(e.metaOriginal || e.message || '');
+      if (cod !== 2593145 && !/calling.*cannot be enabled/i.test(bruto)) throw e;
 
       // O QUE A META NÃO CONTA. Ela recusa e não diz por quê; estes são os
       // motivos conhecidos, na ordem em que costumam ser a causa. A mesma

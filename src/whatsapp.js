@@ -43,9 +43,13 @@ async function graph(acc, path, { method = 'GET', body, form, raw = false, token
   let data;
   try { data = JSON.parse(text); } catch { data = { raw: text }; }
   if (!res.ok) {
-    const err = new Error((data.error && data.error.message) || `Graph API retornou ${res.status}`);
+    // EM PORTUGUÊS — ver src/metaerros.js. O original fica em `metaOriginal`
+    // para quem for procurar o código na documentação da Meta.
+    const cru = (data.error && data.error.message) || `Graph API retornou ${res.status}`;
+    const err = new Error(require('./metaerros').mensagem(data.error, cru));
     err.status = res.status;
     err.meta = data.error || data;
+    err.metaOriginal = cru;
     throw err;
   }
   return data;
@@ -140,7 +144,7 @@ async function uploadTemplateExample(acc, filename, mime, buffer) {
   const text = await res.text();
   let data; try { data = JSON.parse(text); } catch { data = { raw: text }; }
   if (!res.ok || !data.h) {
-    const e = new Error((data.error && data.error.message) || 'Falha no upload do exemplo de mídia');
+    const e = new Error(require('./metaerros').mensagem(data.error, 'Falha no upload do exemplo de mídia'));
     e.status = res.status || 500; e.meta = data; throw e;
   }
   return data.h; // handle p/ example.header_handle
