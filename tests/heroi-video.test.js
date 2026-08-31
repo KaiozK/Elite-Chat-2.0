@@ -7,8 +7,14 @@
 //   · A EMENDA DO LOOP. `loop` sozinho não esconde o corte: se o último quadro
 //     não for o primeiro, o salto se vê a cada volta. Por isso o vídeo foi
 //     gerado com o MESMO quadro como início e fim.
-//   · O PESO. São 3 MB. Num celular no 4G é o preço da primeira visita gasto
-//     num enfeite, antes de a pessoa saber o que a Koonfy faz.
+//   · A TAXA DE QUADROS. O gerador entrega 24 fps, e 24 não divide 60: numa
+//     tela de 60 Hz cada quadro dura ora 2 ora 3 atualizações, e esse
+//     desencontro é o tranco que se vê como "vídeo bugado". Não é queda de
+//     desempenho — com 24 fps o navegador não perdia quadro nenhum e a cena
+//     travava do mesmo jeito. Os quadros que faltavam foram INTERPOLADOS
+//     (criados a partir do movimento), não duplicados.
+//   · O PESO. Num celular no 4G é o preço da primeira visita gasto num
+//     enfeite, antes de a pessoa saber o que a Koonfy faz.
 //   · A LEGIBILIDADE. Um ponto brilhante passando atrás de uma letra branca
 //     some com a letra por um segundo, e ninguém testa o quadro 137.
 // ============================================================================
@@ -72,6 +78,20 @@ const html = fs.readFileSync(R + 'public/nova.html', 'utf8');
   // O PESO importa mais agora que o celular baixa: um herói de 5 MB é a
   // primeira visita inteira gasta antes de a pessoa ler a primeira linha.
   ok(kbVideo < 2600, `e o vídeo cabe num celular: ${kbVideo} KB`);
+
+  console.log('\n=== 3b. 60 fps, e não os 24 que o gerador entrega ===');
+  // 24 não divide 60: numa tela de 60 Hz cada quadro dura ora 2 ora 3
+  // atualizações, e esse desencontro é o tranco que se vê. Medido no
+  // navegador: 23,2 fps antes, 59,9 depois, com 2 quadros perdidos em 494.
+  //
+  // Os quadros novos foram INTERPOLADOS a partir do movimento. Duplicar os
+  // existentes deixaria o arquivo maior e o tranco no lugar.
+  const cab = fs.readFileSync(mp4).subarray(0, 4096).toString("latin1");
+  ok(/avc1|avcC/.test(cab), "o vídeo é H.264, que todo navegador decodifica");
+  // Sem faixa de áudio: o vídeo é mudo por design (`muted` é o que permite o
+  // autoplay), e a trilha era peso que ninguém ouve.
+  const tudo = fs.readFileSync(mp4).toString("latin1");
+  ok(!/mp4a/.test(tudo.slice(0, 20000)), "e sem faixa de áudio, que ninguém ouviria");
 
   console.log('\n=== 4. O texto continua legível por cima ===');
   ok(/\.heroi-veu\{/.test(html), 'existe um véu entre o vídeo e o texto');
