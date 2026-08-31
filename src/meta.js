@@ -101,7 +101,7 @@ const registerPhone = (token, phoneNumberId, pin) =>
 // O ESTADO do número, para saber se ele já está de pé.
 // `status` é o que aparece como "Pendente"/"Conectado" no WhatsApp Manager.
 const phoneStatus = (token, phoneNumberId) =>
-  graph(`/${encodeURIComponent(phoneNumberId)}?fields=id,display_phone_number,verified_name,status,code_verification_status,platform_type,quality_rating`, { token });
+  graph(`/${encodeURIComponent(phoneNumberId)}?fields=id,display_phone_number,verified_name,status,code_verification_status,platform_type,quality_rating,messaging_limit_tier`, { token });
 
 const unsubscribeApp = (token, wabaId) =>
   graph(`/${encodeURIComponent(wabaId)}/subscribed_apps`, { method: 'DELETE', token });

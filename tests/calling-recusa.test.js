@@ -42,7 +42,10 @@ const meta = require(R + 'src/meta');
 const wa = require(R + 'src/whatsapp');
 
 let statusDoNumero = 'CONNECTED';
-meta.phoneStatus = async () => ({ id: 'PHONE1', status: statusDoNumero });
+// O TETO DIÁRIO. A documentação da Calling API exige pelo menos 2.000
+// destinatários únicos por dia, e um número recém-conectado nasce em TIER_250.
+let tetoDoNumero = 'TIER_10K';
+meta.phoneStatus = async () => ({ id: 'PHONE1', status: statusDoNumero, messaging_limit_tier: tetoDoNumero });
 
 // A recusa REAL da Meta, com o código e a frase que ela devolve.
 let recusar = true;
@@ -115,11 +118,18 @@ const json = r => r.json();
   ok(c2.code === 'calling_indisponivel', 'com um código nosso, não o número da Meta');
   ok(Array.isArray(c2.meta.motivos) && c2.meta.motivos.length === 4,
      `quatro motivos conhecidos: ${(c2.meta.motivos || []).length}`);
-  ok(/disponibilidade limitada/i.test(c2.meta.motivos[0]),
-     'o mais comum primeiro — a API é de liberação limitada da Meta');
+  // OS MOTIVOS SÃO OS DA DOCUMENTAÇÃO, e não um palpite:
+  // developers.facebook.com/docs/whatsapp/cloud-api/calling
+  ok(/webhook "calls"/i.test(c2.meta.motivos[0]),
+     'o primeiro é a inscrição no webhook calls, que só se marca no painel da Meta');
+  ok(c2.meta.motivos.some(m => /disponibilidade limitada/i.test(m)), 'a liberação limitada da API');
   ok(c2.meta.motivos.some(m => /Business Verification/i.test(m)), 'a verificação do negócio');
-  ok(c2.meta.motivos.some(m => /nome de exibição/i.test(m)), 'o nome de exibição aprovado');
-  ok(c2.meta.motivos.some(m => /registrado e conectado/i.test(m)), 'e o registro na Cloud API');
+  ok(c2.meta.motivos.some(m => /Cloud API/i.test(m)), 'e o número em uso pela Cloud API');
+  // Os dois que o servidor confere sozinho não aparecem na lista: eles já
+  // passaram para a recusa ter chegado aqui, e repeti-los mandaria o cliente
+  // conferir o que já está certo.
+  ok(!c2.meta.motivos.some(m => /2\.000|teto diário/i.test(m)),
+     'sem repetir o que o servidor já conferiu');
 
   // O CLIENTE PRECISA SABER QUE NÃO É NOSSO. Sem isto ele passa a tarde
   // procurando defeito no Koonfy por uma porta que a Meta fechou.
@@ -131,6 +141,29 @@ const json = r => r.json();
   const log = db.get().webhookLog.find(e => e.type === 'calling_recusado');
   ok(!!log, 'a recusa entra no log do Admin');
   ok(log && log.accountId === acc.id, 'com a conta que tentou');
+
+  console.log('\n=== 2b. TETO DIÁRIO ABAIXO DE 2.000: recusa nossa, e explicada ===');
+  // É o requisito que a documentação lista e que quase ninguém sabe — e o mais
+  // provável num número recém-conectado, que nasce em TIER_250. Não se resolve
+  // clicando: o teto sobe sozinho conforme o número envia com qualidade.
+  //
+  // Sem esta conferência, a pessoa lia "cannot be enabled" e ia procurar defeito
+  // na integração por semanas.
+  chamou = 0;
+  tetoDoNumero = 'TIER_250';
+  const rT = await ligar();
+  const cT = await rT.json();
+  ok(rT.status === 409, `recusa local: ${rT.status}`);
+  ok(cT.code === 'teto_baixo', 'com o código do motivo');
+  ok(/2\.000 destinatários únicos/.test(cT.error), 'citando a exigência da Meta');
+  ok(/250/.test(cT.error), 'e o teto atual do número: ' + cT.error);
+  ok(/sobe sozinho/.test(cT.error), 'dizendo que não há botão para acelerar');
+  ok(chamou === 0, 'sem gastar chamada na Meta para ouvir a frase opaca');
+
+  tetoDoNumero = 'TIER_10K';
+  const rOk = await ligar();
+  ok((await rOk.json()).code === 'calling_indisponivel',
+     'com teto suficiente, a conversa segue para a Meta');
 
   console.log('\n=== 3. Outros erros da Meta NÃO viram essa lista ===');
   // Uma lista de motivos genérica em cima de um erro diferente seria pior que

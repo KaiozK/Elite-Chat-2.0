@@ -157,6 +157,17 @@ const DEFAULTS = {
     // Verificação em duas etapas do login, ligada pelo admin.
     security: { twoFactor: false },
     landing: { ctaText: '' }, // copy do botão principal da landing (vazio = automático pelos dias de teste)
+    // ---- MANUTENÇÃO ----
+    //
+    // Desliga o PAINEL DO CLIENTE inteiro. Diferente do interruptor de módulos,
+    // que tira um recurso: aqui ninguém entra, e a tela diz por quê. Serve para
+    // atualização com migração de dados, troca de servidor, ou o dia em que
+    // algo quebrou de um jeito que mexer no ar seria pior.
+    //
+    // O Admin SaaS continua entrando — é dele que se desliga e se religa, e uma
+    // manutenção que tranca o próprio administrador do lado de fora é uma
+    // manutenção que não acaba.
+    manutencao: { ligada: false, mensagem: '', desde: 0 },
     // ---- MÓDULOS DA PLATAFORMA (interruptor geral) ----
     //
     // Diferente dos módulos do PLANO, que dizem o que cada cliente comprou:

@@ -165,6 +165,59 @@ module.exports = function (broadcast, clients) {
   //
   // 503, e não 402: não é falta de plano, é serviço fora do ar. O código diz
   // isso a qualquer cliente de API, inclusive aos que não leem a mensagem.
+  // MANUTENÇÃO: o painel do cliente para, e a API diz isso a quem perguntar.
+  //
+  // Vem ANTES de tudo, inclusive do interruptor de módulos: se a plataforma
+  // está parada, não interessa qual módulo a rota pertence.
+  //
+  // O QUE CONTINUA ABERTO, e cada um por um motivo:
+  //   · /manutencao — é a rota que a tela lê para saber que está parado, e
+  //     fechá-la faria a tela mostrar "erro" em vez de "em manutenção";
+  //   · /login e /logout — a sessão precisa poder terminar, e quem chega
+  //     precisa receber a explicação em vez de "senha inválida";
+  //   · /public/* — a vitrine e o checkout não param: parar de VENDER durante
+  //     uma manutenção do painel é perder cliente por um problema que ele nem
+  //     tem.
+  const ABERTO_NA_MANUTENCAO = /^\/(manutencao|login|logout|adm\/|admin\/|public\/|webhook)/;
+  router.use((req, res, next) => {
+    const m = db.get().platform.manutencao || {};
+    if (!m.ligada) return next();
+    // O ADMIN SaaS passa: é dele que se religa.
+    if (req.session && req.session.kind === 'admin') return next();
+    if (ABERTO_NA_MANUTENCAO.test(req.path)) return next();
+    const sup = ((db.get().platform.suporte || {}).whatsapp || '').trim();
+    res.status(503).json({
+      code: 'manutencao',
+      error: m.mensagem || 'A plataforma está em manutenção. Já estamos trabalhando para voltar.',
+      suporte: sup ? { whatsapp: sup, link: 'https://wa.me/' + sup.replace(/\D/g, '') } : null
+    });
+  });
+
+  // A TELA PRECISA SABER, e esta rota é pública de propósito: quem ainda não
+  // entrou também merece a explicação, em vez de um login que recusa sem dizer
+  // por quê.
+  router.get('/manutencao', (req, res) => {
+    const p = db.get().platform;
+    const m = p.manutencao || {};
+    const sup = ((p.suporte || {}).whatsapp || '').trim();
+    const br = (p.tema && p.tema.brilho) || {};
+    res.json({
+      ligada: !!m.ligada,
+      mensagem: m.mensagem || '',
+      desde: m.desde || 0,
+      suporte: sup ? { whatsapp: sup, link: 'https://wa.me/' + sup.replace(/\D/g, '') } : null,
+      // O BOTÃO BRILHANTE vem junto: a tela de manutenção é servida sem sessão,
+      // e buscar o tema numa segunda rota deixaria o botão chapado no primeiro
+      // instante e brilhante depois — piscando na cara de quem já está
+      // esperando.
+      brilho: {
+        ligado: br.ligado === undefined ? true : !!br.ligado,
+        cores: Array.isArray(br.cores) ? br.cores : [],
+        angulo: Number(br.angulo) || 45
+      }
+    });
+  });
+
   const CAMINHO_MODULO = [
     [/^\/campaigns/, 'campaigns'],
     [/^\/flows/, 'flows'],
@@ -2016,22 +2069,49 @@ module.exports = function (broadcast, clients) {
     const ligar = !!(req.body || {}).enabled;
     const w = req.wctx.wa;
 
-    // O PRÉ-REQUISITO QUE DÁ PARA VER DAQUI: número registrado na Cloud API.
-    // Um número compartilhado com o app mas não registrado aparece "Pendente"
-    // no WhatsApp Manager, e a Meta recusa chamadas nele — com a mesma frase
-    // opaca. Perguntar antes evita mandar o cliente atrás do motivo errado.
+    // OS PRÉ-REQUISITOS QUE DÁ PARA CONFERIR DAQUI, antes de ouvir a frase
+    // opaca da Meta. A documentação da Calling API lista quatro; estes dois o
+    // servidor consegue verificar sozinho.
     if (ligar) {
-      let situacao = '';
+      let situacao = '', teto = '';
       try {
         const st = await meta.phoneStatus(w.accessToken, w.phoneNumberId);
         situacao = String(st.status || '');
+        teto = String(st.messaging_limit_tier || '');
+        if (teto) { w.messagingTier = teto; db.save(); }
       } catch { /* sem status, seguimos e deixamos a Meta responder */ }
+
+      // 1. REGISTRADO NA CLOUD API. Um número compartilhado com o app mas não
+      // registrado aparece "Pendente" no WhatsApp Manager, e a Meta recusa
+      // chamadas nele.
       if (situacao && !/CONNECTED/i.test(situacao)) {
         return res.status(409).json({
           error: 'O número está como "' + situacao + '" na Meta e ainda não envia, recebe nem ' +
                  'aceita ligações. Registre-o na Cloud API primeiro (botão "Registrar número na ' +
                  'Cloud API", aqui em Conexão & API) e tente de novo.',
           code: 'nao_registrado', status: situacao
+        });
+      }
+
+      // 2. TETO DIÁRIO DE 2.000 DESTINATÁRIOS ÚNICOS.
+      //
+      // É o requisito que a documentação da Meta lista e que quase ninguém
+      // sabe — e é o mais provável num número recém-conectado, que nasce no
+      // TIER_250. Não é coisa que se resolva clicando: o teto sobe sozinho
+      // conforme o número envia com qualidade alta.
+      //
+      // Sem esta conferência, a pessoa lia "cannot be enabled" e ia procurar
+      // defeito na integração por semanas. Com ela, sabe que precisa ESPERAR e
+      // enviar — que é a única coisa que funciona.
+      const nivel = { TIER_50: 50, TIER_250: 250, TIER_1K: 1000, TIER_1000: 1000,
+                      TIER_10K: 10000, TIER_100K: 100000, TIER_UNLIMITED: Infinity }[teto];
+      if (nivel !== undefined && nivel < 2000) {
+        return res.status(409).json({
+          error: 'A Meta exige um limite diário de pelo menos 2.000 destinatários únicos para liberar ' +
+                 'ligações, e este número está em ' + (nivel === Infinity ? teto : nivel.toLocaleString('pt-BR')) +
+                 '. O teto sobe sozinho conforme o número envia mensagens com boa qualidade — não há botão ' +
+                 'para acelerar isso.',
+          code: 'teto_baixo', tier: teto
         });
       }
     }
@@ -2056,11 +2136,16 @@ module.exports = function (broadcast, clients) {
       return res.status(409).json({
         code: 'calling_indisponivel',
         error: 'A Meta recusou habilitar ligações neste número.',
+        // OS REQUISITOS DA DOCUMENTAÇÃO da Calling API, e não um palpite:
+        // developers.facebook.com/docs/whatsapp/cloud-api/calling
+        // Os dois que o servidor consegue conferir (registro e teto diário) já
+        // foram checados acima e passaram — se a recusa chegou aqui, é um dos
+        // outros, e nenhum deles se resolve nesta tela.
         meta: { code: 2593145, motivos: [
-          'A API de Chamadas ainda não está liberada para esta conta ou para este país — ela é de disponibilidade limitada, e a liberação é da Meta.',
-          'A verificação do seu negócio (Business Verification) no Gerenciador da Meta pode não estar concluída.',
-          'O nome de exibição do número precisa estar aprovado.',
-          'O número precisa estar registrado e conectado na Cloud API.'
+          'O app precisa estar inscrito no campo de webhook "calls" — isso se marca no painel da Meta, em Webhooks do app, e não pela API.',
+          'A API de Chamadas é de disponibilidade limitada: pode ainda não estar liberada para esta conta ou para este país.',
+          'A verificação do seu negócio (Business Verification) no Gerenciador da Meta precisa estar concluída.',
+          'O número precisa estar em uso pela Cloud API — não pelo aplicativo WhatsApp Business.'
         ],
         nota: 'A mesma recusa acontece no painel da própria Meta, em Configurações de ligação — ' +
               'não é uma limitação do Koonfy. Quando a Meta liberar para o seu número, este botão funciona.' }
@@ -5761,6 +5846,48 @@ module.exports = function (broadcast, clients) {
     const plan = db.get().plans.find(p => p.id === req.params.id);
     if (plan) { plan.archived = true; db.save(); } // arquiva (assinantes ativos continuam)
     res.json({ ok: true });
+  });
+
+  // ---- MANUTENÇÃO: liga, desliga e o número do suporte ----
+  //
+  // O NÚMERO DO SUPORTE MORA AQUI TAMBÉM. Ele já existia junto das regras de
+  // cobrança, onde ninguém procura — e é justamente na manutenção que ele
+  // importa mais: a tela manda o cliente chamar o suporte, e sem número a
+  // frase vira uma instrução impossível de seguir.
+  router.get('/admin/manutencao', auth, adminOnly, (req, res) => {
+    const p = db.get().platform;
+    res.json({
+      manutencao: p.manutencao || { ligada: false, mensagem: '', desde: 0 },
+      suporte: (p.suporte || {}).whatsapp || ''
+    });
+  });
+
+  router.put('/admin/manutencao', auth, adminOnly, (req, res) => {
+    const b = req.body || {};
+    const p = db.get().platform;
+    if (!p.manutencao) p.manutencao = { ligada: false, mensagem: '', desde: 0 };
+    if (b.mensagem !== undefined) p.manutencao.mensagem = String(b.mensagem).slice(0, 400);
+    if (b.ligada !== undefined) {
+      const ligar = !!b.ligada;
+      // LIGAR SEM NÚMERO DE SUPORTE é recusado. A tela diz "chame o suporte";
+      // sem número, ela manda o cliente para lugar nenhum no pior momento
+      // possível — que é exatamente quando ele não consegue usar o produto.
+      const sup = ((p.suporte || {}).whatsapp || '').trim();
+      if (ligar && !sup) {
+        return res.status(400).json({
+          error: 'Configure o WhatsApp do suporte antes de ligar a manutenção. A tela manda o cliente ' +
+                 'falar com o suporte, e sem número ela pede uma coisa impossível.',
+          code: 'sem_suporte'
+        });
+      }
+      if (p.manutencao.ligada !== ligar) {
+        p.manutencao.ligada = ligar;
+        p.manutencao.desde = ligar ? Date.now() : 0;
+        store.logEvent({ type: 'manutencao', detail: ligar ? 'LIGADA' : 'desligada', ok: !ligar });
+      }
+    }
+    db.save();
+    res.json({ ok: true, manutencao: p.manutencao });
   });
 
   // ---- MÓDULOS DA PLATAFORMA: o interruptor geral ----

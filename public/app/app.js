@@ -180,6 +180,51 @@ async function notifOptIn(sim) {
 
 // ---------- Notificação de nova mensagem (via SSE) ----------
 // d = { accountId, waId, notify:{ direction, name, text, type } }
+/* ---------------- PLATAFORMA EM MANUTENÇÃO ----------------
+   Uma tela só, cobrindo tudo, com o que a pessoa precisa: o que está
+   acontecendo, e como falar com alguém. Sem menu por trás, porque nada ali
+   funciona — deixar o painel visível e recusar clique a clique é pior do que
+   dizer de uma vez.
+
+   O BOTÃO DE SUPORTE É O ÚNICO CAMINHO da tela, e por isso leva o brilho: é o
+   que a pessoa deve fazer, e não pode competir com nada.
+
+   NÃO É UM ERRO. Nenhum "algo deu errado", nenhum código: quem lê isto não fez
+   nada de errado, e tratar manutenção como falha assusta sem necessidade. */
+function telaManutencao(d) {
+  const s = d.suporte;
+  const desde = d.desde ? new Date(d.desde).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+  document.getElementById('login').style.display = 'none';
+  const app = document.getElementById('app'); if (app) app.style.display = 'none';
+  let box = document.getElementById('manutencao');
+  if (!box) { box = document.createElement('div'); box.id = 'manutencao'; document.body.appendChild(box); }
+  box.innerHTML = `
+    <div class="man-cartao">
+      <div class="man-ic">${ico('gear', 30)}</div>
+      <h1>Estamos em manutenção</h1>
+      <p>${esc(d.mensagem || 'A Koonfy está passando por uma atualização. Voltamos assim que terminar — nada do que você configurou foi perdido.')}</p>
+      ${s ? `<a class="btn primary man-btn" href="${esc(s.link)}" target="_blank" rel="noopener">
+        Falar com o suporte no WhatsApp</a>` : ''}
+      ${desde ? `<span class="man-desde">Em manutenção desde ${esc(desde)}</span>` : ''}
+    </div>`;
+}
+
+// A PERGUNTA É FEITA ANTES DE QUALQUER OUTRA COISA. Descobrir a manutenção pelo
+// primeiro 503 no meio do carregamento deixaria metade da tela montada e a
+// outra metade quebrada.
+async function conferirManutencao() {
+  try {
+    const d = await (await fetch(API.api('/manutencao'))).json();
+    if (!d || !d.ligada) return false;
+    if (d.brilho && d.brilho.ligado && (d.brilho.cores || []).length >= 2) {
+      const p = [d.brilho.cores[0], d.brilho.cores[0]].concat(d.brilho.cores.slice(1)).concat([d.brilho.cores[0], d.brilho.cores[0]]);
+      document.documentElement.style.setProperty('--btn-grad', `linear-gradient(${d.brilho.angulo}deg, ${p.join(', ')})`);
+    }
+    telaManutencao(d);
+    return true;
+  } catch { return false; }
+}
+
 function maybeNotifyMessage(d) {
   if (!window.ECNotify || !d || !d.notify || d.notify.direction !== 'in') return;
 
@@ -615,7 +660,7 @@ const ICONS = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
   cart: '<circle cx="9" cy="20" r="1.6"/><circle cx="18" cy="20" r="1.6"/><path d="M2 3h3l2.6 12.4a1.6 1.6 0 0 0 1.6 1.3h8.5a1.6 1.6 0 0 0 1.6-1.3L21 7H6"/>',
   funnel: '<path d="M3 4.5h18l-7.2 8.4V20l-3.6 1.6v-8.7L3 4.5Z" stroke-linejoin="round"/>',
-  flow: '<path d="M3 4.5h18l-7.2 8.4V20l-3.6 1.6v-8.7L3 4.5Z" stroke-linejoin="round"/>',
+  flow: '<path d="M2.5 4.5h19l-6.6 9.6v6.4H9.1v-6.4L2.5 4.5Z"/><path d="M6.2 9.3h11.6M8.6 12.4h6.8"/>',
   http: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   calendar: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/>',
@@ -887,6 +932,13 @@ async function copyText(t) {
 
 // ---------- auth ----------
 async function init() {
+  // A PLATAFORMA ESTÁ DE PÉ? Antes de tudo — inclusive antes da tela de
+  // entrar. Em manutenção, deixar a pessoa digitar e-mail e senha para só
+  // então descobrir que está parado é fazer trabalho à toa no pior momento.
+  //
+  // O ADMIN SaaS passa direto: é dele que se religa, e uma manutenção que
+  // tranca o próprio administrador do lado de fora não acaba nunca.
+  if (!ADM && await conferirManutencao()) return;
   $('#login-form').addEventListener('submit', doLogin);
   if (TOKEN) {
     try {
@@ -1931,6 +1983,7 @@ const ADM_ABAS = {
   'adm/pagamentos':     { aba: 'adm-ep',   titulo: 'Koonpay',             sub: 'Subcontas, cobranças e taxas recebidas' },
   'adm/financeiro':     { aba: 'adm-fin',  titulo: 'Financeiro',          sub: 'Todas as transações, por método de pagamento' },
   'adm/modulos':        { aba: 'adm-mod',  titulo: 'Módulos',             sub: 'Ligar e desligar funcionalidades da plataforma' },
+  'adm/manutencao':     { aba: 'adm-man',  titulo: 'Manutenção',          sub: 'Parar o painel dos clientes e o WhatsApp do suporte' },
   'adm/integracoes':    { aba: 'adm-int',  titulo: 'Integrações',         sub: 'Serviços externos e SMS' },
   'adm/plataforma':     { aba: 'adm-plat', titulo: 'Plataforma',          sub: 'Credenciais do app da Meta' },
   'adm/marketing':      { aba: 'adm-mkt',  titulo: 'Marketing',           sub: 'Pixels e rastreamento da vitrine' },
@@ -9665,6 +9718,7 @@ async function renderAdmin() {
       <button data-tab="adm-ep" onclick="showSettingsTab('adm-ep');admEpPaint()">Koonpay</button>
       <button data-tab="adm-fin" onclick="showSettingsTab('adm-fin');admFinLoad()">Financeiro</button>
       <button data-tab="adm-mod" onclick="showSettingsTab('adm-mod');admModLoad()">Módulos</button>
+      <button data-tab="adm-man" onclick="showSettingsTab('adm-man');admManLoad()">Manutenção</button>
       <button data-tab="adm-int" onclick="showSettingsTab('adm-int');admIntLoad()">Integrações</button>
       <button data-tab="adm-plat" onclick="showSettingsTab('adm-plat')">Plataforma</button>
       <button data-tab="adm-mkt" onclick="showSettingsTab('adm-mkt');admMktLoad()">Marketing</button>
@@ -10364,6 +10418,10 @@ async function paintAdmin() {
 
       <div class="tabpane ${activeTab === 'adm-mod' ? 'show' : ''}" data-pane="adm-mod">
         <div id="adm-mod-box">${skel(4)}</div>
+      </div>
+
+      <div class="tabpane ${activeTab === 'adm-man' ? 'show' : ''}" data-pane="adm-man">
+        <div id="adm-man-box">${skel(3)}</div>
       </div>
 
       <div class="tabpane ${activeTab === 'adm-int' ? 'show' : ''}" data-pane="adm-int">
@@ -12942,6 +13000,94 @@ function admFinPaint(d) {
 // integração começa a falhar e a escolha é entre desligar o recurso ou deixar
 // cada cliente descobrir o defeito sozinho.
 // ===========================================================================
+// ===========================================================================
+// MANUTENÇÃO — parar o painel dos clientes
+//
+// Diferente do interruptor de módulos, que tira um recurso: aqui ninguém entra,
+// e a tela diz por quê. Serve para atualização com migração de dados, troca de
+// servidor, ou o dia em que algo quebrou de um jeito que mexer no ar seria pior.
+//
+// O NÚMERO DO SUPORTE MORA AQUI TAMBÉM, e não só nas regras de cobrança onde
+// ninguém procura: é nesta tela que ele importa mais, porque é ela que manda o
+// cliente chamar o suporte.
+// ===========================================================================
+async function admManLoad() {
+  const box = $('#adm-man-box'); if (!box) return;
+  box.innerHTML = skel(3);
+  try {
+    const d = await api('/admin/manutencao');
+    const m = d.manutencao || {};
+    const desde = m.desde ? new Date(m.desde).toLocaleString('pt-BR') : '';
+    box.innerHTML = `
+      <div class="card">
+        <h2>${ico('phone')} WhatsApp do suporte</h2>
+        <p class="muted" style="margin:0 0 12px;font-size:13px">
+          Aparece no rodapé do checkout, no rodapé da vitrine, no pé do menu do app — e na tela de
+          manutenção, que manda o cliente falar com você. <b>Só o número</b>; o link do WhatsApp é montado
+          sozinho. Vazio esconde o botão em todos esses lugares.</p>
+        <div class="row" style="align-items:flex-end">
+          <label style="flex:2">Número com DDD<input id="man-sup" value="${esc(d.suporte || '')}" placeholder="(11) 99999-8888"></label>
+          <button class="btn primary no-grow" onclick="admManSalvarSuporte(this)">${ico('save', 14)} Salvar número</button>
+        </div>
+        ${d.suporte ? `<p class="muted" style="font-size:12px;margin:10px 0 0">
+          Testar: <a href="https://wa.me/${esc(String(d.suporte).replace(/\\D/g, ''))}" target="_blank" rel="noopener">abrir conversa</a></p>` : ''}
+      </div>
+
+      <div class="card">
+        <h2>${ico('gear')} Modo manutenção</h2>
+        <p class="muted" style="margin:0 0 12px;font-size:13px">
+          Ligado, <b>nenhum cliente entra no painel</b>: aparece uma tela dizendo que a plataforma está em
+          manutenção, com o botão para falar com o suporte. A vitrine e o checkout continuam no ar —
+          parar de vender por causa de uma manutenção do painel seria perder cliente por um problema
+          que ele nem tem. Você continua entrando por aqui.</p>
+        <label>Mensagem para o cliente (opcional)
+          <textarea id="man-msg" rows="3" placeholder="Ex.: Estamos migrando o servidor. Voltamos às 22h.">${esc(m.mensagem || '')}</textarea></label>
+        <label class="chk" style="margin-top:14px">
+          <input type="checkbox" id="man-tg" ${m.ligada ? 'checked' : ''} onchange="admManAlternar(this.checked)">
+          <span><b>Colocar a plataforma em manutenção</b><em>${m.ligada
+            ? 'LIGADA' + (desde ? ' desde ' + esc(desde) : '') + ' — os clientes não conseguem entrar'
+            : 'Desligada — tudo funcionando normalmente'}</em></span>
+        </label>
+        <button class="btn no-grow" style="margin-top:12px" onclick="admManSalvarMsg(this)">${ico('save', 14)} Salvar mensagem</button>
+      </div>`;
+    const c = $('#adm-man-box .chk'); if (c) c.parentElement.classList.add('mod-lista');
+  } catch (e) { box.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+}
+
+async function admManSalvarSuporte(btn) {
+  btn.disabled = true;
+  try {
+    await api('/admin/config', { method: 'PUT', body: { supportWhatsapp: $('#man-sup').value } });
+    toast('Número do suporte salvo');
+    admManLoad();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; }
+}
+
+async function admManSalvarMsg(btn) {
+  btn.disabled = true;
+  try {
+    await api('/admin/manutencao', { method: 'PUT', body: { mensagem: $('#man-msg').value } });
+    toast('Mensagem salva');
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; }
+}
+
+async function admManAlternar(ligada) {
+  // LIGAR É GRAVE: todo mundo para. Uma confirmação aqui não é atrito, é a
+  // diferença entre uma manutenção e um acidente.
+  if (ligada && !await confirmModal({
+    title: 'Colocar a plataforma em manutenção',
+    text: 'Nenhum cliente vai conseguir entrar no painel até você desligar. A vitrine e o checkout continuam no ar.',
+    ok: 'Ligar manutenção', danger: true
+  })) { const t = $('#man-tg'); if (t) t.checked = false; return; }
+  try {
+    await api('/admin/manutencao', { method: 'PUT', body: { ligada, mensagem: ($('#man-msg') || {}).value } });
+    toast(ligada ? 'Plataforma EM MANUTENÇÃO' : 'Manutenção desligada');
+    admManLoad();
+  } catch (e) { toast(e.message, 'error'); admManLoad(); }
+}
+
 async function admModLoad() {
   const box = $('#adm-mod-box'); if (!box) return;
   box.innerHTML = skel(3);
