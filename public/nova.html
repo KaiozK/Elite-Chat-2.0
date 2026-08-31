@@ -739,13 +739,20 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 <header class="nav">
   <div class="wrap">
     <a class="marca" href="/nova.html" aria-label="Koonfy"><i class="marca-nome"></i></a>
+    <!-- A ORDEM SEGUE A DESCIDA DA PÁGINA: quem lê o menu da esquerda para a
+         direita está lendo a ordem em que as seções aparecem ao rolar. Um menu
+         em ordem diferente da página faz a pessoa procurar para cima o que
+         estava embaixo.
+
+         "Produto" saiu: apontava para #produto, que NÃO EXISTE nesta página —
+         o clique não levava a lugar nenhum. Canais é a primeira seção de
+         verdade. -->
     <nav class="navlinks">
-      <a href="#produto">Produto</a>
       <a href="#canais">Canais</a>
       <a href="#recursos">Recursos</a>
       <a href="#faq">Perguntas</a>
-      <a href="#afiliacao">Afiliação</a>
       <a href="#planos">Planos</a>
+      <a href="#afiliacao">Afiliação</a>
     </nav>
     <div class="linha" style="gap:12px">
 
