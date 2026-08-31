@@ -3519,7 +3519,7 @@ module.exports = function (broadcast, clients) {
     res.json({ pixel: px });
   });
 
-  router.put('/pixels/:id', auth, (req, res) => {
+  router.put('/pixels/:id', auth, can('pixels', 'edit'), (req, res) => {
     const px = req.acc.pixels.find(p => p.id === req.params.id);
     if (!px) return res.status(404).json({ error: 'Pixel não encontrado' });
     const b = req.body || {};
@@ -3533,8 +3533,10 @@ module.exports = function (broadcast, clients) {
     res.json({ pixel: px });
   });
 
-  router.delete('/pixels/:id', auth, (req, res) => {
+  router.delete('/pixels/:id', auth, can('pixels', 'delete'), (req, res) => {
+    const antes = req.acc.pixels.length;
     req.acc.pixels = req.acc.pixels.filter(p => p.id !== req.params.id);
+    if (req.acc.pixels.length === antes) return res.status(404).json({ error: 'Pixel não encontrado' });
     db.save();
     res.json({ ok: true });
   });
@@ -3621,7 +3623,7 @@ module.exports = function (broadcast, clients) {
     res.json({ link: linkSummary(req.acc, link, origin) });
   });
 
-  router.put('/links/:id', auth, (req, res) => {
+  router.put('/links/:id', auth, can('links', 'edit'), (req, res) => {
     const link = req.acc.links.find(l => l.id === req.params.id);
     if (!link) return res.status(404).json({ error: 'Link não encontrado' });
     const b = req.body || {};
@@ -3640,8 +3642,14 @@ module.exports = function (broadcast, clients) {
     res.json({ link: linkSummary(req.acc, link, origin) });
   });
 
-  router.delete('/links/:id', auth, (req, res) => {
+  router.delete('/links/:id', auth, can('links', 'delete'), (req, res) => {
+    // 404 QUANDO NÃO É DA CONTA. Antes respondia 200 para qualquer id: nada era
+    // destruído (o filtro só varre a lista do próprio dono), mas a tela dizia
+    // "apagado" sobre algo que nunca esteve ali. Resposta que mente some da
+    // tela e volta no F5.
+    const antes = req.acc.links.length;
     req.acc.links = req.acc.links.filter(l => l.id !== req.params.id);
+    if (req.acc.links.length === antes) return res.status(404).json({ error: 'Link não encontrado' });
     db.save();
     res.json({ ok: true });
   });
