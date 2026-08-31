@@ -226,6 +226,45 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 
 /* ---------- herói ---------- */
 .heroi{padding:var(--e96) var(--e24) var(--e128);text-align:center;position:relative;overflow:hidden}
+/* ---------- o universo em vídeo, atrás do herói ---------- */
+/* `cover` porque o herói é alto e largo demais para caber num 16:9 inteiro:
+   o vídeo preenche e o excesso sai pelas bordas, que é onde ele é mais
+   esparso. O conteúdo do herói sobe com z-index; sem isso o vídeo cobriria
+   o texto. */
+.heroi-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+             z-index:0;pointer-events:none}
+/* O VÉU. O vídeo é escuro, mas "escuro" não é garantia: um ponto brilhante
+   passando atrás de uma letra branca some com a letra por um segundo. O véu
+   é mais forte no miolo, onde o título vive, e quase nada nas bordas, onde a
+   rede é o assunto. */
+.heroi-veu{position:absolute;inset:0;z-index:1;pointer-events:none;
+           background:radial-gradient(ellipse 110% 86% at 50% 45%,
+             rgba(10,10,10,.92) 0%, rgba(10,10,10,.84) 42%, rgba(10,10,10,.62) 72%,
+             rgba(10,10,10,.25) 100%)}
+/* A SOMBRA DO TEXTO, e não mais véu. Medido: com o véu sozinho, o pior quadro
+   deixava o título em contraste 1,99 — um ícone brilhante passando atrás de
+   uma letra a apaga por um instante, e ninguém revisa o quadro 137.
+
+   Escurecer mais o véu resolveria o texto e apagaria a arte junto, que é
+   trocar um problema por outro. A sombra age SÓ onde há letra: o fundo
+   continua o mesmo, e a letra passa a carregar o próprio contraste.
+
+   Só no herói, e só sobre o vídeo — no resto da página o texto está sobre
+   cor chapada e sombra ali seria sujeira. */
+.heroi .display,.heroi .corpo{text-shadow:0 2px 18px rgba(0,0,0,.9),0 0 4px rgba(0,0,0,.55)}
+.heroi .selo-meta{filter:brightness(0) invert(1) drop-shadow(0 2px 10px rgba(0,0,0,.8))}
+.heroi .wrap{position:relative;z-index:2}
+/* A JOIA também sobe: ela mora fora do herói, e sem isto o vídeo passaria por
+   cima dela no meio da descida. */
+.joia{z-index:3}
+/* QUEM PEDIU MENOS MOVIMENTO não recebe vídeo nenhum: o poster fica, e a
+   tela continua sendo o mesmo universo — parado. Esconder o fundo inteiro
+   deixaria o herói preto e sem assunto, que é perder a arte em vez de
+   respeitar a preferência. */
+@media (prefers-reduced-motion:reduce){
+  .heroi-video{display:none}
+  .heroi{background:#0a0a0a url(/assets/heroi-universo.webp) center/cover no-repeat}
+}
 .heroi .wrap{display:flex;flex-direction:column;align-items:center;gap:var(--e32)}
 .heroi .display{max-width:1100px}
 .heroi .palco{padding:30px 0 18px}
@@ -787,6 +826,26 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
   <!-- Sem anéis soltos no herói: a joia é o assunto, e os ícones estão na
        constelação, onde cada um tem nome e função. -->
 
+  <!-- O UNIVERSO, EM VÍDEO. Fica ATRÁS de tudo e não recebe clique.
+
+       `loop` sozinho não basta para não se notar a emenda: o corte aparece
+       se o último quadro não for o primeiro. Por isso o vídeo foi gerado com
+       o MESMO quadro como início e fim — a volta acontece no lugar onde a
+       imagem já estava.
+
+       `muted` não é estética, é o que permite o `autoplay`: navegador nenhum
+       toca vídeo com som sozinho, e sem ele o fundo ficaria parado no
+       primeiro quadro. `playsinline` é para o iPhone, que abriria o vídeo em
+       tela cheia no lugar de deixá-lo no fundo.
+
+       O `poster` é o mesmo quadro inicial: enquanto o vídeo carrega, o herói
+       já é o universo, e não um retângulo preto que salta quando o vídeo
+       entra. -->
+  <video class="heroi-video" autoplay muted loop playsinline preload="none"
+         poster="/assets/heroi-universo.webp" aria-hidden="true" tabindex="-1"
+         data-src="/assets/heroi-universo.mp4"></video>
+  <div class="heroi-veu" aria-hidden="true"></div>
+
   <div class="wrap">
     <!-- 1260 e não 4025 nem 840: o selo aparece com 420 de largura, e 4025 era
          peso puro — mas 840 (o dobro) e' pouco para um celular, que desenha em
@@ -1200,6 +1259,29 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 </footer>
 
 <script>
+/* ---------------- O UNIVERSO EM VÍDEO ----------------
+   Ele SÓ BAIXA quando vale a pena. São 3 MB: num desktop é um fundo; num
+   celular no 4G é o preço da primeira visita gasto num enfeite, antes de a
+   pessoa saber o que a Koonfy faz.
+
+   O endereço mora em `data-src` justamente por isso — com `<source>` no
+   HTML o navegador baixa antes de qualquer decisão nossa, e `display:none`
+   não impede o download. Quem não recebe o vídeo fica com o pôster de
+   25 KB, que é o mesmo universo, parado.
+
+   `play()` pode ser recusado (aba em segundo plano, economia de bateria).
+   Não é erro: o pôster continua lá, e a tela não perde nada. */
+(function () {
+  var v = document.querySelector('.heroi-video');
+  if (!v || !v.dataset.src) return;
+  var quieto = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var estreito = window.matchMedia && window.matchMedia('(max-width: 760px)').matches;
+  if (quieto || estreito) return;
+  v.src = v.dataset.src;
+  var p = v.play();
+  if (p && p.catch) p.catch(function () {});
+})();
+
 /* ---------------- INDICAÇÃO DE AFILIADO ----------------
    O link do afiliado é koonfy.com/?ref=CODIGO, e ele cai AQUI: esta é a
    vitrine que está no ar (ver LANDING_FILE no server.js). O código de captura
