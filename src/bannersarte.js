@@ -8,6 +8,20 @@
 // texto branco sobre área clara em algum ponto, e é sempre no ponto que
 // ninguém testou.
 //
+// A PROPORÇÃO DO ARQUIVO DE FUNDO IMPORTA, e mais do que parece.
+//
+// O cartão é uma FAIXA: 1124x174 no desktop, ou seja 6,46:1. O <img> de fundo
+// usa `object-fit: cover`, então uma arte 1400x800 (1,75:1) tem 73% da altura
+// jogada fora — o que se vê é uma tira horizontal do meio do arquivo, e tudo
+// que estiver acima ou abaixo dela nunca chega à tela.
+//
+// Foi assim que a arte do "Indique e ganhe" apareceu com o lado direito preto:
+// no arquivo o desenho terminava num ponto de luz e o resto era escuro, mas na
+// TIRA que sobrava isso virava metade do cartão vazia.
+//
+// Por isso a arte nova é 1680x260 — a mesma proporção do cartão. Aí `cover`
+// não corta nada: o que está no arquivo é exatamente o que aparece.
+//
 // `pw`/`ph` são a proporção REAL do arquivo da peça, e servem para o
 // navegador reservar o espaço antes de a imagem chegar — sem isso a peça
 // nasce sem largura e pula quando carrega. Ficam aqui, e não no formulário,
