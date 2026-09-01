@@ -280,8 +280,17 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 .clara .rotulo.sinal{color:#127a45}
 
 /* ---------- fileira de logos: flutuam na tela, sem cartão ---------- */
-.logos{display:flex;justify-content:center;gap:var(--e48);flex-wrap:wrap;opacity:.6}
-.logos span{font-size:var(--t-caption);font-weight:500;letter-spacing:.032em;text-transform:uppercase}
+/* UMA LINHA SÓ, sempre. `flex-wrap:wrap` deixava a fileira quebrar em duas em
+   telas médias, e uma lista de credenciais em duas linhas parece um menu — o
+   olho passa a ler item por item em vez de bater os olhos e seguir.
+
+   Em telas estreitas ela ROLA na horizontal em vez de quebrar: seis
+   credenciais empilhadas ocupariam meia tela de celular por uma informação
+   que é de apoio. A barra de rolagem some, e o toque continua funcionando. */
+.logos{display:flex;justify-content:center;align-items:center;gap:clamp(18px,3.2vw,var(--e40));
+       flex-wrap:nowrap;opacity:.6;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none}
+.logos::-webkit-scrollbar{display:none}
+.logos span{font-size:11px;font-weight:500;letter-spacing:.03em;text-transform:uppercase;white-space:nowrap}
 
 /* ---------- constelação ---------- */
 /* O PAINEL DA RODA. Escuro dentro da faixa clara, com o mesmo gradiente do
@@ -868,7 +877,11 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 </section>
 
 <!-- ===================== FILEIRA DE LOGOS ===================== -->
-<section class="faixa escura" style="padding-top:0">
+<!-- A FAIXA É BAIXA de propósito: são credenciais, não um assunto. Com o
+     respiro de uma seção inteira (80px em cima e embaixo) ela ganhava o peso
+     de um capítulo da página, e o que vem depois — o problema que a Koonfy
+     resolve — começava longe demais de quem acabou de rolar. -->
+<section class="faixa escura" style="padding:0 var(--e24) var(--e32)">
   <div class="wrap logos">
     <span>Meta Business Partner</span>
     <span>WhatsApp Cloud API</span>
@@ -1176,26 +1189,45 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
       <p class="corpo mudo">Se a sua dúvida não estiver aqui, chame no WhatsApp: a gente responde antes de você pagar, não depois.</p>
     </div>
 
+    <!-- A ORDEM É A DA CABEÇA DE QUEM COMPRA: primeiro o que a Koonfy FAZ,
+         depois as condições, e o risco por último.
+
+         O banimento abria a lista, e abrir com "o seu número pode ser banido"
+         é responder uma objeção que a maioria nem tinha — e plantá-la em quem
+         chegou animado. A resposta continua inteira e honesta; só deixou de
+         ser a primeira coisa que se lê. -->
     <div class="faq">
       <details>
-        <summary>O meu número pode ser banido ou desconectado?</summary>
-        <p class="corpo-sm mudo">Pode. Quem decide sobre o número é a <b>Meta</b>, e ela restringe, desconecta ou bane números que desrespeitam as <a href="https://business.whatsapp.com/policy" target="_blank" rel="noopener">políticas do WhatsApp Business</a>. A Cloud API tira o risco de derrubada por aparelho e por plugin não oficial, mas não é passe livre: disparo para quem não pediu, lista comprada, conteúdo proibido e denúncia de usuário continuam derrubando número na API oficial do mesmo jeito. A Koonfy ajuda com o que está ao alcance dela (opt-in, opt-out em todas as listas, modelos aprovados e limite de envio), mas a decisão final é da Meta.</p>
+        <summary>Dá para cobrar dentro da própria conversa?</summary>
+        <p class="corpo-sm mudo">Dá, e é o coração da Koonfy. Você gera a cobrança no painel e ela sai como <b>botão</b> no WhatsApp do cliente — ele toca, abre o seu checkout com a sua marca e paga por <b>Pix, cartão ou boleto</b>. Pagamento confirmado, o card anda no funil sozinho, o cliente recebe o comprovante na conversa e o dinheiro cai na sua carteira, de onde você saca por Pix.</p>
       </details>
       <details>
-        <summary>O que aumenta o risco de a Meta agir contra o meu número?</summary>
-        <p class="corpo-sm mudo">Mandar mensagem para quem nunca falou com você, comprar lista, insistir com quem pediu para sair, prometer o que o produto não faz e assuntos que a política proíbe. O sinal mais forte é a <b>denúncia</b>: quando muita gente marca as suas mensagens como spam, a qualidade do número cai e os limites de envio caem junto, até a conta ser restringida.</p>
+        <summary>O CRM é de verdade ou é só uma lista de conversas?</summary>
+        <p class="corpo-sm mudo">É funil de verdade. Cada pessoa que fala com você vira um contato com etapa, tags, dados próprios e histórico — e o card anda pelo funil conforme a conversa avança, com o pagamento confirmado movendo sozinho. A conversa e a ficha ficam <b>na mesma tela</b>: quem atende não precisa abrir outro sistema para saber quem é aquela pessoa e o que ela já comprou.</p>
+      </details>
+      <details>
+        <summary>Consigo disparar para a minha base inteira?</summary>
+        <p class="corpo-sm mudo">Consegue, pela API oficial: você escolhe o modelo aprovado, o público (por tag, etapa do funil ou origem) e a Koonfy envia, mostrando quantos receberam, <b>leram</b> e clicaram. Quem responder cai na caixa de entrada como conversa normal. Os limites de envio por dia são da Meta e sobem sozinhos conforme o seu número mantém boa qualidade.</p>
+      </details>
+      <details>
+        <summary>E as ligações pelo WhatsApp?</summary>
+        <p class="corpo-sm mudo">A Koonfy já fala a API de Chamadas da Meta: o cliente liga pelo botão do seu perfil e a ligação toca no painel, com aviso no celular de quem está atendendo. <b>Quem libera é a Meta</b>, e ela exige que o número já tenha um limite diário de pelo menos 2.000 destinatários — um número recém-conectado começa abaixo disso e sobe com o uso. Enquanto não liberar, todo o resto funciona normalmente.</p>
+      </details>
+      <details>
+        <summary>A equipe inteira atende no mesmo número?</summary>
+        <p class="corpo-sm mudo">Atende, cada um com o próprio login e as próprias permissões — sem trocar de chip e sem perder conversa. Dá para ver quem respondeu o quê, transferir um atendimento e conversar com o time <b>por dentro</b> do painel, sem sair da tela do cliente.</p>
       </details>
       <details>
         <summary>Preciso trocar de número para usar a Koonfy?</summary>
         <p class="corpo-sm mudo">Não, se o número ainda não está em outra plataforma de API. Ele passa a funcionar pela Cloud API da Meta, e o aparelho deixa de ser usado para atender: as conversas passam a viver no painel.</p>
       </details>
       <details>
-        <summary>Como funciona a cobrança dentro da conversa?</summary>
-        <p class="corpo-sm mudo">Você gera a cobrança no painel e ela sai como botão no WhatsApp do cliente. O botão abre o seu checkout, com a sua marca, onde ele escolhe Pix, cartão ou boleto. Pagamento confirmado, o card anda no funil sozinho e o dinheiro cai na sua carteira.</p>
-      </details>
-      <details>
         <summary>Posso cancelar quando quiser?</summary>
         <p class="corpo-sm mudo">Pode, pelo próprio painel. A assinatura vale até o fim do ciclo já pago e não renova. Nenhum contato, conversa ou relatório é apagado no cancelamento.</p>
+      </details>
+      <details>
+        <summary>O meu número pode ser banido ou desconectado?</summary>
+        <p class="corpo-sm mudo">Pode. Quem decide sobre o número é a <b>Meta</b>, e ela restringe, desconecta ou bane números que desrespeitam as <a href="https://business.whatsapp.com/policy" target="_blank" rel="noopener">políticas do WhatsApp Business</a>. A Cloud API tira o risco de derrubada por aparelho e por plugin não oficial, mas não é passe livre: disparo para quem não pediu, lista comprada, conteúdo proibido e denúncia de usuário continuam derrubando número na API oficial do mesmo jeito. O sinal mais forte é a <b>denúncia</b>: quando muita gente marca as suas mensagens como spam, a qualidade do número cai e os limites de envio caem junto. A Koonfy ajuda com o que está ao alcance dela — opt-in, opt-out em todas as listas, modelos aprovados e limite de envio —, mas a decisão final é da Meta.</p>
       </details>
     </div>
   </div>
