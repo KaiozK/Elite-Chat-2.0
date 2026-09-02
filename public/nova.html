@@ -1864,12 +1864,14 @@ var LOGOS_KOONFY = [
   // CARROSSEL DOS RECURSOS
   //
   // Uma aba por recurso, e cada uma abre a tela daquele recurso em movimento.
-  // As animações moram no CSS e só rodam no slide com a classe `on`: nove
+  // As animações moram no CSS e só rodam no slide com a classe `on`: catorze
   // telas animando fora da vista gastariam bateria à toa, e quem trocasse de
   // aba encontraria a animação no meio, sem começo.
   //
-  // Ele NÃO gira sozinho. A pessoa está lendo o que cada aba diz; trocar o
-  // slide por baixo de quem lê é a forma mais rápida de perder o leitor.
+  // Ele GIRA sozinho, no computador e no celular: são 14 recursos, e ninguém
+  // vai clicar em 14 abas para descobrir o que a Koonfy faz. Quem quiser parar
+  // numa tela clica na aba — o clique dá o tempo cheio àquela tela e a roda
+  // segue dali.
   // =========================================================================
   (function () {
     var car = document.getElementById('recursos-car');
@@ -1877,6 +1879,7 @@ var LOGOS_KOONFY = [
     var abas = [].slice.call(car.querySelectorAll('.car-aba'));
     var slides = [].slice.call(car.querySelectorAll('.car-slide'));
     var passos = [].slice.call(car.querySelectorAll('.car-passo'));
+    var tiras = car.querySelector('.car-abas');
 
     function abrir(chave) {
       abas.forEach(function (b) {
@@ -1894,6 +1897,24 @@ var LOGOS_KOONFY = [
       });
       // O fio da aba ativa dura o mesmo que a tela mais o respiro: é ele que
       // avisa que a troca está chegando.
+      // A FILEIRA DE ABAS ACOMPANHA — e este era o buraco do celular.
+      // No computador as 14 abas cabem na largura. No celular a fileira tem
+      // ~340 px de vista para ~1680 px de conteúdo: quando a roda chegava em
+      // "Números virtuais", a aba estava 1200 px fora da tela. A tela trocava,
+      // mas o NOME da funcionalidade nunca aparecia — o carrossel girava sem
+      // dizer do que estava falando, que é justamente o que ele existe para
+      // fazer.
+      //
+      // Rola só a fileira (scrollLeft), nunca a página: `scrollIntoView` aqui
+      // arrastaria a leitura da pessoa junto, no meio do texto.
+      var abaAtiva = abas.find(function (b) { return b.dataset.aba === chave; });
+      if (abaAtiva && tiras && tiras.scrollWidth > tiras.clientWidth + 4) {
+        var meio = abaAtiva.offsetLeft - (tiras.clientWidth - abaAtiva.offsetWidth) / 2;
+        var alvoX = Math.max(0, Math.min(meio, tiras.scrollWidth - tiras.clientWidth));
+        if (tiras.scrollTo) tiras.scrollTo({ left: alvoX, behavior: 'smooth' });
+        else tiras.scrollLeft = alvoX;
+      }
+
       var slAtual = car.querySelector('.car-slide[data-slide="' + chave + '"]');
       var msAtual = ((slAtual && Number(slAtual.dataset.dura)) || 5000) + RESPIRO;
       car.style.setProperty('--dura', (msAtual / 1000) + 's');
@@ -1928,11 +1949,7 @@ var LOGOS_KOONFY = [
       // `abrir` reinicia o relógio, então a aba escolhida ganha o tempo cheio
       // antes de a roda seguir.
       clearTimeout(relogio);
-      abrir(b.dataset.aba || b.dataset.ir);
-      if (b.classList.contains('car-passo')) {
-        var alvo = car.querySelector('.car-aba[data-aba="' + (b.dataset.ir) + '"]');
-        if (alvo) alvo.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
-      }
+      abrir(b.dataset.aba || b.dataset.ir);   // `abrir` já centraliza a aba
     });
 
     // ----- o giro -----
