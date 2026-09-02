@@ -336,33 +336,30 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 .logos::-webkit-scrollbar{display:none}
 .logos span{font-size:11px;font-weight:500;letter-spacing:.03em;text-transform:uppercase;white-space:nowrap}
 
-/* ---------- a esteira: quando as seis NÃO cabem ---------- */
-/* No computador as seis credenciais cabem centralizadas e nada se mexe. Num
-   celular a fileira transbordava e ficava PARADA no começo: a pessoa via
-   "…usiness Partner" cortado na borda e só descobria as outras cinco se
-   pensasse em arrastar com o dedo — ninguém arrasta uma linha de apoio.
-   Então ela anda sozinha, e as seis passam por todo mundo.
+/* ---------- a esteira de credenciais: anda sempre ---------- */
+/* Ela anda no computador E no celular. Antes ficava parada quando os seis
+   nomes cabiam na largura, o que valia só no computador — e a página ficava
+   com um comportamento em cada aparelho, que é o pior dos dois mundos.
+   Andando sempre, a faixa é a mesma coisa em qualquer tela.
 
-   O truque do fim invisível: a lista é escrita DUAS VEZES e o trilho desliza
-   exatamente metade. Quando a segunda cópia chega onde a primeira começou, o
-   quadro é idêntico ao inicial e a animação recomeça sem emenda. */
-/* O TRILHO E OS GRUPOS EXISTEM SEMPRE, andando ou não. Deixar o espaçamento
-   só dentro de `.esteira` parecia economia e era o defeito: para decidir se a
-   lista cabe é preciso MEDI-LA com o espaçamento que ela terá, e sem ele os
-   seis nomes ficavam colados, mediam bem menos, e a conta dizia "cabe" num
-   celular onde não cabia. A esteira nunca ligava. */
-.logos-trilho{display:flex;align-items:center;flex:0 0 auto;width:max-content}
+   O FIM INVISÍVEL. A lista é repetida quantas vezes forem necessárias para
+   encher a largura e sobrar uma cópia inteira, e o trilho desliza a largura de
+   UMA cópia. Quando ele termina, o quadro é idêntico ao inicial e a animação
+   recomeça sem emenda — não há salto para esconder.
+
+   O espaçamento vale sempre, e não só com a esteira ligada: é medindo com ele
+   que se sabe a largura de uma cópia, que é o passo da animação. */
+.logos-trilho{display:flex;align-items:center;flex:0 0 auto;width:max-content;
+              animation:logosAnda var(--logos-dura,26s) linear infinite}
 .logos-grupo{display:flex;align-items:center;flex:0 0 auto;
              gap:clamp(18px,3.2vw,var(--e40));padding-right:clamp(18px,3.2vw,var(--e40))}
-/* A segunda cópia só existe quando a esteira anda: parada, ela seria a lista
-   repetida na tela. */
-.logos-grupo[aria-hidden]{display:none}
-.logos.esteira{overflow:hidden;justify-content:flex-start;gap:0;
-               -webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);
-               mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}
-.logos.esteira .logos-grupo[aria-hidden]{display:flex}
-.logos.esteira .logos-trilho{animation:logosAnda var(--logos-dura,26s) linear infinite}
-@keyframes logosAnda{from{transform:translate3d(0,0,0)}to{transform:translate3d(-50%,0,0)}}
+/* As bordas desbotam em vez de cortar: um nome sumindo pela metade na borda
+   dura parece defeito, e desbotando parece que a fileira continua. */
+.logos{overflow:hidden;justify-content:flex-start;gap:0;
+       -webkit-mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent);
+       mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent)}
+@keyframes logosAnda{from{transform:translate3d(0,0,0)}
+                     to{transform:translate3d(calc(var(--logos-passo,0px) * -1),0,0)}}
 
 /* ---------- constelação ---------- */
 /* O PAINEL DA RODA. Escuro dentro da faixa clara, com o mesmo gradiente do
@@ -966,16 +963,9 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
         <span>Nuvemshop</span>
         <span>OpenAI</span>
       </div>
-      <!-- A SEGUNDA CÓPIA é o que faz a volta não ter emenda. `aria-hidden`
-           porque para quem ouve a página ela seria a lista repetida. -->
-      <div class="logos-grupo" aria-hidden="true">
-        <span>Meta Business Partner</span>
-        <span>WhatsApp Cloud API</span>
-        <span>Pix &amp; Cartão</span>
-        <span>Webhooks</span>
-        <span>Nuvemshop</span>
-        <span>OpenAI</span>
-      </div>
+      <!-- As cópias que fazem a volta não ter emenda são criadas pelo script,
+           porque QUANTAS são depende da largura da tela. Sem script, a fileira
+           fica com esta lista só, parada — que era o estado antigo. -->
     </div>
   </div>
 </section>
@@ -1903,19 +1893,19 @@ var LOGOS_KOONFY = [
 
 
   // =========================================================================
-  // A FILEIRA DE CREDENCIAIS ANDA SOZINHA — QUANDO NÃO CABE
+  // A FILEIRA DE CREDENCIAIS ANDA SOZINHA — NO COMPUTADOR E NO CELULAR
   //
   // Ela não é decoração: são as seis credenciais que dizem que a Koonfy é
-  // oficial. No computador cabem as seis centralizadas e ficar andando seria
-  // movimento à toa. No celular a fileira transbordava e ficava parada no
-  // começo — "…usiness Partner" cortado na borda, e as outras cinco só para
-  // quem pensasse em arrastar.
+  // oficial. Antes ficava PARADA no computador (onde os seis nomes cabiam) e
+  // andando no celular (onde não cabiam) — dois comportamentos para a mesma
+  // faixa. Agora anda nos dois.
   //
-  // A decisão é por MEDIDA, não por largura de tela: se a lista não cabe, a
-  // esteira liga. Um `@media` chutaria um número que erra no tablet deitado e
-  // no celular com fonte grande.
+  // Para a volta não ter emenda, a lista é repetida até encher a largura E
+  // sobrar uma cópia inteira, e o passo da animação é a largura de UMA cópia:
+  // ao fim do passo o quadro é idêntico ao início. Um número fixo de cópias
+  // não serve — o que basta num celular deixa buraco num monitor largo.
   //
-  // A velocidade é constante em pixels por segundo (~40), e não um tempo fixo:
+  // A velocidade é constante em pixels por segundo (~40) e não um tempo fixo:
   // com tempo fixo a mesma animação fica lenta numa tela e correndo na outra.
   // =========================================================================
   (function () {
@@ -1923,28 +1913,39 @@ var LOGOS_KOONFY = [
     var trilho = fila && fila.querySelector('.logos-trilho');
     if (!fila || !trilho) return;
 
-    var grupo = trilho.querySelector('.logos-grupo');
-    function conferir() {
-      // Mede UM grupo, não o trilho: com a esteira ligada o trilho já está
-      // dobrado, e a conta daria sempre "não cabe".
-      var largura = grupo.getBoundingClientRect().width;
-      if (largura > fila.clientWidth + 1) {
-        fila.style.setProperty('--logos-dura', Math.round(largura / 40) + 's');
-        fila.classList.add('esteira');
-      } else {
-        fila.classList.remove('esteira');   // virou o telefone e agora cabe
+    // O primeiro grupo é o original — o que os leitores de tela leem. Todos os
+    // outros são cópias mudas, e são refeitas a cada medida.
+    var modelo = trilho.querySelector('.logos-grupo');
+
+    function montar() {
+      [].slice.call(trilho.querySelectorAll('.logos-grupo[aria-hidden]')).forEach(function (c) {
+        trilho.removeChild(c);
+      });
+      var passo = modelo.getBoundingClientRect().width;
+      if (!passo) return;                       // ainda sem layout: volta depois
+      // Quantas cópias enchem a vista, mais uma inteira para o trilho ter para
+      // onde deslizar sem mostrar o vazio do fim.
+      var copias = Math.ceil(fila.clientWidth / passo) + 1;
+      for (var i = 0; i < copias; i++) {
+        var c = modelo.cloneNode(true);
+        c.setAttribute('aria-hidden', 'true');  // senão é a lista repetida para quem ouve
+        trilho.appendChild(c);
       }
+      fila.style.setProperty('--logos-passo', passo + 'px');
+      fila.style.setProperty('--logos-dura', (passo / 40) + 's');
     }
-    conferir();
-    // Virar o telefone de lado muda tudo: o que não cabia em pé pode caber
-    // deitado. `resize` cobre a virada e o zoom do navegador.
+
+    montar();
+    // Virar o telefone, mudar o zoom, abrir a janela: tudo muda quantas cópias
+    // são precisas.
     var espera;
     window.addEventListener('resize', function () {
-      clearTimeout(espera); espera = setTimeout(conferir, 200);
+      clearTimeout(espera); espera = setTimeout(montar, 200);
     });
     // As fontes chegam depois do primeiro desenho e mudam a largura do texto:
-    // medir antes delas daria a conta errada.
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(conferir);
+    // medir antes delas daria o passo errado, e o passo errado é justamente o
+    // salto visível a cada volta.
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(montar);
   })();
 
   // =========================================================================
