@@ -239,6 +239,36 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
    ver controle nenhum nele. As regras abaixo apagam esse botão e qualquer
    outro controle nativo; o vídeo continua tentando tocar por conta própria no
    script, e enquanto não toca fica o pôster, que é a mesma cena. */
+/* O PLANO B DO HERÓI — quando o iOS NÃO DEIXA o vídeo tocar.
+   No Modo de Baixo Consumo (e na Economia de Dados) o iPhone recusa o
+   autoplay de QUALQUER vídeo. Isso é decisão do sistema: não existe atributo,
+   permissão ou truque de código que force — e insistir só gastaria bateria de
+   quem justamente pediu para economizar.
+
+   Então o herói deixa de depender do vídeo para ter vida. Esta camada é o
+   MESMO quadro do pôster, com uma deriva lenta e um brilho que respira —
+   feita com animação de CSS, que o Modo de Baixo Consumo não bloqueia. Custa
+   zero byte a mais (é a imagem que já estava sendo carregada) e entra só
+   quando o vídeo não conseguiu tocar. Quem tem o vídeo nunca vê esta camada.
+
+   Movimento pequeno de propósito: aqui ele é ambiente, não é o assunto. */
+.heroi-parado{position:absolute;inset:0;z-index:0;pointer-events:none;opacity:0;
+              background:#0a0a0a url(/assets/heroi-universo.webp) center/cover no-repeat;
+              will-change:transform,opacity}
+.heroi.sem-video .heroi-parado{opacity:1;animation:heroi-deriva 28s ease-in-out infinite alternate}
+/* O BRILHO QUE RESPIRA. Sozinha, a deriva é um zoom lento e nada mais; este
+   halo por cima é o que faz o fundo parecer vivo em vez de uma foto que
+   desliza. Fica no miolo, onde o véu já é mais forte, para não disputar com
+   o título. */
+.heroi.sem-video .heroi-parado::after{content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse 70% 55% at 50% 42%,
+    rgba(120,140,255,.20) 0%, rgba(120,140,255,.07) 45%, transparent 72%);
+  animation:heroi-respira 7s ease-in-out infinite alternate}
+@keyframes heroi-deriva{
+  from{transform:scale(1.04) translate3d(-1.1%,.7%,0)}
+  to  {transform:scale(1.12) translate3d(1.1%,-.7%,0)}}
+@keyframes heroi-respira{from{opacity:.35}to{opacity:1}}
+
 .heroi-video::-webkit-media-controls,
 .heroi-video::-webkit-media-controls-panel,
 .heroi-video::-webkit-media-controls-overlay-play-button,
@@ -863,6 +893,8 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
        O `poster` é o mesmo quadro inicial: enquanto o vídeo carrega, o herói
        já é o universo, e não um retângulo preto que salta quando o vídeo
        entra. -->
+  <!-- O plano B: aparece só se o vídeo não conseguir tocar (ver .heroi-parado). -->
+  <div class="heroi-parado" aria-hidden="true"></div>
   <video class="heroi-video" autoplay muted loop playsinline preload="none"
          disablepictureinpicture disableremoteplayback controlslist="nodownload noplaybackrate"
          poster="/assets/heroi-universo.webp" aria-hidden="true" tabindex="-1"
@@ -1467,6 +1499,31 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
   // que garante que o fundo nunca fique congelado — nem no celular que
   // recusou o autoplay na abertura, nem depois de uma ligação recebida.
   setInterval(function () { if (v.paused || v.ended) tocar(); }, 1000);
+
+  // O PLANO B. O Modo de Baixo Consumo do iPhone RECUSA o autoplay de vídeo,
+  // e não existe código que force isso — é o sistema decidindo. Em vez de
+  // deixar o herói congelado numa foto para essas pessoas, a página troca de
+  // técnica: o mesmo quadro passa a se mover por animação de CSS, que o modo
+  // de economia não bloqueia.
+  //
+  // A troca é por MEDIÇÃO, não por adivinhação: em vez de tentar descobrir se
+  // o aparelho está economizando bateria (não há como perguntar isso), a
+  // gente simplesmente olha se o vídeo andou. Se em 2,5 s ele não tiver
+  // andado, entra o plano B; se andar depois — o primeiro toque costuma
+  // destravar —, o vídeo assume e o plano B sai de cena.
+  var heroi = v.closest('.heroi');
+  if (heroi) {
+    var marco = -1;
+    function conferir() {
+      var andou = v.currentTime > 0 && v.currentTime !== marco && !v.paused;
+      marco = v.currentTime;
+      heroi.classList.toggle('sem-video', !andou);
+    }
+    // Um relógio só. Dois (um `setTimeout` e um `setInterval` no mesmo prazo)
+    // disparam no MESMO instante: a segunda checagem lia o mesmo `currentTime`
+    // da primeira e concluía que o vídeo tinha parado.
+    setInterval(conferir, 2500);
+  }
   // Última porta: o primeiro toque na página libera o autoplay onde ele estava
   // bloqueado por falta de interação. Uma vez só, e sem atrapalhar o gesto.
   ['pointerdown', 'touchstart', 'keydown', 'scroll'].forEach(function (ev) {

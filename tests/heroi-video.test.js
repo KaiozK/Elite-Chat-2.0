@@ -72,7 +72,7 @@ const html = fs.readFileSync(R + 'public/nova.html', 'utf8');
      'o endereço fica em data-src');
   ok(!/<source/.test(tag), 'e não há <source>, que baixaria de todo jeito');
 
-  const script = html.slice(html.indexOf('O UNIVERSO EM VÍDEO'), html.indexOf('O UNIVERSO EM VÍDEO') + 5200);
+  const script = html.slice(html.indexOf('O UNIVERSO EM VÍDEO'), html.indexOf('O UNIVERSO EM VÍDEO') + 6400);
   // O CELULAR RECEBE O VÍDEO. Cortei antes por peso e reverti: a vitrine
   // vende, e metade das visitas chega pelo celular — um herói parado ali é o
   // primeiro contato de metade das pessoas.
@@ -95,6 +95,27 @@ const html = fs.readFileSync(R + 'public/nova.html', 'utf8');
   ok(/setInterval\(function \(\) \{ if \(v\.paused \|\| v\.ended\) tocar\(\); \}/.test(script),
      'um vigia religa o vídeo se ele estiver parado');
   ok(/addEventListener\('ended'/.test(script), 'e ao terminar ele recomeça');
+
+  console.log('\n=== 5b. O plano B: mesmo quando o iOS NÃO deixa o vídeo tocar ===');
+  // No Modo de Baixo Consumo o iPhone recusa o autoplay de QUALQUER vídeo, e
+  // não existe código que force — é o sistema decidindo. Então o herói deixa
+  // de depender do vídeo para ter vida: o mesmo quadro do pôster passa a se
+  // mover por animação de CSS, que o modo de economia não bloqueia.
+  ok(/<div class="heroi-parado"/.test(html), 'existe a camada do plano B');
+  ok(/\.heroi\.sem-video \.heroi-parado\{[^}]*animation:heroi-deriva/.test(html),
+     'que SE MOVE por animação de CSS, e não por vídeo');
+  ok(/@keyframes heroi-deriva/.test(html) && /@keyframes heroi-respira/.test(html),
+     'com a deriva e o brilho que respira');
+  ok(/\.heroi-parado\{[^}]*heroi-universo\.webp/.test(html),
+     'reaproveitando o pôster que já era baixado: 0 byte a mais');
+  ok(/\.heroi-parado\{[^}]*opacity:0/.test(html),
+     'invisível por padrão — quem tem o vídeo nunca a vê');
+  // A troca é por MEDIÇÃO (o vídeo andou?), não por adivinhação: não há como
+  // perguntar ao aparelho se ele está economizando bateria.
+  ok(/heroi\.classList\.toggle\('sem-video', !andou\)/.test(script),
+     'a troca é medida pelo vídeo ter andado, e é reversível');
+  ok(/v\.currentTime > 0 && v\.currentTime !== marco/.test(script),
+     'e "andou" é o tempo do vídeo ter avançado de verdade');
 
   // O PESO importa mais agora que o celular baixa: um herói de 5 MB é a
   // primeira visita inteira gasta antes de a pessoa ler a primeira linha.
