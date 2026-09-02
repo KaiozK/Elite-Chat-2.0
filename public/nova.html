@@ -375,7 +375,6 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 .car-aba.on::after{content:"";position:absolute;left:0;bottom:0;height:2px;width:100%;
                    background:var(--tinta-acao);opacity:.35;transform-origin:left;
                    transform:scaleX(0);animation:carConta var(--dura,5.6s) linear both}
-.carrossel.parado .car-aba.on::after{animation:none;transform:scaleX(0)}
 @keyframes carConta{to{transform:scaleX(1)}}
 
 .car-palco{position:relative}
@@ -954,13 +953,18 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
     <div class="carrossel" id="recursos-car">
       <div class="car-abas" role="tablist">
         <button role="tab" class="car-aba on" data-aba="atendimento" aria-selected="true">Atendimento</button>
+        <button role="tab" class="car-aba" data-aba="equipe">Equipe</button>
         <button role="tab" class="car-aba" data-aba="funil">Funil</button>
         <button role="tab" class="car-aba" data-aba="automacao">Automação</button>
+        <button role="tab" class="car-aba" data-aba="ia">Agente de IA</button>
         <button role="tab" class="car-aba" data-aba="campanhas">Campanhas</button>
+        <button role="tab" class="car-aba" data-aba="sms">SMS</button>
         <button role="tab" class="car-aba" data-aba="pagamentos">Pagamentos</button>
         <button role="tab" class="car-aba" data-aba="rastreamento">Tracking</button>
         <button role="tab" class="car-aba" data-aba="agenda">Agenda e ligações</button>
+        <button role="tab" class="car-aba" data-aba="numeros">Números virtuais</button>
         <button role="tab" class="car-aba" data-aba="integracoes">Integrações</button>
+        <button role="tab" class="car-aba" data-aba="metricas">Métricas</button>
         <button role="tab" class="car-aba" data-aba="instalacao">Instalação</button>
       </div>
 
@@ -984,6 +988,27 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
     <div class="tl-bal out entra" style="--i:2">Consigo sim, até as 18h</div>
     <div class="tl-bal in entra" style="--i:3">Perfeito, quero</div>
     <div class="tl-digita entra" style="--i:4"><span></span><span></span><span></span></div>
+  </div>
+</div></div>
+          </div>
+        </div>
+        <div class="car-slide" data-slide="equipe" data-dura="5000">
+          <div class="car-texto">
+            <h3 class="titulo-sec">Cada atendente com a sua permissão</h3>
+            <p class="corpo-sm mudo">Você escolhe o que cada pessoa vê e faz: quem responde, quem cobra, quem mexe no funil. E o chat interno resolve a passagem de bastão sem sair do painel.</p>
+          </div>
+          <div class="janela">
+            <div class="jan-topo"><s></s><s></s><s></s><em>Equipe</em></div>
+            <div class="jan-tela"><div class="tl-cols">
+  <div class="tl-lista">
+    <div class="tl-conv entra" style="--i:0"><i class="tl-av">A</i><b>Ana</b><span>Vendas</span><em class="tl-tag">Online</em></div>
+    <div class="tl-conv entra" style="--i:1"><i class="tl-av">P</i><b>Paulo</b><span>Suporte</span><em class="tl-tag">Online</em></div>
+    <div class="tl-conv entra" style="--i:2"><i class="tl-av">L</i><b>Lucas</b><span>Financeiro</span><em class="tl-tag">Ausente</em></div>
+  </div>
+  <div class="tl-chat">
+    <div class="tl-bal in entra" style="--i:1">Assume a Marina? Ela é sua carteira</div>
+    <div class="tl-bal out entra" style="--i:2">Assumo, pode passar</div>
+    <div class="tl-bal in entra" style="--i:3">Transferida 👍</div>
   </div>
 </div></div>
           </div>
@@ -1021,6 +1046,22 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 </div></div>
           </div>
         </div>
+        <div class="car-slide" data-slide="ia" data-dura="5000">
+          <div class="car-texto">
+            <h3 class="titulo-sec">A IA responde, e sai de cena quando precisa</h3>
+            <p class="corpo-sm mudo">O agente responde com o que você ensinou sobre o seu negócio e já encaminha a venda. O botão é por conversa: quem assume é gente de verdade, na hora que quiser.</p>
+          </div>
+          <div class="janela">
+            <div class="jan-topo"><s></s><s></s><s></s><em>Agente de IA</em></div>
+            <div class="jan-tela"><div class="tl-chat">
+  <div class="tl-bal in entra" style="--i:0">Vocês entregam em Curitiba?</div>
+  <div class="tl-bal out entra" style="--i:1">Entregamos sim, em até 2 dias úteis 🚚</div>
+  <div class="tl-bal in entra" style="--i:2">E quanto fica o frete?</div>
+  <div class="tl-bal out entra" style="--i:3">R$ 18,90. Quer que eu já gere o seu Pix?</div>
+  <div class="tl-selo entra" style="--i:4">Respondido pelo agente de IA</div>
+</div></div>
+          </div>
+        </div>
         <div class="car-slide" data-slide="campanhas" data-dura="5000">
           <div class="car-texto">
             <h3 class="titulo-sec">Disparo com opt-in e opt-out de verdade</h3>
@@ -1035,6 +1076,23 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
   <div class="tl-barra"><i style="--w:88%"></i></div>
   <div class="tl-linha"><span>Respostas</span><b class="conta" data-fim="1204">0</b></div>
   <div class="tl-barra"><i style="--w:34%"></i></div>
+</div></div>
+          </div>
+        </div>
+        <div class="car-slide" data-slide="sms" data-dura="5000">
+          <div class="car-texto">
+            <h3 class="titulo-sec">SMS para quem não abriu o WhatsApp</h3>
+            <p class="corpo-sm mudo">Disparo em massa por etiqueta ou etapa do funil, com o consumo contado por mensagem antes de você confirmar. Chega em qualquer celular, sem depender de app instalado.</p>
+          </div>
+          <div class="janela">
+            <div class="jan-topo"><s></s><s></s><s></s><em>SMS</em></div>
+            <div class="jan-tela"><div class="tl-trk">
+  <div class="tl-kpi"><span>Enviados</span><b class="conta" data-fim="12480">0</b></div>
+  <div class="tl-kpi"><span>Entregues</span><b class="conta" data-fim="11962">0</b></div>
+  <div class="tl-kpi destaque"><span>Entrega</span><b class="conta" data-fim="96" data-suf="%">0</b></div>
+  <div class="tl-fonte"><em>Promoção</em><i style="--w:58%"></i></div>
+  <div class="tl-fonte"><em>Cobrança</em><i style="--w:27%"></i></div>
+  <div class="tl-fonte"><em>Lembrete</em><i style="--w:15%"></i></div>
 </div></div>
           </div>
         </div>
@@ -1105,6 +1163,21 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 </div></div>
           </div>
         </div>
+        <div class="car-slide" data-slide="numeros" data-dura="5000">
+          <div class="car-texto">
+            <h3 class="titulo-sec">Um número novo em minutos, sem chip</h3>
+            <p class="corpo-sm mudo">Escolha o DDD, ative o número e receba os códigos de verificação dentro do painel. Serve para abrir mais uma conexão sem comprar aparelho nem linha.</p>
+          </div>
+          <div class="janela">
+            <div class="jan-topo"><s></s><s></s><s></s><em>Números virtuais</em></div>
+            <div class="jan-tela"><div class="tl-inst">
+  <div class="tl-passo entra" style="--i:0"><i>1</i> Escolher o DDD</div>
+  <div class="tl-passo entra" style="--i:1"><i>2</i> Número ativo na hora</div>
+  <div class="tl-passo entra" style="--i:2"><i>3</i> O código chega no painel</div>
+  <div class="tl-selo entra" style="--i:3">11 &middot; 21 &middot; 31 &middot; 41 &middot; 51</div>
+</div></div>
+          </div>
+        </div>
         <div class="car-slide" data-slide="integracoes" data-dura="5000">
           <div class="car-texto">
             <h3 class="titulo-sec">Webhook para o que já roda na sua operação</h3>
@@ -1117,6 +1190,23 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
   <div class="tl-evento entra" style="--i:1"><em>POST</em> carrinho.abandonado <i>200</i></div>
   <div class="tl-evento entra" style="--i:2"><em>POST</em> pedido.pago <i>200</i></div>
   <div class="tl-evento entra" style="--i:3"><em>POST</em> assinatura.renovada <i>200</i></div>
+</div></div>
+          </div>
+        </div>
+        <div class="car-slide" data-slide="metricas" data-dura="5000">
+          <div class="car-texto">
+            <h3 class="titulo-sec">O painel responde antes de você perguntar</h3>
+            <p class="corpo-sm mudo">Conversas do dia, tempo de resposta por atendente e quanto entrou. Tudo no mesmo lugar, sem planilha no fim do mês para descobrir como foi a semana.</p>
+          </div>
+          <div class="janela">
+            <div class="jan-topo"><s></s><s></s><s></s><em>Painel</em></div>
+            <div class="jan-tela"><div class="tl-trk">
+  <div class="tl-kpi"><span>Conversas</span><b class="conta" data-fim="1840">0</b></div>
+  <div class="tl-kpi"><span>1ª resposta</span><b class="conta" data-fim="4" data-suf=" min">0</b></div>
+  <div class="tl-kpi destaque"><span>Vendas</span><b class="conta" data-fim="128600" data-pre="R$ ">0</b></div>
+  <div class="tl-fonte"><em>Ana</em><i style="--w:71%"></i></div>
+  <div class="tl-fonte"><em>Paulo</em><i style="--w:48%"></i></div>
+  <div class="tl-fonte"><em>Lucas</em><i style="--w:29%"></i></div>
 </div></div>
           </div>
         </div>
@@ -1139,13 +1229,18 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 
       <div class="car-passos" aria-hidden="true">
         <button class="car-passo on" data-ir="atendimento" aria-label="Atendimento"></button>
+        <button class="car-passo" data-ir="equipe" aria-label="Equipe"></button>
         <button class="car-passo" data-ir="funil" aria-label="Funil"></button>
         <button class="car-passo" data-ir="automacao" aria-label="Automação"></button>
+        <button class="car-passo" data-ir="ia" aria-label="Agente de IA"></button>
         <button class="car-passo" data-ir="campanhas" aria-label="Campanhas"></button>
+        <button class="car-passo" data-ir="sms" aria-label="SMS"></button>
         <button class="car-passo" data-ir="pagamentos" aria-label="Pagamentos"></button>
         <button class="car-passo" data-ir="rastreamento" aria-label="Tracking"></button>
         <button class="car-passo" data-ir="agenda" aria-label="Agenda e ligações"></button>
+        <button class="car-passo" data-ir="numeros" aria-label="Números virtuais"></button>
         <button class="car-passo" data-ir="integracoes" aria-label="Integrações"></button>
+        <button class="car-passo" data-ir="metricas" aria-label="Métricas"></button>
         <button class="car-passo" data-ir="instalacao" aria-label="Instalação"></button>
       </div>
     </div>
@@ -1744,9 +1839,13 @@ var LOGOS_KOONFY = [
     car.addEventListener('click', function (e) {
       var b = e.target.closest('.car-aba, .car-passo');
       if (!b) return;
-      // Escolheu uma aba: o giro acaba aqui. Continuar girando depois disso
-      // seria tirar da mão de quem acabou de dizer o que queria ver.
-      parado = true; clearTimeout(relogio); car.classList.add('parado');
+      // Escolheu uma aba: vai para ela e o giro CONTINUA dali.
+      // Antes o giro morria no primeiro clique e não voltava mais — quem
+      // tocasse numa aba (fácil no celular, onde a fileira rola com o dedo)
+      // ficava preso naquela tela para sempre.
+      // `abrir` reinicia o relógio, então a aba escolhida ganha o tempo cheio
+      // antes de a roda seguir.
+      clearTimeout(relogio);
       abrir(b.dataset.aba || b.dataset.ir);
       if (b.classList.contains('car-passo')) {
         var alvo = car.querySelector('.car-aba[data-aba="' + (b.dataset.ir) + '"]');
@@ -1762,11 +1861,11 @@ var LOGOS_KOONFY = [
     // Cada tela dura CINCO segundos, animacao inclusa: o respiro extra fazia a
     // roda arrastar, e as animacoes ja foram acertadas para caber nesse tempo.
     var RESPIRO = 0;
-    var relogio = null, parado = false, naTela = false;
+    var relogio = null, naTela = false;
 
     function agendarProximo(chave) {
       clearTimeout(relogio);
-      if (parado || !naTela) return;
+      if (!naTela) return;
       var sl = car.querySelector('.car-slide[data-slide="' + chave + '"]');
       var dura = (sl && Number(sl.dataset.dura)) || 5000;
       relogio = setTimeout(function () {
@@ -1784,23 +1883,13 @@ var LOGOS_KOONFY = [
     // As animações DE DENTRO de cada tela continuam desligadas nesse modo (ver
     // o @media lá em cima) — o que gira é a troca de aba, que é conteúdo.
 
-    // Com o MOUSE em cima, para: trocar o slide debaixo de quem está lendo é a
-    // forma mais rápida de perder o leitor.
-    //
-    // Só o mouse. No celular o dedo também dispara `pointerenter` — ao rolar a
-    // página passando por cima do carrossel — e o `pointerleave` nem sempre
-    // vem depois, porque o elemento sai andando por baixo do dedo. Quando não
-    // vinha, o giro morria ali e não voltava mais. Era a segunda razão de a
-    // roda parar no celular e continuar no computador.
-    car.addEventListener('pointerenter', function (e) {
-      if (e.pointerType && e.pointerType !== 'mouse') return;
-      clearTimeout(relogio);
-    });
-    car.addEventListener('pointerleave', function (e) {
-      if (e.pointerType && e.pointerType !== 'mouse') return;
-      var atual = car.querySelector('.car-slide.on');
-      if (atual) agendarProximo(atual.dataset.slide);
-    });
+    // A RODA NÃO PARA POR PONTEIRO. Ela parava com o mouse em cima — o que no
+    // computador significava ficar congelada enquanto a pessoa lia o resto da
+    // página com o cursor largado ali, e no celular era pior: o dedo passando
+    // para rolar disparava `pointerenter` e o `pointerleave` nem sempre vinha
+    // depois, porque o elemento sai andando por baixo do dedo.
+    // Quem quiser ficar numa tela específica clica na aba — o clique reinicia
+    // o tempo daquela tela.
 
     // Fora da tela não gira: ninguém está vendo, e a animação seguiria
     // gastando bateria. Voltando à vista, o giro recomeça de onde parou.
