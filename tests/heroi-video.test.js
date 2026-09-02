@@ -40,7 +40,7 @@ const html = fs.readFileSync(R + 'public/nova.html', 'utf8');
   ok(kbPoster < 140, `o pôster é leve: ${kbPoster} KB`);
 
   console.log('\n=== 2. Toca sozinho, em silêncio, e não para ===');
-  const tag = html.slice(html.indexOf('<video class="heroi-video"'), html.indexOf('<video class="heroi-video"') + 400);
+  const tag = html.slice(html.indexOf('<video class="heroi-video"'), html.indexOf('<video class="heroi-video"') + 560);
   ok(/autoplay/.test(tag), 'autoplay: começa sozinho');
   // `muted` NÃO é estética: navegador nenhum toca vídeo com som sem interação,
   // e sem ele o fundo ficaria congelado no primeiro quadro.
@@ -52,6 +52,16 @@ const html = fs.readFileSync(R + 'public/nova.html', 'utf8');
      'com o pôster do MESMO quadro — enquanto carrega, já é o universo');
   ok(/aria-hidden="true"/.test(tag) && /tabindex="-1"/.test(tag),
      'e invisível para leitor de tela e para o Tab: é decoração, não conteúdo');
+  // SEM CONTROLE NENHUM. Este vídeo é papel de parede; um botão de play em
+  // cima dele é o defeito que o cliente viu no celular.
+  ok(!/\bcontrols[ =>]/.test(tag), 'sem `controls`: não é um player, é fundo');
+  ok(/disablepictureinpicture/.test(tag), 'sem picture-in-picture');
+  // Quando o iOS recusa o autoplay ele desenha um botão de play GIGANTE por
+  // cima do vídeo mesmo sem `controls`. Só o CSS abaixo apaga esse botão.
+  ok(/heroi-video::-webkit-media-controls-start-playback-button/.test(html),
+     'o botão de play do iPhone está apagado por CSS');
+  ok(/heroi-video::-webkit-media-controls-overlay-play-button/.test(html),
+     'e o botão sobreposto também');
 
   console.log('\n=== 3. Baixa depois da página, e toca no celular também ===');
   // Com <source> no HTML o navegador começa a baixar DURANTE o carregamento,
@@ -62,7 +72,7 @@ const html = fs.readFileSync(R + 'public/nova.html', 'utf8');
      'o endereço fica em data-src');
   ok(!/<source/.test(tag), 'e não há <source>, que baixaria de todo jeito');
 
-  const script = html.slice(html.indexOf('O UNIVERSO EM VÍDEO'), html.indexOf('O UNIVERSO EM VÍDEO') + 3200);
+  const script = html.slice(html.indexOf('O UNIVERSO EM VÍDEO'), html.indexOf('O UNIVERSO EM VÍDEO') + 5200);
   // O CELULAR RECEBE O VÍDEO. Cortei antes por peso e reverti: a vitrine
   // vende, e metade das visitas chega pelo celular — um herói parado ali é o
   // primeiro contato de metade das pessoas.
@@ -77,6 +87,14 @@ const html = fs.readFileSync(R + 'public/nova.html', 'utf8');
   // autoplay. Só o atributo não basta em parte dos aparelhos.
   ok(/v\.muted = true/.test(script) && /v\.defaultMuted = true/.test(script),
      'e `muted` entra como propriedade, que é o que libera o autoplay');
+  ok(/v\.loop = true/.test(script), 'e `loop` também: o fundo nunca termina');
+  ok(/v\.controls = false/.test(script), 'e nenhum controle aparece');
+  // A REDE POR BAIXO DE TUDO: se o vídeo estiver parado por qualquer motivo,
+  // um vigia o devolve a tocar. É o que garante que ele nunca fique congelado
+  // no celular que recusou o autoplay na abertura.
+  ok(/setInterval\(function \(\) \{ if \(v\.paused \|\| v\.ended\) tocar\(\); \}/.test(script),
+     'um vigia religa o vídeo se ele estiver parado');
+  ok(/addEventListener\('ended'/.test(script), 'e ao terminar ele recomeça');
 
   // O PESO importa mais agora que o celular baixa: um herói de 5 MB é a
   // primeira visita inteira gasta antes de a pessoa ler a primeira linha.

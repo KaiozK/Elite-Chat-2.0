@@ -233,6 +233,17 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
    o texto. */
 .heroi-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
              z-index:0;pointer-events:none}
+/* O BOTÃO DE PLAY DO IPHONE. Quando o iOS recusa o autoplay (modo de baixo
+   consumo, Economia de Dados), ele desenha um botão de play GIGANTE por cima
+   do vídeo — mesmo sem `controls`. Este vídeo é papel de parede: ninguém deve
+   ver controle nenhum nele. As regras abaixo apagam esse botão e qualquer
+   outro controle nativo; o vídeo continua tentando tocar por conta própria no
+   script, e enquanto não toca fica o pôster, que é a mesma cena. */
+.heroi-video::-webkit-media-controls,
+.heroi-video::-webkit-media-controls-panel,
+.heroi-video::-webkit-media-controls-overlay-play-button,
+.heroi-video::-webkit-media-controls-start-playback-button{
+  display:none!important;-webkit-appearance:none;appearance:none;opacity:0}
 /* O VÉU. O vídeo é escuro, mas "escuro" não é garantia: um ponto brilhante
    passando atrás de uma letra branca some com a letra por um segundo. O véu
    é mais forte no miolo, onde o título vive, e quase nada nas bordas, onde a
@@ -853,6 +864,7 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
        já é o universo, e não um retângulo preto que salta quando o vídeo
        entra. -->
   <video class="heroi-video" autoplay muted loop playsinline preload="none"
+         disablepictureinpicture disableremoteplayback controlslist="nodownload noplaybackrate"
          poster="/assets/heroi-universo.webp" aria-hidden="true" tabindex="-1"
          data-src="/assets/heroi-universo.mp4"></video>
   <div class="heroi-veu" aria-hidden="true"></div>
@@ -1415,6 +1427,11 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
   v.muted = true;
   v.defaultMuted = true;
   v.playsInline = true;
+  // `loop` também como propriedade, pelo mesmo motivo do `muted`: o atributo
+  // sozinho já é lido por todo navegador atual, mas o `src` aqui entra por
+  // script, e a propriedade não depende de quando a marcação foi lida.
+  v.loop = true;
+  v.controls = false;
   v.setAttribute('preload', 'auto');   // era 'none' só para não competir no carregamento
   v.src = v.dataset.src;
 
@@ -1442,6 +1459,14 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
   v.addEventListener('pause', function () { setTimeout(tocar, 120); });
   // Voltando para a aba, retoma de onde estava.
   document.addEventListener('visibilitychange', function () { if (!document.hidden) tocar(); });
+  // O `loop` já devolve o vídeo ao início, mas se algum navegador der o vídeo
+  // por encerrado, ele recomeça na mão em vez de morrer no último quadro.
+  v.addEventListener('ended', function () { try { v.currentTime = 0; } catch (e) {} tocar(); });
+  // O VIGIA. É a rede por baixo de todo o resto: se por qualquer motivo o
+  // vídeo estiver parado, ele volta. Custa uma comparação por segundo e é o
+  // que garante que o fundo nunca fique congelado — nem no celular que
+  // recusou o autoplay na abertura, nem depois de uma ligação recebida.
+  setInterval(function () { if (v.paused || v.ended) tocar(); }, 1000);
   // Última porta: o primeiro toque na página libera o autoplay onde ele estava
   // bloqueado por falta de interação. Uma vez só, e sem atrapalhar o gesto.
   ['pointerdown', 'touchstart', 'keydown', 'scroll'].forEach(function (ev) {
