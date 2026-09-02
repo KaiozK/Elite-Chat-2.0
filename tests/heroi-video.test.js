@@ -62,18 +62,21 @@ const html = fs.readFileSync(R + 'public/nova.html', 'utf8');
      'o endereço fica em data-src');
   ok(!/<source/.test(tag), 'e não há <source>, que baixaria de todo jeito');
 
-  const script = html.slice(html.indexOf('O UNIVERSO EM VÍDEO'), html.indexOf('O UNIVERSO EM VÍDEO') + 1600);
+  const script = html.slice(html.indexOf('O UNIVERSO EM VÍDEO'), html.indexOf('O UNIVERSO EM VÍDEO') + 3200);
   // O CELULAR RECEBE O VÍDEO. Cortei antes por peso e reverti: a vitrine
   // vende, e metade das visitas chega pelo celular — um herói parado ali é o
   // primeiro contato de metade das pessoas.
   ok(!/max-width: 760px/.test(script), 'a tela estreita TAMBÉM recebe o vídeo');
-  // Só "menos movimento" barra: é preferência declarada do sistema, e
-  // insistir seria ignorá-la.
-  ok(/prefers-reduced-motion/.test(script) && /if \(quieto\) return;/.test(script),
-     'e só "menos movimento" barra');
-  ok(/v\.src = v\.dataset\.src/.test(script), 'aí o endereço vira src');
-  ok(/p\.catch\(function \(\) \{\}\)/.test(script),
-     'um play() recusado é engolido: o pôster continua, e a tela não perde nada');
+  // NADA barra o vídeo — nem "menos movimento". Metade das visitas chega pelo
+  // celular, e "Reduzir movimento" (iOS) ou a economia de bateria (Android) vem
+  // ligada em muito aparelho: essas pessoas viam um herói parado enquanto o
+  // computador rodava o vídeo.
+  ok(!/if \(quieto\) return;/.test(script), 'nada barra o vídeo, nem "menos movimento"');
+  ok(/v\.src = v\.dataset\.src/.test(script), 'o endereço vira src');
+  // `muted` como PROPRIEDADE: é ela que o navegador consulta para permitir o
+  // autoplay. Só o atributo não basta em parte dos aparelhos.
+  ok(/v\.muted = true/.test(script) && /v\.defaultMuted = true/.test(script),
+     'e `muted` entra como propriedade, que é o que libera o autoplay');
 
   // O PESO importa mais agora que o celular baixa: um herói de 5 MB é a
   // primeira visita inteira gasta antes de a pessoa ler a primeira linha.
@@ -113,11 +116,22 @@ const html = fs.readFileSync(R + 'public/nova.html', 'utf8');
   ok(/\.joia\{z-index:3\}/.test(html),
      'a joia sobe junto: ela mora fora do herói e o vídeo passaria por cima dela');
 
-  console.log('\n=== 5. Movimento reduzido: a arte fica, parada ===');
-  const bloco = html.slice(html.indexOf('@media (prefers-reduced-motion:reduce){\n  .heroi-video'));
-  ok(/\.heroi-video\{display:none\}/.test(bloco.slice(0, 200)), 'o vídeo some');
-  ok(/heroi-universo\.webp/.test(bloco.slice(0, 400)),
-     'e o pôster vira o fundo — esconder tudo deixaria o herói preto e sem assunto');
+  console.log('\n=== 5. Toca sempre, e nunca fica parado ===');
+  // O vídeo não é mais escondido para quem pediu "menos movimento".
+  ok(!/@media \(prefers-reduced-motion:reduce\)\{\n  \.heroi-video\{display:none\}/.test(html),
+     'o vídeo não some mais com "menos movimento"');
+  ok(/\.heroi\{background:#0a0a0a url\(\/assets\/heroi-universo\.webp\)/.test(html),
+     'e o pôster continua sendo o fundo enquanto o vídeo não chega');
+
+  // ELE NUNCA FICA PAUSADO. Um `play()` recusado (aba em segundo plano, modo de
+  // baixo consumo do iPhone, economia de bateria do Android) deixava o herói no
+  // pôster para sempre, porque a recusa era engolida sem nova tentativa.
+  ok(/addEventListener\('pause'/.test(script), 'se algo pausar, o vídeo volta');
+  ok(/visibilitychange/.test(script), 'voltando para a aba, ele retoma');
+  ok(/loadeddata/.test(script) && /canplay/.test(script),
+     'e tenta de novo quando o primeiro quadro chega');
+  ok(/pointerdown|touchstart/.test(script),
+     'o primeiro toque destrava o autoplay onde o navegador exigia um gesto');
 
   await encerrar(null, falhas);
 })();

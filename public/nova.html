@@ -257,14 +257,17 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 /* A JOIA também sobe: ela mora fora do herói, e sem isto o vídeo passaria por
    cima dela no meio da descida. */
 .joia{z-index:3}
-/* QUEM PEDIU MENOS MOVIMENTO não recebe vídeo nenhum: o poster fica, e a
-   tela continua sendo o mesmo universo — parado. Esconder o fundo inteiro
-   deixaria o herói preto e sem assunto, que é perder a arte em vez de
-   respeitar a preferência. */
-@media (prefers-reduced-motion:reduce){
-  .heroi-video{display:none}
-  .heroi{background:#0a0a0a url(/assets/heroi-universo.webp) center/cover no-repeat}
-}
+/* O VÍDEO DO HERÓI TOCA SEMPRE, inclusive para quem pediu "menos movimento"
+   no sistema.
+   Antes ele era escondido nesse caso, e o efeito colateral era grande: metade
+   das visitas chega pelo celular, e "Reduzir movimento" (iOS) ou a economia de
+   bateria (Android) vem ligada em muito aparelho — o herói dessas pessoas era
+   uma foto parada, enquanto no computador o vídeo rodava. Como este é o
+   primeiro contato com o produto, a decisão foi mostrar o mesmo herói para
+   todo mundo.
+   O poster continua sendo o mesmo quadro, então quem tem a rede lenta vê a
+   cena parada até o vídeo chegar — nunca um retângulo preto. */
+.heroi{background:#0a0a0a url(/assets/heroi-universo.webp) center/cover no-repeat}
 .heroi .wrap{display:flex;flex-direction:column;align-items:center;gap:var(--e32)}
 .heroi .display{max-width:1100px}
 .heroi .palco{padding:30px 0 18px}
@@ -1310,13 +1313,50 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 (function () {
   var v = document.querySelector('.heroi-video');
   if (!v || !v.dataset.src) return;
-  // SÓ 'menos movimento' barra o vídeo. Quem pede isso não quer animação
-  // nenhuma, e insistir seria ignorar uma preferência declarada do sistema.
-  var quieto = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (quieto) return;
+
+  // `muted` como PROPRIEDADE, e não só como atributo: é a propriedade que o
+  // navegador consulta na hora de decidir se pode tocar sozinho. Com o atributo
+  // apenas, Safari recusa o autoplay em parte dos aparelhos.
+  v.muted = true;
+  v.defaultMuted = true;
+  v.playsInline = true;
+  v.setAttribute('preload', 'auto');   // era 'none' só para não competir no carregamento
   v.src = v.dataset.src;
-  var p = v.play();
-  if (p && p.catch) p.catch(function () {});
+
+  // TOCAR É UMA TENTATIVA, NÃO UM COMANDO. O navegador recusa `play()` em
+  // várias situações comuns — aba em segundo plano na hora de abrir, modo de
+  // baixo consumo do iPhone, economia de bateria do Android. Uma tentativa só,
+  // com o erro engolido, deixava o herói parado no pôster sem nada tentar de
+  // novo. Aqui a gente insiste nos momentos em que a recusa costuma cair.
+  var tentando = false;
+  function tocar() {
+    if (tentando || !v.paused) return;
+    tentando = true;
+    var p = v.play();
+    if (p && p.then) p.then(function () { tentando = false; }, function () { tentando = false; });
+    else tentando = false;
+  }
+
+  tocar();
+  // Quando o primeiro quadro chega: se a recusa foi por não haver nada
+  // carregado ainda, agora vai.
+  v.addEventListener('loadeddata', tocar);
+  v.addEventListener('canplay', tocar);
+  // NUNCA FICAR PAUSADO. Ninguém controla este vídeo — ele é o fundo do herói.
+  // Se algo pausou (o sistema, a aba escondida, o modo de economia), volta.
+  v.addEventListener('pause', function () { setTimeout(tocar, 120); });
+  // Voltando para a aba, retoma de onde estava.
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) tocar(); });
+  // Última porta: o primeiro toque na página libera o autoplay onde ele estava
+  // bloqueado por falta de interação. Uma vez só, e sem atrapalhar o gesto.
+  ['pointerdown', 'touchstart', 'keydown', 'scroll'].forEach(function (ev) {
+    document.addEventListener(ev, function so() {
+      tocar();
+      ['pointerdown', 'touchstart', 'keydown', 'scroll'].forEach(function (e2) {
+        document.removeEventListener(e2, so, { passive: true });
+      });
+    }, { passive: true, once: false });
+  });
 })();
 
 /* ---------------- INDICAÇÃO DE AFILIADO ----------------
@@ -1726,7 +1766,7 @@ var LOGOS_KOONFY = [
 
     function agendarProximo(chave) {
       clearTimeout(relogio);
-      if (parado || !naTela || menosMovimento) return;
+      if (parado || !naTela) return;
       var sl = car.querySelector('.car-slide[data-slide="' + chave + '"]');
       var dura = (sl && Number(sl.dataset.dura)) || 5000;
       relogio = setTimeout(function () {
@@ -1735,15 +1775,29 @@ var LOGOS_KOONFY = [
       }, dura + RESPIRO);
     }
 
-    // Quem tem "menos movimento" ligado no sistema não recebe um carrossel
-    // que anda sozinho: aí a escolha é toda dele, pelas abas.
-    var menosMovimento = window.matchMedia
-      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // O CARROSSEL GIRA PARA TODO MUNDO, inclusive para quem tem "menos
+    // movimento" ligado no sistema — antes ele ficava parado nesse caso.
+    // Era isso que fazia a roda andar no computador e não andar no celular:
+    // "Reduzir movimento" (iOS) e a economia de bateria (Android) vêm ligados
+    // em muito aparelho, e quem só via a primeira aba nunca descobria que
+    // existiam mais oito.
+    // As animações DE DENTRO de cada tela continuam desligadas nesse modo (ver
+    // o @media lá em cima) — o que gira é a troca de aba, que é conteúdo.
 
-    // Com o ponteiro em cima, para. Trocar o slide debaixo de quem está lendo
-    // é a forma mais rápida de perder o leitor.
-    car.addEventListener('pointerenter', function () { clearTimeout(relogio); });
-    car.addEventListener('pointerleave', function () {
+    // Com o MOUSE em cima, para: trocar o slide debaixo de quem está lendo é a
+    // forma mais rápida de perder o leitor.
+    //
+    // Só o mouse. No celular o dedo também dispara `pointerenter` — ao rolar a
+    // página passando por cima do carrossel — e o `pointerleave` nem sempre
+    // vem depois, porque o elemento sai andando por baixo do dedo. Quando não
+    // vinha, o giro morria ali e não voltava mais. Era a segunda razão de a
+    // roda parar no celular e continuar no computador.
+    car.addEventListener('pointerenter', function (e) {
+      if (e.pointerType && e.pointerType !== 'mouse') return;
+      clearTimeout(relogio);
+    });
+    car.addEventListener('pointerleave', function (e) {
+      if (e.pointerType && e.pointerType !== 'mouse') return;
       var atual = car.querySelector('.car-slide.on');
       if (atual) agendarProximo(atual.dataset.slide);
     });
