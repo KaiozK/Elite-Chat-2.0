@@ -336,6 +336,34 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 .logos::-webkit-scrollbar{display:none}
 .logos span{font-size:11px;font-weight:500;letter-spacing:.03em;text-transform:uppercase;white-space:nowrap}
 
+/* ---------- a esteira: quando as seis NÃO cabem ---------- */
+/* No computador as seis credenciais cabem centralizadas e nada se mexe. Num
+   celular a fileira transbordava e ficava PARADA no começo: a pessoa via
+   "…usiness Partner" cortado na borda e só descobria as outras cinco se
+   pensasse em arrastar com o dedo — ninguém arrasta uma linha de apoio.
+   Então ela anda sozinha, e as seis passam por todo mundo.
+
+   O truque do fim invisível: a lista é escrita DUAS VEZES e o trilho desliza
+   exatamente metade. Quando a segunda cópia chega onde a primeira começou, o
+   quadro é idêntico ao inicial e a animação recomeça sem emenda. */
+/* O TRILHO E OS GRUPOS EXISTEM SEMPRE, andando ou não. Deixar o espaçamento
+   só dentro de `.esteira` parecia economia e era o defeito: para decidir se a
+   lista cabe é preciso MEDI-LA com o espaçamento que ela terá, e sem ele os
+   seis nomes ficavam colados, mediam bem menos, e a conta dizia "cabe" num
+   celular onde não cabia. A esteira nunca ligava. */
+.logos-trilho{display:flex;align-items:center;flex:0 0 auto;width:max-content}
+.logos-grupo{display:flex;align-items:center;flex:0 0 auto;
+             gap:clamp(18px,3.2vw,var(--e40));padding-right:clamp(18px,3.2vw,var(--e40))}
+/* A segunda cópia só existe quando a esteira anda: parada, ela seria a lista
+   repetida na tela. */
+.logos-grupo[aria-hidden]{display:none}
+.logos.esteira{overflow:hidden;justify-content:flex-start;gap:0;
+               -webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);
+               mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}
+.logos.esteira .logos-grupo[aria-hidden]{display:flex}
+.logos.esteira .logos-trilho{animation:logosAnda var(--logos-dura,26s) linear infinite}
+@keyframes logosAnda{from{transform:translate3d(0,0,0)}to{transform:translate3d(-50%,0,0)}}
+
 /* ---------- constelação ---------- */
 /* O PAINEL DA RODA. Escuro dentro da faixa clara, com o mesmo gradiente do
    aplicativo: um halo verde no alto e o carbono descendo ate quase preto.
@@ -929,12 +957,26 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
      resolve — começava longe demais de quem acabou de rolar. -->
 <section class="faixa escura" style="padding:0 var(--e24) var(--e32)">
   <div class="wrap logos">
-    <span>Meta Business Partner</span>
-    <span>WhatsApp Cloud API</span>
-    <span>Pix &amp; Cartão</span>
-    <span>Webhooks</span>
-    <span>Nuvemshop</span>
-    <span>OpenAI</span>
+    <div class="logos-trilho">
+      <div class="logos-grupo">
+        <span>Meta Business Partner</span>
+        <span>WhatsApp Cloud API</span>
+        <span>Pix &amp; Cartão</span>
+        <span>Webhooks</span>
+        <span>Nuvemshop</span>
+        <span>OpenAI</span>
+      </div>
+      <!-- A SEGUNDA CÓPIA é o que faz a volta não ter emenda. `aria-hidden`
+           porque para quem ouve a página ela seria a lista repetida. -->
+      <div class="logos-grupo" aria-hidden="true">
+        <span>Meta Business Partner</span>
+        <span>WhatsApp Cloud API</span>
+        <span>Pix &amp; Cartão</span>
+        <span>Webhooks</span>
+        <span>Nuvemshop</span>
+        <span>OpenAI</span>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -1859,6 +1901,51 @@ var LOGOS_KOONFY = [
     if (window.ResizeObserver) new ResizeObserver(armarAnel).observe(caixa);
   }
 
+
+  // =========================================================================
+  // A FILEIRA DE CREDENCIAIS ANDA SOZINHA — QUANDO NÃO CABE
+  //
+  // Ela não é decoração: são as seis credenciais que dizem que a Koonfy é
+  // oficial. No computador cabem as seis centralizadas e ficar andando seria
+  // movimento à toa. No celular a fileira transbordava e ficava parada no
+  // começo — "…usiness Partner" cortado na borda, e as outras cinco só para
+  // quem pensasse em arrastar.
+  //
+  // A decisão é por MEDIDA, não por largura de tela: se a lista não cabe, a
+  // esteira liga. Um `@media` chutaria um número que erra no tablet deitado e
+  // no celular com fonte grande.
+  //
+  // A velocidade é constante em pixels por segundo (~40), e não um tempo fixo:
+  // com tempo fixo a mesma animação fica lenta numa tela e correndo na outra.
+  // =========================================================================
+  (function () {
+    var fila = document.querySelector('.logos');
+    var trilho = fila && fila.querySelector('.logos-trilho');
+    if (!fila || !trilho) return;
+
+    var grupo = trilho.querySelector('.logos-grupo');
+    function conferir() {
+      // Mede UM grupo, não o trilho: com a esteira ligada o trilho já está
+      // dobrado, e a conta daria sempre "não cabe".
+      var largura = grupo.getBoundingClientRect().width;
+      if (largura > fila.clientWidth + 1) {
+        fila.style.setProperty('--logos-dura', Math.round(largura / 40) + 's');
+        fila.classList.add('esteira');
+      } else {
+        fila.classList.remove('esteira');   // virou o telefone e agora cabe
+      }
+    }
+    conferir();
+    // Virar o telefone de lado muda tudo: o que não cabia em pé pode caber
+    // deitado. `resize` cobre a virada e o zoom do navegador.
+    var espera;
+    window.addEventListener('resize', function () {
+      clearTimeout(espera); espera = setTimeout(conferir, 200);
+    });
+    // As fontes chegam depois do primeiro desenho e mudam a largura do texto:
+    // medir antes delas daria a conta errada.
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(conferir);
+  })();
 
   // =========================================================================
   // CARROSSEL DOS RECURSOS

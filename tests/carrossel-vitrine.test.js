@@ -86,5 +86,34 @@ const pega = re => [...car.matchAll(re)].map(m => m[1]);
   ok(!/scrollIntoView/.test(codigo),
      'rolando só a fileira, nunca a página — senão a leitura é arrastada junto');
 
+  console.log('\n=== 5. A fileira de credenciais anda quando não cabe ===');
+  // São as seis credenciais que dizem que a Koonfy é oficial. No computador
+  // cabem centralizadas e nada se mexe. No celular a fileira transbordava e
+  // ficava PARADA no começo: "…usiness Partner" cortado na borda, e as outras
+  // cinco só para quem pensasse em arrastar com o dedo.
+  const faixa = html.slice(html.indexOf('FILEIRA DE LOGOS'), html.indexOf('FILEIRA DE LOGOS') + 1800);
+  const nomes = [...faixa.matchAll(/<span>([^<]+)<\/span>/g)].map(m => m[1]);
+  ok(nomes.length === 12, `a lista é escrita duas vezes (${nomes.length} nomes): é o que faz a volta sem emenda`);
+  ok(JSON.stringify(nomes.slice(0, 6)) === JSON.stringify(nomes.slice(6)),
+     'e as duas cópias são idênticas — se diferissem, a volta daria um salto');
+  ok(/<div class="logos-grupo" aria-hidden="true">/.test(faixa),
+     'a segunda cópia é muda para leitor de tela');
+  const esteira = html.slice(html.indexOf('A FILEIRA DE CREDENCIAIS ANDA SOZINHA'),
+                             html.indexOf('A FILEIRA DE CREDENCIAIS ANDA SOZINHA') + 2200);
+  ok(/largura > fila\.clientWidth/.test(esteira),
+     'a esteira liga por MEDIDA (não cabe), não por largura de tela chutada num @media');
+  ok(/fila\.classList\.remove\('esteira'\)/.test(esteira),
+     'e desliga se voltar a caber — virar o telefone de lado muda tudo');
+  ok(/Math\.round\(largura \/ 40\)/.test(esteira),
+     'velocidade constante em px/s: com tempo fixo ela ficaria lenta numa tela e correndo na outra');
+  ok(/document\.fonts\.ready/.test(esteira),
+     'a medida espera as fontes: elas mudam a largura do texto depois do primeiro desenho');
+  // O espaçamento tem de existir MEDINDO e andando: sem isso os seis nomes
+  // ficam colados, medem menos, e a conta diz "cabe" onde não cabe.
+  ok(/\.logos-grupo\{[^}]*gap:clamp/.test(html),
+     'o espaçamento vale sempre, não só com a esteira ligada — senão a medida mente');
+  ok(/@keyframes logosAnda\{from\{transform:translate3d\(0,0,0\)\}to\{transform:translate3d\(-50%/.test(html),
+     'e o trilho desliza exatamente metade, que é onde o quadro repete');
+
   await encerrar(null, falhas);
 })();
