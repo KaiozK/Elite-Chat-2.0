@@ -136,5 +136,15 @@ const pega = re => [...car.matchAll(re)].map(m => m[1]);
   ok(/@keyframes logosAnda\{from\{transform:translate3d\(0,0,0\)\}\s*to\{transform:translate3d\(calc\(var\(--logos-passo/.test(html),
      'e o trilho desliza exatamente uma cópia');
 
+  console.log('\n=== 6. A linha fica no MEIO da faixa ===');
+  // Era `padding: 0 ... 32px`: mesma altura total, mas os nomes colados no topo
+  // e um vão vazio por baixo. Numa faixa que anda isso salta à vista, porque a
+  // linha em movimento é a única coisa ali. 16 e 16 mantêm a altura de 49px e
+  // põem a linha no meio — no computador e no celular, que usam a mesma regra.
+  ok(/<section class="faixa escura" style="padding:var\(--e16\) var\(--e24\)">/.test(html),
+     'o respiro é igual em cima e embaixo (16 e 16), não 0 em cima e 32 embaixo');
+  ok(/\.logos\{overflow:hidden;justify-content:center;align-items:center/.test(html),
+     'e a linha se alinha ao centro da faixa');
+
   await encerrar(null, falhas);
 })();

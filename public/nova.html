@@ -359,7 +359,7 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
    lista inteira pode caber, e aí ficar rodando seria movimento à toa: ela
    para, centralizada, como sempre foi. Em qualquer tela real ela não cabe e
    anda. Quem decide é a medida, no script. */
-.logos{overflow:hidden;justify-content:center;gap:0;
+.logos{overflow:hidden;justify-content:center;align-items:center;gap:0;
        -webkit-mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent);
        mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent)}
 .logos.anda{justify-content:flex-start}
@@ -956,11 +956,16 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 </section>
 
 <!-- ===================== FILEIRA DE LOGOS ===================== -->
-<!-- A FAIXA É BAIXA de propósito: são credenciais, não um assunto. Com o
-     respiro de uma seção inteira (80px em cima e embaixo) ela ganhava o peso
-     de um capítulo da página, e o que vem depois — o problema que a Koonfy
-     resolve — começava longe demais de quem acabou de rolar. -->
-<section class="faixa escura" style="padding:0 var(--e24) var(--e32)">
+<!-- A FAIXA É BAIXA de propósito: com o respiro de uma seção inteira (80px em
+     cima e embaixo) ela ganhava o peso de um capítulo da página, e o que vem
+     depois — o problema que a Koonfy resolve — começava longe demais de quem
+     acabou de rolar.
+
+     O RESPIRO É IGUAL EM CIMA E EMBAIXO. Era 0 em cima e 32 embaixo: a mesma
+     altura total, mas os nomes colados no topo da faixa, com um vão vazio por
+     baixo. Numa faixa que anda isso salta à vista, porque a linha em movimento
+     é a única coisa ali. 16 e 16 mantêm a altura e põem a linha no meio. -->
+<section class="faixa escura" style="padding:var(--e16) var(--e24)">
   <div class="wrap logos">
     <div class="logos-trilho">
       <div class="logos-grupo">
