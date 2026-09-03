@@ -349,15 +349,23 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
 
    O espaçamento vale sempre, e não só com a esteira ligada: é medindo com ele
    que se sabe a largura de uma cópia, que é o passo da animação. */
-.logos-trilho{display:flex;align-items:center;flex:0 0 auto;width:max-content;
-              animation:logosAnda var(--logos-dura,26s) linear infinite}
+.logos-trilho{display:flex;align-items:center;flex:0 0 auto;width:max-content}
+.logos.anda .logos-trilho{animation:logosAnda var(--logos-dura,26s) linear infinite}
 .logos-grupo{display:flex;align-items:center;flex:0 0 auto;
              gap:clamp(18px,3.2vw,var(--e40));padding-right:clamp(18px,3.2vw,var(--e40))}
 /* As bordas desbotam em vez de cortar: um nome sumindo pela metade na borda
    dura parece defeito, e desbotando parece que a fileira continua. */
-.logos{overflow:hidden;justify-content:flex-start;gap:0;
+/* CENTRALIZADA QUANDO CABE, ANDANDO QUANDO NÃO CABE. Numa tela larguíssima a
+   lista inteira pode caber, e aí ficar rodando seria movimento à toa: ela
+   para, centralizada, como sempre foi. Em qualquer tela real ela não cabe e
+   anda. Quem decide é a medida, no script. */
+.logos{overflow:hidden;justify-content:center;gap:0;
        -webkit-mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent);
        mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent)}
+.logos.anda{justify-content:flex-start}
+/* As funcionalidades são o assunto; as credenciais são o aval. Mesmo tamanho e
+   mesmo ritmo, e o verde separa uma coisa da outra sem precisar de divisória. */
+.logos-func{color:var(--sinal)}
 @keyframes logosAnda{from{transform:translate3d(0,0,0)}
                      to{transform:translate3d(calc(var(--logos-passo,0px) * -1),0,0)}}
 
@@ -956,12 +964,32 @@ html[data-botao="chapado"] .btn-sinal{background:var(--btn-base,var(--sinal-fund
   <div class="wrap logos">
     <div class="logos-trilho">
       <div class="logos-grupo">
+        <!-- As credenciais abrem a fileira: são elas que dizem que a Koonfy é
+             oficial, e é a primeira coisa que se vê ao rolar o herói. -->
         <span>Meta Business Partner</span>
         <span>WhatsApp Cloud API</span>
         <span>Pix &amp; Cartão</span>
         <span>Webhooks</span>
         <span>Nuvemshop</span>
         <span>OpenAI</span>
+        <!-- E o que a Koonfy FAZ vem logo atrás, na mesma volta. A faixa deixa
+             de ser só um selo de rodapé e passa a dizer, em uma linha, o
+             tamanho do produto — as mesmas 14 funcionalidades do carrossel,
+             para quem não vai esperar 14 telas girarem. -->
+        <span class="logos-func">Atendimento</span>
+        <span class="logos-func">Equipe</span>
+        <span class="logos-func">Funil</span>
+        <span class="logos-func">Automação</span>
+        <span class="logos-func">Agente de IA</span>
+        <span class="logos-func">Campanhas</span>
+        <span class="logos-func">SMS</span>
+        <span class="logos-func">Pagamentos</span>
+        <span class="logos-func">Tracking</span>
+        <span class="logos-func">Agenda e ligações</span>
+        <span class="logos-func">Números virtuais</span>
+        <span class="logos-func">Integrações</span>
+        <span class="logos-func">Métricas</span>
+        <span class="logos-func">Instalação</span>
       </div>
       <!-- As cópias que fazem a volta não ter emenda são criadas pelo script,
            porque QUANTAS são depende da largura da tela. Sem script, a fileira
@@ -1923,6 +1951,11 @@ var LOGOS_KOONFY = [
       });
       var passo = modelo.getBoundingClientRect().width;
       if (!passo) return;                       // ainda sem layout: volta depois
+      // CABE? Então fica parada e centralizada, como sempre foi — rodar uma
+      // lista que já está inteira na tela é movimento à toa. Só não cabe é que
+      // vira esteira. Em qualquer tela real de hoje ela não cabe.
+      if (passo <= fila.clientWidth + 1) { fila.classList.remove('anda'); return; }
+      fila.classList.add('anda');
       // Quantas cópias enchem a vista, mais uma inteira para o trilho ter para
       // onde deslizar sem mostrar o vazio do fim.
       var copias = Math.ceil(fila.clientWidth / passo) + 1;

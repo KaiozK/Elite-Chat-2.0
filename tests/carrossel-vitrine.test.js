@@ -91,15 +91,24 @@ const pega = re => [...car.matchAll(re)].map(m => m[1]);
   // cabem centralizadas e nada se mexe. No celular a fileira transbordava e
   // ficava PARADA no começo: "…usiness Partner" cortado na borda, e as outras
   // cinco só para quem pensasse em arrastar com o dedo.
-  const faixa = html.slice(html.indexOf('FILEIRA DE LOGOS'), html.indexOf('FILEIRA DE LOGOS') + 1800);
-  const nomes = [...faixa.matchAll(/<span>([^<]+)<\/span>/g)].map(m => m[1]);
-  ok(nomes.length === 6, `as 6 credenciais estão na marcação (${nomes.length})`);
+  const faixa = html.slice(html.indexOf('FILEIRA DE LOGOS'), html.indexOf('FILEIRA DE LOGOS') + 3200);
+  const nomes = [...faixa.matchAll(/<span(?: class="logos-func")?>([^<]+)<\/span>/g)].map(m => m[1]);
+  // A faixa carrega as CREDENCIAIS e as FUNCIONALIDADES na mesma volta: as
+  // primeiras dizem que a Koonfy é oficial, as segundas dizem o tamanho do
+  // produto em uma linha — para quem não vai esperar 14 telas do carrossel.
+  ok(nomes.length === 20, `6 credenciais + 14 funcionalidades na fileira (${nomes.length})`);
+  const func = [...faixa.matchAll(/<span class="logos-func">([^<]+)<\/span>/g)].map(m => m[1]);
+  ok(func.length === 14, `as 14 funcionalidades estão lá (${func.length})`);
+  ok(func[0] === 'Atendimento' && func[func.length - 1] === 'Instalação',
+     'na mesma ordem do carrossel, de Atendimento a Instalação');
+  ok(/\.logos-func\{color:var\(--sinal\)\}/.test(html),
+     'e em verde: separa o que a Koonfy faz do aval de quem a credencia');
   // As CÓPIAS são feitas pelo script, porque quantas são depende da largura:
   // um número fixo que enche um celular deixa buraco num monitor largo.
   ok(!/aria-hidden="true"/.test(faixa),
      'e nenhuma cópia fixa na marcação — sem script, a fileira fica parada, como era antes');
   const esteira = html.slice(html.indexOf('A FILEIRA DE CREDENCIAIS ANDA SOZINHA'),
-                             html.indexOf('A FILEIRA DE CREDENCIAIS ANDA SOZINHA') + 2600);
+                             html.indexOf('A FILEIRA DE CREDENCIAIS ANDA SOZINHA') + 3400);
   ok(/Math\.ceil\(fila\.clientWidth \/ passo\) \+ 1/.test(esteira),
      'as cópias enchem a vista e sobra uma inteira, para o trilho ter para onde deslizar');
   ok(/c\.setAttribute\('aria-hidden', 'true'\)/.test(esteira),
@@ -114,10 +123,14 @@ const pega = re => [...car.matchAll(re)].map(m => m[1]);
      'e refaz a conta ao virar o telefone ou mudar o tamanho da janela');
   // Anda NOS DOIS. Antes ela parava onde os seis nomes cabiam — o que valia só
   // no computador, deixando um comportamento em cada aparelho.
-  ok(/\.logos-trilho\{[^}]*animation:logosAnda/.test(html),
-     'a esteira anda sempre: computador e celular com o mesmo comportamento');
-  ok(!/\.logos\.esteira/.test(html),
-     'e não existe mais o estado "parada" que valia só no computador');
+  ok(/\.logos\.anda \.logos-trilho\{animation:logosAnda/.test(html),
+     'a esteira anda no computador e no celular, com o mesmo comportamento');
+  // Ela só para numa tela larguíssima onde a lista inteira coubesse — aí rodar
+  // seria movimento à toa. Em qualquer tela real de hoje ela anda.
+  ok(/if \(passo <= fila\.clientWidth \+ 1\) \{ fila\.classList\.remove\('anda'\); return; \}/.test(esteira),
+     'e só fica parada, centralizada, se a lista inteira couber na largura');
+  ok(/\.logos\{[^}]*justify-content:center/.test(html) && /\.logos\.anda\{justify-content:flex-start\}/.test(html),
+     'parada ela é centralizada; andando, alinhada ao fluxo da esteira');
   ok(/\.logos-grupo\{[^}]*gap:clamp/.test(html),
      'o espaçamento vale sempre — é medindo com ele que se sabe o passo');
   ok(/@keyframes logosAnda\{from\{transform:translate3d\(0,0,0\)\}\s*to\{transform:translate3d\(calc\(var\(--logos-passo/.test(html),
