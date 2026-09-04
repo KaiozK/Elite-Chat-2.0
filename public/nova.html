@@ -1688,6 +1688,33 @@ document.addEventListener('click', function (e) {
   }
 }, true);
 
+// E TAMBÉM NO PRÓPRIO href, e não só no clique.
+//
+// O clique cobre o clique. Não cobre "abrir em nova aba" pelo menu do botão
+// direito, nem "copiar endereço do link", nem arrastar o link para a barra de
+// abas — nenhum desses dispara `click`. Nesses casos o endereço que ia embora
+// era o SEM código, e a indicação morria ali. Quem recebe um link de afiliado
+// e abre em nova aba para "ver depois" é um comportamento comum demais para
+// ficar de fora.
+//
+// Só o clique não bastava; só o href também não, porque a grade de planos é
+// montada por fetch depois do carregamento e o botão "Assinar" nasce fora de
+// qualquer varredura inicial. Os dois juntos cobrem tudo: o observador pega o
+// que nasce depois, e o clique continua sendo a rede de segurança.
+function grudarNosLinks() {
+  if (!refCode) return;
+  var lista = document.querySelectorAll('a[href^="/app"], a[href^="/assinar"]');
+  for (var i = 0; i < lista.length; i++) {
+    var href = lista[i].getAttribute('href');
+    var novo = comRef(href);
+    if (novo && novo !== href) lista[i].setAttribute('href', novo);
+  }
+}
+grudarNosLinks();
+if (window.MutationObserver) {
+  new MutationObserver(grudarNosLinks).observe(document.body, { childList: true, subtree: true });
+}
+
 // OS ÍCONES SÃO OS DO APP: o mesmo desenho que está na barra lateral do
 // painel, um por funcionalidade. Quem vê a vitrine e depois entra encontra
 // os mesmos símbolos — é a mesma casa, não duas.

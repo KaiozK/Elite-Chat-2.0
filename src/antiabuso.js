@@ -305,6 +305,10 @@ function fila() {
       trialNegado: !!o.trialNegado,
       comissaoRetida: !!(ret && !ret.liberadaPor),
       motivosComissao: (ret && ret.motivos) || [],
+      // QUANTO está parado. Sem o valor, quem revisa decide no escuro — e o
+      // tamanho da comissão é parte do julgamento: R$ 5 e R$ 500 não merecem
+      // a mesma desconfiança.
+      valorRetido: ((ret && ret.pendentes) || []).reduce((s, x) => s + (Number(x.valor) || 0), 0),
       revisadoPor: o.revisadoPor || ''
     });
   }
@@ -313,12 +317,19 @@ function fila() {
     contas: linhas,
     total: linhas.length,
     comissoesRetidas: linhas.filter(l => l.comissaoRetida).length,
+    valorRetidoTotal: linhas.reduce((s, l) => s + (l.comissaoRetida ? l.valorRetido : 0), 0),
     trialsNegados: linhas.filter(l => l.trialNegado).length
   };
 }
 
 // Liberar é decisão de gente, e fica registrado quem decidiu.
-function liberar(accountId, quem) {
+//
+// E liberar PAGA. Antes esta função só levantava a trava: a partir dali as
+// renovações passavam a pagar, mas a comissão que ficou parada — inclusive a
+// da primeira venda, que é a maior — não saía nunca, sem erro e sem aviso.
+// Quem revisava achava que tinha resolvido; quem indicou continuava sem ver o
+// dinheiro. A retenção é uma ESPERA, não um confisco.
+function liberar(accountId, quem, broadcast) {
   const acc = db.findAccount(accountId);
   if (!acc) { const e = new Error('Conta não encontrada'); e.status = 404; throw e; }
   const o = ensure(acc);
@@ -327,7 +338,15 @@ function liberar(accountId, quem) {
     acc.affiliate.comissaoRetida.liberadaPor = o.revisadoPor;
   }
   db.save();
-  store.logEvent({ type: 'antiabuso_liberado', accountId: acc.id, por: o.revisadoPor });
+  // Fora do `db.save()` acima de propósito: a liberação já está gravada, e uma
+  // falha no pagamento não pode desfazer a decisão de quem revisou.
+  let pago = null;
+  try { pago = require('./woovi').pagarPendentes(acc, broadcast); }
+  catch (e) { store.logEvent({ type: 'comissao_liberada_erro', accountId: acc.id, error: e.message }); }
+  store.logEvent({
+    type: 'antiabuso_liberado', accountId: acc.id, por: o.revisadoPor,
+    comissoesPagas: (pago && pago.pagas) || 0, valorPago: (pago && pago.total) || 0
+  });
   return fila();
 }
 

@@ -194,6 +194,19 @@ function pagarComissao(acc, valorPago, kind, broadcast) {
   // dinheiro de volta, que quase nunca volta. O evento fica no log para o valor
   // não sumir da história.
   if (!require('./antiabuso').comissaoLiberada(acc)) {
+    // GUARDA O VALOR, não só o fato. Antes ficava só o registro no log: o
+    // admin liberava a conta e a comissão da PRIMEIRA venda — a maior, 30% —
+    // nunca era paga, porque este `return` já tinha acontecido e ninguém
+    // voltava para ele. Só as renovações seguintes entravam. Numa operação
+    // que vive de afiliado isso é o pior defeito possível: silencioso, e
+    // sempre contra quem trouxe a venda.
+    //
+    // Com o valor guardado aqui, `pagarPendentes` paga tudo no momento em que
+    // alguém libera. A retenção passa a ser uma ESPERA, não uma perda.
+    const r = acc.affiliate.comissaoRetida;
+    if (!Array.isArray(r.pendentes)) r.pendentes = [];
+    r.pendentes.push({ valor: cut, kind, pct, ts: Date.now() });
+    db.save();
     store.logEvent({ type: 'comissao_retida', accountId: acc.id, afiliado: aff.id, valor: cut, kind });
     return { ok: false, motivo: 'retida', valor: cut };
   }
@@ -215,6 +228,46 @@ function pagarComissao(acc, valorPago, kind, broadcast) {
   }
   store.logEvent({ type: 'comissao_paga', accountId: acc.id, afiliado: aff.id, valor: cut, kind });
   return { ok: true, valor: cut, afiliado: aff.id };
+}
+
+// PAGA O QUE FICOU ESPERANDO. Chamada quando o admin libera uma conta retida
+// (ver src/antiabuso.js → liberar). Paga cada comissão que ficou na espera, com
+// o percentual que valia NA ÉPOCA — se a plataforma mudou de 30% para 20% no
+// meio da revisão, quem trouxe a venda não pode perder por causa da demora de
+// quem revisa.
+//
+// A lista é esvaziada ao pagar: liberar duas vezes não paga duas vezes.
+function pagarPendentes(acc, broadcast) {
+  const r = acc && acc.affiliate && acc.affiliate.comissaoRetida;
+  if (!r || !Array.isArray(r.pendentes) || !r.pendentes.length) return { ok: true, pagas: 0, total: 0 };
+
+  const aff = db.findAccountByRefCode(acc.affiliate.refBy || '');
+  if (!aff || aff.id === acc.id) { r.pendentes = []; db.save(); return { ok: false, motivo: 'afiliado inválido' }; }
+
+  const fila = r.pendentes;
+  r.pendentes = [];                     // esvazia ANTES de creditar: nada é pago duas vezes
+  let total = 0;
+  for (const item of fila) {
+    const cut = Number(item.valor) || 0;
+    if (cut <= 0) continue;
+    aff.wallet.balance += cut;
+    aff.affiliate.earned += cut;
+    aff.wallet.transactions.push({
+      id: db.genId('tx'), ts: Date.now(), amount: cut, type: 'commission',
+      label: `Comissão ${item.pct}%, ${item.kind === 'first' ? 'nova assinatura' : 'renovação'} (${acc.name}) · liberada na revisão`
+    });
+    total += cut;
+    store.logEvent({ type: 'comissao_liberada_paga', accountId: acc.id, afiliado: aff.id, valor: cut, kind: item.kind });
+  }
+  db.save();
+  if (total) {
+    try { require('./avisos').avisarComissao(aff, { amount: total, percent: 0, kind: 'first', indicado: acc.name }); } catch {}
+    if (broadcast) {
+      broadcast('wallet', { accountId: aff.id });
+      broadcast('commission', { accountId: aff.id, amount: total, kind: 'first', indicado: acc.name });
+    }
+  }
+  return { ok: true, pagas: fila.length, total, afiliado: aff.id };
 }
 
 // ============ Processamento de pagamento confirmado ============
@@ -374,5 +427,5 @@ function webhookHandler(broadcast) {
 
 module.exports = {
   configured, ambiente, base, call, createCharge, getCharge, deleteCharge,
-  createSubscription, cancelSubscription, syncSubscription, applyPayment, pagarComissao, webhookHandler
+  createSubscription, cancelSubscription, syncSubscription, applyPayment, pagarComissao, pagarPendentes, webhookHandler
 };

@@ -6260,7 +6260,9 @@ module.exports = function (broadcast, clients) {
 
   router.post('/adm/antiabuso/:id/liberar', auth, adminOnly, (req, res) => {
     const quem = req.session.kind === 'admin' ? db.get().platform.adminUser : req.acc.name;
-    res.json(require('./antiabuso').liberar(req.params.id, quem));
+    // `broadcast` vai junto: liberar PAGA a comissão que ficou parada, e quem
+    // indicou tem de ver o saldo mudar na hora, sem recarregar o painel.
+    res.json(require('./antiabuso').liberar(req.params.id, quem, broadcast));
   });
 
   // ---- Integração Nuvemshop (app único da plataforma) ----
