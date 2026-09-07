@@ -783,6 +783,31 @@ function debitWithdraw(acc, valueCents) {
   return { fromCard: doCartao };
 }
 
+// DESFAZ um saque — o admin recusou, e o dinheiro volta.
+//
+// Mora aqui, ao lado do débito, porque desfazer tem de restaurar EXATAMENTE o
+// que o débito consumiu. A rota do admin devolvia só o `balance` e esquecia o
+// `cardAvailable`: o dinheiro voltava, mas deixava de ser dinheiro de cartão e
+// virava dinheiro de Pix aos olhos do sistema. Como cada origem tem taxa de
+// saque própria, o saque seguinte cobrava a taxa errada — para mais ou para
+// menos, dependendo da tabela. Um erro silencioso, que só aparece na
+// conciliação e nunca no dia.
+function refundWithdraw(acc, wd) {
+  const w = acc.wallet;
+  const valor = Math.max(0, Math.round(Number(wd.amount) || 0));
+  if (valor <= 0) return { ok: false };
+  w.balance += valor;
+  // `fromCard` é quanto do saque saiu do dinheiro de cartão — foi gravado no
+  // pedido de saque justamente para poder ser desfeito.
+  w.cardAvailable = (Number(w.cardAvailable) || 0) + Math.max(0, Math.round(Number(wd.fromCard) || 0));
+  w.transactions.push({
+    id: db.genId('tx'), ts: Date.now(), amount: valor, type: 'refund',
+    label: 'Saque recusado, valor devolvido'
+  });
+  db.save();
+  return { ok: true, valor, fromCard: Number(wd.fromCard) || 0 };
+}
+
 // ---------------------------------------------------------------------------
 // RECEBÍVEIS — a venda no cartão entra como "a liberar" e vira saldo no prazo
 // do adquirente (Pagar.me D+30 crédito / D+1 débito; Asaas D+32 / D+3).
@@ -858,6 +883,13 @@ function reverterVenda(acc, ch, motivo, broadcast) {
 function creditCardSale(acc, ch, broadcast) {
   const card = cardConfig();
   if (card.settleMode !== 'wallet') return null;    // modo split: o dinheiro vai direto ao lojista
+  // IDEMPOTENTE, como o Pix ao lado. Hoje `finalizePaid` já barra a cobrança
+  // que chega paga duas vezes, então esta linha não muda nada — e é por isso
+  // mesmo que ela precisa existir: a proteção do dinheiro não pode depender de
+  // quem chama. Sem ela, qualquer caminho novo que credite uma venda de cartão
+  // cria os recebíveis de novo, e o cliente é pago duas vezes pela mesma
+  // venda. A assimetria também engana quem lê: o Pix tem guarda, o cartão não.
+  if (ch.walletCredited) return null;
 
   const liquido = Math.max(0, ch.value - (ch.platformCut || 0));
   if (liquido <= 0) return null;
@@ -870,6 +902,7 @@ function creditCardSale(acc, ch, broadcast) {
   // mês (D+30/D+60… no Pagar.me, D+32/D+64… no Asaas); débito, de uma vez em
   // dias úteis. Nada aqui é configurável — é a regra deles.
   const agenda = cards.settleSchedule(card, kind, liquido, parcelas, Date.now());
+  ch.walletCredited = liquido;      // marca ANTES de criar: é o que fecha a porta
   const criados = [];
   for (const p of agenda) {
     const rec = {
@@ -2584,7 +2617,7 @@ module.exports = {
   cardConfig, cardPublic, payWithCard, payWithBoleto, refreshCardStatus, installmentOptions,
   cardAccount, cardAccountView, cardCapability, cardReady, registerCardAccount, syncCardAccount,
   creditCardSale, creditPixSale, reverterVenda,
-  releaseFor, releaseReceivables, spendWallet, computeSplit, computeWithdrawFee, debitWithdraw,
+  releaseFor, releaseReceivables, spendWallet, computeSplit, computeWithdrawFee, debitWithdraw, refundWithdraw,
   cardWebhookHandler, cardWebhookToken,
   DRIVERS
 };

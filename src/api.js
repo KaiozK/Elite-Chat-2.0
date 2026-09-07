@@ -6336,11 +6336,13 @@ module.exports = function (broadcast, clients) {
     if (action === 'paid' && wd.status === 'pending') { wd.status = 'paid'; wd.paidAt = Date.now(); }
     if (action === 'reject' && wd.status === 'pending') {
       wd.status = 'rejected';
+      wd.rejectedAt = Date.now();
       const acc = db.findAccount(wd.accountId);
-      if (acc) { // devolve o valor à carteira
-        acc.wallet.balance += wd.amount;
-        acc.wallet.transactions.push({ id: db.genId('tx'), ts: Date.now(), amount: wd.amount, type: 'refund', label: 'Saque recusado, valor devolvido' });
-      }
+      // Devolver é o INVERSO EXATO do débito, e por isso mora junto dele em
+      // pagamentos.js: aqui só restaurávamos o saldo, e a parte que veio de
+      // cartão virava dinheiro de Pix — com taxa de saque diferente no saque
+      // seguinte.
+      if (acc) pagamentos.refundWithdraw(acc, wd);
     }
     db.save();
     res.json({ withdrawal: wd });
