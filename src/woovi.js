@@ -171,6 +171,21 @@ async function syncSubscription(acc, motivo) {
 //
 // Como função, os dois caminhos chamam a mesma coisa, e o próximo caminho de
 // pagamento que aparecer também chama em vez de esquecer de copiar.
+// O ÚNICO LUGAR QUE CREDITA O AFILIADO.
+//
+// Havia dois: o pagamento na hora e o pagamento do que ficou retido. Eram
+// iguais — e é assim que começa a divergência: alguém corrige o extrato de um
+// e esquece o outro, ou muda o campo `earned` num só. Dinheiro é o pior lugar
+// para manter duas cópias da mesma regra.
+function creditarAfiliado(aff, acc, cut, pct, kind, sufixo) {
+  aff.wallet.balance += cut;
+  aff.affiliate.earned += cut;
+  aff.wallet.transactions.push({
+    id: db.genId('tx'), ts: Date.now(), amount: cut, type: 'commission',
+    label: `Comissão ${pct}%, ${kind === 'first' ? 'nova assinatura' : 'renovação'} (${acc.name})${sufixo || ''}`
+  });
+}
+
 function pagarComissao(acc, valorPago, kind, broadcast) {
   const data = db.get();
   const refCode = acc.affiliate && acc.affiliate.refBy;
@@ -211,12 +226,7 @@ function pagarComissao(acc, valorPago, kind, broadcast) {
     return { ok: false, motivo: 'retida', valor: cut };
   }
 
-  aff.wallet.balance += cut;
-  aff.affiliate.earned += cut;
-  aff.wallet.transactions.push({
-    id: db.genId('tx'), ts: Date.now(), amount: cut, type: 'commission',
-    label: `Comissão ${pct}%, ${kind === 'first' ? 'nova assinatura' : 'renovação'} (${acc.name})`
-  });
+  creditarAfiliado(aff, acc, cut, pct, kind);
   // Notificação nos aparelhos do afiliado. O SSE abaixo só chega em quem está
   // com o app aberto naquele instante; a comissão cai a qualquer hora do dia.
   try { require('./avisos').avisarComissao(aff, { amount: cut, percent: pct, kind, indicado: acc.name }); } catch {}
@@ -250,12 +260,7 @@ function pagarPendentes(acc, broadcast) {
   for (const item of fila) {
     const cut = Number(item.valor) || 0;
     if (cut <= 0) continue;
-    aff.wallet.balance += cut;
-    aff.affiliate.earned += cut;
-    aff.wallet.transactions.push({
-      id: db.genId('tx'), ts: Date.now(), amount: cut, type: 'commission',
-      label: `Comissão ${item.pct}%, ${item.kind === 'first' ? 'nova assinatura' : 'renovação'} (${acc.name}) · liberada na revisão`
-    });
+    creditarAfiliado(aff, acc, cut, item.pct, item.kind, ' · liberada na revisão');
     total += cut;
     store.logEvent({ type: 'comissao_liberada_paga', accountId: acc.id, afiliado: aff.id, valor: cut, kind: item.kind });
   }

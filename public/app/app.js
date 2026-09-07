@@ -16350,7 +16350,15 @@ function nodeInspector(n) {
       <label style="flex:1">URL<input value="${esc(n.url || '')}" ${set('url')} placeholder="https://api.exemplo.com"></label></div>
       <span class="fb-sub">Cabeçalhos</span><div class="fb-headers">${n.headers.map((hh, i) => `<div class="fb-btn-row"><input value="${esc(hh.key || '')}" placeholder="Header" style="flex:0 0 40%" oninput="fbSetHdr('${n.id}',${i},'key',this.value)"><input value="${esc(hh.value || '')}" placeholder="Valor" oninput="fbSetHdr('${n.id}',${i},'value',this.value)"><button class="icon-btn" onclick="rmHeader('${n.id}',${i})">${ico('x', 13)}</button></div>`).join('')}</div>
       <button class="btn small" onclick="addHeader('${n.id}')">${ico('plus', 12)} Cabeçalho</button>
-      <label>Corpo (JSON)<textarea rows="4" ${set('body')} placeholder='{"nome":"{{nome}}"}'>${esc(n.body || '')}</textarea></label>`;
+      <label class="chk" style="margin-top:10px"><input type="checkbox" ${n.enviarTudo ? 'checked' : ''}
+        onchange="fbSetNode('${n.id}','enviarTudo',this.checked)">
+        Enviar todos os dados do evento (cliente, pedido, carrinho)</label>
+      <p class="muted" style="font-size:11.5px;margin:2px 0 10px">
+        Manda um JSON com tudo o que o fluxo sabe — inclusive as variáveis que a Nuvemshop
+        acrescentar depois. Sem isso, você escreve o corpo abaixo, campo por campo.</p>
+      ${n.enviarTudo ? '' : `<label>Corpo (JSON)<textarea rows="4" ${set('body')} placeholder='{"nome":"{{cliente_nome}}","telefone":"{{cliente_telefone}}"}'>${esc(n.body || '')}</textarea></label>
+      <p class="muted" style="font-size:11.5px;margin:6px 0 0">
+        Os valores são escapados para JSON: um cliente chamado João "Jão" Silva não quebra o corpo.</p>`}`;
   } else if (n.type === 'condition') {
     const fieldOpts = [['texto', 'Texto recebido'], ['nome', 'Nome do contato'], ['telefone', 'Telefone'], ['optin', 'Está em opt-in? (sim/nao)'], ['optout', 'Está em opt-out? (sim/nao)'], ['http', 'Resposta HTTP'], ['httpstatus', 'Status HTTP']].map(([v, l]) => ({ value: v, label: l }));
     const opOpts = Object.entries(OP_LBL).map(([v, l]) => ({ value: v, label: l }));

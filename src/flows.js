@@ -57,6 +57,46 @@ function interpolate(str, ctx) {
   return str.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (m, k) => (map[k] !== undefined ? String(map[k]) : m));
 }
 
+// O MESMO, MAS SEGURO PARA DENTRO DE UM JSON.
+//
+// `interpolate` cola o valor cru. Num texto de WhatsApp isso está certo. Dentro
+// de um corpo JSON, está errado e quebra calado: um cliente chamado
+//   João "Jão" Silva
+// vira  {"nome":"João "Jão" Silva"}  — JSON inválido. Quem recebe devolve 400,
+// o fluxo segue como se nada fosse, e o defeito só aparece com os clientes que
+// têm aspas, acento estranho ou quebra de linha no endereço. Ou seja: funciona
+// nos testes e falha na vida real.
+//
+// `JSON.stringify` de uma string devolve o valor JÁ ESCAPADO entre aspas; as
+// aspas de fora saem porque quem escreveu o corpo já pôs as dele.
+function interpolateJson(str, ctx) {
+  if (typeof str !== 'string') return str;
+  const map = {
+    nome: ctx.contactName || '', name: ctx.contactName || '',
+    telefone: ctx.to || '', phone: ctx.to || '',
+    texto: ctx.text || '', message: ctx.text || '',
+    ...(ctx.vars || {})
+  };
+  return str.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (m, k) => {
+    if (map[k] === undefined) return m;
+    const cru = JSON.stringify(String(map[k]));
+    return cru.slice(1, -1);
+  });
+}
+
+// TUDO O QUE O FLUXO SABE, num objeto só.
+//
+// É o que a etapa manda quando "enviar todos os dados" está ligado. Existe
+// porque a alternativa é a pessoa digitar à mão um JSON com vinte campos e
+// voltar aqui toda vez que uma variável nova aparecer — e esquecer de voltar.
+function dadosDoFluxo(ctx) {
+  return Object.assign({
+    nome: ctx.contactName || '',
+    telefone: ctx.to || '',
+    texto: ctx.text || ''
+  }, ctx.vars || {});
+}
+
 // Avalia um nó de condição → true/false (define qual saída seguir: Sim/Não).
 function evalCondition(node, ctx) {
   const src = {
@@ -216,9 +256,18 @@ async function execNode(acc, node, ctx, deliver, flow) {
     const headers = {};
     for (const h of node.headers || []) if (h && h.key) headers[h.key] = interpolate(h.value, ctx);
     let bodyStr;
-    if (method !== 'GET' && method !== 'HEAD' && node.body) {
-      bodyStr = interpolate(node.body, ctx);
+    const semCorpo = method === 'GET' || method === 'HEAD';
+    if (!semCorpo && node.enviarTudo) {
+      // Tudo o que o fluxo sabe, sem ninguém precisar digitar.
+      bodyStr = JSON.stringify(dadosDoFluxo(ctx));
       if (!headers['Content-Type'] && !headers['content-type']) headers['Content-Type'] = 'application/json';
+    } else if (!semCorpo && node.body) {
+      // Escapa para JSON quando o corpo É um JSON — que é o caso de quase todo
+      // corpo escrito aqui, e o único em que colar o valor cru quebra.
+      const ct = headers['Content-Type'] || headers['content-type'] || '';
+      const ehJson = !ct || /json/i.test(ct);
+      bodyStr = ehJson ? interpolateJson(node.body, ctx) : interpolate(node.body, ctx);
+      if (!ct) headers['Content-Type'] = 'application/json';
     }
     const resp = await fetch(url, { method, headers, body: bodyStr });
     const text = (await resp.text()).slice(0, 500);
@@ -695,4 +744,4 @@ function validateGraph(flow) {
   return null;
 }
 
-module.exports = { runFlow, onInbound, findFlowByHook, triggerMatches, interpolate, validateGraph, relatorioCtr, registrarClique, registrarImpressao };
+module.exports = { runFlow, onInbound, findFlowByHook, triggerMatches, interpolate, interpolateJson, dadosDoFluxo, validateGraph, relatorioCtr, registrarClique, registrarImpressao };
