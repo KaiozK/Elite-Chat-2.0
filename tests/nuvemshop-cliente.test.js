@@ -213,6 +213,59 @@ global.fetch = async () => ({
   ok(jaExistia.tags.includes('vip'), 'nem as tags que já estavam lá');
   ok(jaExistia.email === 'ze@c.com', 'mas completa o que estava vazio — aqui o e-mail', jaExistia.email);
 
+  console.log('\n=== 9. O limite de contatos do plano é respeitado ===');
+  // Sem isto, a importação era o buraco por onde o plano inteiro vazava: quem
+  // tem direito a N contatos traria a loja inteira de uma vez, e a mesma trava
+  // que existe no cadastro manual e na exportação não valeria aqui.
+  const data2 = db.get();
+  data2.accounts.length = 0;
+  const lojista = db.newAccount({ name: 'Plano Pequeno', email: 'peq@teste.local', pass: '123456' });
+  data2.accounts.push(lojista);
+  data2.plans.length = 0;
+  data2.plans.push({ id: 'basico', name: 'Básico', price: 9700, periodDays: 30,
+                     limits: { contacts: 3 }, modules: {} });
+  lojista.billing = Object.assign({}, lojista.billing, { planId: 'basico', status: 'active',
+                                                          periodEnd: Date.now() + 86400000 });
+  const c2 = nuvem.cfg(lojista);
+  c2.storeId = '99'; c2.accessToken = 'tok'; c2.storeName = 'Loja Grande'; c2.autoContact = true;
+
+  // A loja tem 5 clientes com telefone; o plano permite 3.
+  const grande = [1, 2, 3, 4, 5].map(i => ({
+    id: i, name: 'Cliente ' + i, email: 'c' + i + '@loja.com', phone: '1190000000' + i
+  }));
+  global.fetch = async () => ({ ok: true, status: 200,
+    text: async () => JSON.stringify(grande), json: async () => grande });
+  const lim = await nuvem.importarClientes(lojista);
+  ok(lim.criados === 3, 'importa até o teto do plano, e não mais', lim.criados + ' de 5');
+  ok((lojista.contacts || []).length === 3, 'a conta fica exatamente no limite',
+     lojista.contacts.length + ' contato(s)');
+  ok(lim.naoCoube === 2, 'e conta quantos não couberam', lim.naoCoube + ' fora');
+  ok(lim.limiteAtingido === true, 'marcando que foi o LIMITE que barrou, e não o fim da base');
+  ok(lim.limite === 3, 'devolvendo o teto do plano, para a tela poder dizer o número', lim.limite);
+
+  console.log('\n=== 9b. Quem já está no CRM continua sendo completado ===');
+  // Ele não ocupa vaga nova. Deixá-lo desatualizado seria punir o cliente por
+  // um limite que ele não estourou.
+  const um = require(path.join(R, 'src', 'store')).findContact(lojista, '11900000001');
+  ok(!!um && um.email === 'c1@loja.com', 'o contato importado tem os dados', um && um.email);
+  const antesDeNovo = lojista.contacts.length;
+  const lim2 = await nuvem.importarClientes(lojista);
+  ok(lojista.contacts.length === antesDeNovo, 'importar de novo não cria duplicados',
+     lojista.contacts.length + ' contato(s)');
+  ok(lim2.atualizados === 3, 'e os que já existem são completados de novo', lim2.atualizados);
+
+  console.log('\n=== 9c. Plano ilimitado não é barrado ===');
+  data2.plans[0].limits.contacts = -1;
+  const lojista2 = db.newAccount({ name: 'Ilimitado', email: 'ilim@teste.local', pass: '123456' });
+  lojista2.billing = Object.assign({}, lojista2.billing, { planId: 'basico', status: 'active',
+                                                            periodEnd: Date.now() + 86400000 });
+  data2.accounts.push(lojista2);
+  const c3 = nuvem.cfg(lojista2);
+  c3.storeId = '99'; c3.accessToken = 'tok'; c3.autoContact = true;
+  const ilim = await nuvem.importarClientes(lojista2);
+  ok(ilim.criados === 5, 'traz todo mundo', ilim.criados + ' de 5');
+  ok(ilim.limiteAtingido === false, 'e não oferece upgrade a quem já tem ilimitado');
+
   // devolve o banco: `db.save()` é adiado em 250ms e um save atrasado
   // desfaria a restauração do arquivo.
   const antes = JSON.parse(original || '{}');

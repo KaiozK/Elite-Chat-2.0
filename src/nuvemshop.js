@@ -680,6 +680,16 @@ function webhookHandler(broadcast) {
 //    chamadas por minuto. O teto existe para uma base gigante não prender o
 //    servidor num único pedido — quem passar dele roda de novo e continua de
 //    onde parou, porque o que já entrou não entra duas vezes.
+//
+// 4. O LIMITE DE CONTATOS DO PLANO É RESPEITADO. Sem isto, esta rota era o
+//    buraco por onde o plano inteiro vazava: quem tinha direito a 1.000
+//    contatos importava 40.000 de uma vez, e a mesma trava que existe no
+//    cadastro manual e na exportação não valia aqui.
+//
+//    E ela para NO teto, não ANTES dele: importar o máximo que cabe e dizer
+//    quantos ficaram de fora é mais útil do que recusar tudo. Quem recebe
+//    "não coube" com a base pela metade entende o valor do plano maior melhor
+//    do que quem recebe um erro e nenhum contato.
 // ---------------------------------------------------------------------------
 const IMPORT_PAGINA = 200;
 const IMPORT_MAX_PAGINAS = 25;   // 5.000 clientes por rodada
@@ -688,8 +698,14 @@ async function importarClientes(acc, opts = {}) {
   const c = cfg(acc);
   if (!c.accessToken || !c.storeId) throw new Error('Nenhuma loja Nuvemshop conectada');
 
+  const limits = require('./limits');
+  const teto = limits.limitOf(acc, 'contacts');          // -1 = ilimitado
+  const jaTem = (acc.contacts || []).length;
+  // Quantos contatos NOVOS ainda cabem. Quem já existe não ocupa vaga nova.
+  let vagas = teto === -1 ? Infinity : Math.max(0, teto - jaTem);
+
   const marcar = opts.tags !== false;
-  let pagina = 1, lidos = 0, criados = 0, atualizados = 0, semTelefone = 0;
+  let pagina = 1, lidos = 0, criados = 0, atualizados = 0, semTelefone = 0, naoCoube = 0;
   const maxPag = Math.max(1, Math.min(IMPORT_MAX_PAGINAS, Number(opts.maxPaginas) || IMPORT_MAX_PAGINAS));
 
   while (pagina <= maxPag) {
@@ -711,6 +727,11 @@ async function importarClientes(acc, opts = {}) {
       if (!waId) { semTelefone++; continue; }
 
       const jaExistia = !!store.findContact(acc, waId);
+      // SEM VAGA, não cria. Quem já está no CRM continua sendo completado —
+      // ele não ocupa vaga nova, e deixá-lo desatualizado seria punir o
+      // cliente por um limite que ele não estourou.
+      if (!jaExistia && vagas <= 0) { naoCoube++; continue; }
+      if (!jaExistia) vagas--;
       const contato = store.upsertContact(acc, waId, cli.name || undefined, {
         email: cli.email || '',
         city: (cli.default_address && cli.default_address.city) || '',
@@ -734,13 +755,30 @@ async function importarClientes(acc, opts = {}) {
 
     db.save();
     if (lote.length < IMPORT_PAGINA) break;   // última página
+    // SEM VAGA, PARA AQUI. Terminamos a página em que o limite bateu — assim
+    // `naoCoube` já é maior que zero e a tela sabe avisar — mas varrer o resto
+    // da loja só para contar quem não caberia gastaria dezenas de chamadas na
+    // API da Nuvemshop por um número que não muda nada do que a pessoa faz.
+    if (vagas <= 0) break;
     pagina++;
   }
+
+  // Contar quantos ficaram de fora exige varrer o resto da loja, e varrer
+  // 40.000 clientes para dar um número exato custaria mais chamadas do que a
+  // própria importação. `naoCoube` conta o que ESTA rodada viu e não coube —
+  // é o suficiente para a tela dizer que não coube tudo.
 
   c.ultimaImportacao = Date.now();
   c.importados = (c.importados || 0) + criados;
   db.save();
-  const r = { lidos, criados, atualizados, semTelefone, paginas: pagina, parcial: pagina > maxPag };
+  const r = {
+    lidos, criados, atualizados, semTelefone, naoCoube,
+    paginas: pagina, parcial: pagina > maxPag,
+    limite: teto, contatos: (acc.contacts || []).length,
+    // A tela usa isto para oferecer o plano maior. Só é verdade quando o
+    // limite REALMENTE barrou alguém — não quando a base simplesmente acabou.
+    limiteAtingido: naoCoube > 0
+  };
   store.logEvent({ type: 'nuvemshop_import', accountId: acc.id, ...r });
   return r;
 }

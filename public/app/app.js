@@ -15397,11 +15397,29 @@ async function importarClientesNs() {
     if (r.atualizados) partes.push(`${fmtN(r.atualizados)} já existia(m) e foi(ram) completado(s)`);
     if (r.semTelefone) partes.push(`${fmtN(r.semTelefone)} sem telefone na loja, fora da importação`);
     if (res) {
-      res.innerHTML = partes.length
-        ? partes.join(' · ') + (r.parcial ? ' · <b>base grande:</b> clique de novo para continuar de onde parou' : '')
-        : 'Nenhum cliente encontrado na loja.';
+      // O LIMITE DO PLANO BATEU. Aqui a mensagem tem de fazer duas coisas ao
+      // mesmo tempo: dizer que o que entrou está salvo (senão parece que a
+      // importação falhou) e mostrar o caminho para caber o resto. O botão
+      // leva direto para os planos — quem acabou de ver a própria base pela
+      // metade é quem mais entende o valor do plano maior.
+      const avisoLimite = r.limiteAtingido ? `
+        <div class="card warn-card" style="margin-top:10px">
+          <b>Não coube tudo no seu plano.</b>
+          <p class="muted" style="font-size:12px;margin:6px 0 10px">
+            O seu plano permite ${fmtN(r.limite)} contatos, e você já está com ${fmtN(r.contatos)}.
+            O que foi importado está salvo — o restante da sua loja fica esperando.
+            Com um plano maior, o resto entra numa nova importação.
+          </p>
+          <a class="btn primary small no-grow" href="#/billing">${ico('sparkles', 13)} Ver planos maiores</a>
+        </div>` : '';
+      res.innerHTML = (partes.length
+        ? partes.join(' · ') + (r.parcial && !r.limiteAtingido ? ' · <b>base grande:</b> clique de novo para continuar de onde parou' : '')
+        : (r.limiteAtingido ? '' : 'Nenhum cliente encontrado na loja.')) + avisoLimite;
     }
-    toast(r.criados ? `${r.criados} contato(s) importado(s)` : 'Importação concluída');
+    toast(r.limiteAtingido
+      ? `${r.criados} importado(s) — o limite do plano foi atingido`
+      : (r.criados ? `${r.criados} contato(s) importado(s)` : 'Importação concluída'),
+      r.limiteAtingido ? 'error' : '');
     paintNuvemshop();
   } catch (e) {
     if (res) res.textContent = e.message;
