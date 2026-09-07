@@ -278,6 +278,61 @@ function primeiroNome(nome) { return String(nome || '').trim().split(/\s+/)[0] |
 // pedido", o link é o "paga aqui", o primeiro nome é a saudação. Tudo já
 // formatado — a automação não tem onde fazer conta nem trocar ponto por
 // vírgula.
+// O TELEFONE DO CLIENTE NÃO MORA NUM LUGAR SÓ.
+//
+// Na Nuvemshop, quem se cadastra na loja quase nunca preenche o campo `phone`
+// do cadastro: o número aparece é no ENDEREÇO, preenchido na hora da compra ou
+// do cadastro de entrega. Lendo só `phone`, um cliente que tinha telefone
+// chegava aqui como se não tivesse — e sem número não há contato de WhatsApp
+// para criar. O webhook respondia 200, e nada acontecia.
+//
+// A ordem é da fonte mais direta para a mais indireta.
+function telefoneDe(o) {
+  if (!o || typeof o !== 'object') return '';
+  const cand = [
+    o.phone,
+    o.contact_phone,
+    o.billing_phone,
+    o.default_address && o.default_address.phone,
+    (Array.isArray(o.addresses) && o.addresses.length && o.addresses[0].phone),
+    o.shipping_address && o.shipping_address.phone,
+    o.billing_address && o.billing_address.phone,
+    o.customer && o.customer.phone,
+    o.customer && o.customer.default_address && o.customer.default_address.phone
+  ];
+  for (const v of cand) if (v && String(v).replace(/\D/g, '').length >= 8) return String(v);
+  return '';
+}
+
+// AS VARIÁVEIS DO CLIENTE.
+//
+// Antes eram duas: quanto ele já gastou e quantos pedidos fez — e no evento
+// "cliente novo" as duas nascem ZERADAS, porque ele acabou de se cadastrar e
+// ainda não comprou nada. Quem montava a automação de boas-vindas recebia um
+// punhado de variáveis vazias e não tinha nem o NOME para escrever "Olá,
+// Fulano". O nome, o e-mail e o telefone eram lidos pelo código e jogados
+// fora sem nunca virar variável.
+function customerVars(cli, loja) {
+  const end = cli.default_address || (Array.isArray(cli.addresses) && cli.addresses[0]) || {};
+  const doc = cli.identification || end.identification || '';
+  const nome = String(cli.name || '');
+  return {
+    cliente_nome: nome,
+    // A saudação quer o primeiro nome. Deixar isso para a automação obrigaria
+    // cada pessoa a resolver o mesmo problema na mão, e a maioria não resolve.
+    cliente_primeiro_nome: nome.trim().split(/\s+/)[0] || '',
+    cliente_email: String(cli.email || ''),
+    cliente_telefone: telefoneDe(cli),
+    cliente_documento: String(doc || ''),
+    cliente_cidade: String(end.city || ''),
+    cliente_estado: String(end.province || ''),
+    cliente_total_gasto: String(cli.total_spent || ''),
+    cliente_pedidos: String(cli.total_orders || ''),
+    cliente_desde: cli.created_at ? String(cli.created_at).slice(0, 10) : '',
+    loja_nome: String(loja || '')
+  };
+}
+
 function orderVars(order) {
   const itens = (order.products || []).map(p => `${p.quantity}x ${p.name}`).join(', ');
   const env = (order.shipping_tracking_number || order.shipping_tracking_url) ? order : {};
@@ -335,15 +390,21 @@ async function handleEvent(acc, event, resourceId, broadcast) {
   if (event.startsWith('order/')) {
     const order = await apiFetch(acc, '/orders/' + resourceId);
     nome = order.contact_name || (order.customer && order.customer.name) || '';
-    telefone = order.contact_phone || (order.customer && order.customer.phone) || '';
+    telefone = telefoneDe(order);
     email = order.contact_email || (order.customer && order.customer.email) || '';
-    vars = orderVars(order);
+    // As do cliente entram JUNTO com as do pedido: a mensagem do pedido quase
+    // sempre começa cumprimentando a pessoa pelo nome.
+    vars = Object.assign({}, customerVars(order.customer || {}, c.storeName), orderVars(order));
+    if (!vars.cliente_nome) vars.cliente_nome = nome;
+    if (!vars.cliente_primeiro_nome) vars.cliente_primeiro_nome = String(nome).trim().split(/\s+/)[0] || '';
+    if (!vars.cliente_email) vars.cliente_email = email;
+    if (!vars.cliente_telefone) vars.cliente_telefone = telefone;
   } else if (event.startsWith('customer/')) {
     const cli = await apiFetch(acc, '/customers/' + resourceId);
     nome = cli.name || '';
-    telefone = cli.phone || '';
+    telefone = telefoneDe(cli);
     email = cli.email || '';
-    vars = { cliente_total_gasto: String(cli.total_spent || ''), cliente_pedidos: String(cli.total_orders || '') };
+    vars = customerVars(cli, c.storeName);
   }
   vars.evento_nuvemshop = event;
 
@@ -373,7 +434,18 @@ async function handleEvent(acc, event, resourceId, broadcast) {
     }
   }
   db.save();
-  store.logEvent({ type: 'nuvemshop_event', accountId: acc.id, event, matched: !!contact, phone: waId || null });
+  // POR QUE NÃO CRIOU. Antes o log dizia só `matched: false`, e ninguém
+  // descobria a razão: a integração parecia quebrada quando na verdade o
+  // cadastro tinha vindo sem telefone — e sem número não existe contato de
+  // WhatsApp para criar. Dizer o motivo é a diferença entre "não funciona" e
+  // "peça o telefone no cadastro da loja".
+  const motivo = contact ? '' : (!c.autoContact
+    ? 'criação automática de contato desligada nesta integração'
+    : (!waId ? 'o cadastro na loja veio sem telefone' : ''));
+  store.logEvent({
+    type: 'nuvemshop_event', accountId: acc.id, event,
+    matched: !!contact, phone: waId || null, motivo, cliente: nome || '', email: email || ''
+  });
   if (broadcast) broadcast('nuvemshop', { accountId: acc.id, event });
   return { contact, nome, telefone: waId, email, vars };
 }
