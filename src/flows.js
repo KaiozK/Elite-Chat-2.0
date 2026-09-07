@@ -627,6 +627,25 @@ async function runGraph(acc, flow, ctx, deliver, log, inicio) {
 
 // Executa uma automação. deliver(acc, to, content, apiResp) persiste+broadcast a saída.
 async function runFlow(acc, flow, ctx, deliver, inicio) {
+  // ASSINATURA VENCIDA NÃO DISPARA AUTOMAÇÃO.
+  //
+  // As rotas de envio manual já eram barradas; o fluxo não. Como quase todo
+  // envio automático passa por aqui — mensagem recebida, clique em link,
+  // campanha, evento de loja —, era por aqui que a conta que parou de pagar
+  // continuava mandando mensagem por conta da plataforma.
+  //
+  // Sai calado e registrado, sem erro: quem escreveu o fluxo não está na tela
+  // neste momento, e derrubar o webhook que o disparou faria a integração
+  // inteira parecer quebrada.
+  if (!require('./limits').assinaturaVale(acc)) {
+    try {
+      require('./store').logEvent({
+        type: 'flow_bloqueado', accountId: acc.id, flowId: flow && flow.id,
+        motivo: 'assinatura vencida'
+      });
+    } catch {}
+    return { ok: false, blocked: 'assinatura', log: [] };
+  }
   const log = [];
   if (flow.graph && Array.isArray(flow.graph.nodes) && flow.graph.nodes.length) {
     await runGraph(acc, flow, ctx, deliver, log, inicio);

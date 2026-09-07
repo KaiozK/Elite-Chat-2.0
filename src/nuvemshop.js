@@ -453,7 +453,11 @@ async function handleEvent(acc, event, resourceId, broadcast) {
 
   let contact = null;
   const waId = telefone ? store.normalizeWaId(telefone) : '';
-  if (c.autoContact && waId) {
+  // O TETO DO PLANO VALE AQUI TAMBÉM. Um evento de loja que cria contato é
+  // crescimento automático de base — exatamente o que o plano dimensiona.
+  // Quem já está na base não ocupa vaga nova e continua sendo atualizado.
+  const cabe = !waId || require('./limits').podeTocarContato(acc, waId);
+  if (c.autoContact && waId && cabe) {
     contact = store.upsertContact(acc, waId, nome || undefined, {
       email,
       source: { type: 'nuvemshop', id: c.storeId, headline: c.storeName || 'Nuvemshop', ts: Date.now() }
@@ -489,7 +493,8 @@ async function handleEvent(acc, event, resourceId, broadcast) {
   // "peça o telefone no cadastro da loja".
   const motivo = contact ? '' : (!c.autoContact
     ? 'criação automática de contato desligada nesta integração'
-    : (!waId ? 'o cadastro na loja veio sem telefone' : ''));
+    : (!waId ? 'o cadastro na loja veio sem telefone'
+             : (!cabe ? 'o limite de contatos do plano foi atingido' : '')));
   store.logEvent({
     type: 'nuvemshop_event', accountId: acc.id, event,
     matched: !!contact, phone: waId || null, motivo, cliente: nome || '', email: email || '',

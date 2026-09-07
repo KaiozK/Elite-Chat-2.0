@@ -3441,8 +3441,22 @@ async function nsImportar(btn) {
   const txt = btn.innerHTML; btn.disabled = true; btn.textContent = 'Importando…';
   try {
     const r = await api('/nuvemshop/import', { body: {} });
-    toast(`${r.criados} novo(s), ${r.atualizados} atualizado(s)` +
-      (r.semTelefone ? ` · ${r.semTelefone} sem telefone ficaram de fora` : ''));
+    // O LIMITE DO PLANO tem de aparecer aqui também: esta tela e a de
+    // Integrações chamam a mesma importação, e avisar numa só deixaria metade
+    // dos clientes achando que a importação falhou.
+    if (r.limiteAtingido) {
+      toast(`${r.criados} importado(s) — o plano permite ${fmtN(r.limite)} contatos`, 'error');
+      await confirmModal({
+        title: 'Não coube tudo no seu plano',
+        text: `O seu plano permite ${fmtN(r.limite)} contatos e você já está com ${fmtN(r.contatos)}. ` +
+              `O que foi importado está salvo; o restante da sua loja fica esperando. ` +
+              `Com um plano maior, o resto entra numa nova importação.`,
+        ok: 'Ver planos maiores'
+      }) && (location.hash = '#/billing');
+    } else {
+      toast(`${r.criados} novo(s), ${r.atualizados} atualizado(s)` +
+        (r.semTelefone ? ` · ${r.semTelefone} sem telefone ficaram de fora` : ''));
+    }
     nsClientes(); nsTopo();
   } catch (e) { toast(e.message, 'error'); }
   finally { btn.disabled = false; btn.innerHTML = txt; }
@@ -10521,7 +10535,9 @@ const LIMIT_META = [
   // `buy` é como o item é chamado na hora de contratar unidades a mais — os
   // rótulos acima descrevem o que o PLANO inclui, e ficam estranhos no "Contratar…".
   { key: 'links',     label: 'Links rastreáveis grátis',  short: 'Links',    ph: '1', extra: true, buy: 'links rastreáveis' },
-  { key: 'whatsapps', label: 'WhatsApps inclusos',        short: 'WhatsApp', ph: '1', extra: true, buy: 'conexões de WhatsApp' }
+  { key: 'whatsapps', label: 'WhatsApps inclusos',        short: 'WhatsApp', ph: '1', extra: true, buy: 'conexões de WhatsApp' },
+  { key: 'agents',    label: 'Atendentes na equipe',      short: 'Equipe',   ph: 'ilimitado' },
+  { key: 'webhooks',  label: 'Webhooks de entrada',       short: 'Webhooks', ph: 'ilimitado' }
 ];
 
 // Qual CHECKOUT cobra este plano. A lista vem dos checkouts que o dono montou

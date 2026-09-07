@@ -231,9 +231,17 @@ const DEFAULT_STAGES = ['Novo', 'Em atendimento', 'Qualificado', 'Negociação',
 // O SMS NÃO entra aqui: ele não tem cota por ciclo. O plano só liga ou desliga
 // o módulo (FEATURE_KEYS) e cada disparo é pago na hora, com o saldo da
 // carteira, ao preço que o admin define em Admin SaaS.
-const LIMIT_KEYS = ['sends', 'campaigns', 'contacts', 'flows', 'pixels', 'links', 'whatsapps'];
+// ATENDENTES e WEBHOOKS entraram depois: os dois cresciam sem teto nenhum em
+// todos os planos. Equipe é um eixo de preço em qualquer CRM, e webhook de
+// entrada é porta de dado — deixar as duas ilimitadas no plano mais barato
+// entrega de graça o que separa um plano do outro.
+const LIMIT_KEYS = ['sends', 'campaigns', 'contacts', 'flows', 'pixels', 'links', 'whatsapps', 'agents', 'webhooks'];
 function defaultLimits() {
-  return { sends: -1, campaigns: -1, contacts: -1, flows: -1, pixels: -1, links: 1, whatsapps: 1 };
+  // O padrão de fábrica é ilimitado para os dois: a instalação que já está no
+  // ar não pode ganhar um teto de repente porque o código mudou. Quem quiser
+  // limitar preenche no Admin, plano a plano.
+  return { sends: -1, campaigns: -1, contacts: -1, flows: -1, pixels: -1, links: 1, whatsapps: 1,
+           agents: -1, webhooks: -1 };
 }
 // ---------------------------------------------------------------------------
 // FUNCIONALIDADES POR PLANO (toggles)

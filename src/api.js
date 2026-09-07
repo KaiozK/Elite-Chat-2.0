@@ -910,6 +910,12 @@ module.exports = function (broadcast, clients) {
   });
 
   router.post('/agents', auth, feat('agents'), can('agents', 'create'), (req, res) => {
+    // O TETO DE EQUIPE. A equipe crescia sem limite em qualquer plano — e é um
+    // dos eixos que separa um plano do outro em qualquer CRM. Só atendente
+    // ATIVO ocupa vaga (ver limits.usage): quem foi desativado continua no
+    // histórico das conversas que atendeu, mas não custa uma vaga.
+    const limAg = limits.check(req.acc, 'agents');
+    if (limAg) return res.status(402).json({ error: limAg, code: 'limit', resource: 'agents' });
     const b = req.body || {};
     const name = String(b.name || '').trim();
     const email = String(b.email || '').toLowerCase().trim();
@@ -2842,10 +2848,9 @@ module.exports = function (broadcast, clients) {
       const lim = limits.check(req.acc, 'sends');
       if (lim) return res.status(402).json({ error: lim, code: 'limit', resource: 'sends' });
     }
-    if (!p.enforce) return next();
-    const b = req.acc.billing || {};
-    const ok = (b.status === 'trial' || b.status === 'active' || b.status === 'canceled') && b.periodEnd > Date.now();
-    if (ok) return next();
+    // A MESMA regra que as automações usam (limits.assinaturaVale). Ter duas
+    // cópias foi o que deixou o fluxo e a campanha rodando para quem não paga.
+    if (limits.assinaturaVale(req.acc)) return next();
     res.status(402).json({ error: 'Assinatura expirada. Renove em Assinatura & Carteira para continuar enviando' });
   }
 
@@ -3964,6 +3969,11 @@ module.exports = function (broadcast, clients) {
   });
 
   router.post('/webhooks', auth, feat('integrations'), can('webhooks','create'), (req, res) => {
+    // O TETO DE WEBHOOKS. Cada webhook é uma porta de entrada de dado — e de
+    // contato. Sem teto, o plano mais barato levava tantas integrações quanto
+    // o mais caro.
+    const limWh = limits.check(req.acc, 'webhooks');
+    if (limWh) return res.status(402).json({ error: limWh, code: 'limit', resource: 'webhooks' });
     const name = String((req.body || {}).name || '').trim() || 'Novo webhook';
     const wh = {
       id: db.genId('wh'), name, token: crypto.randomBytes(10).toString('hex'),
@@ -4380,6 +4390,32 @@ module.exports = function (broadcast, clients) {
     }
     for (const r of camp.recipients) {
       if (r.status !== 'pending') continue;
+      // A COTA DE DISPAROS VALE POR ENVIO, e não só na criação da campanha.
+      //
+      // Era o maior furo do plano: a cota era conferida uma vez, ao criar, e
+      // depois a campanha mandava para quantos destinatários tivesse. Um plano
+      // de mil disparos por ciclo entregava cinquenta mil numa campanha só —
+      // e cada um desses é mensagem paga na Meta.
+      //
+      // A campanha PAUSA, não morre: os enviados ficam enviados, os pendentes
+      // continuam pendentes, e retomar depois da renovação (ou do upgrade)
+      // manda o resto. Marcar como falha faria a pessoa recriar a campanha
+      // inteira e disparar de novo para quem já recebeu.
+      // A ASSINATURA TAMBÉM É CONFERIDA A CADA ENVIO. Uma campanha grande leva
+      // horas: ela pode começar com a assinatura válida e atravessar o
+      // vencimento no meio da fila.
+      const paraAqui = !limits.assinaturaVale(acc)
+        ? 'Assinatura expirada. Renove em Assinatura & Carteira e retome a campanha de onde parou.'
+        : (limits.check(acc, 'sends')
+          ? 'Limite de disparos do plano atingido neste ciclo. Retome após a renovação ou faça upgrade.'
+          : '');
+      if (paraAqui) {
+        camp.status = 'paused';
+        camp.pausedReason = paraAqui;
+        db.save();
+        broadcast('campaign', { accountId: acc.id, id: camp.id, limite: true });
+        return;
+      }
       try {
         const contact = store.findContact(ctx, r.waId) || null;
         // OPT-OUT durante o disparo (o cliente pode pedir para sair no meio da fila)
@@ -4574,43 +4610,17 @@ module.exports = function (broadcast, clients) {
     });
   }));
 
-  // IMPORTAR A BASE. Cria contato para cada cliente da loja que tenha
-  // telefone — é o que transforma "tenho 4 mil clientes na loja" em "posso
-  // falar com eles". Sem telefone não há contato possível, e o cliente é
-  // contado como pulado em vez de virar uma ficha vazia.
-  router.post('/nuvemshop/import', auth, h(async (req, res) => {
-    let pagina = 1, criados = 0, atualizados = 0, semTelefone = 0, lidos = 0;
-    const c = nuvem.cfg(req.acc);
-    // Teto de páginas: 20 x 50 = mil clientes por chamada. Uma base maior
-    // volta na próxima — melhor do que uma requisição que não termina.
-    while (pagina <= 20) {
-      const lista = await nuvem.apiFetch(req.acc, `/customers?per_page=50&page=${pagina}`);
-      if (!lista || !lista.length) break;
-      lidos += lista.length;
-      for (const cli of lista) {
-        const wa = cli.phone ? store.normalizeWaId(cli.phone) : '';
-        if (!wa) { semTelefone++; continue; }
-        const existia = (req.acc.contacts || []).some(x => x.waId === wa);
-        const contato = store.upsertContact(req.acc, wa, cli.name || undefined, {
-          email: cli.email || '',
-          source: { type: 'nuvemshop', id: c.storeId, headline: c.storeName || 'Nuvemshop', ts: Date.now() }
-        });
-        contato.ns = Object.assign({}, contato.ns, {
-          storeId: String(c.storeId), loja: c.storeName || '', visto: Date.now(),
-          pedidos: Number(cli.total_orders) || contato.ns && contato.ns.pedidos || 0
-        });
-        if (c.tags && c.tags.length) {
-          contato.tags = contato.tags || [];
-          for (const t of c.tags) if (!contato.tags.includes(t)) contato.tags.push(t);
-        }
-        if (existia) atualizados++; else criados++;
-      }
-      if (lista.length < 50) break;
-      pagina++;
-    }
-    db.save();
-    store.logEvent({ type: 'nuvemshop_import', accountId: req.acc.id, criados, atualizados });
-    res.json({ lidos, criados, atualizados, semTelefone });
+  // IMPORTAR A BASE DA LOJA.
+  //
+  // Havia DUAS implementações disto — esta e a de Integrações — e elas já
+  // tinham divergido: esta lia o telefone só de `cli.phone` (perdendo quem tem
+  // o número no endereço, que é a maioria na Nuvemshop) e não olhava o limite
+  // de contatos do plano. Agora as duas rotas chamam a MESMA função. A rota
+  // continua existindo porque a tela da Loja aponta para ela.
+  router.post('/nuvemshop/import', auth, can('contacts','edit'), h(async (req, res) => {
+    const r = await nuvem.importarClientes(req.acc, req.body || {});
+    broadcast('contacts', { accountId: req.acc.id });
+    res.json({ ...r, nuvemshop: nuvem.publicCfg(req.acc, origemDe(req)) });
   }));
 
   // A configuração da recuperação de carrinho.

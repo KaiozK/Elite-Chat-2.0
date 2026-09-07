@@ -248,6 +248,12 @@ async function enviar(acc, { to, text, contato = null, origem = 'manual', por = 
   if (!configured()) throw erro('O envio de SMS não está disponível na plataforma');
   const bloqueio = limits.checkFeature(acc, 'sms');
   if (bloqueio) throw erro(bloqueio, 402);
+  // SMS custa dinheiro de verdade no provedor, e quem paga é a plataforma.
+  // Sem esta linha, a conta vencida seguia mandando — inclusive por automação,
+  // que nem passa por rota nenhuma.
+  if (!limits.assinaturaVale(acc)) {
+    throw erro('Assinatura expirada. Renove em Assinatura & Carteira para voltar a enviar SMS.', 402);
+  }
 
   const corpo = String(text || '').trim();
   if (!corpo) throw erro('Escreva a mensagem');

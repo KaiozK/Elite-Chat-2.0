@@ -23,7 +23,9 @@ const LABEL = {
   flows: 'fluxos de automação',
   pixels: 'pixels de rastreamento',
   links: 'links rastreáveis',
-  whatsapps: 'conexões WhatsApp'
+  whatsapps: 'conexões WhatsApp',
+  agents: 'atendentes',
+  webhooks: 'webhooks de entrada'
 };
 
 function planOf(acc) {
@@ -106,6 +108,11 @@ function usage(acc) {
     pixels: (acc.pixels || []).length,
     links: (acc.links || []).length,
     whatsapps: (acc.channels || []).filter(c => !c.archived).length,
+    // ATENDENTES: só os ativos ocupam vaga. Quem foi desativado continua no
+    // histórico das conversas que atendeu — apagar seria perder de quem foi o
+    // atendimento — mas não pode custar uma vaga de plano.
+    agents: (acc.team || []).filter(a => a.active !== false).length,
+    webhooks: (acc.webhooks || []).length,
     // SMS conta por SEGMENTO enviado no ciclo (é assim que o provedor cobra)
     sms: (acc.smsLog || [])
       .filter(m => m.ts >= t0 && m.status !== 'failed')
@@ -147,6 +154,68 @@ function check(acc, key, n = 1) {
     ? ` Compre unidades adicionais em Assinatura → Extras.`
     : ` Faça upgrade de plano para liberar mais.`;
   return `Limite do plano atingido: ${limit} ${LABEL[key]}.${comprar}`;
+}
+
+// ---------------------------------------------------------------------------
+// PODE CRIAR MAIS UM CONTATO?
+//
+// O teto de contatos vazava por todo lado: as ROTAS o respeitavam, mas quase
+// nenhum contato nasce por rota. Ele nasce de webhook de integração, de evento
+// da loja, de pagamento confirmado, de automação — e nenhum desses olhava o
+// limite. Na prática o plano só limitava quem cadastrava na mão.
+//
+// A REGRA, e ela tem uma exceção de propósito:
+//
+//   · CONVERSA RECEBIDA NUNCA É BARRADA. Se alguém manda mensagem no WhatsApp
+//     do cliente, essa mensagem TEM de ser guardada. Recusar seria perder a
+//     conversa de um cliente real para proteger uma cota — e o prejuízo cai
+//     sobre quem não tem culpa nenhuma, que é quem mandou a mensagem. Fica
+//     acima do teto, e o painel mostra que estourou.
+//   · TODO O RESTO RESPEITA. Integração, importação, evento de loja e
+//     automação são crescimento automático de base: é exatamente o que o plano
+//     dimensiona, e é aí que o teto tem de valer.
+//
+// Devolve true/false em vez de lançar: quem chama aqui está no meio de um
+// webhook, e derrubar o webhook por causa de uma cota faria a integração
+// inteira parecer quebrada.
+function podeCriarContato(acc) {
+  const teto = limitOf(acc, 'contacts');
+  if (teto === -1) return true;
+  return ((acc.contacts || []).length) < teto;
+}
+
+// O mesmo, mas já sabendo se o contato existe: quem já está na base não ocupa
+// vaga nova, e atualizá-lo nunca é barrado.
+function podeTocarContato(acc, waId, chId) {
+  if (require('./store').findContact(acc, waId, chId)) return true;
+  return podeCriarContato(acc);
+}
+
+// ---------------------------------------------------------------------------
+// A ASSINATURA AINDA VALE HOJE?
+//
+// A regra existia numa só função — `requireActive`, no api.js — e ela cobre as
+// ROTAS de envio manual. Só que quase nada do que a plataforma envia passa por
+// rota: fluxo disparado por mensagem recebida, campanha rodando em segundo
+// plano, recuperação de carrinho, SMS de automação. Nenhum desses olhava a
+// assinatura.
+//
+// O resultado é o furo mais caro que existe num SaaS: o cliente para de pagar,
+// as automações continuam rodando, e cada mensagem dessas é custo real na Meta
+// e no provedor de SMS — pago pela plataforma, por uma conta que não paga mais.
+//
+// Aqui a regra fica num lugar só, e `requireActive` passa a usá-la também.
+//
+// `canceled` continua valendo até o fim do período: quem cancelou pagou pelo
+// mês corrente e tem direito a usá-lo até o último dia — é o contrário de
+// punir quem avisou que ia sair.
+function assinaturaVale(acc) {
+  if (isUnlimited(acc)) return true;
+  const p = (db.get().platform || {}).billing || {};
+  if (!p.enforce) return true;               // plataforma não está cobrando
+  const b = acc.billing || {};
+  return (b.status === 'trial' || b.status === 'active' || b.status === 'canceled')
+      && b.periodEnd > Date.now();
 }
 
 // Versão que lança erro HTTP 402 — para usar direto nas rotas.
@@ -239,6 +308,7 @@ function checkFeature(acc, key) {
 }
 
 module.exports = {
+  podeCriarContato, podeTocarContato, assinaturaVale,
   isUnlimited,
   PAID_EXTRAS, LABEL, FEATURE_LABEL, planOf, extraPrices, limitOf, usage, report,
   check, enforce, extrasCost, chargeTotal,

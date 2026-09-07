@@ -60,7 +60,18 @@ function ingest(acc, webhook, payload, broadcast) {
   const mapped = applyMapping(mapping, flat);
 
   let contact = null;
-  if (mapped.phone) {
+  // O TETO DO PLANO. Um webhook que cria contato é entrada automática de base:
+  // sem esta linha, qualquer integração enchia a conta muito além do plano, e o
+  // limite só valia para quem cadastrava na mão. Quem já existe é sempre
+  // atualizado — ele não ocupa vaga nova.
+  const cabe = mapped.phone
+    ? require('./limits').podeTocarContato(acc, store.normalizeWaId(mapped.phone))
+    : false;
+  if (mapped.phone && !cabe) {
+    webhook.ultimoBloqueio = { ts: Date.now(), motivo: 'limite de contatos do plano' };
+    store.logEvent({ type: 'webhook_limite', accountId: acc.id, webhookId: webhook.id });
+  }
+  if (mapped.phone && cabe) {
     // Cadastro automático: cria (com a etapa padrão) ou preenche só as lacunas.
     contact = store.upsertContact(acc, mapped.phone, mapped.name || undefined, {
       email: mapped.email,
