@@ -15293,6 +15293,27 @@ function paintNuvemshop() {
         <button class="btn primary no-grow" onclick="connectNs()">${ico('link', 13)} Conectar loja Nuvemshop</button>
         <span class="ns-nota">Permita pop-ups no navegador para a janela abrir.</span>
       </div>
+      <!-- O PLANO B, e existe por um motivo concreto: quando a URL de retorno do
+           app ainda não está valendo no Portal de Parceiros, a Nuvemshop não
+           devolve o código para cá — ela para na própria tela dela, mostrando um
+           comando curl para trocar o código na mão. Quem faz isso recebe o token no
+           terminal, onde ele não serve para nada: o sistema continua
+           desconectado.
+
+           Aqui o código é colado e QUEM TROCA é o servidor, exatamente como no
+           caminho normal — o token entra no lugar certo e a loja conecta. O
+           código vale 5 minutos e serve uma vez só. -->
+      <details class="ns-plano-b" style="margin-top:14px">
+        <summary class="ns-nota" style="cursor:pointer">A janela parou numa tela da Nuvemshop com um código?</summary>
+        <p class="muted" style="font-size:12.5px;margin:10px 0 8px">
+          Cole aqui o valor de <b>"code"</b> que aparece naquela tela — só o código, não o comando inteiro.
+          O Koonfy troca por você. Ele vale <b>5 minutos</b>, então cole logo depois de gerar.
+        </p>
+        <div class="row" style="align-items:flex-end">
+          <label style="flex:1"><input id="ns-code" placeholder="Ex.: 37d863f27eb6536969c29889af904ea79241e2d8"></label>
+          <button class="btn no-grow" onclick="conectarNsPorCodigo()">${ico('link', 13)} Conectar com este código</button>
+        </div>
+      </details>
       <p class="muted" style="font-size:12.5px;margin:14px 0 0">
         Ainda não tem loja na Nuvemshop?
         <a href="${NS_AFILIADO}" target="_blank" rel="noopener"><b>Crie a sua aqui</b></a>
@@ -15335,6 +15356,31 @@ async function saveNsSettings() {
   const autoContact = $('#ns-auto').checked;
   try { nsCfg = (await api('/integrations/nuvemshop/settings', { method: 'PUT', body: { tags, autoContact } })).nuvemshop; }
   catch (e) { toast(e.message, 'error'); }
+}
+
+// PLANO B: o código veio na mão, da tela do Portal de Parceiros. A troca é a
+// MESMA rota que o caminho normal usa — o que muda é só de onde veio o código,
+// e por isso não há uma segunda regra para divergir depois.
+async function conectarNsPorCodigo() {
+  const el = $('#ns-code');
+  // A pessoa quase sempre cola o curl inteiro. Em vez de recusar, a gente pesca
+  // o código de dentro dele: recusar aqui seria devolver trabalho de recorte a
+  // quem já está travado.
+  const bruto = ((el && el.value) || '').trim();
+  const m = /"code"\s*:\s*"([^"]+)"/.exec(bruto);
+  const code = (m ? m[1] : bruto).replace(/[^A-Za-z0-9_-]/g, '');
+  if (!code) return toast('Cole o código que aparece na tela da Nuvemshop', 'error');
+  try {
+    const r = await api('/integrations/nuvemshop/connect', { body: { code } });
+    nsCfg = r.nuvemshop;
+    toast(r.aviso ? 'Loja conectada, mas os webhooks falharam: ' + r.aviso : 'Loja conectada!', r.aviso ? 'error' : '');
+    paintNuvemshop();
+  } catch (e) {
+    // O erro mais comum aqui tem UMA causa e uma solução, e vale dizer as duas.
+    toast(/expir|invalid|grant/i.test(e.message || '')
+      ? 'Esse código já venceu ou já foi usado. Gere um novo na Nuvemshop e cole em até 5 minutos.'
+      : e.message, 'error');
+  }
 }
 
 // Abre o consentimento da Nuvemshop numa janela e espera o postMessage do callback.
