@@ -3477,6 +3477,22 @@ module.exports = function (broadcast, clients) {
     } catch (e) { res.status(400).json({ error: e.message }); }
   });
 
+  // IMPORTAR A BASE QUE JÁ EXISTE NA LOJA.
+  //
+  // Os webhooks só contam o que acontece daqui para frente. Quem acabou de
+  // conectar tem anos de clientes lá dentro e quer falar com eles hoje — sem
+  // isto, teria de esperar cada um comprar de novo para aparecer no CRM.
+  //
+  // Pode demorar: são páginas de 200 na API da Nuvemshop. O prazo do Express
+  // fica de fora do caminho, e a tela mostra o resultado quando volta.
+  router.post('/integrations/nuvemshop/importar', auth, can('contacts','edit'), async (req, res) => {
+    try {
+      const r = await nuvem.importarClientes(req.acc, req.body || {});
+      broadcast('contacts', { accountId: req.acc.id });
+      res.json({ ...r, nuvemshop: nuvem.publicCfg(req.acc, origemDe(req)) });
+    } catch (e) { res.status(400).json({ error: e.message }); }
+  });
+
   // Reassina os webhooks (útil se a URL do servidor mudou).
   router.post('/integrations/nuvemshop/rehook', auth, async (req, res) => {
     try {

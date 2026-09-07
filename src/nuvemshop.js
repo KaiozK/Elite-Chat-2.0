@@ -64,7 +64,9 @@ function empty() {
     // Carrinhos já avisados, para não mandar duas vezes o mesmo. Guarda id e
     // quando: a lista é podada, senão cresce para sempre.
     carrinhosVistos: [],
-    ultimaVarredura: 0
+    ultimaVarredura: 0,
+    // Importação da base que já existia na loja (ver importarClientes).
+    ultimaImportacao: 0, importados: 0
   };
 }
 
@@ -99,6 +101,7 @@ function publicCfg(acc, origin) {
     hooks: c.hooks, events: c.events, lastEventAt: c.lastEventAt, lastEvent: c.lastEvent,
     tags: c.tags, autoContact: c.autoContact,
     carrinho: c.carrinho, ultimaVarredura: c.ultimaVarredura,
+    ultimaImportacao: c.ultimaImportacao || 0, importados: c.importados || 0,
     authorizeUrl: p.appId ? `${AUTH_BASE}/${encodeURIComponent(p.appId)}/authorize` : '',
     webhookUrl: origin ? `${origin}/nuvemshop-webhook` : '',
     availableEvents: EVENTS, gatilhos: GATILHOS
@@ -655,6 +658,94 @@ function webhookHandler(broadcast) {
 }
 
 // ---------------------------------------------------------------------------
+// IMPORTAR A BASE DE CLIENTES QUE JÁ EXISTE
+//
+// Os webhooks só contam o que acontece DAQUI PARA FRENTE. Quem conecta a loja
+// hoje tem, quase sempre, anos de clientes lá dentro — e a primeira coisa que
+// essa pessoa quer é falar com eles. Sem esta importação, ela teria de esperar
+// cada um comprar de novo para aparecer no CRM, o que é o mesmo que não ter.
+//
+// TRÊS DECISÕES QUE VALE REGISTRAR:
+//
+// 1. QUEM NÃO TEM TELEFONE FICA DE FORA, e é contado à parte. Contato de
+//    WhatsApp sem número não existe — e devolver esse número na tela é o que
+//    explica "importei 900 de 1.200" sem ninguém achar que sumiu gente.
+//
+// 2. NÃO SOBRESCREVE NADA. `upsertContact` só preenche campo vazio: quem já
+//    falava com a loja pelo WhatsApp mantém o nome que o atendente escreveu, a
+//    etapa do funil e as tags. Uma importação que apaga trabalho feito é pior
+//    do que nenhuma.
+//
+// 3. PÁGINA A PÁGINA, COM TETO. A Nuvemshop entrega 200 por vez e limita
+//    chamadas por minuto. O teto existe para uma base gigante não prender o
+//    servidor num único pedido — quem passar dele roda de novo e continua de
+//    onde parou, porque o que já entrou não entra duas vezes.
+// ---------------------------------------------------------------------------
+const IMPORT_PAGINA = 200;
+const IMPORT_MAX_PAGINAS = 25;   // 5.000 clientes por rodada
+
+async function importarClientes(acc, opts = {}) {
+  const c = cfg(acc);
+  if (!c.accessToken || !c.storeId) throw new Error('Nenhuma loja Nuvemshop conectada');
+
+  const marcar = opts.tags !== false;
+  let pagina = 1, lidos = 0, criados = 0, atualizados = 0, semTelefone = 0;
+  const maxPag = Math.max(1, Math.min(IMPORT_MAX_PAGINAS, Number(opts.maxPaginas) || IMPORT_MAX_PAGINAS));
+
+  while (pagina <= maxPag) {
+    let lote;
+    try {
+      lote = await apiFetch(acc, `/customers?per_page=${IMPORT_PAGINA}&page=${pagina}`);
+    } catch (e) {
+      // Uma página que falha no meio não pode jogar fora o que já entrou: o que
+      // foi importado está gravado, e a pessoa vê até onde deu.
+      store.logEvent({ type: 'nuvemshop_import_erro', accountId: acc.id, pagina, error: e.message });
+      break;
+    }
+    if (!Array.isArray(lote) || !lote.length) break;
+    lidos += lote.length;
+
+    for (const cli of lote) {
+      const tel = telefoneDe(cli);
+      const waId = tel ? store.normalizeWaId(tel) : '';
+      if (!waId) { semTelefone++; continue; }
+
+      const jaExistia = !!store.findContact(acc, waId);
+      const contato = store.upsertContact(acc, waId, cli.name || undefined, {
+        email: cli.email || '',
+        city: (cli.default_address && cli.default_address.city) || '',
+        source: { type: 'nuvemshop', id: c.storeId, headline: c.storeName || 'Nuvemshop', ts: Date.now() }
+      });
+      // As variáveis do cliente ficam guardadas: são elas que a automação usa
+      // quando ele voltar a falar.
+      contato.vars = Object.assign({}, contato.vars, customerVars(cli, c.storeName));
+      contato.ns = Object.assign({}, contato.ns, {
+        storeId: String(c.storeId), loja: c.storeName || '', visto: Date.now(),
+        clienteId: String(cli.id || ''),
+        documento: String(cli.identification || ''),
+        importado: true
+      });
+      if (marcar && c.tags && c.tags.length) {
+        contato.tags = contato.tags || [];
+        for (const t of c.tags) if (!contato.tags.includes(t)) contato.tags.push(t);
+      }
+      if (jaExistia) atualizados++; else criados++;
+    }
+
+    db.save();
+    if (lote.length < IMPORT_PAGINA) break;   // última página
+    pagina++;
+  }
+
+  c.ultimaImportacao = Date.now();
+  c.importados = (c.importados || 0) + criados;
+  db.save();
+  const r = { lidos, criados, atualizados, semTelefone, paginas: pagina, parcial: pagina > maxPag };
+  store.logEvent({ type: 'nuvemshop_import', accountId: acc.id, ...r });
+  return r;
+}
+
+// ---------------------------------------------------------------------------
 // LGPD — os três webhooks obrigatórios do Portal de Parceiros
 // ---------------------------------------------------------------------------
 
@@ -808,7 +899,7 @@ module.exports = {
   EVENTS, GATILHOS, EVENTO_CARRINHO, empty, cfg, platformCfg, isAvailable, publicCfg, adminCfg,
   exchangeCode, apiFetch, fetchStore, registerWebhooks, disconnect,
   handleEvent, webhookHandler, validSignature,
-  orderVars, cartVars, customerVars, telefoneDe, moeda, primeiroNome,
+  orderVars, cartVars, customerVars, telefoneDe, moeda, primeiroNome, importarClientes,
   fluxosDoEvento, dispararFluxos, varrerCarrinhos, varrerTodas,
   lgpdHandler, lgpdUrls, apagarLoja, apagarConsumidor, registrarPedidoDeDados, acharConsumidor
 };

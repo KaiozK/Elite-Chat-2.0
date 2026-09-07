@@ -10,7 +10,10 @@
 //   · até três notas viram três botões, com o id que a resposta usa de volta;
 //   · acima disso a Cloud API entrega como LISTA, e o cliente vê UM botão — o
 //     do menu. É esse que fica no histórico, e não as dez opções escondidas.
-const survey = require('C:/Users/amand/Desktop/Elite Projects/whatsapp-crm/src/survey');
+// A raiz do repositório, achada a partir deste arquivo — este é o único teste
+// que não declarava R, porque só ele carregava o módulo por caminho absoluto.
+const R = require('path').resolve(__dirname, '..').replace(/\\/g, '/') + '/';
+const survey = require(R + 'src/survey');
 let falhas = 0;
 const ok = (c, m) => { console.log((c ? '  OK   ' : '  FALHA') + ' ' + m); if (!c) falhas++; };
 

@@ -19,7 +19,12 @@
 // que a página o exibe, e cobra folga em 3x. Se alguém (eu, de novo) reduzir
 // uma arte "para economizar", o teste cai aqui, com a conta na tela, em vez de
 // o defeito aparecer na home meses depois.
-const R = 'C:/Users/amand/Desktop/Elite Projects/whatsapp-crm/';
+// A RAIZ DO REPOSITÓRIO, achada a partir deste arquivo.
+// Era o caminho absoluto da máquina de quem escreveu o teste, então a suíte
+// só rodava lá — em qualquer outro computador, e no servidor de CI, todos os
+// 60 arquivos morriam em MODULE_NOT_FOUND antes da primeira verificação.
+// `\\` vira `/` porque R é concatenado com strings que usam barra normal.
+const R = require('path').resolve(__dirname, '..').replace(/\\/g, '/') + '/';
 const fs = require('fs');
 let falhas = 0;
 const ok = (c, m) => { console.log((c ? '  OK   ' : '  FALHA') + ' ' + m); if (!c) falhas++; };

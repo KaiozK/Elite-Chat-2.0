@@ -11,7 +11,12 @@
 // O LINK é um portador: quem tem o endereço vê. Então ele precisa mascarar o
 // telefone por padrão, mostrar só a campanha dele, e morrer quando revogado.
 // Um link que continua abrindo depois de revogado é pior que não ter revogação.
-const R = 'C:/Users/amand/Desktop/Elite Projects/whatsapp-crm/';
+// A RAIZ DO REPOSITÓRIO, achada a partir deste arquivo.
+// Era o caminho absoluto da máquina de quem escreveu o teste, então a suíte
+// só rodava lá — em qualquer outro computador, e no servidor de CI, todos os
+// 60 arquivos morriam em MODULE_NOT_FOUND antes da primeira verificação.
+// `\\` vira `/` porque R é concatenado com strings que usam barra normal.
+const R = require('path').resolve(__dirname, '..').replace(/\\/g, '/') + '/';
 let falhas = 0;
 const ok = (c, m) => { console.log((c ? '  OK   ' : '  FALHA') + ' ' + m); if (!c) falhas++; };
 const encerrar = require('./_fim');

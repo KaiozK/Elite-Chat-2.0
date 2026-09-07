@@ -15275,6 +15275,23 @@ function paintNuvemshop() {
         <span class="pill">${(c.hooks || []).length} evento(s) assinado(s)</span>
         ${c.storeUrl ? `<a class="pill" href="${esc(c.storeUrl)}" target="_blank" rel="noopener">Abrir loja ↗</a>` : ''}
       </div>
+      <!-- IMPORTAR A BASE. Os eventos só contam o que acontece daqui para
+           frente; quem acabou de conectar tem anos de clientes na loja e quer
+           falar com eles hoje. Fica em destaque enquanto nunca foi feito, e
+           vira um botão discreto depois — ninguém importa a mesma base toda
+           semana. -->
+      <div class="capi-box" style="margin-top:14px">
+        <div class="capi-head">${ico('users', 14)} Seus clientes que já estão na loja
+          ${c.ultimaImportacao ? `<span class="capi-tag">${fmtN(c.importados || 0)} importado(s) · ${timeAgo(c.ultimaImportacao)}</span>` : '<span class="capi-tag">nunca importado</span>'}</div>
+        <p class="muted" style="font-size:12px;margin:8px 0 10px">
+          Traz para o CRM quem já comprou na sua loja, com nome, telefone, e-mail e cidade.
+          <b>Nada é sobrescrito</b>: quem já falava com você pelo WhatsApp mantém o nome, a etapa do funil
+          e as tags. Quem estiver cadastrado sem telefone fica de fora — sem número não existe conversa.
+        </p>
+        <button class="btn ${c.ultimaImportacao ? 'small' : 'primary'} no-grow" id="ns-imp-btn" onclick="importarClientesNs()">
+          ${ico('download', 13)} ${c.ultimaImportacao ? 'Importar de novo' : 'Importar meus clientes'}</button>
+        <div id="ns-imp-res" class="muted" style="font-size:12px;margin-top:10px"></div>
+      </div>
       <div class="ns-actions">
         <button class="btn small no-grow" onclick="testNs()">${ico('activity', 13)} Testar conexão</button>
         <button class="btn small no-grow" onclick="rehookNs()">${ico('refresh', 13)} Reassinar eventos</button>
@@ -15356,6 +15373,42 @@ async function saveNsSettings() {
   const autoContact = $('#ns-auto').checked;
   try { nsCfg = (await api('/integrations/nuvemshop/settings', { method: 'PUT', body: { tags, autoContact } })).nuvemshop; }
   catch (e) { toast(e.message, 'error'); }
+}
+
+// IMPORTAR A BASE DE CLIENTES DA LOJA.
+//
+// Pode demorar (páginas de 200 na API da Nuvemshop), então o botão diz que
+// está trabalhando: um botão que não responde parece travado, e a pessoa
+// clica de novo — o que faria a importação inteira rodar duas vezes.
+async function importarClientesNs() {
+  const btn = $('#ns-imp-btn'), res = $('#ns-imp-res');
+  if (!btn) return;
+  const rotulo = btn.innerHTML;
+  btn.disabled = true;
+  btn.textContent = 'Importando…';
+  if (res) res.textContent = 'Buscando os clientes na sua loja. Pode levar um minuto.';
+  try {
+    const r = await api('/integrations/nuvemshop/importar', { body: {} });
+    nsCfg = r.nuvemshop;
+    // O NÚMERO DE FORA TAMBÉM É RESULTADO. Sem ele, "importei 900" com 1.200
+    // clientes na loja parece que sumiu gente.
+    const partes = [];
+    if (r.criados) partes.push(`<b>${fmtN(r.criados)}</b> contato(s) novo(s)`);
+    if (r.atualizados) partes.push(`${fmtN(r.atualizados)} já existia(m) e foi(ram) completado(s)`);
+    if (r.semTelefone) partes.push(`${fmtN(r.semTelefone)} sem telefone na loja, fora da importação`);
+    if (res) {
+      res.innerHTML = partes.length
+        ? partes.join(' · ') + (r.parcial ? ' · <b>base grande:</b> clique de novo para continuar de onde parou' : '')
+        : 'Nenhum cliente encontrado na loja.';
+    }
+    toast(r.criados ? `${r.criados} contato(s) importado(s)` : 'Importação concluída');
+    paintNuvemshop();
+  } catch (e) {
+    if (res) res.textContent = e.message;
+    toast(e.message, 'error');
+    btn.disabled = false;
+    btn.innerHTML = rotulo;
+  }
 }
 
 // PLANO B: o código veio na mão, da tela do Portal de Parceiros. A troca é a

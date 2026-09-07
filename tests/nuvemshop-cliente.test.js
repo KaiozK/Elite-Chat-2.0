@@ -175,6 +175,44 @@ global.fetch = async () => ({
   ok(vc.carrinho_link === 'https://loja/checkout/55', 'sem perder o link de recuperação');
   ok(vc.cliente_cidade === 'Curitiba', 'e a cidade, para a mensagem falar como gente');
 
+  console.log('\n=== 8. Importar a base que já existia na loja ===');
+  // Os webhooks so contam o que acontece daqui para frente. Quem conecta hoje
+  // tem anos de clientes la dentro e quer falar com eles agora.
+  //
+  // Um contato que JA existia no CRM, com nome dado pelo atendente e etapa do
+  // funil: a importacao nao pode passar por cima disso.
+  const jaExistia = require(path.join(R, 'src', 'store'))
+    .upsertContact(acc, '11966665555', 'Zé do WhatsApp');
+  jaExistia.stage = 'Negociando';
+  jaExistia.tags = ['vip'];
+
+  const pagina = [
+    { id: 1, name: 'Cliente Um', email: 'um@c.com', identification: '11144477735',
+      default_address: { phone: '11911112222', city: 'Santos' } },
+    { id: 2, name: 'Cliente Dois', email: 'dois@c.com', phone: '11922223333' },
+    { id: 3, name: 'Sem Numero', email: 'tres@c.com' },              // fica de fora
+    { id: 4, name: 'Zé Silva', email: 'ze@c.com', phone: '11966665555' }  // já existe
+  ];
+  let servidas = 0;
+  global.fetch = async () => {
+    const corpo = servidas++ === 0 ? pagina : [];   // uma página só
+    return { ok: true, status: 200, text: async () => JSON.stringify(corpo), json: async () => corpo };
+  };
+  const imp = await nuvem.importarClientes(acc);
+  ok(imp.criados === 2, 'cria os que tinham telefone', imp.criados + ' criado(s)');
+  ok(imp.atualizados === 1, 'e completa quem já existia', imp.atualizados + ' atualizado(s)');
+  ok(imp.semTelefone === 1, 'contando à parte quem não tem número', imp.semTelefone + ' sem telefone');
+  const doEndereco = require(path.join(R, 'src', 'store')).findContact(acc, '11911112222');
+  ok(!!doEndereco, 'inclusive quem só tinha o telefone no endereço', doEndereco && doEndereco.name);
+  ok(doEndereco && doEndereco.vars.cliente_documento === '11144477735',
+     'com as variáveis do cliente guardadas para a automação usar depois');
+  ok(doEndereco && doEndereco.ns.clienteId === '1', 'e o id da Nuvemshop no contato');
+  // O QUE NÃO PODE ACONTECER: apagar trabalho feito.
+  ok(jaExistia.name === 'Zé do WhatsApp', 'NÃO sobrescreve o nome que o atendente deu', jaExistia.name);
+  ok(jaExistia.stage === 'Negociando', 'nem a etapa do funil', jaExistia.stage);
+  ok(jaExistia.tags.includes('vip'), 'nem as tags que já estavam lá');
+  ok(jaExistia.email === 'ze@c.com', 'mas completa o que estava vazio — aqui o e-mail', jaExistia.email);
+
   // devolve o banco: `db.save()` é adiado em 250ms e um save atrasado
   // desfaria a restauração do arquivo.
   const antes = JSON.parse(original || '{}');
