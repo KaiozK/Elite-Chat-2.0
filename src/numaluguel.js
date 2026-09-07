@@ -190,10 +190,45 @@ async function cancelar(acc, id, motivo, broadcast) {
   a.status = 'cancelado';
   a.canceladoEm = Date.now();
   a.motivo = motivo || 'Cancelado pelo cliente';
+
+  // O REEMBOLSO DO PROVEDOR VOLTA PARA A CARTEIRA DO CLIENTE.
+  //
+  // A Integra X devolve o valor integral quando o número não chegou a receber
+  // nenhum SMS com código — e devolvia PARA A PLATAFORMA. Quem tinha pago era
+  // o cliente, do saldo dele, e não recebia nada de volta: alugava, cancelava
+  // dez minutos depois sem ter usado, e o dinheiro sumia no meio. Ficar com o
+  // valor de um serviço que não foi prestado não é margem, é erro.
+  //
+  // Devolvemos o que o CLIENTE pagou (`precoCents`), e não o que o provedor
+  // reembolsou: o preço da plataforma inclui margem, e cobrar a margem de um
+  // aluguel que não existiu seria o mesmo problema em tamanho menor. Quando o
+  // provedor não reembolsa (o número já recebeu código), nada volta — o
+  // serviço foi prestado.
+  let estornado = 0;
+  if (resultado && resultado.reembolsado) {
+    estornado = a.precoCents || 0;
+    if (estornado > 0) {
+      try {
+        require('./topup').creditar(acc, estornado,
+          'Estorno do aluguel de número virtual ' + a.numero, '', broadcast);
+        a.estornadoCents = estornado;
+      } catch (e) {
+        // O cancelamento já aconteceu nos dois lados: um estorno que falha não
+        // pode desfazê-lo. Fica registrado para alguém devolver na mão.
+        estornado = 0;
+        store.logEvent({ type: 'num_estorno_falhou', accountId: acc.id, numero: a.numero,
+                         valor: a.precoCents, error: e.message });
+      }
+    }
+  }
+
   db.save();
   if (broadcast) broadcast('numeros', { accountId: acc.id });
-  store.logEvent({ type: 'num_cancelado', accountId: acc.id, numero: a.numero, motivo: a.motivo });
-  return { ...publicoUm(a), resultado };
+  store.logEvent({
+    type: 'num_cancelado', accountId: acc.id, numero: a.numero, motivo: a.motivo,
+    reembolsadoPeloProvedor: !!(resultado && resultado.reembolsado), estornado
+  });
+  return { ...publicoUm(a), resultado, estornado };
 }
 
 // ---------------------------------------------------------------------------
@@ -232,6 +267,7 @@ function publicoUm(a, acc) {
     status: a.status,
     renovacaoAuto: !!a.renovacaoAuto,
     motivo: a.motivo || '',
+    estornadoCents: a.estornadoCents || 0,
     // O cliente precisa saber ANTES que a renovação não vai passar, e quanto
     // falta. É a diferença entre recarregar e perder o número.
     emRisco: a.status === 'ativo' && dias !== null && dias <= prazoSaldo() && semSaldo

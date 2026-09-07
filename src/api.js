@@ -6220,13 +6220,26 @@ module.exports = function (broadcast, clients) {
     next();
   };
 
-  router.get('/numeros', auth, (req, res) => {
+  // ------------------------------------------------------------------------
+  // NÚMEROS VIRTUAIS — TUDO AQUI É DO TITULAR.
+  //
+  // Estas rotas tinham só `auth`, e um atendente comum passava por todas:
+  // comprava número gastando a CARTEIRA DO DONO, cancelava número em uso e —
+  // o pior — LIA OS CÓDIGOS DE VERIFICAÇÃO que chegam por SMS. Esses códigos
+  // são a chave de entrada de outras contas: quem lê um código de verificação
+  // entra no lugar de alguém. Não é dado de atendimento, é credencial.
+  //
+  // Não virou permissão de módulo (`can('numeros', ...)`) de propósito: uma
+  // permissão que se pode LIGAR é uma permissão que alguém liga sem pensar, e
+  // aqui não existe uso legítimo de atendente. É do titular, e ponto.
+  // ------------------------------------------------------------------------
+  router.get('/numeros', auth, ownerOnly, (req, res) => {
     res.json(numaluguel.visaoCliente(req.acc));
   });
 
   // A vitrine do provedor, sem preço de custo: o cliente vê o número e o DDD,
   // e paga o preço da plataforma, que é o mesmo para qualquer número.
-  router.get('/numeros/disponiveis', auth, revendaLigada, h(async (req, res) => {
+  router.get('/numeros/disponiveis', auth, ownerOnly, revendaLigada, h(async (req, res) => {
     const d = await numeros.disponiveis({ ddd: req.query.ddd, limite: req.query.limit });
     res.json({
       total: d.total, count: d.count,
@@ -6235,22 +6248,22 @@ module.exports = function (broadcast, clients) {
     });
   }));
 
-  router.post('/numeros/comprar', auth, revendaLigada, h(async (req, res) => {
+  router.post('/numeros/comprar', auth, ownerOnly, revendaLigada, h(async (req, res) => {
     const b = req.body || {};
     res.json({ aluguel: await numaluguel.comprar(req.acc, { numeroId: b.numeroId, ddd: b.ddd }, broadcast) });
   }));
 
-  router.get('/numeros/:id/sms', auth, h(async (req, res) => {
+  router.get('/numeros/:id/sms', auth, ownerOnly, h(async (req, res) => {
     res.json({ mensagens: await numaluguel.mensagens(req.acc, req.params.id) });
   }));
 
-  router.post('/numeros/:id/cancelar', auth, h(async (req, res) => {
+  router.post('/numeros/:id/cancelar', auth, ownerOnly, h(async (req, res) => {
     res.json(await numaluguel.cancelar(req.acc, req.params.id, 'Cancelado pelo cliente', broadcast));
   }));
 
   // Desligar a renovação é o cancelamento EDUCADO: o número serve até o fim do
   // ciclo já pago e não é renovado. Cancelar na hora joga fora dias pagos.
-  router.put('/numeros/:id/renovacao', auth, (req, res) => {
+  router.put('/numeros/:id/renovacao', auth, ownerOnly, (req, res) => {
     const a = numaluguel.achar(req.acc, req.params.id);
     if (!a) return res.status(404).json({ error: 'Número não encontrado' });
     a.renovacaoAuto = !!(req.body || {}).ativa;

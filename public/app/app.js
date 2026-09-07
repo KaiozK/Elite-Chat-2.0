@@ -2133,7 +2133,10 @@ function isMobileLayout() { return API.native || MOBILE_MQ.matches; }
 
 function applyNavPermissions() {
   // Assinatura e Admin são do DONO/admin — atendentes nunca veem
-  const ownerOnly = new Set(['billing']);
+  // Assinatura/carteira e NÚMEROS VIRTUAIS são do titular: os dois gastam o
+  // saldo da conta, e a tela de números ainda mostra os códigos de
+  // verificação recebidos, que são credencial e não dado de atendimento.
+  const ownerOnly = new Set(['billing', 'numeros']);
   const mobile = isMobileLayout();
   $$('.nav-item[data-view]').forEach(n => {
     const v = n.dataset.view;
