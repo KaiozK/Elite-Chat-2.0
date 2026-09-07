@@ -112,6 +112,58 @@ global.fetch = async () => ({
   ok(r3.vars.cliente_primeiro_nome === 'João', 'e as do cliente entram junto', r3.vars.cliente_primeiro_nome);
   ok(!!r3.contact, 'e o contato é criado');
 
+  console.log('\n=== 5. Pedido com o cliente pela metade: o Koonfy completa ===');
+  // A Nuvemshop as vezes embute o cliente inteiro no pedido e as vezes manda
+  // so um esqueleto. Sem completar, a automacao que usa cliente_documento
+  // funcionaria num pedido e falharia no seguinte, sem explicacao.
+  const chamadas = [];
+  respostaDaApi = null;
+  global.fetch = async (url) => {
+    chamadas.push(String(url));
+    const corpo = /\/customers\/7\b/.test(String(url))
+      ? { id: 7, name: 'João Silva', email: 'joao@cliente.com', identification: '52998224725',
+          default_address: { phone: '11955554444', city: 'Rio de Janeiro', province: 'RJ' } }
+      : { id: 901, number: 1235, total: '99.00', currency: 'BRL', status: 'open', products: [],
+          contact_name: 'João Silva',
+          customer: { id: 7, name: 'João Silva' } };   // esqueleto de propósito
+    return { ok: true, status: 200, text: async () => JSON.stringify(corpo), json: async () => corpo };
+  };
+  const r4 = await nuvem.handleEvent(acc, 'order/paid', 901, null);
+  ok(chamadas.some(u => /\/customers\/7/.test(u)),
+     'o cliente incompleto é buscado na API', chamadas.filter(u => /customers/.test(u)).length + ' chamada(s)');
+  ok(r4.vars.cliente_documento === '52998224725', 'e o documento aparece', r4.vars.cliente_documento);
+  ok(r4.vars.cliente_cidade === 'Rio de Janeiro', 'e a cidade', r4.vars.cliente_cidade);
+  ok(r4.telefone === '11955554444', 'e o telefone, que o pedido não trazia', r4.telefone);
+  ok(r4.vars.cliente_id === '7', 'com o id da Nuvemshop, que identifica a pessoa', r4.vars.cliente_id);
+  ok(!!r4.contact && r4.contact.ns.clienteId === '7' && r4.contact.ns.documento === '52998224725',
+     'e isso fica marcado no contato, para o atendente saber de quem é');
+
+  console.log('\n=== 6. Cliente COMPLETO no pedido: não busca à toa ===');
+  chamadas.length = 0;
+  global.fetch = async (url) => {
+    chamadas.push(String(url));
+    const corpo = { id: 902, number: 1236, total: '50.00', currency: 'BRL', products: [],
+      customer: { id: 8, name: 'Maria', email: 'maria@c.com', identification: '11144477735',
+                  phone: '11977776666' } };
+    return { ok: true, status: 200, text: async () => JSON.stringify(corpo), json: async () => corpo };
+  };
+  const r5 = await nuvem.handleEvent(acc, 'order/paid', 902, null);
+  ok(!chamadas.some(u => /\/customers\//.test(u)),
+     'nenhuma chamada extra quando o pedido já traz tudo', chamadas.length + ' chamada(s) no total');
+  ok(r5.vars.cliente_documento === '11144477735', 'e os dados vêm do próprio pedido');
+
+  console.log('\n=== 7. Carrinho abandonado agora diz DE QUEM é ===');
+  const vc = Object.assign({},
+    nuvem.customerVars({ id: 12, name: 'Ana Paula', email: 'ana@c.com',
+                         default_address: { phone: '11933332222', city: 'Curitiba', province: 'PR' } },
+                       'Loja do Kaio'),
+    nuvem.cartVars({ id: 55, total: '120.00', currency: 'BRL', products: [{ quantity: 1, name: 'Tênis' }],
+                     abandoned_checkout_url: 'https://loja/checkout/55' }));
+  ok(vc.cliente_primeiro_nome === 'Ana' && vc.cliente_email === 'ana@c.com',
+     'o carrinho carrega nome e e-mail do cliente', vc.cliente_primeiro_nome);
+  ok(vc.carrinho_link === 'https://loja/checkout/55', 'sem perder o link de recuperação');
+  ok(vc.cliente_cidade === 'Curitiba', 'e a cidade, para a mensagem falar como gente');
+
   // devolve o banco: `db.save()` é adiado em 250ms e um save atrasado
   // desfaria a restauração do arquivo.
   const antes = JSON.parse(original || '{}');

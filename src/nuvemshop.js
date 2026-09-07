@@ -315,13 +315,16 @@ function telefoneDe(o) {
 function customerVars(cli, loja) {
   const end = cli.default_address || (Array.isArray(cli.addresses) && cli.addresses[0]) || {};
   const doc = cli.identification || end.identification || '';
-  const nome = String(cli.name || '');
+  const nome = String(cli.name || cli.contact_name || '');
   return {
+    // O ID DA NUVEMSHOP identifica a pessoa mesmo quando ela troca de telefone
+    // ou escreve o nome de outro jeito. É a chave para cruzar com a loja.
+    cliente_id: String(cli.id || ''),
     cliente_nome: nome,
     // A saudação quer o primeiro nome. Deixar isso para a automação obrigaria
     // cada pessoa a resolver o mesmo problema na mão, e a maioria não resolve.
     cliente_primeiro_nome: nome.trim().split(/\s+/)[0] || '',
-    cliente_email: String(cli.email || ''),
+    cliente_email: String(cli.email || cli.contact_email || ''),
     cliente_telefone: telefoneDe(cli),
     cliente_documento: String(doc || ''),
     cliente_cidade: String(end.city || ''),
@@ -392,9 +395,24 @@ async function handleEvent(acc, event, resourceId, broadcast) {
     nome = order.contact_name || (order.customer && order.customer.name) || '';
     telefone = telefoneDe(order);
     email = order.contact_email || (order.customer && order.customer.email) || '';
-    // As do cliente entram JUNTO com as do pedido: a mensagem do pedido quase
-    // sempre começa cumprimentando a pessoa pelo nome.
-    vars = Object.assign({}, customerVars(order.customer || {}, c.storeName), orderVars(order));
+    // O CLIENTE COMPLETO, e não o resumo que vem dentro do pedido.
+    //
+    // A Nuvemshop às vezes embute o cliente inteiro no pedido e às vezes manda
+    // só um esqueleto — id e nome, sem documento, sem endereço, às vezes sem
+    // e-mail. Quem monta a mensagem não pode depender de qual dos dois veio: a
+    // automação que usa `cliente_documento` funcionaria num pedido e falharia
+    // no seguinte, sem explicação.
+    //
+    // Quando falta o essencial e existe um id, buscamos o cliente. É UMA
+    // chamada a mais, só quando falta — e ela é o que garante que "de quem é
+    // este pedido" tenha sempre a mesma resposta.
+    let cliente = order.customer || {};
+    if (cliente.id && !(cliente.identification && cliente.email && telefoneDe(cliente))) {
+      try { cliente = Object.assign({}, cliente, await apiFetch(acc, '/customers/' + cliente.id)); }
+      catch (e) { /* pedido não pode parar porque o cadastro do cliente não veio */ }
+    }
+    if (!telefone) telefone = telefoneDe(cliente);
+    vars = Object.assign({}, customerVars(cliente, c.storeName), orderVars(order));
     if (!vars.cliente_nome) vars.cliente_nome = nome;
     if (!vars.cliente_primeiro_nome) vars.cliente_primeiro_nome = String(nome).trim().split(/\s+/)[0] || '';
     if (!vars.cliente_email) vars.cliente_email = email;
@@ -426,7 +444,12 @@ async function handleEvent(acc, event, resourceId, broadcast) {
     // nenhum sinal de que também é cliente da loja — e some do disparo
     // segmentado, que é justamente onde ele mais importa.
     contact.ns = Object.assign({}, contact.ns, {
-      storeId: String(c.storeId), loja: c.storeName || '', visto: Date.now()
+      storeId: String(c.storeId), loja: c.storeName || '', visto: Date.now(),
+      // QUEM É, do lado da loja. Guardado no contato para o atendente saber de
+      // quem é o pedido sem sair do chat, e para cruzar com a Nuvemshop quando
+      // a pessoa mudar de número.
+      clienteId: vars.cliente_id || (contact.ns && contact.ns.clienteId) || '',
+      documento: vars.cliente_documento || (contact.ns && contact.ns.documento) || ''
     });
     if (event === 'order/paid') {
       contact.ns.pedidos = (contact.ns.pedidos || 0) + 1;
@@ -532,12 +555,24 @@ async function varrerCarrinhos(acc, deliver, broadcast) {
     if (!quando || quando > limite || quando < chao) continue;
     // Sem telefone não há para quem mandar. O carrinho fica sem marca: se a
     // pessoa voltar e preencher o telefone, ele entra na próxima varredura.
-    const tel = cart.contact_phone ? store.normalizeWaId(cart.contact_phone) : '';
+    // O mesmo `telefoneDe` do resto: no checkout o número costuma estar no
+    // endereço de entrega, e lendo só `contact_phone` o carrinho de quem
+    // preencheu a entrega ficava de fora da recuperação.
+    const bruto = telefoneDe(cart);
+    const tel = bruto ? store.normalizeWaId(bruto) : '';
     if (!tel) continue;
 
+    // O carrinho abandonado é o único evento que não dizia DE QUEM era: ia
+    // com o link e o valor, e nada da pessoa. Quem monta a mensagem de
+    // recuperação quer o nome — é ela que faz o recado parecer gente.
+    const cliente = Object.assign({}, cart.customer || {}, {
+      name: (cart.customer && cart.customer.name) || cart.contact_name || '',
+      email: (cart.customer && cart.customer.email) || cart.contact_email || ''
+    });
     const rodou = await dispararFluxos(acc, EVENTO_CARRINHO, {
-      telefone: tel, nome: cart.contact_name || '', email: cart.contact_email || '',
-      vars: cartVars(cart)
+      telefone: tel, nome: cliente.name || '', email: cliente.email || '',
+      vars: Object.assign({}, customerVars(cliente, c.storeName), cartVars(cart),
+                          { evento_nuvemshop: EVENTO_CARRINHO })
     }, deliver);
     // Só marca o que de fato virou mensagem. Um fluxo que falhou no meio
     // volta a ser tentado na próxima varredura, que é o certo: o carrinho
@@ -746,7 +781,7 @@ module.exports = {
   EVENTS, GATILHOS, EVENTO_CARRINHO, empty, cfg, platformCfg, isAvailable, publicCfg, adminCfg,
   exchangeCode, apiFetch, fetchStore, registerWebhooks, disconnect,
   handleEvent, webhookHandler, validSignature,
-  orderVars, cartVars, moeda, primeiroNome,
+  orderVars, cartVars, customerVars, telefoneDe, moeda, primeiroNome,
   fluxosDoEvento, dispararFluxos, varrerCarrinhos, varrerTodas,
   lgpdHandler, lgpdUrls, apagarLoja, apagarConsumidor, registrarPedidoDeDados, acharConsumidor
 };

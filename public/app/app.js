@@ -15457,14 +15457,17 @@ const NS_EVENTOS = [
 // usa: é daqui que a pessoa monta a mensagem. As `cliente_*` entram nas três,
 // porque toda mensagem começa falando com alguém.
 const NS_VARS_CLIENTE_BASE = ['primeiro_nome', 'nome', 'telefone', 'email', 'loja',
-  'cliente_nome', 'cliente_primeiro_nome', 'cliente_email', 'cliente_telefone',
+  'cliente_id', 'cliente_nome', 'cliente_primeiro_nome', 'cliente_email', 'cliente_telefone',
   'cliente_documento', 'cliente_cidade', 'cliente_estado', 'loja_nome'];
 const NS_VARS_PEDIDO = NS_VARS_CLIENTE_BASE.concat([
   'pedido_numero', 'pedido_total', 'pedido_itens', 'pedido_qtd', 'pedido_status',
   'pedido_pagamento', 'pedido_envio', 'pedido_frete', 'pedido_cupom', 'pedido_link',
   'pedido_rastreio', 'pedido_rastreio_url', 'pedido_transportadora', 'pedido_entrega_previsao']);
-const NS_VARS_CARRINHO = ['primeiro_nome', 'nome', 'telefone', 'email', 'loja',
-  'carrinho_link', 'carrinho_total', 'carrinho_itens', 'carrinho_qtd'];
+// O carrinho abandonado era o único evento sem os dados de quem abandonou: ia
+// com o link e o valor, e nada da pessoa. A mensagem de recuperação é
+// justamente a que mais precisa do nome.
+const NS_VARS_CARRINHO = NS_VARS_CLIENTE_BASE.concat([
+  'carrinho_link', 'carrinho_total', 'carrinho_itens', 'carrinho_qtd', 'carrinho_id']);
 const NS_VARS_CLIENTE = NS_VARS_CLIENTE_BASE.concat(['cliente_total_gasto', 'cliente_pedidos', 'cliente_desde']);
 function nsVarsDoEvento(ev) {
   if (ev === 'cart/abandoned') return NS_VARS_CARRINHO;
