@@ -64,6 +64,9 @@ global.fetch = async () => ({
   ok(r.telefone === '11988887777', 'com o telefone pescado do endereço', r.telefone);
   ok(r.contact && r.contact.name === 'Isabela Ramos', 'e com o nome certo');
   ok(r.contact && r.contact.email === 'isabela@cliente.com', 'e o e-mail');
+  const logOk = db.get().webhookLog[0] || {};
+  ok(logOk.campos === undefined,
+     'e quando o telefone VEM, o log não carrega o diagnóstico — seria ruído em toda linha');
   ok((r.contact.tags || []).includes('nuvemshop'), 'com a tag da integração');
 
   console.log('\n=== 2. E as variáveis chegam preenchidas na automação ===');
@@ -96,6 +99,14 @@ global.fetch = async () => ({
   ok(log.motivo === 'o cadastro na loja veio sem telefone',
      'e o log diz o motivo, em vez de só "matched: false"', log.motivo);
   ok(log.cliente === 'Sem Telefone', 'com o nome de quem se cadastrou, para achar o caso');
+  // Sem isto, "não veio o telefone" vira palpite: não dá para saber se a
+  // Nuvemshop mandou o número num campo que não lemos, ou se não mandou nada.
+  ok(Array.isArray(log.campos) && log.campos.length >= 8,
+     'e a lista de ONDE foi procurado, campo por campo', (log.campos || []).length + ' campos');
+  ok((log.campos || []).every(c => /=(preenchido|vazio)$/.test(c)),
+     'dizendo só se estava preenchido — o número não vai para o log');
+  ok((log.campos || []).includes('default_address.phone=vazio'),
+     'incluindo o endereço, que é onde ele costuma estar');
 
   console.log('\n=== 4. No pedido, os dados do cliente vêm junto ===');
   // A mensagem do pedido quase sempre começa cumprimentando pelo nome.

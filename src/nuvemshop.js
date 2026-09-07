@@ -287,6 +287,25 @@ function primeiroNome(nome) { return String(nome || '').trim().split(/\s+/)[0] |
 // para criar. O webhook respondia 200, e nada acontecia.
 //
 // A ordem é da fonte mais direta para a mais indireta.
+// Onde o telefone FOI PROCURADO, para o log poder dizer o que existia. Só os
+// nomes dos campos e se tinham conteúdo — nunca o número, que é dado do
+// cliente e não tem por que ficar num log de diagnóstico.
+function ondeProcurei(o) {
+  if (!o || typeof o !== 'object') return [];
+  const lug = {
+    phone: o.phone,
+    contact_phone: o.contact_phone,
+    billing_phone: o.billing_phone,
+    'default_address.phone': o.default_address && o.default_address.phone,
+    'addresses[0].phone': Array.isArray(o.addresses) && o.addresses.length && o.addresses[0].phone,
+    'shipping_address.phone': o.shipping_address && o.shipping_address.phone,
+    'billing_address.phone': o.billing_address && o.billing_address.phone,
+    'customer.phone': o.customer && o.customer.phone,
+    'customer.default_address.phone': o.customer && o.customer.default_address && o.customer.default_address.phone
+  };
+  return Object.entries(lug).map(([k, v]) => k + '=' + (v ? 'preenchido' : 'vazio'));
+}
+
 function telefoneDe(o) {
   if (!o || typeof o !== 'object') return '';
   const cand = [
@@ -389,9 +408,11 @@ async function handleEvent(acc, event, resourceId, broadcast) {
   c.lastEvent = event;
 
   let nome = '', telefone = '', email = '', vars = {};
+  let bruto = null;   // o objeto como a Nuvemshop mandou, para o diagnóstico
 
   if (event.startsWith('order/')) {
     const order = await apiFetch(acc, '/orders/' + resourceId);
+    bruto = order;
     nome = order.contact_name || (order.customer && order.customer.name) || '';
     telefone = telefoneDe(order);
     email = order.contact_email || (order.customer && order.customer.email) || '';
@@ -419,6 +440,7 @@ async function handleEvent(acc, event, resourceId, broadcast) {
     if (!vars.cliente_telefone) vars.cliente_telefone = telefone;
   } else if (event.startsWith('customer/')) {
     const cli = await apiFetch(acc, '/customers/' + resourceId);
+    bruto = cli;
     nome = cli.name || '';
     telefone = telefoneDe(cli);
     email = cli.email || '';
@@ -467,7 +489,12 @@ async function handleEvent(acc, event, resourceId, broadcast) {
     : (!waId ? 'o cadastro na loja veio sem telefone' : ''));
   store.logEvent({
     type: 'nuvemshop_event', accountId: acc.id, event,
-    matched: !!contact, phone: waId || null, motivo, cliente: nome || '', email: email || ''
+    matched: !!contact, phone: waId || null, motivo, cliente: nome || '', email: email || '',
+    // SÓ QUANDO FALTOU. Quando o telefone veio, isto seria ruído em toda linha
+    // do log. Quando não veio, é a única forma de saber se a Nuvemshop mandou
+    // o número em algum lugar que não estamos lendo — ou se ela não mandou
+    // nada, e o problema é o cadastro da loja não pedir telefone.
+    campos: waId ? undefined : ondeProcurei(bruto)
   });
   if (broadcast) broadcast('nuvemshop', { accountId: acc.id, event });
   return { contact, nome, telefone: waId, email, vars };
