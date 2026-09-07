@@ -137,6 +137,27 @@ function conta(email) {
   ok(limits.assinaturaVale(venc) === true, 'com a cobrança desligada, nada é bloqueado');
   data.platform.billing.enforce = true;
 
+  console.log('\n=== 3b. O que é contratado À PARTE não entra no plano ===');
+  // SMS e números virtuais saem da CARTEIRA: cada envio e cada aluguel é
+  // debitado do saldo que o cliente já pôs. Trancá-los pelo plano cobraria
+  // duas vezes pela mesma coisa, e barrá-los por mensalidade vencida seria
+  // ficar com dinheiro que a pessoa já pagou.
+  ok(!db.LIMIT_KEYS.includes('sms'),
+     'SMS não é limite de plano — é debitado da carteira, envio a envio');
+  const smsSrc = fs.readFileSync(path.join(R, 'src', 'sms.js'), 'utf8');
+  ok(/spendWallet\(acc, total/.test(smsSrc), 'e o débito na carteira está lá, provando o modelo');
+  ok(!/assinaturaVale/.test(smsSrc),
+     'a mensalidade vencida NÃO barra o SMS: o saldo já é do cliente');
+  const numSrc = fs.readFileSync(path.join(R, 'src', 'numaluguel.js'), 'utf8');
+  ok(/spendWallet/.test(numSrc), 'número virtual segue a mesma regra: sai da carteira');
+  // A automação, essa é do plano: o motor de fluxos é recurso limitado
+  // (LIMIT_KEYS tem `flows`), então ele para junto com a assinatura — mesmo
+  // que tenha uma etapa de SMS dentro. O envio manual de SMS continua.
+  const apiSrc = fs.readFileSync(path.join(R, 'src', 'api.js'), 'utf8');
+  const rotaSms = apiSrc.slice(apiSrc.indexOf("router.post('/sms/send'"), apiSrc.indexOf("router.post('/sms/send'") + 160);
+  ok(!/requireActive/.test(rotaSms),
+     'e a tela de SMS continua enviando com a mensalidade vencida', rotaSms.split('\n')[0].trim().slice(0, 90));
+
   console.log('\n=== 4. A conta do dono não é barrada por nada ===');
   const dono = conta('dono@teste.local');
   dono.unlimited = true;

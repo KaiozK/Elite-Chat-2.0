@@ -248,12 +248,17 @@ async function enviar(acc, { to, text, contato = null, origem = 'manual', por = 
   if (!configured()) throw erro('O envio de SMS não está disponível na plataforma');
   const bloqueio = limits.checkFeature(acc, 'sms');
   if (bloqueio) throw erro(bloqueio, 402);
-  // SMS custa dinheiro de verdade no provedor, e quem paga é a plataforma.
-  // Sem esta linha, a conta vencida seguia mandando — inclusive por automação,
-  // que nem passa por rota nenhuma.
-  if (!limits.assinaturaVale(acc)) {
-    throw erro('Assinatura expirada. Renove em Assinatura & Carteira para voltar a enviar SMS.', 402);
-  }
+  // A ASSINATURA VENCIDA NÃO BARRA O SMS, e isto é decisão, não esquecimento.
+  //
+  // SMS é contratado à parte: cada envio é debitado da CARTEIRA do cliente
+  // (ver `cobrar`, logo acima), e sem saldo ele não sai de jeito nenhum. Esse
+  // saldo é dinheiro que a pessoa já pôs. Bloquear o envio porque a mensalidade
+  // venceu seria ficar com o que ela pagou — e o custo do provedor já está
+  // coberto pelo próprio débito, então não há prejuízo a evitar.
+  //
+  // É a mesma razão pela qual `SEMPRE_LIBERADOS` inclui o SMS em limits.js:
+  // trancá-lo pelo plano cobraria duas vezes pela mesma coisa. Vale igual para
+  // os números virtuais, que também saem da carteira (src/numaluguel.js).
 
   const corpo = String(text || '').trim();
   if (!corpo) throw erro('Escreva a mensagem');
