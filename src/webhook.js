@@ -122,6 +122,32 @@ function processEvent(body, broadcast) {
       const v = change.value || {};
       const phoneNumberId = (v.metadata && v.metadata.phone_number_id) || null;
       const conta = phoneNumberId ? db.findAccountByPhoneId(phoneNumberId) : null;
+
+      // O MESMO NÚMERO EM DUAS CONTAS — o defeito que não dá erro.
+      //
+      // Quando isso acontece, a mensagem recebida entra sempre na PRIMEIRA
+      // conta da lista, enquanto quem está na segunda envia normalmente (a
+      // saída é gravada na conta de quem clicou) e nunca vê resposta nenhuma.
+      // A janela de 24h nem abre, porque para aquela conta o cliente de fato
+      // nunca falou. Do lado de fora parece banco perdendo mensagem.
+      //
+      // Não dá para adivinhar qual das duas é a certa — as duas conectaram o
+      // mesmo número. O que dá, e é o que faltava, é DIZER que está acontecendo,
+      // com os nomes das contas, para alguém desconectar a errada.
+      if (phoneNumberId) {
+        const donos = db.accountsByPhoneId(phoneNumberId);
+        if (donos.length > 1) {
+          store.logEvent({
+            type: 'numero_duplicado', phoneNumberId, accountId: conta ? conta.id : null,
+            explicacao: 'O MESMO número está conectado em ' + donos.length + ' contas: ' +
+              donos.map(a => a.name).join(', ') + '. As mensagens recebidas entram só na primeira (' +
+              donos[0].name + '); as outras enviam mas nunca recebem, e a janela de 24h não abre nelas. ' +
+              'Desconecte o número das contas que não devem usá-lo, em Configurações → Conexão & API.',
+            contas: donos.map(a => ({ id: a.id, nome: a.name, email: a.email })),
+            recebendo: donos[0].name
+          });
+        }
+      }
       // O phoneNumberId identifica em QUAL conexão (canal) a mensagem entrou.
       // Trabalhamos no contexto desse canal para que a conversa seja gravada
       // no canal certo e não se misture com a de outro número.

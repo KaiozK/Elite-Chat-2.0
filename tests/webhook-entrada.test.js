@@ -142,6 +142,43 @@ async function entregar(c) {
   ok(/Banco de dados:/.test(front) && /MySQL \(externo\)/.test(front),
      'ao lado do banco em uso — as duas respostas na mesma linha');
 
+  console.log('\n=== 6. O MESMO número conectado em DUAS contas ===');
+  // O defeito mais confuso do produto, porque nada dá erro:
+  //   · a mensagem RECEBIDA entra só na primeira conta da lista;
+  //   · a mensagem ENVIADA é gravada na conta de quem clicou em enviar;
+  //   · quem está na segunda conta vê as próprias mensagens saírem, não vê
+  //     resposta nenhuma chegar, e a janela de 24h NUNCA abre — porque, para
+  //     aquela conta, o cliente de fato nunca falou.
+  // Do lado de fora parece banco de dados perdendo mensagem. É roteamento.
+  const gemea = db.newAccount({ name: 'Vídeo', email: 'video@teste.local', pass: '123456' });
+  gemea.channels = [{ id: 'ch_v', label: 'WhatsApp principal',
+    wa: { connected: true, phoneNumberId: acc.channels[0].wa.phoneNumberId,
+          displayPhoneNumber: '5511918010600', token: 'x' } }];
+  gemea.wa = gemea.channels[0].wa;
+  data.accounts.push(gemea);
+
+  const donos = db.accountsByPhoneId(acc.channels[0].wa.phoneNumberId);
+  ok(donos.length === 2, 'o sistema enxerga as DUAS contas com o mesmo número', donos.map(a => a.name).join(', '));
+
+  const antesGemea = gemea.messages.length;
+  await entregar(corpo(acc.channels[0].wa.phoneNumberId, '5511918010600', 'Tudo bem?'));
+  ok(gemea.messages.length === antesGemea,
+     'a mensagem entra numa conta só — a segunda continua sem receber nada');
+  const aviso = db.get().webhookLog.find(x => x.type === 'numero_duplicado');
+  ok(!!aviso, 'MAS agora o sistema DIZ que isso está acontecendo');
+  ok(aviso && /Administrador, Vídeo/.test(aviso.explicacao),
+     'nomeando as duas contas, para saber qual desconectar');
+  ok(aviso && /janela de 24h não abre/.test(aviso.explicacao),
+     'e explicando o sintoma, que é o que ninguém liga à causa');
+
+  // E a porta de entrada fecha: conectar o mesmo número numa segunda conta
+  // passa a ser recusado, que é o único momento em que dá para escolher.
+  const apiSrc2 = fs.readFileSync(path.join(R, 'src', 'api.js'), 'utf8');
+  ok(/const jaTem = db\.accountsByPhoneId\(phone\.id\)\.filter\(a => a\.id !== acc\.id\)/.test(apiSrc2),
+     'a conexão confere se o número já está em outra conta');
+  ok(/Este número já está conectado na conta/.test(apiSrc2),
+     'e recusa dizendo em qual, em vez de deixar as duas quebradas');
+
   const antesT = JSON.parse(original || '{}');
   for (const k of ['accounts', 'revenue', 'plans']) {
     if (Array.isArray(data[k])) data[k].length = 0;

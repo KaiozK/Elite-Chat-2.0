@@ -972,6 +972,25 @@ function findAccountByPhoneId(phoneNumberId) {
   return get().accounts.find(a => (a.channels || []).some(c => c.wa && c.wa.phoneNumberId === phoneNumberId));
 }
 
+// TODAS as contas que usam este número — e não só a primeira.
+//
+// `findAccountByPhoneId` devolve a PRIMEIRA que encontra, e isso está certo
+// para rotear. O problema é quando existe mais de uma: o mesmo WhatsApp
+// conectado em duas contas produz o defeito mais confuso do produto, porque
+// nada dá erro.
+//
+//   · a mensagem RECEBIDA entra sempre na primeira conta da lista;
+//   · a mensagem ENVIADA é gravada na conta de quem clicou em enviar;
+//   · quem estiver na segunda conta vê as próprias mensagens saírem, não vê
+//     nenhuma resposta chegar, e a janela de 24h nunca abre — porque, para
+//     aquela conta, o cliente realmente nunca falou.
+//
+// Do lado de fora parece banco de dados perdendo mensagem. É roteamento.
+function accountsByPhoneId(phoneNumberId) {
+  if (!phoneNumberId) return [];
+  return get().accounts.filter(a => (a.channels || []).some(c => c.wa && c.wa.phoneNumberId === phoneNumberId));
+}
+
 function findAccountByRefCode(code) {
   const c = String(code || '').toUpperCase().trim();
   if (!c) return null;
@@ -1017,4 +1036,4 @@ process.on('exit', () => { try { if (db) flush(); } catch {} });
 
 module.exports = {
   loadAsync, close, storage,
-  hashPassword, verifyPassword, needsRehash, get, save, load, flush, genId, hash, newAccount, emptyWa, emptyBilling, defaultSurvey, findAccount, findAccountByEmail, findAccountByPhoneId, findAccountByRefCode, findAdminAccount, findLinkBySlug, findWebhookByToken, DEFAULT_STAGES, emptyWallet, attachTplAlias, FEATURE_KEYS, defaultFeatures, normFeatures, LIMIT_KEYS, defaultLimits, normLimits, emptyChannel, chanCtx, findChannel, channelByPhoneId, ensureAccountShape };
+  hashPassword, verifyPassword, needsRehash, get, save, load, flush, genId, hash, newAccount, emptyWa, emptyBilling, defaultSurvey, findAccount, findAccountByEmail, findAccountByPhoneId, accountsByPhoneId, findAccountByRefCode, findAdminAccount, findLinkBySlug, findWebhookByToken, DEFAULT_STAGES, emptyWallet, attachTplAlias, FEATURE_KEYS, defaultFeatures, normFeatures, LIMIT_KEYS, defaultLimits, normLimits, emptyChannel, chanCtx, findChannel, channelByPhoneId, ensureAccountShape };

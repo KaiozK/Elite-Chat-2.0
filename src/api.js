@@ -1326,6 +1326,25 @@ module.exports = function (broadcast, clients) {
         e.status = 422;
         throw e;
       }
+      // UM NÚMERO, UMA CONTA. Conectar o mesmo WhatsApp em duas contas não dá
+      // erro em lugar nenhum e quebra de um jeito que ninguém liga aos pontos:
+      // a mensagem recebida entra só na primeira conta da lista, a segunda
+      // envia normalmente e nunca recebe nada, e a janela de 24h não abre nela.
+      // Parece banco de dados perdendo mensagem, e é roteamento.
+      //
+      // Barrar aqui, na conexão, é o único momento em que dá para escolher:
+      // depois, com as duas conectadas, não há como adivinhar qual é a certa.
+      const jaTem = db.accountsByPhoneId(phone.id).filter(a => a.id !== acc.id);
+      if (jaTem.length) {
+        const e = new Error(
+          'Este número já está conectado na conta "' + jaTem[0].name + '". ' +
+          'O mesmo WhatsApp não pode servir duas contas: as mensagens recebidas iriam ' +
+          'para uma só, e a outra ficaria sem receber nada. Desconecte-o lá antes de ' +
+          'conectar aqui.');
+        e.status = 409;
+        throw e;
+      }
+
       w.phoneNumberId = phone.id;
       w.displayPhoneNumber = phone.display_phone_number || '';
       w.verifiedName = phone.verified_name || '';
