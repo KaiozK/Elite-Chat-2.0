@@ -28,6 +28,10 @@ const segmentos = require('./segmentos');
 const mailer = require('./mailer');
 const account = require('./account');
 
+// Id do PROCESSO. Sorteado uma vez, na partida: dois pedidos que recebem ids
+// diferentes vieram de servidores diferentes.
+const INSTANCIA = require('crypto').randomBytes(3).toString('hex');
+
 module.exports = function (broadcast, clients) {
   const router = express.Router();
 
@@ -2261,10 +2265,29 @@ module.exports = function (broadcast, clients) {
   // visão geral — e ela é para olhar, não para responder.
   function chanConversa(req) {
     const raw = req.get('x-channel') || req.query.ch || '';
-    const dflt = ((req.acc.channels || [])[0] || {}).id || '';
+    const canais = req.acc.channels || [];
+    const dflt = (canais[0] || {}).id || '';
     if (raw === 'all') return { id: 'all', tudo: true, f: () => true, dflt };
-    const id = (raw && (req.acc.channels || []).some(c => c.id === raw)) ? raw : (req.chId || dflt);
-    return { id, tudo: false, dflt, f: o => (o.chId || dflt) === id };
+    const id = (raw && canais.some(c => c.id === raw)) ? raw : (req.chId || dflt);
+
+    // CONTATO ÓRFÃO: CARIMBADO NUM CANAL QUE NÃO EXISTE MAIS.
+    //
+    // O filtro era `(o.chId || dflt) === id`. Ele cobre o contato SEM canal —
+    // cai no padrão — mas não cobre o contato com um canal que sumiu. E o id do
+    // canal muda mais do que parece: reconectar o WhatsApp, trocar de número,
+    // recriar a conexão. Quando isso acontece, TODA a conversa anterior fica
+    // apontando para um canal que não está mais na lista, e desaparece da tela
+    // sem nenhum aviso — o dado continua no banco, invisível.
+    //
+    // É o pior tipo de sumiço: nada quebra, nada avisa, e a pessoa conclui que
+    // perdeu os clientes. Aqui o órfão volta para o canal padrão, que é onde
+    // ele estaria se tivesse chegado hoje.
+    const vivos = new Set(canais.map(c => c.id));
+    const canalDe = o => {
+      const c = o.chId || dflt;
+      return vivos.has(c) ? c : dflt;
+    };
+    return { id, tudo: false, dflt, f: o => canalDe(o) === id };
   }
   // Telas de LISTA (contatos, funil) usam o parâmetro `?ch=` explícito da tela.
   // Sem parâmetro, mostram TUDO: é o comportamento pedido, "se não há filtro,
@@ -5494,7 +5517,22 @@ module.exports = function (broadcast, clients) {
       // O admin precisa saber ONDE o banco está gravando. Em host de container
       // o disco volta ao estado da imagem a cada restart, e o painel é o único
       // lugar onde ele vai ver isso antes de perder os dados.
-      armazenamento: { motor: db.storage.nome, efemero: db.storage.efemero() },
+      // O MOTOR, e QUEM está respondendo.
+      //
+      // `instancia` é um id sorteado uma vez por processo. Ele responde a
+      // pergunta que nenhum log responde: "existe mais de um servidor
+      // atendendo?". Com o banco em ARQUIVO, cada instância tem o seu próprio
+      // db.json — o que se grava numa não existe na outra. O sintoma é
+      // exatamente o que parece defeito aleatório: o contato é criado (a
+      // notificação sai), a lista vem vazia, o link rastreável some depois de
+      // salvo. Nada disso é bug de tela; são dois bancos.
+      //
+      // Recarregando o painel algumas vezes: se este id MUDAR, há mais de uma
+      // instância — e com o motor `file` isso é perda de dado garantida.
+      armazenamento: {
+        motor: db.storage.nome, efemero: db.storage.efemero(),
+        instancia: INSTANCIA, host: require('os').hostname()
+      },
       accounts: accs.map(a => ({
         id: a.id, name: a.name, email: a.email, createdAt: a.createdAt,
         waConnected: !!(a.wa && a.wa.connected),

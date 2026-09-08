@@ -108,6 +108,40 @@ async function entregar(c) {
      'ao lado do telefone que está cadastrado aqui — é a comparação que resolve',
      perdida && (perdida.cadastrados[0] || {}).telefone);
 
+  console.log('\n=== 4. O contato carimbado num canal que não existe mais ===');
+  // O id do canal muda mais do que parece: reconectar o WhatsApp, trocar de
+  // número, recriar a conexão. Quando muda, TODA a conversa anterior fica
+  // apontando para um canal fora da lista e some da tela — o dado continua no
+  // banco, invisível. É o pior tipo de sumiço: nada quebra, nada avisa, e a
+  // pessoa conclui que perdeu os clientes.
+  const api = fs.readFileSync(path.join(R, 'src', 'api.js'), 'utf8');
+  const filtro = api.slice(api.indexOf('function chanConversa'), api.indexOf('function listScope'));
+  ok(/const vivos = new Set\(canais\.map\(c => c\.id\)\)/.test(filtro),
+     'o filtro sabe quais canais existem de verdade');
+  ok(/return vivos\.has\(c\) \? c : dflt;/.test(filtro),
+     'e o contato órfão volta para o canal padrão, em vez de sumir');
+  ok(!/f: o => \(o\.chId \|\| dflt\) === id/.test(filtro),
+     'o filtro antigo, que escondia o órfão para sempre, não está mais lá');
+
+  console.log('\n=== 5. Dá para SABER se há mais de um servidor no ar ===');
+  // Com o banco em ARQUIVO, cada instância tem o seu próprio db.json: o que se
+  // grava numa não existe na outra. O sintoma parece defeito aleatório — o
+  // contato é criado (a notificação sai), a lista vem vazia, o link rastreável
+  // some depois de salvo. Nada disso é bug de tela; são dois bancos.
+  //
+  // Nenhum log responde "quantos servidores estão atendendo?". Um id sorteado
+  // por processo responde: recarregue e veja se ele muda.
+  const apiSrc = fs.readFileSync(path.join(R, 'src', 'api.js'), 'utf8');
+  ok(/const INSTANCIA = require\('crypto'\)\.randomBytes\(3\)\.toString\('hex'\)/.test(apiSrc),
+     'cada processo sorteia um id na partida');
+  ok(/instancia: INSTANCIA, host: require\('os'\)\.hostname\(\)/.test(apiSrc),
+     'e ele vai junto com o motor do banco para o painel');
+  const front = fs.readFileSync(path.join(R, 'public', 'app', 'app.js'), 'utf8');
+  ok(/se este código mudar/.test(front),
+     'com a instrução do que fazer com ele, na própria tela');
+  ok(/Banco de dados:/.test(front) && /MySQL \(externo\)/.test(front),
+     'ao lado do banco em uso — as duas respostas na mesma linha');
+
   const antesT = JSON.parse(original || '{}');
   for (const k of ['accounts', 'revenue', 'plans']) {
     if (Array.isArray(data[k])) data[k].length = 0;

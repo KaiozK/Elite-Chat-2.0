@@ -9812,11 +9812,14 @@ function armazenamentoAviso(a) {
       <span class="muted" style="font-size:12.5px">Banco de dados:
         <b style="color:var(--texto)">${a.motor === 'mysql' ? 'MySQL (externo)' : 'arquivo local (data/db.json)'}</b>
         ${a.motor === 'mysql' ? '· os dados sobrevivem a deploy e restart'
-                              : '· este host não apaga o disco, então o arquivo serve'}</span>
+                              : '· este host não apaga o disco, então o arquivo serve'}
+        · servidor <code>${esc(a.instancia || '?')}</code>
+        <b style="color:var(--texto)">— recarregue esta página algumas vezes: se este código mudar,
+        há mais de um servidor no ar</b></span>
     </div>`;
   }
   return `<div class="danger-box" style="margin-bottom:16px">
-    <b>${ico('alert', 14)} Os dados se perdem a cada restart. Banco em uso: ${esc(a.motor || 'file')}.</b>
+    <b>${ico('alert', 14)} Os dados se perdem a cada restart. Banco em uso: ${esc(a.motor || 'file')} · servidor ${esc(a.instancia || '?')}.</b>
     Este servidor recria o disco a cada deploy e a cada reinício, e o banco está
     gravando em arquivo (<code>data/db.json</code>). Tudo que foi cadastrado
     volta ao zero, inclusive a senha do administrador.
