@@ -179,6 +179,25 @@ async function entregar(c) {
   ok(/Este número já está conectado na conta/.test(apiSrc2),
      'e recusa dizendo em qual, em vez de deixar as duas quebradas');
 
+  console.log('\n=== 7. Canal DESCONECTADO não rouba a mensagem ===');
+  // O caso que faz a pessoa desistir: ela descobre a duplicidade, desconecta o
+  // número da conta errada — e nada muda, porque o canal desconectado ainda
+  // guarda o `phoneNumberId` e continua roteando para lá. Ela conclui que o
+  // sistema perde mensagem.
+  //
+  // Mensagem que chega é conversa viva: pertence a quem está CONECTADO.
+  acc.channels[0].wa.connected = false;              // a primeira vira resíduo
+  gemea.channels[0].wa.connected = true;             // a segunda é a de verdade
+  const antesGemea2 = gemea.messages.filter(m => m.direction === 'in').length;
+  const antesAcc = acc.messages.filter(m => m.direction === 'in').length;
+  await entregar(corpo(acc.channels[0].wa.phoneNumberId, '5511918010600', 'e agora?'));
+  ok(acc.messages.filter(m => m.direction === 'in').length === antesAcc,
+     'a conta desconectada NÃO recebe mais');
+  ok(gemea.messages.filter(m => m.direction === 'in').length === antesGemea2 + 1,
+     'a mensagem vai para a conta conectada, mesmo ela vindo depois na lista');
+  const cg = gemea.contacts.find(c => c.waId === '5511988887777');
+  ok(!!cg && !!cg.lastInboundAt, 'e a janela de 24h abre nela — que era o sintoma na tela');
+
   const antesT = JSON.parse(original || '{}');
   for (const k of ['accounts', 'revenue', 'plans']) {
     if (Array.isArray(data[k])) data[k].length = 0;

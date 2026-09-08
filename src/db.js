@@ -318,7 +318,11 @@ function findChannel(acc, chId) {
 // conexão a mensagem chegou.
 function channelByPhoneId(acc, phoneNumberId) {
   if (!phoneNumberId) return null;
-  return ((acc && acc.channels) || []).find(c => c.wa && c.wa.phoneNumberId === phoneNumberId) || null;
+  // Mesma regra de `findAccountByPhoneId`: dentro da conta, o canal conectado
+  // vem antes do resíduo de um canal desconectado com o mesmo id.
+  const lista = (acc && acc.channels) || [];
+  const bate = c => c.wa && c.wa.phoneNumberId === phoneNumberId;
+  return lista.find(c => bate(c) && c.wa.connected) || lista.find(bate) || null;
 }
 
 // Estado da conexão WhatsApp de cada conta — preenchido pelo Embedded Signup.
@@ -967,9 +971,24 @@ function findAccount(id) { return get().accounts.find(a => a.id === id); }
 function findAccountByEmail(email) { return get().accounts.find(a => a.email === String(email || '').toLowerCase().trim()); }
 // Procura em TODOS os canais da conta — o webhook chega pelo phoneNumberId e é
 // ele que diz em qual conexão (canal) a mensagem entrou.
+// CANAL CONECTADO GANHA DE CANAL DESCONECTADO.
+//
+// Um canal desconectado que ainda guarda o `phoneNumberId` continuava
+// capturando as mensagens que chegam — e capturava PRIMEIRO, se a conta dele
+// viesse antes na lista. O efeito é o pior possível: a pessoa desconecta o
+// número da conta errada justamente para resolver o problema, e nada muda,
+// porque o resíduo continua roteando para lá.
+//
+// Mensagem que chega é conversa viva; ela pertence a quem está conectado.
+// Entre dois candidatos, o conectado vence sempre. Se nenhum estiver
+// conectado, vale o primeiro — melhor guardar a mensagem numa conta que já
+// teve aquele número do que perdê-la.
 function findAccountByPhoneId(phoneNumberId) {
   if (!phoneNumberId) return undefined;
-  return get().accounts.find(a => (a.channels || []).some(c => c.wa && c.wa.phoneNumberId === phoneNumberId));
+  const bate = c => c.wa && c.wa.phoneNumberId === phoneNumberId;
+  const contas = get().accounts;
+  return contas.find(a => (a.channels || []).some(c => bate(c) && c.wa.connected))
+      || contas.find(a => (a.channels || []).some(bate));
 }
 
 // TODAS as contas que usam este número — e não só a primeira.
