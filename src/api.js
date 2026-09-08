@@ -5025,6 +5025,11 @@ module.exports = function (broadcast, clients) {
       pending: req.acc.wallet.pending,
       deposito: { ...db.get().platform.billing.deposit },
       autoTopup: topup.publico(req.acc),
+      // O PIX AUTOMÁTICO SÓ EXISTE COM A WOOVI. Com a Simplify como adquirente
+      // ativo, a recorrência não existe e a recarga é um Pix comum, avulso. A
+      // tela precisa saber disso para não oferecer o que não vai funcionar —
+      // era o que acontecia: a opção aparecia, e o erro só vinha ao salvar.
+      pixAutomatico: require('./assinaturas').disponivel(),
       // a tela precisa saber se dá para oferecer cartão e se há um salvo
       methods: require('./saasbilling').methods(),
       savedCard: {

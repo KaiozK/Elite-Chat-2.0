@@ -2287,9 +2287,18 @@ async function refreshWallet() {
 // um número quebrado, e a faixa vai de R$ 10 a R$ 2.000 para atender tanto o
 // teste inicial quanto quem opera em volume.
 //
-// Dois meios, com naturezas diferentes: o Pix espera o pagamento cair (QR na
-// própria janela) e o CARTÃO credita na hora, porque o adquirente responde
-// síncrono. Só aparece o que o admin habilitou.
+// UM MEIO SÓ: PIX. A recarga da carteira é Pix, e ponto.
+//
+// O cartão saiu daqui de propósito. Recarregar carteira no cartão é pagar taxa
+// de adquirente para pôr dinheiro num saldo que depois paga a própria
+// plataforma — o cliente paga duas vezes pelo mesmo dinheiro, e o Pix cai em
+// segundos do mesmo jeito.
+//
+// O que muda conforme o adquirente ATIVO é só a recorrência:
+//   • Woovi     → além do Pix avulso, oferece o PIX AUTOMÁTICO, autorizado uma
+//                 vez no banco, que é o que faz a recarga automática existir;
+//   • Simplify  → Pix avulso apenas. Não há recorrência, então a recarga
+//                 automática nem aparece, em vez de aparecer e falhar ao salvar.
 // ---------------------------------------------------------------------------
 const DEP_ATALHOS = [1000, 2000, 3000, 5000, 10000, 20000, 30000, 50000, 100000, 200000];
 const DEP_PADRAO = 5000;   // R$ 50 já vem preenchido
@@ -2314,22 +2323,16 @@ function depositModal() {
       ${atalhos.map(v => `<button type="button" class="dep-chip" onclick="depSet(${v})">${fmtBRL(v)}</button>`).join('')}
     </div>
 
-    ${meios.credit ? `
-    <label style="margin-bottom:-3px">Como pagar</label>
+    <!-- Um meio só, então não há o que escolher: a linha diz COMO vai ser
+         pago, em vez de um rádio marcado sozinho. -->
     <div class="pay-methods compact">
-      <label class="pay-method">
-        <input type="radio" name="depm" value="pix" checked onchange="depMeio()">
+      <label class="pay-method on" style="cursor:default">
         <span class="pay-ic">${ico('pix', 17)}</span>
         <span><b>Pix</b><em>QR na tela, cai em segundos</em></span>
       </label>
-      <label class="pay-method">
-        <input type="radio" name="depm" value="card" onchange="depMeio()">
-        <span class="pay-ic">${ico('card', 17)}</span>
-        <span><b>Cartão de crédito</b><em>${salvo.reusable ? esc((salvo.brand || 'Cartão') + ' •••• ' + salvo.last4) + ', em um clique' : 'Crédito na hora'}</em></span>
-      </label>
-    </div>` : ''}
+    </div>
 
-    ${autoBoxHtml(auto, meios, salvo, min)}
+    ${autoBoxHtml(auto, min)}
 
     <div class="row">
       <button class="btn no-grow" onclick="closeModal()">Cancelar</button>
@@ -2344,19 +2347,7 @@ function depSet(cents) {
   $$('.dep-chip').forEach(b => b.classList.toggle('on', b.textContent.trim() === fmtBRL(cents)));
 }
 
-function depMeioEscolhido() {
-  const r = document.querySelector('input[name="depm"]:checked');
-  return r ? r.value : 'pix';
-}
 
-// O rótulo do botão muda com o meio: "Gerar Pix" e "Pagar no cartão" descrevem
-// ações bem diferentes, e o cliente precisa saber qual vai acontecer.
-function depMeio() {
-  const b = $('#dep-go'); if (!b) return;
-  b.innerHTML = depMeioEscolhido() === 'card'
-    ? ico('card', 14) + ' Pagar no cartão'
-    : ico('pix', 14) + ' Gerar Pix';
-}
 
 // ---------------------------------------------------------------------------
 // RECARGA AUTOMÁTICA
@@ -2366,7 +2357,11 @@ function depMeio() {
 // Woovi (Pix Automático), que o cliente autoriza uma vez no banco; no cartão
 // pelo cartão salvo da fatura, cobrado como assinatura.
 // ---------------------------------------------------------------------------
-function autoBoxHtml(auto, meios, salvo, min) {
+function autoBoxHtml(auto, min) {
+  // SEM PIX AUTOMÁTICO, NÃO HÁ RECARGA AUTOMÁTICA. Com a Simplify ativa a
+  // recorrência não existe: mostrar a caixa seria oferecer uma coisa que só
+  // falha na hora de salvar, e a pessoa fica achando que errou alguma coisa.
+  if (!WALLET.pixAutomatico) return '';
   const on = !!auto.enabled;
   return `
     <div class="auto-topup ${on ? 'on' : ''}" id="auto-box">
@@ -2382,20 +2377,11 @@ function autoBoxHtml(auto, meios, salvo, min) {
           <label style="flex:1">Recarregar
             <input id="auto-amt" inputmode="decimal" value="${((auto.amount || 5000) / 100).toFixed(2)}"></label>
         </div>
-        <label style="margin-top:8px;margin-bottom:6px">Cobrar em</label>
+        <!-- Um meio só: não há "cobrar em", há como a cobrança acontece. -->
         <div class="pay-methods compact">
-          <label class="pay-method">
-            <input type="radio" name="autom" value="pix" ${auto.method !== 'card' ? 'checked' : ''}>
+          <label class="pay-method on" style="cursor:default;margin-top:8px">
             <span class="pay-ic">${ico('pix', 17)}</span>
-            <span><b>Pix Automático</b><em>Você autoriza uma vez no seu banco e a cobrança passa a ser automática</em></span>
-          </label>
-          <label class="pay-method ${meios.credit && salvo.reusable ? '' : 'off'}">
-            <input type="radio" name="autom" value="card" ${auto.method === 'card' ? 'checked' : ''}
-                   ${meios.credit && salvo.reusable ? '' : 'disabled'}>
-            <span class="pay-ic">${ico('card', 17)}</span>
-            <span><b>Cartão de crédito</b><em>${meios.credit && salvo.reusable
-              ? esc((salvo.brand || 'Cartão') + ' •••• ' + salvo.last4) + ', cobrado como assinatura'
-              : 'Pague uma vez no cartão para salvá-lo e liberar esta opção'}</em></span>
+            <span><b>Pix Automático</b><em>Você autoriza uma vez no seu banco e a recarga passa a acontecer sozinha</em></span>
           </label>
         </div>
         ${auto.lastError ? `<p class="hint" style="color:var(--red);text-align:left;margin-top:8px">${esc(auto.lastError)}</p>` : ''}
@@ -2423,7 +2409,7 @@ async function autoSave(btn, desligando) {
     ? { enabled: false }
     : {
       enabled: true,
-      method: (document.querySelector('input[name="autom"]:checked') || {}).value || 'pix',
+      method: 'pix',            // é o único meio de recarga que existe
       threshold: centavos($('#auto-thr').value),
       amount: centavos($('#auto-amt').value)
     };
@@ -2453,16 +2439,8 @@ async function doDeposit(btn) {
     return toast(`Depósito máximo: ${fmtBRL(WALLET.deposito.max)}`, 'error');
   }
 
-  const meio = depMeioEscolhido();
   const txt = btn.innerHTML;
   btn.disabled = true;
-
-  // CARTÃO: sem cartão salvo, o formulário do cartão assume daqui.
-  if (meio === 'card') {
-    btn.disabled = false;
-    closeModal();
-    return openCardPay('topup', 'wallet', cents, 1);
-  }
 
   try {
     const r = await api('/billing/topup', { body: { amount: bruto } });

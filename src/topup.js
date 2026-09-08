@@ -94,7 +94,15 @@ async function configurarAuto(acc, cfg, broadcast) {
     return { autoTopup: publico(acc) };
   }
 
-  const metodo = cfg.method === 'card' ? 'card' : 'pix';
+  // A RECARGA DA CARTEIRA É PIX, E SÓ. Recarregar no cartão é pagar taxa de
+  // adquirente para pôr dinheiro num saldo que depois paga a própria
+  // plataforma — o cliente paga duas vezes pelo mesmo dinheiro. A tela já não
+  // oferece; aqui a porta também fecha, senão um pedido montado à mão passa.
+  //
+  // Quem JÁ tinha recarga no cartão configurada continua sendo cobrado por
+  // `checarSaldo` até trocar ou desligar: derrubar em silêncio uma cobrança
+  // que a pessoa autorizou é pior do que mantê-la funcionando.
+  const metodo = 'pix';
   const valor = validarValor(cfg.amount);
   const piso = Math.max(0, Math.round(Number(cfg.threshold) || 0));
   if (piso >= valor) throw erro('O piso precisa ser menor que o valor da recarga, senão ela se repetiria sem parar');
