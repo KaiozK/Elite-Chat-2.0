@@ -9798,9 +9798,25 @@ async function renderAdmin() {
 // motivo de o app "esquecer" tudo, senha do admin inclusive. Fica no topo do
 // painel porque ninguém lê o log do servidor.
 function armazenamentoAviso(a) {
-  if (!a || !a.efemero) return '';
+  if (!a) return '';
+  // DIZER SEMPRE ONDE O BANCO ESTÁ, e não só quando está errado.
+  //
+  // Antes, com o MySQL ligado, esta função não desenhava nada — e "nada" não é
+  // resposta para quem está perguntando "meu banco está mesmo na nuvem ou é
+  // local?". A pessoa fica olhando uma tela silenciosa e concluindo pelo
+  // sintoma, que é o pior jeito de diagnosticar. Uma linha discreta responde a
+  // pergunta antes de ela virar dúvida.
+  if (!a.efemero) {
+    return `<div class="card" style="margin-bottom:16px;display:flex;align-items:center;gap:10px;padding:10px 14px">
+      ${ico(a.motor === 'mysql' ? 'shield' : 'save', 15)}
+      <span class="muted" style="font-size:12.5px">Banco de dados:
+        <b style="color:var(--texto)">${a.motor === 'mysql' ? 'MySQL (externo)' : 'arquivo local (data/db.json)'}</b>
+        ${a.motor === 'mysql' ? '· os dados sobrevivem a deploy e restart'
+                              : '· este host não apaga o disco, então o arquivo serve'}</span>
+    </div>`;
+  }
   return `<div class="danger-box" style="margin-bottom:16px">
-    <b>${ico('alert', 14)} Os dados se perdem a cada restart.</b>
+    <b>${ico('alert', 14)} Os dados se perdem a cada restart. Banco em uso: ${esc(a.motor || 'file')}.</b>
     Este servidor recria o disco a cada deploy e a cada reinício, e o banco está
     gravando em arquivo (<code>data/db.json</code>). Tudo que foi cadastrado
     volta ao zero, inclusive a senha do administrador.

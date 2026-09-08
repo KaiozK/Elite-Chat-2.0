@@ -106,6 +106,11 @@ module.exports = function (broadcast) {
   return router;
 };
 
+// Só os dígitos: a Meta manda o telefone em formatos diferentes conforme o
+// campo ("5511999998888", "+55 11 99999-8888"), e comparar texto com texto
+// falharia por causa de um espaço.
+const so = v => String(v || '').replace(/\D/g, '');
+
 function processEvent(body, broadcast) {
   if (!body || body.object !== 'whatsapp_business_account') {
     store.logEvent({ type: 'webhook', object: body && body.object, body });
@@ -140,6 +145,50 @@ function processEvent(body, broadcast) {
       if (change.field !== 'messages') continue;
 
       if (!acc) {
+        // ANTES DE DESISTIR: O NÚMERO BATE, MESMO COM OUTRO ID?
+        //
+        // O `phone_number_id` da Meta NÃO é estável. Ele muda quando o número é
+        // removido e reconectado, quando migra de WABA, quando sai do número de
+        // teste para o de produção. O número de telefone, esse, continua o
+        // mesmo — e é o que a pessoa reconhece.
+        //
+        // Quando isso acontece, a mensagem chega e some: o Koonfy guarda o ID
+        // antigo, a Meta manda o novo, e ninguém entende por que a conversa não
+        // aparece. O log dizia "sem dono" e parava aí, deixando um trabalho de
+        // detetive para o cliente.
+        //
+        // Aqui o telefone entregue é comparado com o telefone de cada conexão.
+        // Se algum bater, o ID é ATUALIZADO e a mensagem segue o caminho normal
+        // — a conexão volta a funcionar sozinha, e fica registrado o que mudou.
+        //
+        // Isto é seguro porque o corpo já passou pela assinatura HMAC da Meta
+        // logo na entrada: um terceiro não consegue forjar um evento para
+        // apontar uma conexão para outro lugar.
+        const foneEntregue = so((v.metadata && v.metadata.display_phone_number) || '');
+        if (foneEntregue) {
+          for (const a of db.get().accounts) {
+            const ch = (a.channels || []).find(c => {
+              const w = c.wa || {};
+              return so(w.displayPhoneNumber) === foneEntregue || so(c.phoneNumber) === foneEntregue;
+            });
+            if (!ch) continue;
+            const antigo = (ch.wa || {}).phoneNumberId || '';
+            ch.wa = ch.wa || {};
+            ch.wa.phoneNumberId = phoneNumberId;
+            if (a.wa && so(a.wa.displayPhoneNumber) === foneEntregue) a.wa.phoneNumberId = phoneNumberId;
+            db.save();
+            store.logEvent({
+              type: 'phone_id_atualizado', accountId: a.id, phoneNumberId,
+              explicacao: 'O número ' + foneEntregue + ' já estava conectado, mas com outro ' +
+                'Phone Number ID (' + (antigo || 'vazio') + '). A Meta troca esse ID quando o número ' +
+                'é reconectado ou migra de conta. O cadastro foi corrigido sozinho e a mensagem ' +
+                'entrou normalmente.',
+              idAnterior: antigo, canal: ch.label || ch.id
+            });
+            return processEvent(body, broadcast);   // refaz o roteamento, agora com o ID certo
+          }
+        }
+
         // "unrouted" sozinho não diz nada: a mensagem chegou, mas nenhuma conta
         // reconhece o número. O que resolve é ver LADO A LADO o que a Meta
         // mandou e o que está cadastrado aqui — quase sempre o número foi
@@ -149,12 +198,20 @@ function processEvent(body, broadcast) {
           for (const ch of (a.channels || [])) {
             const w = ch.wa || {};
             if (w.phoneNumberId) {
-              registrados.push({ conta: a.name, canal: ch.label, phoneNumberId: w.phoneNumberId });
+              // O TELEFONE junto do ID. Comparar dois números de 15 dígitos a
+              // olho não diz nada a ninguém; comparar "+55 11 9..." com
+              // "+55 11 9..." diz na hora se é o mesmo número com ID trocado
+              // ou se é outro número mesmo.
+              registrados.push({
+                conta: a.name, canal: ch.label, phoneNumberId: w.phoneNumberId,
+                telefone: w.displayPhoneNumber || ch.phoneNumber || ''
+              });
             }
           }
         }
         store.logEvent({
           type: 'unrouted', phoneNumberId, field: change.field,
+          telefoneEntregue: (v.metadata && v.metadata.display_phone_number) || '',
           explicacao: registrados.length
             ? 'A Meta entregou uma mensagem do número ' + phoneNumberId + ', mas nenhuma conexão ' +
               'cadastrada usa esse Phone Number ID. Confira em Configurações → Conexão & API.'
