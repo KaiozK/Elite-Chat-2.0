@@ -271,6 +271,13 @@
         <div class="tb-results hidden" id="tb-results"></div>
       </div>
       <div class="tb-right">
+        <!-- IDIOMA. Fica no topo, e não escondido em Configurações, porque quem
+             precisa dele com mais urgência é quem abriu o painel e não lê
+             português — inclusive o revisor da Meta durante a aprovação do
+             aplicativo. Um select nativo de propósito: no celular ele abre a
+             roda do sistema, que é o que essa pessoa já sabe usar. -->
+        <select id="sel-idioma" class="lang-sel" title="Idioma / Language / Idioma"
+                aria-label="Idioma" onchange="KoonfyIdioma.aplicar(this.value)"></select>
         <button class="theme-btn" id="theme-btn" title="Tema claro/escuro" onclick="toggleTheme()" aria-label="Alternar tema">
           <svg id="theme-ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></svg>
         </button>
@@ -327,6 +334,7 @@
 <script src="/app/br-uf.js?v=1"></script>
 <script src="/app/voz.js?v=1"></script>
 <script src="/bi.js?v=2"></script>
+<script src="/app/i18n.js?v=1"></script>
 <script src="/app/app.js?v=ab1"></script>
 <script>/* registra o Service Worker e a engine cedo (offline funciona antes do login) */
   if (window.ECNotify) { try { ECNotify.init(); } catch (e) {} }

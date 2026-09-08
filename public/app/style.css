@@ -2614,6 +2614,18 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .theme-btn { width: 40px; height: 40px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; background: var(--bg2); border: 1px solid var(--border); color: var(--text2); cursor: pointer; transition: background .15s, color .15s; }
 .theme-btn:hover { background: var(--brand-bg); color: var(--brand-dark); }
 
+/* ---- SELETOR DE IDIOMA ----
+   Mesma altura e mesma pele do botão de tema, ao lado dele: são os dois
+   ajustes de como a tela se apresenta, e ficam juntos. Estreito de propósito —
+   mostra a sigla (PT/EN/ES), não o nome inteiro, porque o topo é espaço caro e
+   a bandeira já diz o resto. */
+.lang-sel { height: 40px; border-radius: 12px; padding: 0 8px; background: var(--bg2);
+  border: 1px solid var(--border); color: var(--text2); cursor: pointer;
+  font-size: 13px; font-weight: 600; line-height: 1; appearance: none;
+  text-align: center; text-align-last: center; transition: background .15s, color .15s; }
+.lang-sel:hover { background: var(--brand-bg); color: var(--brand-dark); }
+.lang-sel:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
 /* ---- MODO ESCURO: verdes de texto/ícone → claros (legibilidade) ---- */
 :root[data-theme="dark"] {
   /* tokens de verde usados como COR de texto/ícone (feitos p/ fundo claro) → claros */
