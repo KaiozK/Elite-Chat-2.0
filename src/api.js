@@ -129,6 +129,13 @@ module.exports = function (broadcast, clients) {
     '/events'           // o SSE avisa a tela quando o pagamento cai
   ];
 
+  // "Tem plano PAGO?" — a pergunta da porta de entrada, ligada/desligada pelo
+  // admin em platform.billing.requirePlan. Não é a mesma pergunta que
+  // `limits.assinaturaVale` faz ("a assinatura está em dia?", que barra as
+  // automações quando o pagamento atrasa), e por isso as duas listas de status
+  // são diferentes de propósito: `trial` conta como assinatura em dia, mas não
+  // conta como plano pago. Quem nasce em teste ainda precisa escolher um plano
+  // quando a plataforma exige plano.
   function planoAtivo(acc) {
     const b = acc.billing || {};
     return b.status === 'active' && (!b.periodEnd || b.periodEnd > Date.now());

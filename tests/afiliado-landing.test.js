@@ -120,10 +120,16 @@ const notif = fs.readFileSync(R + 'public/app/notifications.js', 'utf8');
   ok(/call: '\/assets\/sons\/chamada\.mp3'/.test(notif), 'e registrado como som da chamada');
   ok(/a\.loop = true;/.test(notif),
      'toca em LAÇO — um toque tem começo e fim pensados para emendar, e cortá-lo pelo relógio produz silêncios que não existem no som');
-  ok(/var NAO_PRECARREGAR = \{ call: true \};/.test(notif),
+  ok(/for \(var k in ARQUIVOS\) if \(k !== 'call'\) tocador\(k\);/.test(notif),
      'fica fora do pré-carregamento: é o maior arquivo e a maioria das sessões nunca recebe chamada');
-  ok(/for \(var k in ARQUIVOS\) if \(!NAO_PRECARREGAR\[k\]\)/.test(notif),
-     'e o pré-carregamento respeita isso');
+  ok(/\(tipo === 'call'\) \? 'metadata' : 'auto'/.test(notif),
+     'e o pré-carregamento respeita isso — só os metadados dele');
+  // DESTRAVAR NÃO É BAIXAR. A chamada chega sem gesto nenhum (quem liga é o
+  // cliente), então é justamente o som que mais precisa estar liberado antes
+  // da hora: sem isso o iPhone recusa o play e o telefone toca mudo.
+  const destr = notif.slice(notif.indexOf('function destravar('), notif.indexOf('function tudoLiberado'));
+  ok(/for \(var k in ARQUIVOS\) destravarUm\(tocador\(k\)\);/.test(destr),
+     'mas o toque da ligação É destravado junto com os outros, no primeiro gesto');
 
   console.log('\n=== 6. O sintetizado é rede de segurança, não segunda voz ===');
   const ring = notif.slice(notif.indexOf('function startRing'), notif.indexOf('function stopRing'));

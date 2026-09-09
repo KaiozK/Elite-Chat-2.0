@@ -128,17 +128,21 @@
                    // campanha e um agendamento também são.
                    confirm: '/assets/sons/confirmado.mp3',
                    call: '/assets/sons/chamada.mp3' };
-  // O toque da ligação fica FORA do pré-carregamento: é o maior arquivo dos
-  // três e a maioria das sessões nunca recebe uma chamada. Baixá-lo na abertura
-  // seria banda de celular gasta por um som que talvez não toque.
-  var NAO_PRECARREGAR = { call: true };
+  // O toque da ligação continua FORA do pré-carregamento: é o maior arquivo e a
+  // maioria das sessões nunca recebe uma chamada. Baixá-lo na abertura seria
+  // banda de celular gasta por um som que talvez não toque. Ele é destravado
+  // junto com os outros no primeiro gesto (ver `destravar`) — destravar não é
+  // a mesma coisa que baixar.
   var tocadores = {};
   function tocador(tipo) {
     if (!ARQUIVOS[tipo]) return null;
     if (!tocadores[tipo]) {
       try {
         var a = new Audio(ARQUIVOS[tipo]);
-        a.preload = 'auto'; a.volume = 0.7;
+        // O toque da ligação é o maior arquivo e a maioria das sessões nunca
+        // recebe chamada: só os metadados, o bastante para poder ser destravado.
+        a.preload = (tipo === 'call') ? 'metadata' : 'auto';
+        a.volume = 0.7;
         tocadores[tipo] = a;
       } catch (e) { return null; }
     }
@@ -146,7 +150,78 @@
   }
   // Deixa os arquivos em cache antes do primeiro aviso, para o som não chegar
   // atrasado na mensagem que importa.
-  function prepararSons() { for (var k in ARQUIVOS) if (!NAO_PRECARREGAR[k]) tocador(k); }
+  function prepararSons() { for (var k in ARQUIVOS) if (k !== 'call') tocador(k); }
+
+  /* ---------------- DESTRAVAR O ÁUDIO ----------------
+     Aqui isto só chamava `ac()`, que resume o AudioContext — e o AudioContext
+     é o caminho do tom SINTETIZADO, que é o plano B. O caminho principal são
+     os <audio> dos MP3, e eles não eram destravados por nada.
+
+     No iPhone (e no PWA instalado) isso é fatal: um <audio> que nunca tocou
+     DENTRO de um gesto da pessoa fica bloqueado para sempre. O aviso chega
+     pelo SSE, que não é gesto nenhum, então o play() era recusado toda vez —
+     e a notificação chegava muda. Tocar mudo e pausar na hora marca o
+     elemento como liberado, sem fazer barulho.
+
+     O destrave também não podia ser de uma vez só. O antigo removia o próprio
+     ouvinte no primeiro clique; o iOS SUSPENDE o áudio quando o app vai para
+     segundo plano, e ao voltar não havia mais nada para religar — os sons
+     morriam de vez até recarregar a página. Agora ele se rearma enquanto
+     algo continuar travado, e a volta do segundo plano religa junto. */
+  function destravarUm(a) {
+    if (!a || a._liberado) return;
+    try {
+      var vol = a.volume;
+      a.muted = true;
+      var p = a.play();
+      var terminar = function () {
+        try { a.pause(); a.currentTime = 0; } catch (e) {}
+        a.muted = false; a.volume = vol; a._liberado = true;
+      };
+      if (p && p.then) p.then(terminar, function () { a.muted = false; a.volume = vol; });
+      else terminar();
+    } catch (e) { try { a.muted = false; } catch (e2) {} }
+  }
+
+  function destravar() {
+    var c = ac();
+    if (c && c.state === 'suspended') { try { c.resume(); } catch (e) {} }
+    // O toque da ligação entra aqui mesmo ficando fora do pré-carregamento:
+    // ele chega sem gesto nenhum (o cliente é que liga), então é justamente o
+    // que mais precisa estar liberado antes da hora.
+    for (var k in ARQUIVOS) destravarUm(tocador(k));
+  }
+
+  function tudoLiberado() {
+    var c = state.audioCtx;
+    if (c && c.state === 'suspended') return false;
+    for (var k in ARQUIVOS) { var a = tocadores[k]; if (a && !a._liberado) return false; }
+    return true;
+  }
+
+  function armarDestrave() {
+    var aoGesto = function () {
+      destravar();
+      // enquanto sobrar algo travado, o ouvinte fica de pé para o próximo toque
+      if (tudoLiberado()) {
+        window.removeEventListener('pointerdown', aoGesto);
+        window.removeEventListener('keydown', aoGesto);
+      }
+    };
+    window.addEventListener('pointerdown', aoGesto);
+    window.addEventListener('keydown', aoGesto);
+    // Voltando do segundo plano o iOS deixa o áudio suspenso. Sem rearmar, o
+    // painel que passou a noite aberto acorda mudo.
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) return;
+      var c = state.audioCtx;
+      if (c && c.state === 'suspended') { try { c.resume(); } catch (e) {} }
+      if (!tudoLiberado()) {
+        window.addEventListener('pointerdown', aoGesto);
+        window.addEventListener('keydown', aoGesto);
+      }
+    });
+  }
 
   function playSound(type) {
     if (!state.prefs.sounds) return;
@@ -410,9 +485,7 @@
     window.addEventListener('offline', function () {
       if (typeof window.toast === 'function') window.toast('Você está offline, as ações voltam ao reconectar', 'error');
     });
-    // resume o áudio no primeiro gesto do usuário (política de autoplay)
-    var resume = function () { ac(); window.removeEventListener('pointerdown', resume); };
-    window.addEventListener('pointerdown', resume);
+    armarDestrave();
   }
 
   /* ---------------- API pública ---------------- */
