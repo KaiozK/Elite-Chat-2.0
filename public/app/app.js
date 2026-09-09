@@ -493,6 +493,7 @@ function renderNotifSettings() {
       ${ck('types.reminder', p.types.reminder, 'Lembretes', 'Agendamentos da agenda')}
       ${ck('types.sale', p.types.sale !== false, 'Vendas aprovadas', 'Pagamento confirmado no Pagamentos')}
       ${ck('types.commission', p.types.commission !== false, 'Comissões de indicação', 'Sua parte na venda de um indicado')}
+      ${ck('types.confirm', p.types.confirm !== false, 'Confirmações', 'Campanha disparada, agendamento criado')}
     </div>
     <div class="row" style="margin-top:16px">
       <button class="btn no-grow" onclick="notifTestFire(this)">${ico('bell', 14)} Enviar notificação de teste</button>

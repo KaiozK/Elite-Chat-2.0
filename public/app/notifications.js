@@ -28,7 +28,9 @@
     // Sem isto, quem fica o dia com o painel na tela só via o aviso interno,
     // e nada aparecia na barra do celular ou do computador.
     systemWhenOpen: true,
-    types: { message: true, call: true, attendance: true, reminder: true, commission: true, sale: true }
+    // Todo som que o produto emite entra aqui. `confirm` ficava de fora: era o
+    // único que o cliente não conseguia desligar, sem motivo nenhum.
+    types: { message: true, call: true, attendance: true, reminder: true, commission: true, sale: true, confirm: true }
   };
 
   var state = {
@@ -111,7 +113,13 @@
     // venda aprovada: acorde ascendente, distinto de mensagem para o afiliado
     // reconhecer sem olhar a tela
     sale:       function () { tone(700, 0, 0.14, 'sine', 0.13); tone(940, 0.12, 0.16, 'sine', 0.13); tone(1250, 0.26, 0.28, 'sine', 0.12); },
-    commission: function () { tone(660, 0, 0.14, 'sine', 0.13); tone(880, 0.12, 0.16, 'sine', 0.13); tone(1180, 0.26, 0.26, 'sine', 0.12); }
+    commission: function () { tone(660, 0, 0.14, 'sine', 0.13); tone(880, 0.12, 0.16, 'sine', 0.13); tone(1180, 0.26, 0.26, 'sine', 0.12); },
+    // "deu certo, acabou" — disparo de campanha, agendamento criado. Era o
+    // ÚNICO tipo sem tom próprio: quando o MP3 não tocava (bloqueado, lento,
+    // fora do ar) ele caía no tom de MENSAGEM, e a pessoa olhava o celular
+    // achando que um cliente tinha escrito. Duas notas curtas descendo, que é
+    // o contrário do acorde subindo da venda.
+    confirm:    function () { tone(1050, 0, 0.11, 'sine', 0.12); tone(700, 0.11, 0.2, 'sine', 0.11); }
   };
   /* ---------------- Sons em arquivo ----------------
      Dois avisos são gravados, e não sintetizados: a mensagem e a venda. O som

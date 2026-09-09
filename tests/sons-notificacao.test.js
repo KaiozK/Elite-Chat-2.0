@@ -156,7 +156,53 @@ function montarJanela() {
   ok(/type: 'call', silent: true/.test(bloco),
      'e a chamada de entrada marca o aviso como silencioso, porque o toque é do startRing');
 
-  console.log('\n=== 7. Voltando do segundo plano, o som não morre ===');
+  console.log('\n=== 7. TODO som do produto: arquivo, tom próprio e interruptor ===');
+  // Sete sons, cada um disparado num lugar do produto. Duas armadilhas moram
+  // aqui: um tipo SEM tom próprio cai no tom de MENSAGEM quando o MP3 falha —
+  // e a pessoa olha o celular achando que um cliente escreveu; e um tipo fora
+  // das preferências é um som que o cliente não consegue desligar.
+  const SONS = ['message', 'call', 'attendance', 'reminder', 'sale', 'commission', 'confirm'];
+  const blocoSons = fonte.slice(fonte.indexOf('var SOUNDS = {'), fonte.indexOf('/* ---------------- Sons em arquivo'));
+  const telaApp = require('fs').readFileSync(R + 'public/app/app.js', 'utf8');
+  const prefs = EC.getPrefs();
+  for (const t of SONS) {
+    ok(new RegExp('\\n\\s*' + t + ':\\s*function').test(blocoSons),
+       `${t}: tem tom próprio — sem ele, o MP3 falhando vira som de mensagem`);
+    ok(Object.prototype.hasOwnProperty.call(prefs.types, t) && new RegExp("types\\." + t + "'").test(telaApp),
+       `${t}: o cliente consegue desligar, na tela de preferências`);
+  }
+
+  // Cada TIPO tem o SEU <audio>, mesmo quando dois tipos usam o mesmo arquivo.
+  // venda.mp3 serve venda E comissão: desligar uma não pode calar a outra.
+  const doTipo = {};
+  for (const t of SONS) {
+    const n0 = j.audios.map(a => a.tentativas.length);
+    EC.playSound(t);
+    const i = j.audios.findIndex((a, k) => a.tentativas.length > n0[k]);
+    if (i >= 0) doTipo[t] = j.audios[i];
+  }
+  await new Promise(r => setTimeout(r, 20));
+  ok(doTipo.sale && doTipo.commission && doTipo.sale !== doTipo.commission,
+     'venda e comissão usam o mesmo arquivo, mas elementos separados');
+  EC.setPref('types.sale', false);
+  const vs = doTipo.sale.tentativas.length, vc = doTipo.commission.tentativas.length;
+  EC.notify({ type: 'sale', title: 'venda' });
+  EC.notify({ type: 'commission', title: 'comissão' });
+  await new Promise(r => setTimeout(r, 20));
+  ok(doTipo.sale.tentativas.length === vs, 'desligar "venda" cala a venda');
+  ok(doTipo.commission.tentativas.length > vc, 'e a comissão continua tocando');
+  EC.setPref('types.sale', true);
+
+  // O interruptor geral cala TUDO, inclusive o toque da ligação.
+  EC.setPref('sounds', false);
+  const g0 = doTipo.message.tentativas.length, gr = doTipo.call.tentativas.length;
+  EC.playSound('message'); EC.startRing();
+  await new Promise(r => setTimeout(r, 20));
+  ok(doTipo.message.tentativas.length === g0 && doTipo.call.tentativas.length === gr,
+     'e o interruptor geral cala tudo, inclusive o toque da chamada');
+  EC.stopRing(); EC.setPref('sounds', true);
+
+  console.log('\n=== 8. Voltando do segundo plano, o som não morre ===');
   // O destrave antigo removia o próprio ouvinte no primeiro clique. O iOS
   // suspende o áudio ao mandar o app para trás; sem rearmar, o painel que
   // passou a noite aberto acordava mudo até recarregar a página.
@@ -171,7 +217,7 @@ function montarJanela() {
   ok(som.tentativas.length === antes2 + 1 && som.tentativas[antes2].permitido,
      'e o aviso seguinte continua tocando');
 
-  console.log('\n=== 8. O destrave velho, que só cuidava do tom, não voltou ===');
+  console.log('\n=== 9. O destrave velho, que só cuidava do tom, não voltou ===');
   const f = fonte;
   ok(!/var resume = function \(\) \{ ac\(\); window\.removeEventListener\('pointerdown', resume\); \};/.test(f),
      'o destrave de uma vez só saiu do código');
