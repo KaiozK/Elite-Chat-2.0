@@ -1599,16 +1599,15 @@ module.exports = function (broadcast, clients) {
     res.json({ channel: channelPublic(req.acc, ch), error: ch.wa.identityError || '' });
   }));
 
-  router.post('/channels', auth, h(async (req, res) => {
-    const acc = req.acc;
-    limits.enforce(acc, 'whatsapps', 1);      // 402 quando estoura o plano + extras
-    const label = String((req.body || {}).label || '').trim() || `WhatsApp ${acc.channels.length + 1}`;
-    const ch = db.emptyChannel(label.slice(0, 40));
-    acc.channels.push(ch);
-    db.save();
-    agents.log(acc, req.who, 'channel_create', `Criou o canal ${ch.label}`);
-    res.json({ channel: channelPublic(acc, ch) });
-  }));
+  // UMA CONEXÃO POR CONTA. A rota continua de pé para responder a versões
+  // antigas do painel que ainda tenham o botão — e responde recusando, em vez
+  // de criar um segundo canal que quebraria as conversas de novo.
+  router.post('/channels', auth, (req, res) => {
+    res.status(409).json({
+      error: 'Cada conta tem uma conexão de WhatsApp. Para usar outro número, crie outra conta.',
+      code: 'single_channel'
+    });
+  });
 
   router.put('/channels/:id', auth, (req, res) => {
     const ch = (req.acc.channels || []).find(c => c.id === req.params.id);
@@ -2256,57 +2255,23 @@ module.exports = function (broadcast, clients) {
 
   // ============ CONTATOS / CONVERSAS ============
 
-  // Um contato pertence a um canal (conexão WhatsApp). Quando o painel pede um
-  // canal específico, as conversas de outros números não aparecem — é o que
-  // impede o atendimento de dois números de se misturar.
-  // `?ch=all` (ou header x-channel: all) mostra tudo, para quem quiser a visão geral.
-  function chanFilter(req, alvo) {
-    const raw = alvo !== undefined ? alvo : (req.get('x-channel') || req.query.ch || '');
-    if (raw === 'all' || raw === '') return null;         // sem filtro: mostra tudo
-    const dflt = ((req.acc.channels || [])[0] || {}).id || '';
-    const id = (raw && (req.acc.channels || []).some(c => c.id === raw)) ? raw : (req.chId || dflt);
-    return o => (o.chId || dflt) === id;
-  }
-  function chanList(req, arr, alvo) {
-    const f = chanFilter(req, alvo);
-    return f ? arr.filter(f) : arr;
-  }
-
-  // A CAIXA DE ENTRADA É SEMPRE DE UM NÚMERO SÓ.
+  // UMA CONEXÃO POR CONTA — ENTÃO NÃO HÁ NADA PARA FILTRAR.
   //
-  // `chanFilter` devolve "sem filtro" quando o pedido chega sem canal — o que
-  // faz sentido nas telas de LISTA (contatos, funil), onde ver tudo é útil. Na
-  // conversa, não: responder exige saber por qual número a conversa acontece, e
-  // uma caixa de entrada que mistura dois números leva a responder pelo errado.
+  // Estas três funções existiam para separar as conversas de vários números da
+  // mesma conta. Só que o `chId` gravado em cada contato muda mais do que
+  // parece: reconectar o WhatsApp, trocar de número, recriar a conexão. Quando
+  // mudava, a conversa antiga continuava no banco apontando para um canal que
+  // não existe mais — e sumia da tela sem erro nenhum. Foi exatamente isso que
+  // aconteceu aqui: contato carimbado num canal morto, "Nenhuma conversa".
   //
-  // Aqui o canal nunca é opcional. Sem cabeçalho, vale o canal ativo (que
-  // `findChannel` resolve para o primeiro). Só um `ch=all` EXPLÍCITO abre a
-  // visão geral — e ela é para olhar, não para responder.
+  // Agora a conta tem um número só (ver `colapsarCanais` em src/db.js). Elas
+  // continuam existindo porque são chamadas em dezenas de rotas, mas não
+  // escondem mais nada: tudo que é da conta aparece.
+  function chanFilter() { return null; }
+  function chanList(req, arr) { return arr; }
   function chanConversa(req) {
-    const raw = req.get('x-channel') || req.query.ch || '';
-    const canais = req.acc.channels || [];
-    const dflt = (canais[0] || {}).id || '';
-    if (raw === 'all') return { id: 'all', tudo: true, f: () => true, dflt };
-    const id = (raw && canais.some(c => c.id === raw)) ? raw : (req.chId || dflt);
-
-    // CONTATO ÓRFÃO: CARIMBADO NUM CANAL QUE NÃO EXISTE MAIS.
-    //
-    // O filtro era `(o.chId || dflt) === id`. Ele cobre o contato SEM canal —
-    // cai no padrão — mas não cobre o contato com um canal que sumiu. E o id do
-    // canal muda mais do que parece: reconectar o WhatsApp, trocar de número,
-    // recriar a conexão. Quando isso acontece, TODA a conversa anterior fica
-    // apontando para um canal que não está mais na lista, e desaparece da tela
-    // sem nenhum aviso — o dado continua no banco, invisível.
-    //
-    // É o pior tipo de sumiço: nada quebra, nada avisa, e a pessoa conclui que
-    // perdeu os clientes. Aqui o órfão volta para o canal padrão, que é onde
-    // ele estaria se tivesse chegado hoje.
-    const vivos = new Set(canais.map(c => c.id));
-    const canalDe = o => {
-      const c = o.chId || dflt;
-      return vivos.has(c) ? c : dflt;
-    };
-    return { id, tudo: false, dflt, f: o => canalDe(o) === id };
+    const dflt = ((req.acc.channels || [])[0] || {}).id || '';
+    return { id: dflt, tudo: true, dflt, f: () => true };
   }
   // Telas de LISTA (contatos, funil) usam o parâmetro `?ch=` explícito da tela.
   // Sem parâmetro, mostram TUDO: é o comportamento pedido, "se não há filtro,
@@ -4745,6 +4710,108 @@ module.exports = function (broadcast, clients) {
   // cara de problema, e todo evento vermelho ali virava um chamado no suporte.
   //
   // `adminOnly` (e não só tirar o link do menu): esconder não é proteger.
+  // ========================================================================
+  // POR QUE A MENSAGEM NÃO APARECE NA TELA
+  //
+  // Esta rota existe porque o diagnóstico estava sendo feito por eliminação, a
+  // cada teste um palpite, e cada palpite custava um deploy. O sintoma é sempre
+  // o mesmo — "a notificação chega e a conversa não aparece" — e as causas
+  // possíveis são poucas e verificáveis. Então aqui elas são TODAS verificadas
+  // de uma vez, e a resposta vem escrita.
+  //
+  // Não é uma tela bonita: é um instrumento. Ele responde, sem interpretação:
+  //   · quantos servidores estão no ar e qual banco está em uso;
+  //   · quais contas têm aquele número, conectadas ou não;
+  //   · quantas mensagens RECEBIDAS cada conta tem daquele contato;
+  //   · o que o roteamento decidiria agora, para aquele Phone Number ID;
+  //   · e o que os últimos eventos do webhook dizem.
+  // ========================================================================
+  router.get('/adm/por-que-nao-aparece', auth, adminOnly, (req, res) => {
+    const data = db.get();
+    const waId = String(req.query.wa || '').replace(/\D/g, '');
+    const log = data.webhookLog || [];
+
+    // O último evento de mensagem que chegou diz o número e a conta de destino.
+    const ultimo = log.find(e => e.type === 'webhook' && e.field === 'messages') || {};
+    const pnid = String(req.query.pnid || ultimo.phoneNumberId || '');
+
+    const donos = pnid ? db.accountsByPhoneId(pnid) : [];
+    const roteia = pnid ? db.findAccountByPhoneId(pnid) : null;
+
+    const porConta = data.accounts.map(a => {
+      const canais = (a.channels || []).map(c => ({
+        id: c.id, label: c.label,
+        phoneNumberId: (c.wa || {}).phoneNumberId || '',
+        conectado: !!(c.wa || {}).connected,
+        telefone: (c.wa || {}).displayPhoneNumber || ''
+      }));
+      const doContato = waId ? (a.contacts || []).filter(c => c.waId === waId) : [];
+      return {
+        id: a.id, nome: a.name, email: a.email,
+        canais,
+        temEsteNumero: canais.some(c => c.phoneNumberId === pnid),
+        contatos: (a.contacts || []).length,
+        recebidas: (a.messages || []).filter(m => m.direction === 'in').length,
+        enviadas: (a.messages || []).filter(m => m.direction === 'out').length,
+        // O contato do número perguntado, com o carimbo de canal — é ele que a
+        // tela de Conversas usa para filtrar.
+        contato: doContato.map(c => ({
+          nome: c.name, chId: c.chId || '(sem canal)',
+          canalExiste: !c.chId || canais.some(x => x.id === c.chId),
+          ultimaEntrada: c.lastInboundAt || null,
+          janela24h: !!(c.windowExpiresAt && c.windowExpiresAt > Date.now())
+        }))
+      };
+    });
+
+    // A conclusão escrita. Sem isto, alguém precisa interpretar o JSON.
+    const achados = [];
+    if (donos.length > 1) {
+      achados.push('O MESMO número está em ' + donos.length + ' contas (' +
+        donos.map(a => a.name).join(', ') + '). As recebidas entram só em uma delas: ' +
+        (roteia ? roteia.name : '—') + '.');
+    }
+    if (pnid && !roteia) {
+      achados.push('Nenhuma conta reconhece o Phone Number ID ' + pnid +
+        ' — a mensagem chega e não tem onde entrar.');
+    }
+    for (const c of porConta) {
+      for (const ct of c.contato) {
+        if (!ct.canalExiste) {
+          achados.push('Na conta "' + c.nome + '", o contato está carimbado no canal ' +
+            ct.chId + ', que não existe mais — some da lista de Conversas.');
+        }
+      }
+    }
+    if (db.storage.efemero()) {
+      achados.push('O banco está em ARQUIVO num host que recria o disco a cada deploy: ' +
+        'o que for gravado se perde no próximo restart.');
+    }
+    if (!achados.length) {
+      achados.push('Nada fora do lugar no roteamento. Se a tela ainda estiver vazia, ' +
+        'compare o campo "servidor" entre duas recargas: mudando, há mais de uma ' +
+        'instância no ar e cada uma tem o seu próprio banco.');
+    }
+
+    res.json({
+      armazenamento: {
+        motor: db.storage.nome, efemero: db.storage.efemero(),
+        instancia: INSTANCIA, host: require('os').hostname()
+      },
+      procurado: { waId: waId || '(não informado)', phoneNumberId: pnid || '(nenhum evento ainda)' },
+      roteamento: {
+        contaQueRecebe: roteia ? { id: roteia.id, nome: roteia.name } : null,
+        contasComEsteNumero: donos.map(a => ({ id: a.id, nome: a.name }))
+      },
+      contas: porConta,
+      ultimosEventos: log.slice(0, 12).map(e => ({
+        ts: e.ts, tipo: e.type, conta: e.accountId || null,
+        phoneNumberId: e.phoneNumberId || null, motivo: e.motivo || e.explicacao || null
+      })),
+      achados
+    });
+  });
+
   router.get('/webhook-log', auth, adminOnly, (req, res) => {
     const contas = {};
     for (const a of db.get().accounts) contas[a.id] = a.name || a.email;

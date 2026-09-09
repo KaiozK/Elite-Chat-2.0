@@ -14,7 +14,10 @@
 const db = require('./db');
 
 // Recursos que aceitam compra de unidades avulsas.
-const PAID_EXTRAS = ['whatsapps', 'links'];
+// `whatsapps` saiu daqui: a conta tem UMA conexão de WhatsApp e não há como
+// criar a segunda, então vender conexão avulsa seria cobrar por nada. O preço
+// continua no Admin para não invalidar cobrança já feita, mas não é ofertado.
+const PAID_EXTRAS = ['links'];
 
 const LABEL = {
   sends: 'disparos por ciclo',

@@ -91,15 +91,21 @@ const saas = require(R + 'src/saasbilling');
   ok(chamadas.length === 1 && chamadas[0].quem === 'woovi', 'quem recebeu: ' + (chamadas[0] || {}).quem);
   ok(r.brCode === '00020126-WOOVI', 'e o Pix veio de lá: ' + r.brCode);
 
-  console.log('\n=== 3. CONEXÃO EXTRA e LINK também seguem o adquirente ===');
+  console.log('\n=== 3. O EXTRA avulso também segue o adquirente ===');
   pagamentos.platformCfg().gateway = 'simplify';
-  for (const [chave, rot] of [['whatsapps', 'conexão'], ['links', 'link rastreável']]) {
+  for (const [chave, rot] of [['links', 'link rastreável']]) {
     chamadas = [];
     const resp = await saas.buyExtra(acc, chave, 2, { pay: 'pix' }, null);
     ok(chamadas.length === 1 && chamadas[0].quem === 'simplify', `${rot}: foi para a Simplify`);
     ok(resp.charge.brCode === '00020126-SIMPLIFY', `${rot}: com o Pix da Simplify`);
     ok(/^xtr-/.test(resp.charge.correlationID), `${rot}: identificada como cobrança do Koonfy (${resp.charge.correlationID.split('-')[0]}-)`);
   }
+  // CONEXÃO EXTRA NÃO SE VENDE MAIS. Cada conta atende por UM número, então
+  // cobrar por uma segunda conexão seria cobrar por algo que não é entregue.
+  let recusou = '';
+  try { await saas.buyExtra(acc, 'whatsapps', 1, { pay: 'pix' }, null); }
+  catch (e) { recusou = e.message; }
+  ok(/não vendido avulso/i.test(recusou), 'conexão de WhatsApp não é mais vendida avulsa: ' + recusou);
 
   console.log('\n=== 4. O webhook da Simplify CREDITA a recarga ===');
   // Era aqui que o dinheiro sumia: o webhook chegava, não achava venda de

@@ -556,7 +556,15 @@ function setMyStatus(st) {
 // escolhido viaja em TODA requisição no header `x-channel`, então o backend já
 // devolve só o que pertence àquele número — nada se mistura.
 let CHANNELS = [];
-let CH_ID = localStorage.getItem('ec_channel') || '';
+// UMA CONEXÃO POR CONTA — e o id dela NÃO vem mais do navegador.
+//
+// Este id ficava salvo em localStorage e ia no header `x-channel` de toda
+// chamada. Quando a conexão era recriada (reconectar o WhatsApp, trocar de
+// número), o navegador continuava mandando o id ANTIGO por tempo indefinido e
+// o painel pedia as conversas de um canal que não existia mais: "Nenhuma
+// conversa", sem erro nenhum na tela. Agora o canal é sempre o da conta.
+let CH_ID = '';
+try { localStorage.removeItem('ec_channel'); } catch {}
 function chActive() { return CHANNELS.find(c => c.id === CH_ID) || CHANNELS[0] || null; }
 function chName(id) { const c = CHANNELS.find(x => x.id === id); return c ? c.label : ''; }
 
@@ -590,7 +598,6 @@ async function api(path, opts = {}) {
     method: opts.method || (opts.body ? 'POST' : 'GET'),
     headers: {
       'Content-Type': 'application/json',
-      ...(CH_ID ? { 'x-channel': CH_ID } : {}),
       ...(TOKEN ? { Authorization: 'Bearer ' + TOKEN } : {})
     },
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined
@@ -1496,57 +1503,40 @@ document.addEventListener('visibilitychange', () => {
 // Card de gestão das conexões (Configurações → Conexão & API).
 // Cada linha é um número; a linha marcada é o canal que o painel está usando.
 function channelsCard() {
-  if (CHANNELS.length < 1) return '';
-  const lim = CH_LIMIT || {};
-  const cheio = !podeMaisCanais();
-  const at = chActive() || {};
+  const c = chActive();
+  if (!c) return '';
   return `<div class="card">
     <div class="row" style="align-items:center;margin-bottom:6px">
-      <h2 style="margin:0;flex:1">${waLogo(17, '#25D366')} Contas do WhatsApp conectadas</h2>
-      <span class="pill ${cheio ? 'pending' : 'done'}">${fmtN(lim.used || CHANNELS.length)}${lim.unlimited ? '' : ' / ' + fmtN(lim.limit)} conexões</span>
+      <h2 style="margin:0;flex:1">${waLogo(17, '#25D366')} Sua conta do WhatsApp</h2>
+      <span class="pill ${c.connected ? 'done' : 'pending'}">${c.connected ? 'conectada' : 'não conectada'}</span>
     </div>
     <p class="muted" style="margin:0 0 14px;font-size:13px">
-      Cada número é um <b>canal separado</b>: as conversas e os contatos de um não aparecem no outro.
-      Use o seletor no topo da tela para alternar entre eles.
+      Cada conta do Koonfy atende por <b>um número</b>. Todas as conversas e contatos
+      deste número aparecem aqui — não há canal separando nada.
     </p>
     <div class="ch-list">
-      ${CHANNELS.map(c => `<div class="ch-row ${c.id === at.id ? 'sel' : ''}">
+      <div class="ch-row sel">
         <i class="ch-dot ${c.connected ? 'on' : 'off'}"></i>
         <div class="ch-row-main" role="button" tabindex="0" title="Renomear esta conta"
              onclick="renameChannel('${c.id}')"
              onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();renameChannel('${c.id}')}">
-          <b>${esc(c.label)}</b>${c.isDefault ? ' <span class="pill" style="font-size:10px">principal</span>' : ''}
+          <b>${esc(c.label)}</b>
           <div class="muted" style="font-size:12px;margin-top:2px">
             ${c.connected
               ? (c.displayPhoneNumber ? esc(c.displayPhoneNumber) : '<b style="color:var(--verde-deep)">conectado</b>')
               : '<b style="color:var(--amber)">não conectado</b>'}
             · ${fmtN(c.contacts)} contato(s)${c.unread ? ` · ${fmtN(c.unread)} não lida(s)` : ''}
             ${c.identityError ? `<div style="color:var(--red);font-size:11px;margin-top:2px">${esc(c.identityError)}</div>` : ''}
-            ${c.cancelAt ? `<div class="ch-cancel-note">${ico('alert', 11)}
-              Cancelada. Funciona até <b>${new Date(c.cancelAt).toLocaleDateString('pt-BR')}</b> e, nessa data,
-              a conexão e todos os dados dela serão excluídos.
-              <button class="linkish" onclick="undoCancelChannel('${c.id}')">Reativar</button></div>` : ''}
           </div>
         </div>
-        ${c.id === at.id
-          ? '<span class="pill done">em uso</span>'
-          : `<button class="btn small no-grow" onclick="switchChannel('${c.id}')">Usar</button>`}
         <button class="icon-btn" title="Sincronizar número com a Meta" onclick="syncChannel('${c.id}', this)">${ico('refresh', 14)}</button>
         <button class="icon-btn" title="Renomear" onclick="renameChannel('${c.id}')">${ico('edit', 14)}</button>
-        ${c.isDefault || state.agent || c.cancelAt ? '' :
-          `<button class="icon-btn danger" title="Cancelar esta conexão" onclick="cancelChannel('${c.id}')">${ico('trash', 14)}</button>`}
-      </div>`).join('')}
+      </div>
     </div>
-    <div class="row" style="margin-top:14px;align-items:flex-end">
-      <label style="flex:1;max-width:280px">Nome da nova conexão<input id="ch-new" placeholder="ex.: Vendas · Suporte · Filial SP"></label>
-      ${/* Um único botão, sem preço à mostra: dentro do plano ele cria a conexão
-            direto; com o plano no limite, abre o pop-up, onde o cliente escolhe
-            quantas quer e como pagar. */''}
-      <button class="btn primary no-grow" onclick="${cheio ? "openExtraPay('whatsapps')" : 'createChannel()'}">
-        ${ico('plus', 14)} Adicionar conexão</button>
-    </div>
-    ${cheio ? `<p class="hint" style="margin-top:10px">${ico('alert', 12)} Você já utiliza as <b>${fmtN(lim.limit)}</b> conexão(ões) disponíveis no seu plano.</p>`
-    : '<p class="hint" style="margin-top:10px">Depois de criar a conexão, selecione-a no seletor do topo e clique em <b>Conectar WhatsApp</b> para vincular o número.</p>'}
+    <p class="hint" style="margin-top:10px">
+      Para trocar o número, clique em <b>Conectar WhatsApp</b> e escolha o novo na Meta.
+      O histórico de conversas continua onde está.
+    </p>
   </div>`;
 }
 
@@ -1641,16 +1631,6 @@ function extraQty(key, d) {
 function extraUnitPrice(key) {
   if (key === 'whatsapps' && CH_LIMIT && CH_LIMIT.extraPrice) return CH_LIMIT.extraPrice;
   return (((BILL_CACHE || {}).usage || {})[key] || {}).extraPrice || 0;
-}
-
-async function createChannel() {
-  const el = $('#ch-new');
-  try {
-    const r = await api('/channels', { body: { label: el ? el.value : '' } });
-    await loadChannels();
-    await switchChannel(r.channel.id);   // já entra no canal novo para conectar o número
-    toast('Canal criado, agora conecte o número');
-  } catch (e) { toast(e.message, 'error'); }
 }
 
 // Renomear a conta de WhatsApp. Usa o modal do app: o prompt() nativo é
@@ -1759,21 +1739,13 @@ function paintChannelPicker() {
   const nome = $('#tb-chname');
   if (nome) nome.textContent = CHANNELS.length ? (at.label || 'WhatsApp') : 'Nenhum número conectado';
 
-  // aviso de não lidas em OUTROS canais (o do canal ativo já aparece no menu)
-  const outras = CHANNELS.reduce((s, c) => s + (c.id === at.id ? 0 : (c.unread || 0)), 0);
   const badge = $('#tb-chbadge');
-  if (badge) {
-    badge.textContent = outras > 99 ? '99+' : outras;
-    badge.classList.toggle('hidden', !outras);
-    badge.title = outras ? `${outras} não lida(s) em outros números` : '';
-  }
+  if (badge) badge.classList.add('hidden');   // não há "outros números"
 
-  const cabe = podeMaisCanais();
   menu.innerHTML = `
-    <div class="ch-menu-head">Contas de WhatsApp${CH_LIMIT && !CH_LIMIT.unlimited
-      ? ` <span class="ch-lim">${fmtN(CH_LIMIT.used)} de ${fmtN(CH_LIMIT.limit)}</span>` : ''}</div>
+    <div class="ch-menu-head">Conta do WhatsApp</div>
     ${CHANNELS.length ? CHANNELS.map(c => `
-      <button class="ch-item ${c.id === at.id ? 'sel' : ''}" onclick="switchChannel('${c.id}')">
+      <div class="ch-item sel">
         <i class="ch-dot ${c.connected ? 'on' : 'off'}"></i>
         <span class="ch-item-txt">
           <b>${esc(c.label)}</b>
@@ -1782,15 +1754,9 @@ function paintChannelPicker() {
             : 'número não conectado'} · ${fmtN(c.contacts)} contato(s)</em>
         </span>
         ${c.unread ? `<b class="ch-badge">${c.unread > 99 ? '99+' : c.unread}</b>` : ''}
-        ${c.id === at.id ? ico('check', 14) : ''}
-      </button>`).join('')
+      </div>`).join('')
     : '<p class="ch-empty">Nenhuma conta conectada ainda.</p>'}
     <div class="ch-menu-sep"></div>
-    <button class="ch-item add" onclick="closeChannelMenu();goChannels(1)">
-      ${ico('plus', 14)}
-      <span class="ch-item-txt"><b>Conectar outra conta</b>
-        <em>${cabe ? 'Adicione um novo número de WhatsApp' : 'Limite do plano atingido, veja os extras'}</em></span>
-    </button>
     <button class="ch-item" onclick="closeChannelMenu();goChannels()">
       ${ico('gear', 14)}
       <span class="ch-item-txt"><b>Gerenciar contas</b>
@@ -1798,19 +1764,13 @@ function paintChannelPicker() {
     </button>`;
 }
 
-// Leva direto para a aba de contas em Configurações. `novo` já abre o campo de
-// criação, porque o caminho mais pedido é "quero mais um número".
-function goChannels(novo) {
+// Leva direto para a aba da conexão em Configurações.
+function goChannels() {
   PENDING_TAB = 'contas';
-  PENDING_CH_NEW = !!novo;
   if (state.view === 'settings') { renderSettings(); }
   else location.hash = '#/settings';
 }
-let PENDING_TAB = '', PENDING_CH_NEW = false;
-
-function podeMaisCanais() {
-  return !CH_LIMIT || CH_LIMIT.unlimited || CH_LIMIT.used < CH_LIMIT.limit;
-}
+let PENDING_TAB = '';
 
 function toggleChannelMenu(e) {
   if (e) e.stopPropagation();
@@ -1824,19 +1784,6 @@ function toggleChannelMenu(e) {
 function closeChannelMenu() {
   const m = $('#ch-menu'); if (m) m.classList.add('hidden');
   const btn = $('#tb-user'); if (btn) btn.setAttribute('aria-expanded', 'false');
-}
-
-async function switchChannel(id) {
-  if (id === CH_ID) return closeChannelMenu();
-  CH_ID = id;
-  localStorage.setItem('ec_channel', id);
-  closeChannelMenu();
-  state.currentWaId = null;          // a conversa aberta é de outro número
-  await loadChannels();
-  try { const st = await api('/settings'); state.wa = st.wa; pintarSuporte(st.suporte); } catch {}
-  refreshBadge();
-  route();                            // repinta a tela atual já filtrada
-  toast(`Canal: ${chName(id)}`);
 }
 
 function connectSSE() {
@@ -5850,6 +5797,62 @@ async function delQuick(id) {
 // pergunta ser respondida sem rolagem: "está quebrando alguma coisa?"
 let LOG_NIVEL = 'erro';
 
+// ---------------------------------------------------------------------------
+// "POR QUE A MENSAGEM NÃO APARECE?"
+//
+// O diagnóstico estava sendo feito por eliminação — um palpite por teste, e
+// cada palpite custando um deploy. As causas possíveis são poucas e todas
+// verificáveis pelo servidor. Este botão pergunta todas de uma vez e mostra a
+// CONCLUSÃO escrita, não o JSON: quem está com a tela vazia não deveria
+// precisar interpretar dado bruto para saber o que fazer.
+// ---------------------------------------------------------------------------
+async function diagEntrada() {
+  const wa = prompt('Telefone do contato que mandou a mensagem (só números, com DDI):\nEx.: 5511988887777\n\nPode deixar vazio — o diagnóstico usa o último evento recebido.');
+  if (wa === null) return;
+  try {
+    const d = await api('/adm/por-que-nao-aparece?wa=' + encodeURIComponent(String(wa).replace(/\D/g, '')));
+    const arm = d.armazenamento || {};
+    const linha = (r, v) => `<div class="wa-row"><span>${esc(r)}</span><b>${v}</b></div>`;
+    openModal(`
+      <h2>${ico('activity')} Por que a mensagem não aparece</h2>
+
+      <div class="danger-box" style="margin:10px 0 14px">
+        ${(d.achados || []).map(a => `<p style="margin:4px 0">${esc(a)}</p>`).join('')}
+      </div>
+
+      <span class="fb-sub">Onde este servidor grava</span>
+      ${linha('Banco', esc(arm.motor === 'mysql' ? 'MySQL (externo)' : 'arquivo local'))}
+      ${linha('Servidor', '<code>' + esc(arm.instancia || '?') + '</code> · ' + esc(arm.host || ''))}
+      ${linha('Disco apagado a cada deploy?', arm.efemero ? 'SIM' : 'não')}
+
+      <span class="fb-sub" style="margin-top:12px">Para onde a mensagem é roteada</span>
+      ${linha('Phone Number ID', '<code>' + esc(d.procurado.phoneNumberId) + '</code>')}
+      ${linha('Conta que recebe', esc((d.roteamento.contaQueRecebe || {}).nome || '— nenhuma —'))}
+      ${linha('Contas com este número', esc((d.roteamento.contasComEsteNumero || []).map(a => a.nome).join(', ') || '—'))}
+
+      <span class="fb-sub" style="margin-top:12px">Contas</span>
+      <div class="wh-meta" style="display:block">
+        ${(d.contas || []).map(c => `<div class="card" style="padding:10px;margin-bottom:8px">
+          <b>${esc(c.nome)}</b> ${c.temEsteNumero ? '<span class="pill done">tem este número</span>' : ''}
+          <div class="muted" style="font-size:12px;margin-top:4px">
+            ${fmtN(c.contatos)} contato(s) · ${fmtN(c.recebidas)} recebida(s) · ${fmtN(c.enviadas)} enviada(s)
+          </div>
+          ${(c.canais || []).map(x => `<div class="muted" style="font-size:11.5px">
+            canal <b>${esc(x.label || x.id)}</b> · ${x.conectado ? 'conectado' : '<b style="color:var(--red)">desconectado</b>'}
+            · id <code>${esc(x.phoneNumberId || '—')}</code></div>`).join('')}
+          ${(c.contato || []).map(ct => `<div class="muted" style="font-size:11.5px;margin-top:4px">
+            contato <b>${esc(ct.nome || '')}</b> no canal <code>${esc(ct.chId)}</code>
+            ${ct.canalExiste ? '' : '<b style="color:var(--red)">(canal não existe mais)</b>'}
+            · janela 24h: ${ct.janela24h ? 'aberta' : 'fechada'}</div>`).join('')}
+        </div>`).join('')}
+      </div>
+
+      <div class="row"><button class="btn no-grow" onclick="closeModal()">Fechar</button>
+        <button class="btn primary no-grow" onclick="copyText(${JSON.stringify(JSON.stringify(d))})">${ico('copy', 13)} Copiar diagnóstico</button></div>
+    `, 'modal-diag');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
 async function renderLogs() {
   const abas = [
     ['erro', 'Falhas'],
@@ -5861,6 +5864,7 @@ async function renderLogs() {
       <div class="page-head row">
         <div style="flex:1"><h1>Webhook &amp; Logs</h1>
           <p>Eventos de toda a plataforma — Meta, gateways e automações de todas as contas</p></div>
+        <button class="btn no-grow" onclick="diagEntrada()">${ico('activity', 14)} Por que não aparece?</button>
         <button class="btn no-grow" onclick="renderLogs()">${ico('refresh', 14)} Atualizar</button>
       </div>
       <div class="row" id="log-abas" style="gap:8px;margin-bottom:14px">
@@ -6073,7 +6077,7 @@ async function renderSettings() {
       <div class="page-head"><h1>Configurações</h1><p>${isAdmin ? 'Conexão do WhatsApp, plataforma e administração' : 'Conexão do WhatsApp e preferências'}</p></div>
 
       <div class="tabs">
-        <button class="active" data-tab="contas" onclick="showSettingsTab('contas')">${ico('smartphone', 14)} Contas de WhatsApp</button>
+        <button class="active" data-tab="contas" onclick="showSettingsTab('contas')">${ico('smartphone', 14)} Conexão do WhatsApp</button>
         <button data-tab="conexao" onclick="showSettingsTab('conexao')">Conexão & API</button>
         <button data-tab="numero" onclick="showSettingsTab('numero')">Número & Perfil</button>
         <button data-tab="atendimento" onclick="showSettingsTab('atendimento')">Atendimento</button>
@@ -6257,11 +6261,7 @@ async function renderSettings() {
   // veio do menu do avatar: abre direto a aba certa (e o campo de novo canal)
   if (PENDING_TAB) {
     showSettingsTab(PENDING_TAB);
-    if (PENDING_CH_NEW) {
-      const el = $('#ch-new');
-      if (el) { el.focus(); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-    }
-    PENDING_TAB = ''; PENDING_CH_NEW = false;
+    PENDING_TAB = '';
   }
 }
 
@@ -8705,7 +8705,7 @@ async function pintarPlanos() {
     const mods = p.modules || {};
     // o que o plano ENTREGA, na ordem em que a pessoa pergunta
     const itens = [
-      lim.whatsapps === -1 ? 'Conexões de WhatsApp ilimitadas' : fmtN(lim.whatsapps || 1) + ' conexão(ões) de WhatsApp',
+      '1 número de WhatsApp',
       lim.sends === -1 ? 'Disparos ilimitados' : fmtN(lim.sends) + ' disparos por ciclo',
       lim.contacts === -1 ? 'Contatos ilimitados' : fmtN(lim.contacts) + ' contatos',
       lim.campaigns === -1 ? 'Campanhas ilimitadas' : fmtN(lim.campaigns) + ' campanhas por ciclo'
@@ -10535,7 +10535,7 @@ const LIMIT_META = [
   // `buy` é como o item é chamado na hora de contratar unidades a mais — os
   // rótulos acima descrevem o que o PLANO inclui, e ficam estranhos no "Contratar…".
   { key: 'links',     label: 'Links rastreáveis grátis',  short: 'Links',    ph: '1', extra: true, buy: 'links rastreáveis' },
-  { key: 'whatsapps', label: 'WhatsApps inclusos',        short: 'WhatsApp', ph: '1', extra: true, buy: 'conexões de WhatsApp' },
+  { key: 'whatsapps', label: 'WhatsApps inclusos',        short: 'WhatsApp', ph: '1' },
   { key: 'agents',    label: 'Atendentes na equipe',      short: 'Equipe',   ph: 'ilimitado' },
   { key: 'webhooks',  label: 'Webhooks de entrada',       short: 'Webhooks', ph: 'ilimitado' }
 ];

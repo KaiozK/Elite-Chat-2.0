@@ -320,9 +320,12 @@ function channelByPhoneId(acc, phoneNumberId) {
   if (!phoneNumberId) return null;
   // Mesma regra de `findAccountByPhoneId`: dentro da conta, o canal conectado
   // vem antes do resíduo de um canal desconectado com o mesmo id.
+  // Com UMA conexão por conta, a conta só foi encontrada porque este número é
+  // dela — então o canal é o dela, mesmo que o id gravado esteja defasado. Sem
+  // esta volta, um id antigo devolvia `null` e a mensagem entrava sem canal.
   const lista = (acc && acc.channels) || [];
   const bate = c => c.wa && c.wa.phoneNumberId === phoneNumberId;
-  return lista.find(c => bate(c) && c.wa.connected) || lista.find(bate) || null;
+  return lista.find(c => bate(c) && c.wa.connected) || lista.find(bate) || lista[0] || null;
 }
 
 // Estado da conexão WhatsApp de cada conta — preenchido pelo Embedded Signup.
@@ -769,6 +772,38 @@ function nomeDeArquivoNaMarca(data) {
   return true;
 }
 
+// UMA CONTA, UMA CONEXÃO DE WHATSAPP.
+//
+// O painel já teve vários números por conta. A ideia parecia boa e custou caro:
+// cada contato, mensagem e campanha passou a carregar um `chId`, e quando esse
+// id mudava — reconectar o número, recriar a conexão, remover um canal — tudo
+// que estava carimbado com o id antigo virava dado invisível. A conversa
+// continuava no banco e sumia da tela, sem erro nenhum.
+//
+// Agora a conta tem UM canal. Esta função é o conserto que roda em toda carga:
+// escolhe o canal que vale (o conectado, senão o primeiro), reetiqueta TUDO
+// para ele — inclusive o que apontava para canal que não existe mais — e
+// guarda os canais extras em `channelsRemovidos` para não perder token nenhum.
+function colapsarCanais(acc) {
+  const lista = acc.channels || [];
+  const vivo = lista.find(c => c.wa && c.wa.connected) || lista[0];
+  const extras = lista.filter(c => c !== vivo);
+  if (extras.length) {
+    if (!Array.isArray(acc.channelsRemovidos)) acc.channelsRemovidos = [];
+    acc.channelsRemovidos.push(...extras);
+  }
+  acc.channels = [vivo];
+
+  // Reetiqueta o que aponta para qualquer outro canal — os extras e os mortos.
+  const id = vivo.id;
+  for (const c of acc.contacts || []) if (c.chId !== id) c.chId = id;
+  for (const m of acc.messages || []) if (m.chId !== id) m.chId = id;
+  for (const c of acc.campaigns || []) if (c.chId !== id) c.chId = id;
+  // o agente de IA podia ser restrito a alguns números; com um só, a restrição
+  // vira uma armadilha silenciosa (lista com id morto = IA que nunca responde)
+  if (acc.ia && Array.isArray(acc.ia.channels) && acc.ia.channels.length) acc.ia.channels = [];
+}
+
 function ensureAccountShape(acc) {
   carimbarHorasFaltantes(acc);
   botoesDasAntigas(acc);
@@ -801,6 +836,7 @@ function ensureAccountShape(acc) {
     if (!Array.isArray(ch.templatesCache.list)) ch.templatesCache.list = [];
     if (typeof ch.templatesCache.fetchedAt !== 'number') ch.templatesCache.fetchedAt = 0;
   }
+  colapsarCanais(acc);
   attachWaAlias(acc);
   attachTplAlias(acc);
   const defCh = acc.channels[0].id;

@@ -15,15 +15,15 @@ function defChId(acc) {
   return (own || list[0] || {}).id || '';
 }
 
-// Um contato pertence a UM canal: a mesma pessoa falando com dois números da
-// empresa vira duas conversas separadas, como pedido. Quando `chId` não é
-// informado, mantém o comportamento antigo (procura em qualquer canal).
-function findContact(acc, waId, chId) {
-  const ch = chId || defChId(acc);
-  const dflt = ((acc.channels || [])[0] || {}).id || '';
-  return acc.contacts.find(c => c.waId === waId && (c.chId || dflt) === ch)
-    // rede de segurança: contato ainda sem canal carimbado
-    || (ch === dflt ? acc.contacts.find(c => c.waId === waId && !c.chId) : undefined);
+// O TELEFONE É A IDENTIDADE — e só ele.
+//
+// Isto já procurou por (canal, telefone), quando a conta podia ter vários
+// números. O efeito colateral foi grave: quando o id do canal mudava, a busca
+// não achava o contato existente e criava OUTRO com o mesmo telefone. A
+// conversa antiga ficava órfã e a nova começava do zero. Com uma conexão por
+// conta (ver `colapsarCanais` em src/db.js), o telefone basta.
+function findContact(acc, waId) {
+  return acc.contacts.find(c => c.waId === waId);
 }
 
 // CADASTRO AUTOMÁTICO (ver docs/WEBHOOKS.md)

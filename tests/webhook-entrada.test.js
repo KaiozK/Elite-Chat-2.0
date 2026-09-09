@@ -114,14 +114,18 @@ async function entregar(c) {
   // apontando para um canal fora da lista e some da tela — o dado continua no
   // banco, invisível. É o pior tipo de sumiço: nada quebra, nada avisa, e a
   // pessoa conclui que perdeu os clientes.
+  // O conserto deixou de ser um remendo no filtro e passou a ser a regra: a
+  // conta tem UMA conexão, então não existe canal para esconder conversa. Quem
+  // prova o comportamento de ponta a ponta é tests/uma-conexao-por-conta.
   const api = fs.readFileSync(path.join(R, 'src', 'api.js'), 'utf8');
   const filtro = api.slice(api.indexOf('function chanConversa'), api.indexOf('function listScope'));
-  ok(/const vivos = new Set\(canais\.map\(c => c\.id\)\)/.test(filtro),
-     'o filtro sabe quais canais existem de verdade');
-  ok(/return vivos\.has\(c\) \? c : dflt;/.test(filtro),
-     'e o contato órfão volta para o canal padrão, em vez de sumir');
+  ok(/tudo: true/.test(filtro) && /f: \(\) => true/.test(filtro),
+     'a caixa de entrada não filtra por canal — nada fica invisível');
   ok(!/f: o => \(o\.chId \|\| dflt\) === id/.test(filtro),
      'o filtro antigo, que escondia o órfão para sempre, não está mais lá');
+  const dbSrc = fs.readFileSync(path.join(R, 'src', 'db.js'), 'utf8');
+  ok(/function colapsarCanais/.test(dbSrc) && /for \(const c of acc\.contacts \|\| \[\]\) if \(c\.chId !== id\)/.test(dbSrc),
+     'e o que já ficou carimbado errado é reetiquetado em toda carga do banco');
 
   console.log('\n=== 5. Dá para SABER se há mais de um servidor no ar ===');
   // Com o banco em ARQUIVO, cada instância tem o seu próprio db.json: o que se
@@ -197,6 +201,30 @@ async function entregar(c) {
      'a mensagem vai para a conta conectada, mesmo ela vindo depois na lista');
   const cg = gemea.contacts.find(c => c.waId === '5511988887777');
   ok(!!cg && !!cg.lastInboundAt, 'e a janela de 24h abre nela — que era o sintoma na tela');
+
+  console.log('\n=== 8. O diagnóstico responde sozinho ===');
+  // O diagnóstico estava sendo feito por eliminação: um palpite por teste, e
+  // cada palpite custando um deploy. As causas possíveis são poucas e todas
+  // verificáveis pelo servidor — então ele verifica todas de uma vez e escreve
+  // a conclusão, em vez de devolver JSON para alguém interpretar.
+  const apiSrc3 = fs.readFileSync(path.join(R, 'src', 'api.js'), 'utf8');
+  const rota = apiSrc3.slice(apiSrc3.indexOf("router.get('/adm/por-que-nao-aparece'"),
+                             apiSrc3.indexOf("router.get('/webhook-log'"));
+  ok(rota.length > 500, 'a rota de diagnóstico existe');
+  ok(/const achados = \[\]/.test(rota), 'e devolve uma CONCLUSÃO escrita, não só dados');
+  for (const [o, q] of [
+    ['O MESMO número está em', 'o mesmo número em duas contas'],
+    ['Nenhuma conta reconhece o Phone Number ID', 'número que ninguém reconhece'],
+    ['que não existe mais — some da lista de Conversas', 'contato órfão num canal apagado'],
+    ['banco está em ARQUIVO num host que recria o disco', 'banco que se apaga no deploy'],
+    ['compare o campo "servidor" entre duas recargas', 'mais de um servidor']
+  ]) {
+    ok(rota.includes(o), 'ela detecta: ' + q);
+  }
+  ok(/instancia: INSTANCIA/.test(rota), 'e diz qual servidor respondeu, para comparar entre recargas');
+  const front2 = fs.readFileSync(path.join(R, 'public', 'app', 'app.js'), 'utf8');
+  ok(/Por que não aparece\?/.test(front2), 'com um botão na tela de Logs, sem precisar montar URL');
+  ok(/Copiar diagnóstico/.test(front2), 'e um botão para copiar tudo de uma vez');
 
   const antesT = JSON.parse(original || '{}');
   for (const k of ['accounts', 'revenue', 'plans']) {
