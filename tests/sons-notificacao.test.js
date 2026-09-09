@@ -75,7 +75,7 @@ function montarJanela() {
     removeEventListener: (t, f) => { const l = ouvintes[t] || []; const i = l.indexOf(f); if (i >= 0) l.splice(i, 1); },
     fetch: () => Promise.resolve({ json: () => Promise.resolve({}) }),
     location: { pathname: '/app/', origin: 'http://x' },
-    Notification: undefined,
+    Notification: { permission: 'denied', requestPermission: () => Promise.resolve('denied') },
     setTimeout, clearTimeout, setInterval, clearInterval, console
   };
   win.window = win;
@@ -138,7 +138,25 @@ function montarJanela() {
   EC.stopRing();
   ok(toque.paused === true && toque.currentTime === 0, 'parar volta o toque ao começo');
 
-  console.log('\n=== 6. Voltando do segundo plano, o som não morre ===');
+  console.log('\n=== 6. A chamada toca UMA vez, não duas ===');
+  // `startRing()` e `notify({type:'call'})` são chamados um atrás do outro
+  // quando o cliente liga — e os DOIS mexem no mesmo <audio>. Sem `silent`, o
+  // notify dava um segundo play() no elemento que tinha acabado de começar: o
+  // toque reiniciava do zero e engasgava logo na primeira nota.
+  const toque2 = porArquivo['chamada.mp3'];
+  const antesD = toque2.tentativas.length;
+  EC.startRing();
+  EC.notify({ type: 'call', silent: true, title: 'Chamada de voz', body: 'alguém está te ligando' });
+  await new Promise(r => setTimeout(r, 20));
+  ok(toque2.tentativas.length === antesD + 1,
+     'um play só, mesmo com o aviso saindo junto', 'plays: ' + (toque2.tentativas.length - antesD));
+  EC.stopRing();
+  const app = require('fs').readFileSync(R + 'public/app/app.js', 'utf8');
+  const bloco = app.slice(app.indexOf('function onCallEvent'), app.indexOf('function onCallEvent') + 1400);
+  ok(/type: 'call', silent: true/.test(bloco),
+     'e a chamada de entrada marca o aviso como silencioso, porque o toque é do startRing');
+
+  console.log('\n=== 7. Voltando do segundo plano, o som não morre ===');
   // O destrave antigo removia o próprio ouvinte no primeiro clique. O iOS
   // suspende o áudio ao mandar o app para trás; sem rearmar, o painel que
   // passou a noite aberto acordava mudo até recarregar a página.
@@ -153,7 +171,7 @@ function montarJanela() {
   ok(som.tentativas.length === antes2 + 1 && som.tentativas[antes2].permitido,
      'e o aviso seguinte continua tocando');
 
-  console.log('\n=== 7. O destrave velho, que só cuidava do tom, não voltou ===');
+  console.log('\n=== 8. O destrave velho, que só cuidava do tom, não voltou ===');
   const f = fonte;
   ok(!/var resume = function \(\) \{ ac\(\); window\.removeEventListener\('pointerdown', resume\); \};/.test(f),
      'o destrave de uma vez só saiu do código');

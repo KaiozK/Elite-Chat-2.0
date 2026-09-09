@@ -13263,7 +13263,12 @@ function onCallEvent(d) {
     if (window.ECNotify && ECNotify.startRing) ECNotify.startRing();
     if (window.ECNotify) {
       const who = (d.call && (d.call.name || d.call.contactName)) || (d.call && d.call.waId ? '+' + d.call.waId : 'Contato');
-      ECNotify.notify({ type: 'call', title: 'Chamada de voz', body: who + ' está te ligando…', waId: d.call && d.call.waId, url: '/app/#/inbox', tag: 'call:' + (d.call && d.call.id), requireInteraction: true, callId: d.call && d.call.id });
+      // `silent` porque o toque já é do startRing() da linha acima, e os dois
+      // usam o MESMO <audio>. Sem isto, notify() dava um segundo play() no
+      // elemento que tinha acabado de começar: o toque reiniciava do zero,
+      // engasgando logo na primeira nota. A vibração também é do startRing,
+      // que vibra a cada ciclo enquanto o telefone chama.
+      ECNotify.notify({ type: 'call', silent: true, title: 'Chamada de voz', body: who + ' está te ligando…', waId: d.call && d.call.waId, url: '/app/#/inbox', tag: 'call:' + (d.call && d.call.id), requireInteraction: true, callId: d.call && d.call.id });
     }
   } else if (d.kind === 'claimed') {
     // Outro aparelho (ou outro atendente) pegou a chamada. Este aqui para de
