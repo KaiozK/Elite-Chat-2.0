@@ -57,8 +57,9 @@ function montarJanela() {
     state: 'suspended',
     currentTime: 0,
     resume() { this.state = 'running'; return Promise.resolve(); },
-    createOscillator: () => ({ type: '', frequency: { value: 0 }, connect() {}, start() {}, stop() {} }),
-    createGain: () => ({ gain: { setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() {} }),
+    osc: 0,
+    createOscillator() { ctx.osc++; return { type: '', frequency: { value: 0 }, connect() {}, start() {}, stop() {} }; },
+    createGain: () => ({ gain: { value: 0, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() {} }),
     destination: {}
   };
   const doc = {
@@ -202,7 +203,68 @@ function montarJanela() {
      'e o interruptor geral cala tudo, inclusive o toque da chamada');
   EC.stopRing(); EC.setPref('sounds', true);
 
-  console.log('\n=== 8. Voltando do segundo plano, o som não morre ===');
+  console.log('\n=== 8. O IPHONE TEIMOSO: <audio> bloqueado, som mesmo assim ===');
+  // Até 25/08 o aviso era só tom sintetizado, pelo AudioContext — e funcionava
+  // em TODO aparelho, porque um contexto religado toca o que for, a qualquer
+  // hora. Aí os MP3 entraram e viraram o caminho principal; <audio> é mídia, e
+  // no iPhone cada elemento precisa ter tocado dentro de um gesto ou fica
+  // bloqueado. Agora os mesmos MP3 saem PELO CONTEXTO: um destrave cobre tudo.
+  {
+    const k = montarJanela();
+    // Web Audio completo...
+    k.ctx.decodeAudioData = (d, ok) => { const b = { fake: true }; if (ok) ok(b); return Promise.resolve(b); };
+    k.ctx.fontes = 0; k.ctx.emLaco = 0;
+    k.ctx.createBufferSource = () => { k.ctx.fontes++; const o = { buffer: null, loop: false,
+      connect() {}, start() { if (o.loop) k.ctx.emLaco++; }, stop() { if (o.loop) k.ctx.emLaco--; } }; return o; };
+    k.win.fetch = () => Promise.resolve({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) });
+    // ...e <audio> recusado SEMPRE, como no iPhone
+    k.FakeAudio.prototype.play = function () {
+      this.tentativas.push({ mudo: this.muted, permitido: false });
+      return Promise.reject(Object.assign(new Error('bloqueado'), { name: 'NotAllowedError' }));
+    };
+    vm.createContext(k.win);
+    vm.runInContext(fonte, k.win);
+    const E2 = k.win.ECNotify; E2.init({});
+    k.disparar('pointerdown');
+    await new Promise(r => setTimeout(r, 80));
+    for (const t of ['message', 'sale', 'commission', 'confirm', 'call']) {
+      k.ctx.fontes = 0;
+      E2.playSound(t);
+      await new Promise(r => setTimeout(r, 30));
+      ok(k.ctx.fontes > 0, `${t}: sai pelo AudioContext, com o <audio> bloqueado`);
+    }
+    k.ctx.fontes = 0; k.ctx.emLaco = 0;
+    E2.startRing();
+    await new Promise(r => setTimeout(r, 30));
+    ok(k.ctx.emLaco === 1, 'e o TOQUE da ligação também, em laço');
+    E2.stopRing();
+    ok(k.ctx.emLaco === 0, 'parando quando alguém atende');
+  }
+
+  console.log('\n=== 9. A ligação não começa MUDA ===');
+  // `bater()` roda logo depois do play(). A recusa do <audio> chega só na
+  // microtarefa seguinte, então `toque.audio` ainda estava preenchido e o
+  // sintetizado esperava o ciclo: 2,2 SEGUNDOS de silêncio no começo de uma
+  // chamada — onde o som mais importa.
+  {
+    const k = montarJanela();
+    k.FakeAudio.prototype.play = function () {
+      this.tentativas.push({ mudo: this.muted, permitido: false });
+      return Promise.reject(Object.assign(new Error('bloqueado'), { name: 'NotAllowedError' }));
+    };
+    vm.createContext(k.win);
+    vm.runInContext(fonte, k.win);
+    const E3 = k.win.ECNotify; E3.init({});
+    k.disparar('pointerdown');
+    await new Promise(r => setTimeout(r, 60));
+    k.ctx.osc = 0;
+    E3.startRing();
+    await new Promise(r => setTimeout(r, 150));   // o "primeiro instante"
+    ok(k.ctx.osc > 0, 'sem arquivo e sem Web Audio, o tom entra NA HORA', k.ctx.osc + ' notas em 150 ms');
+    E3.stopRing();
+  }
+
+  console.log('\n=== 10. Voltando do segundo plano, o som não morre ===');
   // O destrave antigo removia o próprio ouvinte no primeiro clique. O iOS
   // suspende o áudio ao mandar o app para trás; sem rearmar, o painel que
   // passou a noite aberto acordava mudo até recarregar a página.
@@ -217,7 +279,7 @@ function montarJanela() {
   ok(som.tentativas.length === antes2 + 1 && som.tentativas[antes2].permitido,
      'e o aviso seguinte continua tocando');
 
-  console.log('\n=== 9. O destrave velho, que só cuidava do tom, não voltou ===');
+  console.log('\n=== 11. O destrave velho, que só cuidava do tom, não voltou ===');
   const f = fonte;
   ok(!/var resume = function \(\) \{ ac\(\); window\.removeEventListener\('pointerdown', resume\); \};/.test(f),
      'o destrave de uma vez só saiu do código');

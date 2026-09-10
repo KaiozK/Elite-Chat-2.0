@@ -160,6 +160,63 @@
   // atrasado na mensagem que importa.
   function prepararSons() { for (var k in ARQUIVOS) if (k !== 'call') tocador(k); }
 
+  /* ---------------- O MP3 TOCADO PELO AudioContext ----------------
+     Até 25/08 o aviso era só tom sintetizado, pelo AudioContext — e funcionava
+     em TODO aparelho. O motivo é simples: um AudioContext religado toca o que
+     for, a qualquer hora. Ele não é "reprodução de mídia" para o navegador,
+     então não cai na trava de autoplay que existe para vídeo com som.
+
+     Aí os MP3 entraram e viraram o caminho principal. Só que <audio> é mídia:
+     no iPhone cada elemento precisa ter tocado dentro de um gesto, um por um,
+     ou fica bloqueado para sempre. Foi assim que o som morreu — e o toque da
+     ligação foi o mais atingido, porque uma chamada chega por definição sem
+     nenhum gesto.
+
+     Aqui os mesmos MP3 voltam a sair pelo AudioContext: o arquivo é baixado
+     uma vez e decodificado em memória, e tocar é criar uma fonte e dar start.
+     UM destrave (o resume do contexto) cobre TODOS os sons, arquivo incluído,
+     como era antes. O <audio> continua atrás, de reserva, e o tom sintetizado
+     atrás dele. */
+  var bufers = {};          // tipo -> AudioBuffer decodificado
+  var baixando = {};
+
+  function carregarBuffer(tipo) {
+    if (!ARQUIVOS[tipo] || bufers[tipo] || baixando[tipo]) return;
+    var c = ac(); if (!c || !c.decodeAudioData) return;
+    baixando[tipo] = true;
+    try {
+      fetch(ARQUIVOS[tipo])
+        .then(function (r) { return r.arrayBuffer(); })
+        .then(function (dados) {
+          return new Promise(function (ok, falhou) {
+            // Safari antigo só tem a forma com callback; a moderna devolve
+            // promessa. Chamar das duas maneiras cobre os dois.
+            var p = c.decodeAudioData(dados, ok, falhou);
+            if (p && p.then) p.then(ok, falhou);
+          });
+        })
+        .then(function (buf) { bufers[tipo] = buf; baixando[tipo] = false; })
+        .catch(function () { baixando[tipo] = false; });
+    } catch (e) { baixando[tipo] = false; }
+  }
+
+  // Toca o buffer já decodificado. Devolve um jeito de PARAR (o toque da
+  // ligação precisa), ou null quando este caminho não está disponível.
+  function tocarBuffer(tipo, emLaco) {
+    var c = state.audioCtx, buf = bufers[tipo];
+    if (!c || !buf || !c.createBufferSource || c.state === 'suspended') return null;
+    try {
+      var fonte = c.createBufferSource();
+      fonte.buffer = buf;
+      fonte.loop = !!emLaco;
+      var g = c.createGain();
+      if (g.gain) g.gain.value = 0.7;
+      fonte.connect(g); g.connect(c.destination);
+      fonte.start(0);
+      return { parar: function () { try { fonte.stop(0); } catch (e) {} } };
+    } catch (e) { return null; }
+  }
+
   /* ---------------- DESTRAVAR O ÁUDIO ----------------
      Aqui isto só chamava `ac()`, que resume o AudioContext — e o AudioContext
      é o caminho do tom SINTETIZADO, que é o plano B. O caminho principal são
@@ -194,6 +251,8 @@
   function destravar() {
     var c = ac();
     if (c && c.state === 'suspended') { try { c.resume(); } catch (e) {} }
+    // com o contexto de pé, decodifica os MP3 para tocarem por ele depois
+    for (var t in ARQUIVOS) carregarBuffer(t);
     // O toque da ligação entra aqui mesmo ficando fora do pré-carregamento:
     // ele chega sem gesto nenhum (o cliente é que liga), então é justamente o
     // que mais precisa estar liberado antes da hora.
@@ -233,6 +292,9 @@
 
   function playSound(type) {
     if (!state.prefs.sounds) return;
+    // 1º o AudioContext, que é o caminho que nunca ficou bloqueado
+    if (tocarBuffer(type, false)) return;
+    // 2º o <audio>, para quem não tem Web Audio
     var a = tocador(type);
     if (a) {
       try {
@@ -252,7 +314,7 @@
      perde a ligação inteira. O toque repete até alguém atender, recusar ou o
      cliente desistir — como qualquer telefone. Fica em teto de 60 repetições
      (~2 min) para que uma falha em parar o toque não vire um alarme eterno. */
-  var toque = { iv: null, n: 0, audio: null };
+  var toque = { iv: null, n: 0, audio: null, fonte: null };
 
   /* O ARQUIVO TOCA EM LAÇO, e não repetido por temporizador.
      Um toque de telefone tem começo, meio e fim pensados para emendar: cortá-lo
@@ -268,32 +330,44 @@
     if (toque.iv) return;             // já tocando: não empilha
     toque.n = 0;
 
+    // O TOQUE NÃO PODE COMEÇAR MUDO.
+    //
+    // Aqui o <audio> era tentado e, se fosse recusado, `toque.audio` só virava
+    // null NA MICROTAREFA seguinte — depois de `bater()` já ter rodado. O
+    // sintetizado então esperava o ciclo seguinte: 2,2 SEGUNDOS de silêncio no
+    // começo de uma ligação. Numa chamada é onde o som mais importa, e era
+    // exatamente onde não havia nenhum.
+    //
+    // Agora a ordem é decidida ANTES de bater: o AudioContext primeiro (não
+    // fica bloqueado), o <audio> atrás, e a recusa dele acende o sintetizado
+    // NA HORA, sem esperar ciclo nenhum.
     if (state.prefs.sounds) {
-      var a = tocador('call');
-      if (a) {
-        try {
-          a.loop = true;
-          a.currentTime = 0;
-          var pr = a.play();
-          toque.audio = a;
-          // play() é recusado enquanto a pessoa não tiver interagido com a
-          // página — e numa ligação que chega com o app recém-aberto isso é o
-          // caso comum. Aí o tom sintetizado assume, que nunca é bloqueado
-          // porque não é reprodução de mídia.
-          if (pr && pr.catch) {
-            pr.catch(function () {
-              toque.audio = null;
-            });
-          }
-        } catch (e) { toque.audio = null; }
+      toque.fonte = tocarBuffer('call', true);
+      if (!toque.fonte) {
+        var a = tocador('call');
+        if (a) {
+          try {
+            a.loop = true;
+            a.currentTime = 0;
+            var pr = a.play();
+            toque.audio = a;
+            if (pr && pr.catch) {
+              pr.catch(function () {
+                toque.audio = null;
+                // o toque continua: o sintetizado entra agora, não daqui a 2,2s
+                if (toque.iv && state.prefs.sounds) { try { SOUNDS.call(); } catch (e) {} }
+              });
+            }
+          } catch (e) { toque.audio = null; }
+        }
       }
     }
 
     var bater = function () {
       if (++toque.n > MAX_CICLOS) return stopRing();
-      // O sintetizado só entra quando o arquivo NÃO está tocando — os dois
+      // O sintetizado só entra quando NADA está tocando o arquivo — os dois
       // juntos viram barulho, não toque.
-      if (state.prefs.sounds && !toque.audio) { try { SOUNDS.call(); } catch (e) {} }
+      if (state.prefs.sounds && !toque.audio && !toque.fonte) { try { SOUNDS.call(); } catch (e) {} }
       if (state.prefs.vibrate && navigator.vibrate) {
         try { navigator.vibrate([400, 200, 400]); } catch (e) {}
       }
@@ -305,6 +379,7 @@
   function stopRing() {
     if (toque.iv) { clearInterval(toque.iv); toque.iv = null; }
     toque.n = 0;
+    if (toque.fonte) { toque.fonte.parar(); toque.fonte = null; }
     // PARAR É PAUSAR E VOLTAR AO ZERO. Só pausar deixaria o próximo toque
     // começando no meio do som, de onde o anterior parou.
     if (toque.audio) {
