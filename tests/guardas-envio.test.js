@@ -95,25 +95,51 @@ const fs = require('fs');
   ok(/list = list\.filter\(c => !consent\.isOptedOut\(c\)\)/.test(aud),
      'e exclui ANTES de qualquer outro filtro de público');
 
-  console.log('\n=== 8. O INTERRUPTOR do módulo desliga o bloqueio ===');
-  // COMO É HOJE, escrito para ficar visível — não é um elogio nem uma
-  // reclamação, é o que o código faz.
-  //
-  // `canSendTo` e `resolveAudience` só filtram quando `consent.enabled` está
-  // ligado. Quem já tinha pedido para sair ANTES continua marcado no contato,
-  // mas volta a receber assim que o dono desliga o módulo — inclusive em
-  // disparo em massa. Ninguém consegue pedir para sair com o módulo
-  // desligado (handleConsent devolve cedo), então o caso só acontece com
-  // opt-out antigo e interruptor novo.
+  console.log('\n=== 8. O INTERRUPTOR NÃO REVOGA UM OPT-OUT ===');
+  // Era o contrário: `canSendTo` e `resolveAudience` só filtravam com o módulo
+  // ligado, então desligá-lo devolvia ao público toda a lista de opt-out de uma
+  // vez. Ninguém consegue pedir para sair com o módulo desligado, mas quem
+  // pediu ANTES continuava marcado — e bastava mexer na configuração para o
+  // bloqueio sumir. Em disparo em massa isso são milhares de mensagens para
+  // quem já tinha dito PARE.
   const cons = fs.readFileSync(R + 'src/consent.js', 'utf8');
-  ok(/if \(!cfgOf\(acc\)\.enabled\) return \{ allowed: true \};/.test(cons),
-     'com o módulo desligado, canSendTo libera todo mundo');
-  ok(/if \(consent\.cfgOf\(acc\)\.enabled\)/.test(aud),
-     'e o público da campanha também deixa de filtrar');
+  const cst = cons.slice(cons.indexOf('function canSendTo'), cons.indexOf('// ---------- Mensagens'));
+  ok(!/if \(!cfgOf\(acc\)\.enabled\) return \{ allowed: true \};/.test(cst),
+     'canSendTo não libera mais quando o módulo está desligado');
+  ok(/if \(isOptedOut\(contact\)\)/.test(cst), 'e bloqueia por opt-out, ponto');
+  ok(/list = list\.filter\(c => !consent\.isOptedOut\(c\)\);/.test(aud) &&
+     !/if \(consent\.cfgOf\(acc\)\.enabled\)/.test(aud),
+     'o público da campanha filtra SEMPRE, sem depender do interruptor');
+
+  // O interruptor continua valendo para o que é dele: COLETAR o opt-out.
   const wh = fs.readFileSync(R + 'src/webhook.js', 'utf8');
   const hc = wh.slice(wh.indexOf('function handleConsent'), wh.indexOf('function handleConsent') + 400);
   ok(/if \(!cfg\.enabled\) return null;/.test(hc),
-     'e com ele desligado ninguém consegue pedir para sair');
+     'com ele desligado, as palavras-chave param de registrar opt-out — isso é dele');
+
+  console.log('\n=== 9. E ninguém fica preso para sempre ===');
+  // Bloquear sem porta de saída seria trocar um problema por outro: o dono
+  // precisa poder reativar quem voltou a pedir contato.
+  const rota = src.slice(src.indexOf("router.post('/consent/:waId/reactivate'"),
+                         src.indexOf("router.post('/consent/:waId/reactivate'") + 700);
+  ok(rota.length > 100, 'a rota de reativação existe');
+  ok(!/cfgOf\(req\.acc\)\.enabled|consent\.cfgOf\(req\.acc\)\.enabled/.test(rota),
+     'e ela NÃO depende do interruptor — dá para reativar a qualquer momento');
+  ok(/consent\.reactivate\(req\.acc, c, \{ by/.test(rota),
+     'registrando QUEM reativou, que é o que a lei espera');
+
+  console.log('\n=== 10. Na prática: o bloqueio vale com o módulo desligado ===');
+  const consent = require(R + 'src/consent');
+  const conta = { consent: { enabled: false }, contacts: [] };
+  const quieto = { waId: '5511900000001', name: 'Pediu para sair' };
+  consent.optOut(conta, quieto, { source: 'teste', reason: 'disse PARE' });
+  ok(consent.isOptedOut(quieto), 'o contato está em opt-out');
+  const r1 = consent.canSendTo(conta, quieto);
+  ok(!r1.allowed && r1.code === 'opted_out',
+     'e NÃO recebe, mesmo com o módulo desligado', r1.error && r1.error.slice(0, 60) + '…');
+  consent.reactivate(conta, quieto, { by: 'dono' });
+  const r2 = consent.canSendTo(conta, quieto);
+  ok(r2.allowed, 'reativado, volta a receber — e isso ficou registrado');
 
   await encerrar(null, falhas);
 })();

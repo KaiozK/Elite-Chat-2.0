@@ -4054,8 +4054,14 @@ module.exports = function (broadcast, clients) {
   function resolveAudience(acc, aud, chId) {
     const dflt = ((acc.channels || [])[0] || {}).id || '';
     let list = chId ? acc.contacts.filter(c => (c.chId || dflt) === chId) : acc.contacts;
-    // OPT-OUT: quem pediu para sair nunca entra em disparo (regra do módulo de consentimento)
-    if (consent.cfgOf(acc).enabled) list = list.filter(c => !consent.isOptedOut(c));
+    // OPT-OUT: quem pediu para sair NUNCA entra em disparo.
+    //
+    // Isto era condicional a `consent.enabled`. Desligar o módulo devolvia ao
+    // público toda a lista de opt-out de uma vez — e disparo em massa é o pior
+    // lugar possível para esse erro: são milhares de mensagens para quem já
+    // tinha dito PARE, todas de uma vez, todas denunciáveis. Agora o filtro
+    // vale sempre, como em `consent.canSendTo`. Ver o comentário lá.
+    list = list.filter(c => !consent.isOptedOut(c));
     if (!aud || aud.type === 'all') return list.map(c => c.waId);
     const values = (Array.isArray(aud.values) && aud.values.length ? aud.values : [aud.value]).filter(Boolean);
     if (!values.length) return list.map(c => c.waId);

@@ -116,9 +116,25 @@ function reactivate(acc, contact, { by = null, reason = null } = {}) {
 // Regra: contato em opt-out NÃO recebe nada (nem template, nem campanha).
 // A mensagem de confirmação do próprio opt-out é enviada internamente, fora
 // deste guard (ver sendOptOutConfirmation no webhook).
+// O INTERRUPTOR DO MÓDULO NÃO REVOGA UM OPT-OUT.
+//
+// Aqui havia `if (!cfgOf(acc).enabled) return { allowed: true }`: com o módulo
+// desligado, quem tinha pedido para sair voltava a receber — mensagem normal e
+// disparo em massa. O caso não era teórico: ninguém consegue pedir para sair
+// com o módulo desligado, mas quem pediu ANTES continuava marcado no contato,
+// e bastava desligar o interruptor para o bloqueio sumir.
+//
+// Quem disse PARE não recebe mais, e não é o remetente que revoga isso — nem a
+// Meta nem a LGPD deixam. O interruptor controla se o Koonfy COLETA o opt-out
+// (as palavras-chave, a mensagem de confirmação, o nó do fluxo); nunca se ele
+// é RESPEITADO.
+//
+// Ninguém fica preso: `POST /consent/:waId/reactivate` reativa um contato a
+// qualquer momento e não depende do interruptor. Voltar a receber passa a ser
+// uma decisão registrada, com quem reativou e quando — que é o que a lei
+// espera — em vez de um efeito colateral de mexer numa configuração.
 function canSendTo(acc, contact) {
   if (!contact) return { allowed: true };
-  if (!cfgOf(acc).enabled) return { allowed: true };   // módulo desligado = sem bloqueio
   if (isOptedOut(contact)) {
     return {
       allowed: false,
