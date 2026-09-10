@@ -85,7 +85,17 @@ const POR_TEXTO = [
   [/invalid oauth|session has expired|access token/i, POR_CODIGO[190]],
   [/rate limit|too many calls/i, POR_CODIGO[4]],
   [/unsupported post request|does not exist/i, 'O endereço chamado na Meta não existe ou não pertence a esta conta.'],
-  [/permission/i, 'O app não tem permissão para esta ação na Meta. Fale com o suporte.']
+  [/permission/i, 'O app não tem permissão para esta ação na Meta. Fale com o suporte.'],
+  // ---- ENVIO DIRETO (Direct Send) ----
+  // A Meta responde "(#100) Invalid parameter" — que não diz nada — e guarda o
+  // motivo de verdade em `error_data.details`. Sem esta tradução o cliente lia
+  // "parâmetro inválido" e não tinha como saber que o problema é a conta dele
+  // não estar liberada, nem que existe um caminho: o modelo aprovado de sempre.
+  [/requires direct send|direct send.*(isn'?t|not) enabled/i,
+   'O envio direto ainda não está liberado para esta conta na Meta. Ele é uma ' +
+   'solução premium, liberada por fases: confira o banner no Gerenciador do ' +
+   'WhatsApp e, se a conta não se qualifica ainda, registre o interesse por lá. ' +
+   'Enquanto isso, envie por um MODELO APROVADO, que funciona do mesmo jeito.']
 ];
 
 // O QUE A META ESCREVEU PARA O USUÁRIO FINAL. Quando existe, `error_user_msg`
@@ -95,9 +105,20 @@ function traduzir(erroMeta) {
   const e = erroMeta || {};
   const cod = Number(e.code || 0);
   const sub = Number(e.error_subcode || 0);
-  const texto = String(e.message || '');
+  // O MOTIVO NEM SEMPRE ESTÁ EM `message`.
+  //
+  // Vários erros da Meta chegam com uma frase genérica ("(#100) Invalid
+  // parameter") e guardam o motivo de verdade em `error_data.details`. Só
+  // olhar `message` fazia esses casos escaparem da tradução e chegarem crus na
+  // tela — foi o que aconteceu com o envio direto, cujo `message` é igual ao
+  // de qualquer outro parâmetro errado.
+  const detalhe = String((e.error_data && e.error_data.details) || '');
+  const texto = String(e.message || '') + (detalhe ? ' | ' + detalhe : '');
 
   if (POR_CODIGO[sub]) return POR_CODIGO[sub];
+  // O TRECHO VEM ANTES DO CÓDIGO quando o código é genérico. O 100 cobre
+  // "parâmetro inválido" inteiro; o detalhe é que distingue um caso do outro.
+  if (cod === 100) { for (const [re, pt] of POR_TEXTO) if (re.test(texto)) return pt; }
   if (POR_CODIGO[cod]) return POR_CODIGO[cod];
   for (const [re, pt] of POR_TEXTO) if (re.test(texto)) return pt;
   return '';

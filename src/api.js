@@ -2923,6 +2923,40 @@ module.exports = function (broadcast, clients) {
     res.json({ ok: true, message: storeOutbound(req.wctx, to, { type: 'template', text: `📋 Template: ${name}` }, r, req._agentStamp) });
   }));
 
+  // ---- ENVIO DIRETO (Direct Send) ----
+  //
+  // Mensagem iniciada pela empresa SEM modelo aprovado: o cliente escreve o
+  // texto e manda; a Meta gera o modelo correspondente por baixo. É o que tira
+  // do caminho a parte mais cara do WhatsApp oficial — criar o modelo, esperar
+  // a aprovação, e só então poder falar com quem está fora da janela.
+  //
+  // SEM `requireWindow`, e é a segunda rota que pode ficar sem ela.
+  //
+  // A primeira é /send/template, pelo mesmo motivo: mensagem INICIADA PELA
+  // EMPRESA é justamente o que existe para alcançar quem não escreveu nas
+  // últimas 24h. Guardar esta rota pela janela mataria a única razão de ela
+  // existir. Quem decide se o envio vale é a Meta, e a recusa dela chega
+  // traduzida (ver "requires direct send" em src/metaerros.js).
+  //
+  // As outras três trancas continuam todas: opt-out (quem pediu para sair não
+  // recebe nem isto), assinatura em dia, e permissão do atendente.
+  router.post('/send/direct', auth, can('inbox', 'create'), requireActive, requireConsent, markAgent, h(async (req, res) => {
+    const { to, text, category, previewUrl } = req.body || {};
+    if (!to || !text) return res.status(400).json({ error: 'Informe "to" e "text"' });
+    const cat = String(category || 'utility').toLowerCase();
+    if (!wa.CATEGORIAS_DIRETAS.includes(cat)) {
+      return res.status(400).json({
+        error: 'Categoria inválida. Use "utility" (aviso de pedido, entrega, agendamento) ou "authentication" (código de acesso).'
+      });
+    }
+    const r = await wa.sendDirectText(req.wctx, store.normalizeWaId(to), text, cat, previewUrl);
+    res.json({
+      ok: true,
+      categoria: cat,
+      message: storeOutbound(req.wctx, to, { type: 'text', text, direto: cat }, r, req._agentStamp)
+    });
+  }));
+
   router.post('/send/media', auth, can('inbox', 'create'), requireActive, requireConsent, requireWindow('media'), markAgent, h(async (req, res) => {
     const { to, kind, mediaId, link, caption, filename } = req.body;
     if (!to || !kind) return res.status(400).json({ error: 'Informe "to" e "kind" (image|video|audio|document|sticker)' });

@@ -68,6 +68,38 @@ function sendPayload(acc, payload) {
 const sendText = (acc, to, bodyText, previewUrl = false) =>
   sendPayload(acc, { to, type: 'text', text: { body: bodyText, preview_url: !!previewUrl } });
 
+// ============ ENVIO DIRETO (Direct Send) ============
+//
+// Mensagem INICIADA PELA EMPRESA sem modelo aprovado. Em vez de o cliente
+// criar o modelo, esperar a Meta aprovar e só então disparar, ele escreve o
+// texto e manda — a Meta gera o modelo correspondente por baixo, sozinha.
+//
+// É a mesma rota de sempre (`/{phone_number_id}/messages`); o que muda é UM
+// campo no corpo: `category`. Por isso não há caminho novo aqui, só um
+// parâmetro a mais no que já existia.
+//
+// Duas categorias: `utility` (confirmação de pedido, aviso de entrega,
+// lembrete de agendamento) e `authentication`, esta ainda em Beta na Meta.
+//
+// PRECISA DE QUALIFICAÇÃO. É uma solução premium, liberada por conta e em
+// fases. Conta não qualificada recebe o erro 100 com "requires Direct Send,
+// which isn't enabled for this account" — traduzido em src/metaerros.js para
+// dizer o que fazer, em vez de "(#100) Invalid parameter".
+const CATEGORIAS_DIRETAS = ['utility', 'authentication'];
+
+function sendDirect(acc, to, category, payload) {
+  const cat = String(category || '').toLowerCase();
+  if (!CATEGORIAS_DIRETAS.includes(cat)) {
+    const e = new Error('Categoria inválida para envio direto. Use "utility" ou "authentication".');
+    e.status = 400; throw e;
+  }
+  return sendPayload(acc, { to, category: cat, ...payload });
+}
+
+// Atalho para o caso comum: texto puro, categoria utilidade.
+const sendDirectText = (acc, to, bodyText, category = 'utility', previewUrl = false) =>
+  sendDirect(acc, to, category, { type: 'text', text: { body: bodyText, preview_url: !!previewUrl } });
+
 const sendTemplate = (acc, to, name, language, components) =>
   sendPayload(acc, {
     to,
@@ -294,6 +326,7 @@ function debugToken(acc) {
 }
 
 module.exports = {
+  sendDirect, sendDirectText, CATEGORIAS_DIRETAS,
   graph,
   tokenOf,
   sendPayload,

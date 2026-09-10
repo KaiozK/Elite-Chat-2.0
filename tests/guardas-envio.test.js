@@ -39,18 +39,37 @@ const fs = require('fs');
   ok(rotas.length >= 8, `${rotas.length} rotas /send/ em src/api.js`,
      rotas.map(r => r.caminho.replace('/send/', '')).join(' · '));
 
-  console.log('\n=== 2. JANELA DE 24H: só o MODELO atravessa ===');
+  console.log('\n=== 2. JANELA DE 24H: só o que a EMPRESA inicia atravessa ===');
+  // Duas rotas ficam de fora, e as duas pelo mesmo motivo: são mensagem
+  // INICIADA PELA EMPRESA, que é justamente o que existe para alcançar quem
+  // não escreve há mais de 24h. Guardá-las pela janela mataria a razão de elas
+  // existirem. Quem decide se o envio vale é a Meta.
+  //
+  // A lista é FECHADA de propósito: uma rota nova que apareça aqui sem estar
+  // nela cai no `else` e o teste acusa. Entrar nesta lista tem de ser uma
+  // decisão escrita, não um esquecimento.
+  const INICIADAS_PELA_EMPRESA = {
+    '/send/template': 'modelo aprovado — o formato clássico de reabrir conversa',
+    '/send/direct':   'envio direto — mesmo papel do modelo, só que a Meta gera o modelo por baixo'
+  };
   for (const r of rotas) {
     const temJanela = /requireWindow\(/.test(r.guardas);
-    if (r.caminho === '/send/template') {
-      // O modelo aprovado é o ÚNICO formato que a Meta deixa passar fora da
-      // janela — é para isso que ele existe. Guardá-lo aqui quebraria a
-      // reabertura de conversa, que é o uso principal do produto.
-      ok(!temJanela, `${r.caminho} NÃO é guardado — é o que reabre a conversa`);
+    const porque = INICIADAS_PELA_EMPRESA[r.caminho];
+    if (porque) {
+      ok(!temJanela, `${r.caminho} NÃO é guardado — ${porque}`);
     } else {
       ok(temJanela, `${r.caminho} exige a janela aberta`, temJanela ? '' : `api.js:${r.linha}`);
     }
   }
+
+  console.log('\n=== 2b. O ENVIO DIRETO mantém as outras três trancas ===');
+  // Ficar sem a janela não pode virar ficar sem nada. Opt-out, assinatura e
+  // permissão continuam, e são conferidos nas seções seguintes junto com o
+  // resto — aqui fica só o registro de que a rota existe e é reconhecida.
+  const direto = rotas.find(r => r.caminho === '/send/direct');
+  ok(!!direto, 'a rota de envio direto existe');
+  ok(direto && !/requireWindow/.test(direto.guardas),
+     'e é a segunda mensagem iniciada pela empresa, ao lado do modelo');
 
   console.log('\n=== 3. OPT-OUT: vale para TODAS, modelo incluído ===');
   // Esta é a única que também tranca o template: quem pediu para sair não
