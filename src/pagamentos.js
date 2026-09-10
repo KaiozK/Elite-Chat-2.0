@@ -796,6 +796,16 @@ function refundWithdraw(acc, wd) {
   const w = acc.wallet;
   const valor = Math.max(0, Math.round(Number(wd.amount) || 0));
   if (valor <= 0) return { ok: false };
+  // IDEMPOTENTE, como o crédito e o estorno da venda ao lado.
+  //
+  // Hoje a rota do admin já barra a segunda recusa (`wd.status === 'pending'`),
+  // então esta linha não muda nada — e é por isso mesmo que ela precisa
+  // existir: a proteção do dinheiro não pode depender de quem chama. Sem ela,
+  // qualquer caminho novo que devolva um saque devolve DE NOVO, e o cliente
+  // fica com dinheiro que nunca existiu. A assimetria também engana quem lê:
+  // creditPixSale, creditCardSale e reverterVenda têm guarda, esta não tinha.
+  if (wd.refunded) return { ok: false, jaDevolvido: true };
+  wd.refunded = Date.now();
   w.balance += valor;
   // `fromCard` é quanto do saque saiu do dinheiro de cartão — foi gravado no
   // pedido de saque justamente para poder ser desfeito.
