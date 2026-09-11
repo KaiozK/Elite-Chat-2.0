@@ -16695,18 +16695,30 @@ function esFail(msg) {
   toast(msg, 'error');
 }
 
-async function esFinish(code, usedRedirect) {
-  if (esDone) return;
+// O CÓDIGO DA META SÓ VALE UMA VEZ.
+//
+// Quando a conexão para no meio (o número está em outra conta), refazer a
+// autorização inteira só para clicar "assumir" seria pedir à pessoa que
+// percorra de novo os quatro passos que já deram certo. Guardar o código
+// permite retomar de onde parou.
+let esUltimo = null;
+
+async function esFinish(code, usedRedirect, assumir) {
+  if (esDone && !assumir) return;
   esDone = true;
   esMark('popup', true);
+  esUltimo = { code, usedRedirect };
   const msg = $('#es-msg');
-  if (msg) msg.textContent = 'Código recebido, finalizando a integração automaticamente…';
+  if (msg) { msg.classList.remove('err'); msg.textContent = assumir
+    ? 'Assumindo o número e finalizando a conexão…'
+    : 'Código recebido, finalizando a integração automaticamente…'; }
   try {
     const r = await api('/wa/connect', {
       body: {
         code,
         redirectUri: usedRedirect ? API.webOrigin + '/auth/meta/callback' : undefined,
-        sessionInfo: esSessionInfo
+        sessionInfo: esSessionInfo,
+        assumir: !!assumir
       }
     });
     (r.steps || []).forEach(st => esMark(st.name, st.ok, st.detail));
@@ -16717,8 +16729,46 @@ async function esFinish(code, usedRedirect) {
     setTimeout(() => { closeModal(); if (state.view === 'settings') renderSettings(); }, 1800);
   } catch (e) {
     ((e.meta && e.meta.steps) || []).forEach(st => esMark(st.name, st.ok, st.detail));
+    // NÚMERO EM OUTRA CONTA: a recusa vem com a saída, não sem ela.
+    //
+    // Antes esta tela dizia "desconecte-o lá antes de conectar aqui" e parava.
+    // Quando a outra conta é um cadastro antigo ou um teste esquecido, isso
+    // deixava o dono trancado do lado de fora do próprio número — depois de já
+    // ter passado por toda a autorização na Meta.
+    const m = e.meta || {};
+    if (m.code === 'numero_em_outra_conta' && m.podeAssumir) return esOferecerAssumir(e.message, m);
     esFail(e.message);
   }
+}
+
+// Oferece assumir o número, deixando claro o que acontece com a outra conta.
+function esOferecerAssumir(motivo, m) {
+  const box = $('#es-msg');
+  const nomes = (m.contas || []).map(c => c.nome);
+  if (box) {
+    box.classList.add('err');
+    box.innerHTML = `${esc(motivo)}
+      <div style="margin-top:10px;color:var(--texto);font-weight:400">
+        Se este número é seu, você pode assumi-lo agora: ele será desconectado
+        de <b>${esc(nomes.join('", "'))}</b>, que deixa de enviar e receber por ele.
+        O histórico de lá continua no lugar.
+      </div>
+      <button class="btn primary no-grow" style="margin-top:10px" onclick="esAssumirNumero(this)">
+        Desconectar de lá e conectar aqui</button>`;
+  }
+}
+
+// A CONFIRMAÇÃO É O PRÓPRIO TEXTO ACIMA DO BOTÃO, e não um segundo modal.
+//
+// `confirmModal` chama `openModal`, que substituiria o modal da conexão — e aí
+// os passos que já deram certo somem da tela justamente quando a pessoa
+// precisa vê-los. O aviso fica ao lado do botão, que diz o que faz.
+async function esAssumirNumero(btn) {
+  if (!esUltimo) return toast('Refaça a conexão para tentar de novo.', 'error');
+  const b = btn || event && event.target;
+  if (b) { b.disabled = true; b.textContent = 'Assumindo…'; }
+  esDone = false;
+  await esFinish(esUltimo.code, esUltimo.usedRedirect, true);
 }
 
 async function connectWhatsApp() {
