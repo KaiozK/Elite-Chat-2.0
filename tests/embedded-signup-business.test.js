@@ -265,23 +265,25 @@ const BASE = 'http://127.0.0.1:3993';
   ok(principal.wa.accessToken === 'TOKEN_ANTIGO', 'com o token dele preservado');
   ok(r9.chId === 'ch_video', 'e a resposta diz em qual canal foi: ' + r9.chId);
 
-  console.log('\n=== 10. O MESMO número em dois canais é recusado ===');
-  // Cada canal tem conversas e contatos próprios, e o webhook encontra o canal
-  // pelo phoneNumberId. Com o número repetido, a mesma mensagem cairia num
-  // canal decidido por ordem de lista — e a resposta sairia do outro.
-  const r10 = await fetch(BASE + '/api/wa/connect', {
-    method: 'POST',
-    headers: { ...cab, 'x-channel': 'ch_principal' },
-    body: JSON.stringify({ code: 'CODE', sessionInfo: { waba_id: 'WABA1', phone_number_id: 'PHONE1' } })
-  });
-  const c10 = await r10.json();
-  ok(r10.status === 409, `recusado com 409: ${r10.status}`);
-  ok(/já está conectado no canal/i.test(c10.error || ''), 'dizendo onde ele já está');
-  ok(/Whatsapp Video Meta/.test(c10.error || ''), 'com o nome do canal: ' + c10.error);
-
-  const aindaLa = db.findAccountByEmail('dono@ex.com').channels.find(c => c.id === 'ch_principal');
-  ok(aindaLa.wa.phoneNumberId === 'PHONE_KAIO',
-     'e a recusa acontece ANTES de gravar qualquer coisa — o principal segue intocado');
+  console.log('\n=== 10. Conectar aqui DESCONECTA lá ===');
+  // Esta seção cobria a recusa "o mesmo número já está em outro canal". A
+  // regra morreu com o multicanal: a conta tem UMA conexão (colapsarCanais em
+  // src/db.js), então dois canais na mesma conta não existem mais.
+  //
+  // O que sobrou do problema é o mesmo número em duas CONTAS — e ali recusar
+  // era pior que resolver: "desconecte-o lá antes" supõe que a pessoa alcança
+  // a outra conta, e quando é um cadastro antigo ela fica sem o próprio número
+  // depois de já ter passado por toda a autorização na Meta. Agora funciona
+  // como o WhatsApp: registrar aqui derruba o registro anterior. A autorização
+  // na Meta é a prova de posse.
+  //
+  // O comportamento inteiro está em tests/assumir-numero.test.js; aqui fica só
+  // a garantia de que a recusa não voltou por este caminho.
+  const apiSrc = fs.readFileSync(R + 'src/api.js', 'utf8').replace(/\/\/[^\n]*/g, '');
+  ok(!/já está conectado no canal/.test(apiSrc),
+     'a recusa por canal saiu do código — não há mais dois canais para colidir');
+  ok(/db\.accountsByPhoneId\(phone\.id\)/.test(apiSrc),
+     'e a conferência que restou é entre CONTAS, que é onde o problema existe');
 
   console.log('\n=== 11. A tela sabe desenhar o terceiro estado ===');
   const app_js = fs.readFileSync(R + 'public/app/app.js', 'utf8');

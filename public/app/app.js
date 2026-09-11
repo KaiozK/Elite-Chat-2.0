@@ -1767,7 +1767,7 @@ function paintChannelPicker() {
 
 // Leva direto para a aba da conexão em Configurações.
 function goChannels() {
-  PENDING_TAB = 'contas';
+  PENDING_TAB = 'whatsapp';
   if (state.view === 'settings') { renderSettings(); }
   else location.hash = '#/settings';
 }
@@ -6078,9 +6078,7 @@ async function renderSettings() {
       <div class="page-head"><h1>Configurações</h1><p>${isAdmin ? 'Conexão do WhatsApp, plataforma e administração' : 'Conexão do WhatsApp e preferências'}</p></div>
 
       <div class="tabs">
-        <button class="active" data-tab="contas" onclick="showSettingsTab('contas')">${ico('smartphone', 14)} Conexão do WhatsApp</button>
-        <button data-tab="conexao" onclick="showSettingsTab('conexao')">Conexão & API</button>
-        <button data-tab="numero" onclick="showSettingsTab('numero')">Número & Perfil</button>
+        <button class="active" data-tab="whatsapp" onclick="showSettingsTab('whatsapp')">${ico('smartphone', 14)} WhatsApp</button>
         <button data-tab="atendimento" onclick="showSettingsTab('atendimento')">Atendimento</button>
         <button data-tab="finalizacao" onclick="showSettingsTab('finalizacao')">Finalização</button>
         <button data-tab="prefs" onclick="showSettingsTab('prefs')">Preferências</button>
@@ -6116,11 +6114,14 @@ async function renderSettings() {
         </a>
       </div>
 
-      <div class="tabpane show" data-pane="contas">
+      <!-- UMA ABA SÓ PARA O WHATSAPP.
+           Eram três: "Conexão do WhatsApp", "Conexão & API" e "Número &
+           Perfil". Três abas para um assunto só obrigam a pessoa a
+           adivinhar em qual delas está o que ela procura — e a resposta
+           mudava conforme o número estivesse conectado ou não. Agora é
+           uma: a conexão em cima, e o perfil e o registro logo abaixo. -->
+      <div class="tabpane show" data-pane="whatsapp">
       ${channelsCard()}
-      </div>
-
-      <div class="tabpane" data-pane="conexao">
       ${connCard}
 
       ${state.kind === 'admin' ? `<div class="card">
@@ -6153,9 +6154,7 @@ async function renderSettings() {
         </div>
         <pre class="out" id="diag-out">O resultado das chamadas à Graph API aparece aqui.</pre>
       </div>
-      </div>
 
-      <div class="tabpane" data-pane="numero">
       <div class="card">
         <h2>${ico('briefcase')} Perfil comercial do WhatsApp</h2>
         <div class="pf-photo-row">
@@ -9788,7 +9787,7 @@ async function renderAdmin() {
       ${''/* A conexão manual mora em Configurações → Conexão & API, junto do
           botão de conectar. Duplicar o formulário aqui criaria dois campos com
           o mesmo id, e o salvar passaria a ler o errado. */}
-      <a class="card link-card" href="#" onclick="location.hash='#/settings';setTimeout(()=>showSettingsTab('conexao'),120);return false">
+      <a class="card link-card" href="#" onclick="location.hash='#/settings';setTimeout(()=>showSettingsTab('whatsapp'),120);return false">
         <span class="lc-ic">${ico('shield', 22)}</span>
         <div style="flex:1"><h2 style="margin:0 0 3px">Conexão manual do WhatsApp</h2>
           <p class="muted" style="margin:0;font-size:13px">Ligar o número da plataforma pelas credenciais, sem o Embedded Signup, fica em <b>Configurações → Conexão &amp; API</b>.</p></div>
@@ -16656,6 +16655,11 @@ const ES_STEPS = [
   ['business', 'Localizar Business'],
   ['waba', 'Localizar WhatsApp Business Account'],
   ['phone', 'Localizar número de telefone'],
+  // Só aparece quando o número estava em outra conta. Um WhatsApp recebe numa
+  // conta só; conectar aqui desliga lá, como registrar o número num aparelho
+  // novo derruba o anterior. Precisa estar na lista porque muda o que a OUTRA
+  // conta faz, e isso não pode acontecer escondido.
+  ['liberado', 'Liberar o número da conta anterior'],
   ['subscribed_apps', 'Assinar app na WABA (webhooks)'],
   // SEM ESTE PASSO o número fica "Pendente" no WhatsApp Manager: compartilhar
   // o número com o app e registrá-lo na Cloud API são coisas diferentes, e a
@@ -16669,7 +16673,7 @@ function esProgress() {
     <h2>${ico('zap')} Conectando seu WhatsApp</h2>
     <div class="es-steps">
       <div class="es-step wait" data-st="popup"><span class="dot"></span> Autorização na Meta (janela popup)</div>
-      ${ES_STEPS.map(([k, label]) => `<div class="es-step" data-st="${k}"><span class="dot"></span> ${label}</div>`).join('')}
+      ${ES_STEPS.map(([k, label]) => `<div class="es-step${k === 'liberado' ? ' hidden' : ''}" data-st="${k}"><span class="dot"></span> ${label}</div>`).join('')}
     </div>
     <p class="muted" id="es-msg" style="margin:10px 0 0">Complete o cadastro na janela da Meta…</p>`);
 }
@@ -16682,6 +16686,10 @@ function esProgress() {
 function esMark(name, ok, detail) {
   const el = document.querySelector(`.es-step[data-st="${name}"]`);
   if (el) {
+    // "Liberar o número da conta anterior" nasce escondido: na maioria das
+    // conexões não há conta anterior, e listar um passo que não vai acontecer
+    // faz a pessoa esperar por algo que nunca vem.
+    if (name === 'liberado') el.classList.remove('hidden');
     el.classList.remove('wait');
     el.classList.add(ok === 'skip' ? 'skip' : ok ? 'ok' : 'fail');
     if (detail) el.title = detail;
@@ -16695,30 +16703,18 @@ function esFail(msg) {
   toast(msg, 'error');
 }
 
-// O CÓDIGO DA META SÓ VALE UMA VEZ.
-//
-// Quando a conexão para no meio (o número está em outra conta), refazer a
-// autorização inteira só para clicar "assumir" seria pedir à pessoa que
-// percorra de novo os quatro passos que já deram certo. Guardar o código
-// permite retomar de onde parou.
-let esUltimo = null;
-
-async function esFinish(code, usedRedirect, assumir) {
-  if (esDone && !assumir) return;
+async function esFinish(code, usedRedirect) {
+  if (esDone) return;
   esDone = true;
   esMark('popup', true);
-  esUltimo = { code, usedRedirect };
   const msg = $('#es-msg');
-  if (msg) { msg.classList.remove('err'); msg.textContent = assumir
-    ? 'Assumindo o número e finalizando a conexão…'
-    : 'Código recebido, finalizando a integração automaticamente…'; }
+  if (msg) { msg.classList.remove('err'); msg.textContent = 'Código recebido, finalizando a integração automaticamente…'; }
   try {
     const r = await api('/wa/connect', {
       body: {
         code,
         redirectUri: usedRedirect ? API.webOrigin + '/auth/meta/callback' : undefined,
-        sessionInfo: esSessionInfo,
-        assumir: !!assumir
+        sessionInfo: esSessionInfo
       }
     });
     (r.steps || []).forEach(st => esMark(st.name, st.ok, st.detail));
@@ -16729,46 +16725,8 @@ async function esFinish(code, usedRedirect, assumir) {
     setTimeout(() => { closeModal(); if (state.view === 'settings') renderSettings(); }, 1800);
   } catch (e) {
     ((e.meta && e.meta.steps) || []).forEach(st => esMark(st.name, st.ok, st.detail));
-    // NÚMERO EM OUTRA CONTA: a recusa vem com a saída, não sem ela.
-    //
-    // Antes esta tela dizia "desconecte-o lá antes de conectar aqui" e parava.
-    // Quando a outra conta é um cadastro antigo ou um teste esquecido, isso
-    // deixava o dono trancado do lado de fora do próprio número — depois de já
-    // ter passado por toda a autorização na Meta.
-    const m = e.meta || {};
-    if (m.code === 'numero_em_outra_conta' && m.podeAssumir) return esOferecerAssumir(e.message, m);
     esFail(e.message);
   }
-}
-
-// Oferece assumir o número, deixando claro o que acontece com a outra conta.
-function esOferecerAssumir(motivo, m) {
-  const box = $('#es-msg');
-  const nomes = (m.contas || []).map(c => c.nome);
-  if (box) {
-    box.classList.add('err');
-    box.innerHTML = `${esc(motivo)}
-      <div style="margin-top:10px;color:var(--texto);font-weight:400">
-        Se este número é seu, você pode assumi-lo agora: ele será desconectado
-        de <b>${esc(nomes.join('", "'))}</b>, que deixa de enviar e receber por ele.
-        O histórico de lá continua no lugar.
-      </div>
-      <button class="btn primary no-grow" style="margin-top:10px" onclick="esAssumirNumero(this)">
-        Desconectar de lá e conectar aqui</button>`;
-  }
-}
-
-// A CONFIRMAÇÃO É O PRÓPRIO TEXTO ACIMA DO BOTÃO, e não um segundo modal.
-//
-// `confirmModal` chama `openModal`, que substituiria o modal da conexão — e aí
-// os passos que já deram certo somem da tela justamente quando a pessoa
-// precisa vê-los. O aviso fica ao lado do botão, que diz o que faz.
-async function esAssumirNumero(btn) {
-  if (!esUltimo) return toast('Refaça a conexão para tentar de novo.', 'error');
-  const b = btn || event && event.target;
-  if (b) { b.disabled = true; b.textContent = 'Assumindo…'; }
-  esDone = false;
-  await esFinish(esUltimo.code, esUltimo.usedRedirect, true);
 }
 
 async function connectWhatsApp() {

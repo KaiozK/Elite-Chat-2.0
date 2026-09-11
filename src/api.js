@@ -1232,19 +1232,11 @@ module.exports = function (broadcast, clients) {
     const w = req.wctx.wa;
     const canal = req.ch;
 
-    // O MESMO NÚMERO EM DOIS CANAIS não pode existir. Cada canal tem conversas
-    // e contatos próprios, e o webhook encontra o canal pelo phoneNumberId
-    // (channelByPhoneId): com o número repetido, a mesma mensagem cairia num
-    // canal decidido por ordem de lista — e as respostas sairiam do outro.
-    const jaUsado = (acc.channels || []).find(c =>
-      c !== canal && c.wa && c.wa.phoneNumberId &&
-      sessionInfo && String(sessionInfo.phone_number_id || '') === c.wa.phoneNumberId);
-    if (jaUsado) {
-      return res.status(409).json({
-        error: 'Este número já está conectado no canal "' + (jaUsado.label || jaUsado.name || 'outro') +
-               '". Desconecte-o lá antes de conectá-lo aqui.'
-      });
-    }
+    // A conferência de "mesmo número em dois canais" que morava aqui saiu: com
+    // UMA conexão por conta (ver colapsarCanais em src/db.js) a lista tem um
+    // canal só, e o teste nunca podia ser verdadeiro. O que importa hoje é o
+    // mesmo número em duas CONTAS, resolvido mais abaixo — conectando aqui,
+    // desconecta lá.
 
     w.authorizationCode = code;
     w.callbackUrl = redirectUri || '';
@@ -1333,76 +1325,57 @@ module.exports = function (broadcast, clients) {
         e.status = 422;
         throw e;
       }
-      // UM NÚMERO, UMA CONTA. Conectar o mesmo WhatsApp em duas contas não dá
-      // erro em lugar nenhum e quebra de um jeito que ninguém liga aos pontos:
-      // a mensagem recebida entra só na primeira conta da lista, a segunda
-      // envia normalmente e nunca recebe nada, e a janela de 24h não abre nela.
-      // Parece banco de dados perdendo mensagem, e é roteamento.
+      // UM NÚMERO, UMA CONTA — E CONECTAR AQUI DESCONECTA LÁ.
       //
-      // Barrar aqui, na conexão, é o único momento em que dá para escolher:
-      // depois, com as duas conectadas, não há como adivinhar qual é a certa.
-      // BARRAR NÃO PODE VIRAR TRANCAR DO LADO DE FORA.
+      // O mesmo WhatsApp servindo duas contas não dá erro em lugar nenhum e
+      // quebra de um jeito que ninguém liga aos pontos: a mensagem recebida
+      // entra só na primeira da lista, a segunda envia e nunca recebe, e a
+      // janela de 24h não abre nela. Parece banco perdendo mensagem, e é
+      // roteamento. Então duas contas com o mesmo número é um estado que não
+      // pode existir.
       //
-      // A recusa está certa: o mesmo WhatsApp em duas contas não dá erro em
-      // lugar nenhum e quebra de um jeito que ninguém liga aos pontos — a
-      // mensagem recebida entra só numa delas, a outra envia e nunca recebe, e
-      // a janela de 24h não abre lá. Parece banco perdendo mensagem, e é
-      // roteamento.
+      // ANTES ISSO ERA UMA RECUSA, e a recusa trancava o dono do lado de fora.
+      // "Desconecte-o lá antes de conectar aqui" supõe que a pessoa alcança a
+      // outra conta — e quando a outra é um cadastro antigo ou um teste
+      // esquecido, não alcança. Ela ficava sem o próprio número depois de já
+      // ter passado por toda a autorização na Meta.
       //
-      // Só que "desconecte lá antes" supõe que a pessoa ALCANÇA a outra conta.
-      // Quando a outra é um cadastro antigo, um teste esquecido ou uma conta a
-      // que ela não tem mais acesso, a frase deixa o dono trancado do lado de
-      // fora do próprio número — depois de já ter passado por toda a
-      // autorização na Meta. Foi o que aconteceu.
+      // Agora funciona como o WhatsApp funciona: registrar o número aqui
+      // derruba o registro anterior, sozinho. A AUTORIZAÇÃO NA META É A PROVA
+      // DE POSSE — não se conclui o Embedded Signup de um número que não se
+      // controla. Quem chegou até aqui provou que o número é dele, do mesmo
+      // jeito que quem recebe o SMS de verificação prova no aparelho novo.
       //
-      // Agora a recusa vem com a saída junto: `assumir: true` desconecta o
-      // número das outras contas e conecta aqui. É o TITULAR quem pode
-      // (atendente não mexe na conexão), a tela pede confirmação, e o que foi
-      // feito fica registrado nos dois lados — a conta que perdeu o número
-      // precisa saber por que parou de receber.
+      // O que não pode é ser silencioso: a conta que perde o número precisa
+      // saber por que parou de receber, senão volta o mesmo sumiço sem
+      // explicação que a regra existe para evitar.
       const jaTem = db.accountsByPhoneId(phone.id).filter(a => a.id !== acc.id);
-      if (jaTem.length && !(req.body || {}).assumir) {
-        const e = new Error(
-          'Este número já está conectado na conta "' + jaTem[0].name + '". ' +
-          'O mesmo WhatsApp não pode servir duas contas: as mensagens recebidas iriam ' +
-          'para uma só, e a outra ficaria sem receber nada.');
-        e.status = 409;
-        e.meta = {
-          code: 'numero_em_outra_conta',
-          contas: jaTem.map(a => ({ id: a.id, nome: a.name })),
-          // a tela usa isto para oferecer o botão em vez de um beco sem saída
-          podeAssumir: !req.agent,
-          phoneNumberId: phone.id
-        };
-        throw e;
+      for (const outra of jaTem) {
+        for (const ch of (outra.channels || [])) {
+          if (!ch.wa || ch.wa.phoneNumberId !== phone.id) continue;
+          ch.wa.connected = false;
+          ch.wa.phoneNumberId = '';
+          ch.wa.desconectadoEm = Date.now();
+          ch.wa.desconectadoPor = 'O número foi conectado na conta "' + acc.name + '"';
+        }
+        agents.log(outra, { agentId: null, name: 'Sistema' }, 'wa_disconnect',
+          `O número ${phone.display_phone_number || phone.id} foi conectado na conta "${acc.name}" e desconectado daqui.`);
+        store.logEvent({
+          type: 'numero_movido', accountId: outra.id, phoneNumberId: phone.id,
+          explicacao: 'Este número foi conectado na conta "' + acc.name + '" e, por isso, ' +
+            'desconectado de "' + outra.name + '". Um WhatsApp só pode receber numa conta: ' +
+            'se ficasse nas duas, as mensagens entrariam só numa e a outra nunca receberia. ' +
+            'As conversas antigas continuam guardadas aqui.',
+          de: outra.name, para: acc.name
+        });
+        if (broadcast) broadcast('wa', { accountId: outra.id });
       }
       if (jaTem.length) {
-        if (req.agent) {
-          const e = new Error('Só o titular da conta pode assumir um número que está em outra conta.');
-          e.status = 403; throw e;
-        }
-        for (const outra of jaTem) {
-          for (const ch of (outra.channels || [])) {
-            if (!ch.wa || ch.wa.phoneNumberId !== phone.id) continue;
-            ch.wa.connected = false;
-            ch.wa.phoneNumberId = '';
-            ch.wa.desconectadoEm = Date.now();
-            ch.wa.desconectadoPor = 'Número assumido pela conta "' + acc.name + '"';
-          }
-          // A conta que PERDEU o número tem de saber por quê: sem isto ela
-          // simplesmente para de receber e ninguém liga uma coisa à outra.
-          agents.log(outra, { agentId: null, name: 'Sistema' }, 'wa_disconnect',
-            `O número ${phone.display_phone_number || phone.id} foi assumido pela conta "${acc.name}" e desconectado daqui.`);
-          store.logEvent({
-            type: 'numero_assumido', accountId: outra.id, phoneNumberId: phone.id,
-            explicacao: 'O titular da conta "' + acc.name + '" assumiu este número. ' +
-              'Ele foi desconectado de "' + outra.name + '", que deixa de receber mensagens dele.',
-            de: outra.name, para: acc.name
-          });
-          if (broadcast) broadcast('wa', { accountId: outra.id });
-        }
         agents.log(acc, req.who, 'wa_connect',
-          `Assumiu o número ${phone.display_phone_number || phone.id}, antes em "${jaTem.map(a => a.name).join('", "')}"`);
+          `Conectou o número ${phone.display_phone_number || phone.id}, que estava em "${jaTem.map(a => a.name).join('", "')}"`);
+        // A pessoa tem de VER que outra conta foi desligada — isso muda o que
+        // aquela conta faz, e esconder seria a mesma surpresa de antes.
+        step('liberado', true, 'Desconectado de "' + jaTem.map(a => a.name).join('", "') + '"');
         db.save();
       }
 

@@ -175,13 +175,18 @@ async function entregar(c) {
   ok(aviso && /janela de 24h não abre/.test(aviso.explicacao),
      'e explicando o sintoma, que é o que ninguém liga à causa');
 
-  // E a porta de entrada fecha: conectar o mesmo número numa segunda conta
-  // passa a ser recusado, que é o único momento em que dá para escolher.
+  // E a porta de entrada RESOLVE, em vez de recusar. Recusar deixava o dono
+  // trancado do lado de fora quando a outra conta era um cadastro antigo:
+  // "desconecte-o lá antes" supõe que ele alcança a outra conta. Agora conectar
+  // aqui desconecta lá, como o WhatsApp faz quando o número é registrado num
+  // aparelho novo — a autorização na Meta é a prova de posse.
   const apiSrc2 = fs.readFileSync(path.join(R, 'src', 'api.js'), 'utf8');
   ok(/const jaTem = db\.accountsByPhoneId\(phone\.id\)\.filter\(a => a\.id !== acc\.id\)/.test(apiSrc2),
      'a conexão confere se o número já está em outra conta');
-  ok(/Este número já está conectado na conta/.test(apiSrc2),
-     'e recusa dizendo em qual, em vez de deixar as duas quebradas');
+  ok(/ch\.wa\.connected = false;/.test(apiSrc2) && /ch\.wa\.phoneNumberId = '';/.test(apiSrc2),
+     'e desconecta de lá, em vez de deixar as duas quebradas');
+  ok(/type: 'numero_movido'/.test(apiSrc2),
+     'registrando o motivo na conta que perdeu — senão ela só para de receber');
 
   console.log('\n=== 7. Canal DESCONECTADO não rouba a mensagem ===');
   // O caso que faz a pessoa desistir: ela descobre a duplicidade, desconecta o
