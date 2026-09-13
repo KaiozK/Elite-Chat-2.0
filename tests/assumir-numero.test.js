@@ -65,15 +65,20 @@ const fs = require('fs');
   ok(/agents\.log\(acc, req\.who, 'wa_connect'/.test(bloco), 'fica no histórico de quem conectou');
   ok(/step\('liberado', true/.test(bloco), 'e aparece como um passo na tela de conexão');
 
-  console.log('\n=== 5. O passo só aparece quando existe conta anterior ===');
-  // Listar um passo que não vai acontecer faz a pessoa esperar por algo que
-  // nunca vem.
+  console.log('\n=== 5. A tela AVISA que a outra conta foi desconectada ===');
+  // A lista de passos saiu da tela — ela virou um carregando só. O detalhe
+  // técnico foi para o log do Admin porque não muda nada para quem conecta.
+  //
+  // ESTE detalhe muda: OUTRA conta parou de enviar e receber por causa desta
+  // ação. Esconder seria a mesma surpresa que a gente tirou do caminho, só que
+  // do outro lado. Então ele sobrevive à simplificação, na mensagem final.
   const front = fs.readFileSync(R + 'public/app/app.js', 'utf8');
-  ok(/\['liberado', 'Liberar o número da conta anterior'\]/.test(front),
-     'o passo existe na lista da tela');
-  ok(/k === 'liberado' \? ' hidden' : ''/.test(front), 'e nasce escondido');
-  ok(/if \(name === 'liberado'\) el\.classList\.remove\('hidden'\)/.test(front),
-     'aparecendo só quando o servidor diz que aconteceu');
+  ok(/st\.name === 'liberado' && st\.ok/.test(front),
+     'a tela procura o passo "liberado" na resposta do servidor');
+  ok(/aquela conta deixa de enviar e receber por este número/.test(front),
+     'e diz o que aconteceu com ela, em português de gente');
+  ok(/liberou \? 5200 : 1800/.test(front),
+     'e o modal fica aberto mais tempo quando há esse aviso — 1,8s não dá para ler');
 
   console.log('\n=== 6. O beco sem saída não voltou ===');
   ok(!/numero_em_outra_conta/.test(codigo), 'não há mais código de recusa por número ocupado');

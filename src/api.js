@@ -1479,7 +1479,29 @@ module.exports = function (broadcast, clients) {
       w.connected = false;
       w.updatedAt = Date.now();
       db.save();
-      store.logEvent({ type: 'embedded_signup', ok: false, accountId: acc.id, error: e.message });
+      // O LOG PRECISA BASTAR SOZINHO.
+      //
+      // A tela do cliente deixou de listar os passos: ela mostra um carregando
+      // e, se falhar, manda chamar o suporte. Isso só é honesto se o log do
+      // Admin tiver o que a tela deixou de mostrar — senão o suporte abre
+      // "Webhook & Logs" e encontra uma linha de erro sem contexto nenhum.
+      //
+      // Vai tudo: em QUAL passo parou (é a primeira pergunta), os passos que
+      // deram certo antes, a frase crua da Meta (`metaOriginal`, que é o que se
+      // procura na documentação da Graph API) e o nome da conta.
+      const parou = steps.find(p => p.ok === false);
+      store.logEvent({
+        type: 'embedded_signup', ok: false,
+        accountId: acc.id, conta: acc.name,
+        error: e.message,
+        metaOriginal: e.metaOriginal || null,
+        passo: parou ? parou.name : (steps.length ? 'depois de ' + steps[steps.length - 1].name : 'no início'),
+        passos: steps,
+        explicacao: 'A conexão do WhatsApp falhou' +
+          (parou ? ' no passo "' + parou.name + '"' : '') + '. ' +
+          'A tela do cliente não mostra o detalhe de propósito: ele está aqui. ' +
+          (e.metaOriginal ? 'Resposta crua da Meta: ' + String(e.metaOriginal).slice(0, 400) : '')
+      });
       e.meta = { ...(e.meta || {}), steps };
       throw e;
     }

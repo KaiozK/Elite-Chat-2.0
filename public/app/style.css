@@ -961,20 +961,27 @@ details.log pre { margin: 0; border: 0; border-radius: 0 0 16px 16px; }
 .wa-row span { color: var(--muted); font-weight: 600; }
 .wa-row b { text-align: right; word-break: break-all; font-weight: 500; }
 
-.es-steps { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
-.es-step { display: flex; align-items: center; gap: 11px; font-size: 13px; color: var(--muted); font-weight: 600; }
-.es-step .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border2); flex-shrink: 0; transition: background .2s; }
-.es-step.wait .dot { background: var(--amber); animation: blinkDot 1.2s infinite; }
-.es-step.ok { color: var(--text); font-weight: 500; }
-.es-step.ok .dot { background: var(--verde-esc); box-shadow: 0 0 0 3px rgba(16, 185, 129, .18); }
-/* NEM TUDO QUE NÃO DEU CERTO É ERRO. Este passo é informativo: a conexão
-   funciona sem ele. Cinza diz "não deu para saber"; vermelho diria "está
-   quebrado", e ensinaria a ignorar os vermelhos de verdade. */
-.es-step.skip { color: var(--muted); font-weight: 500; }
-.es-step.skip .dot { background: var(--border2); }
-.es-step.fail { color: var(--red); font-weight: 500; }
-.es-step.fail .dot { background: var(--red); box-shadow: 0 0 0 3px rgba(229, 72, 77, .14); }
-@keyframes blinkDot { 50% { opacity: .35; } }
+/* UM CARREGANDO, NO LUGAR DOS OITO PASSOS.
+   A lista de passos servia para diagnosticar e fazia o tempo parecer maior:
+   sete linhas paradas, com nomes que não significam nada para quem conecta
+   ("Assinar app na WABA"), viram sete perguntas. O detalhe mudou de lugar —
+   vai inteiro para o log do Admin, que é onde o suporte procura. */
+.es-load { display: flex; align-items: center; gap: 14px; margin-top: 12px; min-height: 44px; }
+.es-spin {
+  width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%;
+  border: 3px solid var(--border2); border-top-color: var(--verde-esc);
+  animation: esGira .8s linear infinite;
+}
+/* Parou de girar porque falhou — o círculo vira um aviso, e não some. Sumir
+   deixaria a frase de erro solta, sem nada dizendo de onde ela veio. */
+.es-spin.falhou { animation: none; border-color: var(--red); border-top-color: var(--red); opacity: .5; }
+.es-spin.pronto { animation: none; border-color: var(--verde-esc); }
+@keyframes esGira { to { transform: rotate(360deg); } }
+/* Quem prefere menos movimento não precisa de um círculo girando sem parar
+   para saber que algo está acontecendo: o texto ao lado já diz. */
+@media (prefers-reduced-motion: reduce) {
+  .es-spin { animation: none; border-top-color: var(--verde-esc); }
+}
 #es-msg.err { color: var(--red); font-weight: 500; }
 
 details.adv summary { cursor: pointer; list-style: none; display: flex; align-items: center; }

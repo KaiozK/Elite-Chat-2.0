@@ -16645,62 +16645,82 @@ window.addEventListener('message', (e) => {
   }
   if (e.origin === location.origin && e.data && e.data.type === 'KOONFY_META_CALLBACK') {
     if (!esOAuthState || e.data.state !== esOAuthState) return;
-    if (e.data.error) return esFail(e.data.errorDescription || e.data.error);
+    if (e.data.error) return esFail();
     esFinish(e.data.code, true);
   }
 });
 
-const ES_STEPS = [
-  ['access_token', 'Trocar código por Access Token'],
-  ['business', 'Localizar Business'],
-  ['waba', 'Localizar WhatsApp Business Account'],
-  ['phone', 'Localizar número de telefone'],
-  // Só aparece quando o número estava em outra conta. Um WhatsApp recebe numa
-  // conta só; conectar aqui desliga lá, como registrar o número num aparelho
-  // novo derruba o anterior. Precisa estar na lista porque muda o que a OUTRA
-  // conta faz, e isso não pode acontecer escondido.
-  ['liberado', 'Liberar o número da conta anterior'],
-  ['subscribed_apps', 'Assinar app na WABA (webhooks)'],
-  // SEM ESTE PASSO o número fica "Pendente" no WhatsApp Manager: compartilhar
-  // o número com o app e registrá-lo na Cloud API são coisas diferentes, e a
-  // segunda faltava.
-  ['register', 'Registrar número na Cloud API'],
-  ['health', 'Testar conexão']
-];
+// A LISTA DE PASSOS SAIU DA TELA, e não do sistema.
+//
+// O servidor continua marcando cada etapa (`step(...)` em src/api.js): é o que
+// permite dizer, no log do Admin, em QUAL delas a conexão parou. O que mudou é
+// quem lê: era o cliente, e virou o suporte. Para quem está conectando, sete
+// linhas paradas com nomes como "Assinar app na WABA (webhooks)" só faziam a
+// espera parecer maior — cada linha sem resposta vira uma pergunta.
 
+// UM CARREGANDO, E NÃO A LISTA DE PASSOS.
+//
+// A lista de oito passos existia para eu diagnosticar, e para isso servia bem.
+// Só que para quem CONECTA ela só faz o tempo parecer maior: a pessoa fica
+// lendo "Assinar app na WABA (webhooks)" e "Registrar número na Cloud API",
+// que não significam nada para ela, e cada linha parada vira uma pergunta.
+// Sete linhas paradas viram sete perguntas.
+//
+// O detalhe não se perdeu — mudou de lugar. Vai inteiro para o log do Admin
+// (ver `embedded_signup` com ok:false em src/api.js): em qual passo parou, os
+// que deram certo antes, e a frase crua da Meta. Quem precisa do detalhe é o
+// suporte, e é lá que o suporte olha.
 function esProgress() {
   openModal(`
     <h2>${ico('zap')} Conectando seu WhatsApp</h2>
-    <div class="es-steps">
-      <div class="es-step wait" data-st="popup"><span class="dot"></span> Autorização na Meta (janela popup)</div>
-      ${ES_STEPS.map(([k, label]) => `<div class="es-step${k === 'liberado' ? ' hidden' : ''}" data-st="${k}"><span class="dot"></span> ${label}</div>`).join('')}
-    </div>
-    <p class="muted" id="es-msg" style="margin:10px 0 0">Complete o cadastro na janela da Meta…</p>`);
+    <div class="es-load">
+      <span class="es-spin" aria-hidden="true"></span>
+      <p class="muted" id="es-msg" style="margin:0">Complete o cadastro na janela da Meta…</p>
+    </div>`);
 }
 
-// TRÊS ESTADOS, e não dois. Havia só "verde" e "vermelho", e um passo que não
-// impede nada não cabia em nenhum dos dois: pintado de vermelho, ele fazia uma
-// conexão bem-sucedida parecer quebrada.
-//
-// `skip` é cinza e diz o que é: não deu para saber, e nada depende disso.
+// Os passos continuam chegando do servidor — a tela é que não os desenha mais.
+// Guardá-los aqui deixa o último estado disponível no console para quem estiver
+// depurando de perto, sem custar nada a quem só quer conectar.
+let esPassos = [];
 function esMark(name, ok, detail) {
-  const el = document.querySelector(`.es-step[data-st="${name}"]`);
-  if (el) {
-    // "Liberar o número da conta anterior" nasce escondido: na maioria das
-    // conexões não há conta anterior, e listar um passo que não vai acontecer
-    // faz a pessoa esperar por algo que nunca vem.
-    if (name === 'liberado') el.classList.remove('hidden');
-    el.classList.remove('wait');
-    el.classList.add(ok === 'skip' ? 'skip' : ok ? 'ok' : 'fail');
-    if (detail) el.title = detail;
-  }
+  esPassos.push({ name, ok, detail });
 }
 
-function esFail(msg) {
+// O QUE DIZER QUANDO FALHA.
+//
+// A mensagem crua da Meta não ajuda quem está conectando: ela fala de WABA, de
+// subscribed_apps, de código 133006. Quem lê isso não tem o que fazer com a
+// informação — e a frase técnica ainda dá a impressão de que a pessoa errou
+// alguma coisa.
+//
+// Então a tela diz o que ela PODE fazer: chamar o suporte. O detalhe inteiro
+// está no log do Admin, que é onde o suporte procura.
+// NEM TODA FALHA É ASSUNTO DO SUPORTE.
+//
+// Popup bloqueado e cadastro cancelado na Meta são coisas que a PESSOA
+// resolve, e dizer "fale com o suporte" nesses casos é mandar alguém esperar
+// por ajuda que ela não precisa. Esses passam a frase própria, em `recado`.
+//
+// Já a falha técnica — a Meta recusou, o token não veio, a WABA não respondeu
+// — não tem o que a pessoa faça. A mensagem crua fala de WABA, de
+// subscribed_apps, de código 133006: quem lê não tem o que fazer com isso, e a
+// frase técnica ainda dá a impressão de que ela errou alguma coisa. Aí a tela
+// diz o que ela PODE fazer, e o detalhe inteiro fica no log do Admin.
+function esFail(recado) {
   esDone = true;
   const box = $('#es-msg');
-  if (box) { box.textContent = 'Falhou: ' + msg; box.classList.add('err'); }
-  toast(msg, 'error');
+  const spin = document.querySelector('.es-spin');
+  if (spin) spin.classList.add('falhou');
+  if (box) {
+    box.classList.add('err');
+    box.innerHTML = recado
+      ? esc(recado)
+      : 'Não foi possível concluir a conexão.' +
+        '<div style="margin-top:6px;color:var(--muted);font-weight:400">' +
+        'Fale com o suporte: o registro do que aconteceu já ficou guardado.</div>';
+  }
+  toast(recado || 'Não foi possível conectar. Fale com o suporte.', 'error');
 }
 
 async function esFinish(code, usedRedirect) {
@@ -16719,13 +16739,29 @@ async function esFinish(code, usedRedirect) {
     });
     (r.steps || []).forEach(st => esMark(st.name, st.ok, st.detail));
     state.wa = r.wa;
-    if (msg) msg.textContent = `Conectado: ${r.wa.displayPhoneNumber || ''} ${r.wa.verifiedName ? '(' + r.wa.verifiedName + ')' : ''}`;
+    const spin = document.querySelector('.es-spin');
+    if (spin) spin.classList.add('pronto');
+    // O NÚMERO SAIU DE OUTRA CONTA: isso aparece, mesmo sem lista de passos.
+    //
+    // O resto do detalhe técnico foi para o log porque não muda nada para quem
+    // conecta. Este muda: OUTRA conta parou de enviar e receber por causa
+    // desta ação. Esconder seria a mesma surpresa que a gente tirou do caminho
+    // — só que do outro lado.
+    const liberou = (r.steps || []).find(st => st.name === 'liberado' && st.ok);
+    if (msg) {
+      msg.innerHTML = `Conectado: ${esc(r.wa.displayPhoneNumber || '')} ` +
+        `${r.wa.verifiedName ? '(' + esc(r.wa.verifiedName) + ')' : ''}` +
+        (liberou ? `<div style="margin-top:6px;color:var(--muted);font-weight:400">${esc(liberou.detail || '')}` +
+                   ` — aquela conta deixa de enviar e receber por este número.</div>` : '');
+    }
     toast('WhatsApp conectado com sucesso!');
     refreshBadge();
-    setTimeout(() => { closeModal(); if (state.view === 'settings') renderSettings(); }, 1800);
+    // Com a conta anterior desconectada, a pessoa precisa de tempo para ler o
+    // aviso; sem isso, 1,8s fecha o modal antes de a frase ser lida.
+    setTimeout(() => { closeModal(); if (state.view === 'settings') renderSettings(); }, liberou ? 5200 : 1800);
   } catch (e) {
     ((e.meta && e.meta.steps) || []).forEach(st => esMark(st.name, st.ok, st.detail));
-    esFail(e.message);
+    esFail();   // técnica: o detalhe vai para o log do Admin, não para a tela
   }
 }
 

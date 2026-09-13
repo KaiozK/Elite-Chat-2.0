@@ -285,13 +285,43 @@ const BASE = 'http://127.0.0.1:3993';
   ok(/db\.accountsByPhoneId\(phone\.id\)/.test(apiSrc),
      'e a conferência que restou é entre CONTAS, que é onde o problema existe');
 
-  console.log('\n=== 11. A tela sabe desenhar o terceiro estado ===');
+  console.log('\n=== 11. A tela mostra UM carregando, não oito passos ===');
+  // A lista de passos servia para diagnosticar e fazia a espera parecer maior:
+  // sete linhas paradas, com nomes que não dizem nada a quem conecta ("Assinar
+  // app na WABA"), viram sete perguntas. Ela saiu da TELA, não do sistema — o
+  // servidor continua marcando cada etapa, e é o que permite dizer no log em
+  // qual delas parou.
   const app_js = fs.readFileSync(R + 'public/app/app.js', 'utf8');
   const css = fs.readFileSync(R + 'public/app/style.css', 'utf8');
-  ok(/ok === 'skip' \? 'skip'/.test(app_js), 'esMark trata "skip" separado de falha');
-  ok(/\.es-step\.skip \{/.test(css), 'e o CSS pinta o cinza');
-  ok(/\.es-step\.skip \.dot \{ background: var\(--border2\); \}/.test(css),
-     'com o ponto apagado, não vermelho');
+  ok(!/ES_STEPS/.test(app_js), 'a lista de passos não é mais desenhada');
+  ok(/<span class="es-spin"/.test(app_js), 'no lugar dela vai um carregando');
+  ok(/\.es-spin \{/.test(css) && /@keyframes esGira/.test(css), 'com o CSS do círculo girando');
+  ok(/prefers-reduced-motion/.test(css.slice(css.indexOf('.es-spin'), css.indexOf('.es-spin') + 900)),
+     'que para de girar para quem pediu menos movimento');
+  ok(/\.es-spin\.falhou \{/.test(css),
+     'e vira aviso quando falha, em vez de sumir e deixar a frase de erro solta');
+
+  console.log('\n=== 11b. O detalhe mudou de lugar, não se perdeu ===');
+  // Esconder o detalhe da tela só é honesto se ele estiver INTEIRO no log do
+  // Admin — senão o suporte abre "Webhook & Logs" e acha uma linha sem
+  // contexto nenhum.
+  const apiFalha = apiSrc.slice(apiSrc.indexOf("type: 'embedded_signup', ok: false"),
+                                apiSrc.indexOf("type: 'embedded_signup', ok: false") + 900);
+  ok(/passo:/.test(apiFalha), 'o log diz em QUAL passo parou — é a primeira pergunta');
+  ok(/passos: steps/.test(apiFalha), 'com os que deram certo antes');
+  ok(/metaOriginal/.test(apiFalha), 'e a frase crua da Meta, que é o que se procura na documentação');
+  ok(/conta: acc\.name/.test(apiFalha), 'e de qual conta foi');
+
+  console.log('\n=== 11c. Nem toda falha é assunto do suporte ===');
+  // Popup bloqueado e cadastro cancelado a própria pessoa resolve. Mandar
+  // chamar o suporte nesses casos é fazer alguém esperar por ajuda que não
+  // precisa.
+  ok(/esFail\('Popup bloqueado pelo navegador/.test(app_js),
+     'popup bloqueado mantém a frase que diz o que fazer');
+  ok(/esFail\('Cadastro cancelado ou não autorizado na Meta\.'\)/.test(app_js),
+     'cadastro cancelado também');
+  ok(/Fale com o suporte/.test(app_js),
+     'e a falha TÉCNICA, essa sim, manda chamar o suporte');
 
   console.log('\n=== 12. A pergunta certa, ao lugar certo ===');
   const metaSrc = fs.readFileSync(R + 'src/meta.js', 'utf8');
