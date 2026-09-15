@@ -249,7 +249,10 @@ function defaultLimits() {
 // aqui é booleano: desligado, o módulo some do menu do cliente e as rotas
 // recusam com 402. Módulos essenciais (conversas, contatos, funil, modelos,
 // LGPD) não entram na lista: fazem parte de qualquer plano.
-const FEATURE_KEYS = ['campaigns', 'flows', 'schedule', 'team', 'agents', 'pagamentos', 'links', 'pixels', 'tracking', 'integrations', 'sms'];
+// `sms` saiu daqui com o módulo. As contas gravadas antes continuam com a
+// chave em `features` — dado antigo de plano não se apaga por causa de uma
+// remoção de código; `normFeatures` simplesmente deixa de olhar para ela.
+const FEATURE_KEYS = ['campaigns', 'flows', 'schedule', 'team', 'agents', 'pagamentos', 'links', 'pixels', 'tracking', 'integrations'];
 function defaultFeatures() {
   const o = {};
   for (const k of FEATURE_KEYS) o[k] = true;   // plano sem config libera tudo

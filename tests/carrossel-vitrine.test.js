@@ -44,11 +44,13 @@ const codigo = script.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, ''
 const pega = re => [...car.matchAll(re)].map(m => m[1]);
 
 (async () => {
-  console.log('=== 1. As 14 funcionalidades, alinhadas ===');
+  console.log('=== 1. As 13 funcionalidades, alinhadas ===');
   // A ordem é a narrativa: atende → organiza a equipe → move no funil →
   // automatiza → delega para a IA → dispara → cobra → mede.
+  // O SMS saiu do produto, e saiu da vitrine junto: anunciar o que não se
+  // entrega é a pior propaganda que existe.
   const esperado = ['atendimento', 'equipe', 'funil', 'automacao', 'ia', 'campanhas',
-    'sms', 'pagamentos', 'rastreamento', 'agenda', 'numeros', 'integracoes',
+    'pagamentos', 'rastreamento', 'agenda', 'numeros', 'integracoes',
     'metricas', 'instalacao'];
   const abas = pega(/class="car-aba[^"]*" data-aba="([^"]+)"/g);
   const slides = pega(/class="car-slide[^"]*" data-slide="([^"]+)"/g);
@@ -95,10 +97,10 @@ const pega = re => [...car.matchAll(re)].map(m => m[1]);
   const nomes = [...faixa.matchAll(/<span(?: class="logos-func")?>([^<]+)<\/span>/g)].map(m => m[1]);
   // A faixa carrega as CREDENCIAIS e as FUNCIONALIDADES na mesma volta: as
   // primeiras dizem que a Koonfy é oficial, as segundas dizem o tamanho do
-  // produto em uma linha — para quem não vai esperar 14 telas do carrossel.
-  ok(nomes.length === 20, `6 credenciais + 14 funcionalidades na fileira (${nomes.length})`);
+  // produto em uma linha — para quem não vai esperar 13 telas do carrossel.
+  ok(nomes.length === 19, `6 credenciais + 13 funcionalidades na fileira (${nomes.length})`);
   const func = [...faixa.matchAll(/<span class="logos-func">([^<]+)<\/span>/g)].map(m => m[1]);
-  ok(func.length === 14, `as 14 funcionalidades estão lá (${func.length})`);
+  ok(func.length === 13, `as 13 funcionalidades estão lá (${func.length})`);
   ok(func[0] === 'Atendimento' && func[func.length - 1] === 'Instalação',
      'na mesma ordem do carrossel, de Atendimento a Instalação');
   ok(/\.logos-func\{color:var\(--sinal\)\}/.test(html),

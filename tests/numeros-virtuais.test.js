@@ -66,7 +66,6 @@ const responder = (body, ok = true, status = 200) => { proximaResposta = { ok, s
 
 const db = require(R + 'src/db');
 const numeros = require(R + 'src/numeros');
-const sms = require(R + 'src/sms');
 const BASE = 'http://127.0.0.1:3979';
 
 (async () => {
@@ -85,21 +84,29 @@ const BASE = 'http://127.0.0.1:3979';
   })).json();
   const aut = { Authorization: 'Bearer ' + login.token, 'Content-Type': 'application/json' };
 
-  console.log('=== 1. O token é UM SÓ, e vem do SMS quando não há um próprio ===');
-  // A doc da Integra X diz "toda rota usa o TOKEN da integração". Quem já
-  // configurou o disparo não deve ter de digitar o mesmo segredo de novo.
-  sms.cfg().token = 'TOKEN-DA-INTEGRACAO';
+  console.log('=== 1. O token herda do SMS UMA VEZ, e passa a morar aqui ===');
+  // A doc da Integra X diz "toda rota usa o TOKEN da integração": o token é o
+  // mesmo do disparo de SMS, que existiu até ser removido do produto.
+  //
+  // A leitura de `platform.sms.token` saiu junto — mas não podia sair SEM
+  // copiar antes. Toda instalação que só tinha o token configurado no SMS
+  // perderia os números virtuais no deploy seguinte, sem erro e sem aviso: só
+  // pararia de comprar número.
+  const plat = db.get().platform;
+  plat.sms = { token: 'TOKEN-DA-INTEGRACAO' };
+  delete plat.numeros;
+  ok(numeros.cfg().token === 'TOKEN-DA-INTEGRACAO',
+     'o token do SMS é copiado na primeira carga depois da remoção');
   numeros.cfg().enabled = true;
-  numeros.cfg().token = '';
   db.save();
-  ok(numeros.token() === 'TOKEN-DA-INTEGRACAO', 'sem token próprio, herda o do SMS');
-  ok(numeros.adminView().herdaDoSms === true, 'e o painel diz de onde veio');
+  ok(numeros.token() === 'TOKEN-DA-INTEGRACAO', 'e é o que os números passam a usar');
   ok(numeros.configured() === true, 'com token e ligado, está configurado');
 
   numeros.cfg().token = 'TOKEN-SO-DOS-NUMEROS';
-  ok(numeros.token() === 'TOKEN-SO-DOS-NUMEROS', 'um token próprio vence o do SMS');
-  ok(numeros.adminView().herdaDoSms === false, 'e o painel para de dizer que herdou');
-  numeros.cfg().token = '';
+  ok(numeros.token() === 'TOKEN-SO-DOS-NUMEROS', 'um token próprio não é sobrescrito pela herança');
+  ok(!/require\('\.\/sms'\)/.test(require('fs').readFileSync(R + 'src/numeros.js', 'utf8')),
+     'e a dependência do módulo removido não existe mais');
+  numeros.cfg().token = 'TOKEN-DA-INTEGRACAO';
   db.save();
 
   console.log('\n=== 2. O token vai no HEADER, e o host é o outro ===');

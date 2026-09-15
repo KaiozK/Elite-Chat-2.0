@@ -279,21 +279,13 @@ async function execNode(acc, node, ctx, deliver, flow) {
     await new Promise(r => setTimeout(r, s * 1000));
     return { ok: true, detail: `${s}s` };
   }
-  // ENVIAR SMS (Integra X). Vai para o mesmo número do contato, a menos que a
-  // etapa informe outro. Falhar aqui não derruba o fluxo: o passo é registrado
-  // como não executado e o restante do caminho continua.
+  // O NÓ DE SMS SAIU com o módulo, e um fluxo montado antes disso pode ter um
+  // gravado. Ele NÃO derruba o fluxo — o resto do caminho vale — mas também
+  // não pode passar calado: `execNode` termina em `{ ok: true }`, então sem
+  // esta linha a etapa diria "deu certo" tendo feito nada, e o dono do fluxo
+  // só descobriria pela mensagem que o cliente não recebeu.
   if (node.type === 'sms') {
-    const sms = require('./sms');
-    const texto = interpolate(node.text || node.body || '', ctx).trim();
-    if (!texto) return { ok: false, detail: 'mensagem vazia' };
-    const destino = interpolate(node.to || '', ctx).trim() || to;
-    if (!destino) return { ok: false, detail: 'sem destinatário' };
-    try {
-      const r = await sms.enviar(acc, { to: destino, text: texto, origem: 'flow' });
-      return { ok: true, detail: `SMS para ${r.to} (${r.segments} seg.)` };
-    } catch (e) {
-      return { ok: false, detail: e.message };
-    }
+    return { ok: false, detail: 'Etapa de SMS ignorada: o envio de SMS saiu do Koonfy. Troque este passo no Flow Builder.' };
   }
   if (node.type === 'addtag' || node.type === 'removetag') {
     const c = store.findContact(acc, to);
@@ -755,9 +747,6 @@ function validateGraph(flow) {
     if (n.type === 'condition') {
       if (!from(n.id, 'yes')) return 'A saída "Sim" de uma condição não leva a lugar nenhum.';
       if (!from(n.id, 'no')) return 'A saída "Não" de uma condição não leva a lugar nenhum.';
-    }
-    if (n.type === 'sms' && !String(n.text || n.body || '').trim()) {
-      return 'Uma etapa de SMS está sem mensagem.';
     }
   }
   return null;

@@ -43,7 +43,8 @@ const css = fs.readFileSync(R + 'public/app/style.css', 'utf8');
 (async () => {
   console.log('=== 1. A aba abre por uma grade, e cada painel tem nome ===');
   ok(/id="adm-int-hub"/.test(tela), 'o painel de Integrações tem a caixa do hub');
-  for (const k of ['nuvemshop', 'sms', 'numeros']) {
+  // O painel de SMS saiu do hub com o módulo.
+  for (const k of ['nuvemshop', 'numeros']) {
     ok(new RegExp(`data-int="${k}"`).test(tela), `o painel de ${k} é endereçável pelo hub`);
   }
   ok(/function admIntSel\(qual\)/.test(tela), 'e existe quem troque o painel visível');
@@ -89,7 +90,6 @@ const css = fs.readFileSync(R + 'public/app/style.css', 'utf8');
   console.log('\n=== 4. Status é um ponto, e os três estados existem ===');
   const hub = tela.slice(tela.indexOf('function admIntHubPaint'), tela.indexOf('function admIntSel'));
   ok(/admNs\.available \? 'on'/.test(hub), 'Nuvemshop: ativa só quando está de fato disponível para os clientes');
-  ok(/admSms\.configured \? 'on'/.test(hub), 'SMS: ativo só com token');
   ok(/admNumRev && admNumRev\.preco > 0/.test(hub),
      'Números: só está inteiro com provedor E preço — sem preço a revenda não existe');
   ok(/'meio'/.test(hub), 'e existe o estado do meio, para o "ligado mas falta algo"');

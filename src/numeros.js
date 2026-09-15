@@ -130,27 +130,38 @@ function cfg() {
   const p = db.get().platform;
   if (!p.numeros || typeof p.numeros !== 'object') p.numeros = emptyConfig();
   for (const [k, v] of Object.entries(emptyConfig())) if (p.numeros[k] === undefined) p.numeros[k] = v;
+  // ---- HERANÇA DO TOKEN, UMA VEZ SÓ ----
+  //
+  // O token da Integra X é o mesmo para SMS e para números virtuais: a
+  // documentação diz "toda rota usa o TOKEN da integração", e as duas APIs são
+  // da mesma conta. Enquanto o SMS existiu, quem já o tinha configurado lá não
+  // precisava digitar de novo — os números liam de `platform.sms.token`.
+  //
+  // O SMS saiu do produto. Se a leitura saísse junto, toda instalação que só
+  // tinha o token no SMS perderia os números virtuais no deploy seguinte, sem
+  // erro e sem aviso — só pararia de comprar número.
+  //
+  // Então o token é COPIADO para cá na primeira carga depois da remoção, e a
+  // dependência morre aqui. `platform.sms` continua no banco intocado: apagar
+  // dado de configuração de quem já pagou não é trabalho de migração.
+  if (!p.numeros.token && p.sms && typeof p.sms === 'object' && p.sms.token) {
+    p.numeros.token = String(p.sms.token).trim();
+    if (!p.numeros.base && p.sms.base) p.numeros.base = p.sms.base;
+  }
   return p.numeros;
 }
 
 function emptyConfig() {
   return {
     enabled: false,   // liga a tela no Admin
-    token: '',        // vazio = usa o token do SMS, que é o mesmo da integração
+    token: '',        // token da conta Integra X (nunca sai do servidor)
     base: '',         // sobrescreve CONTRATO.base quando a conta usa outro host
     logs: []          // últimos eventos (compras, cancelamentos, erros)
   };
 }
 
-// O TOKEN É UM SÓ. A documentação da Integra X diz "toda rota usa o TOKEN da
-// integração", e as duas APIs são da mesma conta — então quem já configurou o
-// SMS não precisa digitar de novo. O campo próprio existe só para o caso de a
-// conta de números ser separada um dia; enquanto estiver vazio, vale o do SMS.
-function token() {
-  const meu = (cfg().token || '').trim();
-  if (meu) return meu;
-  try { return (require('./sms').cfg().token || '').trim(); } catch { return ''; }
-}
+// O TOKEN DA INTEGRA X, que agora mora aqui. Ver a herança em `cfg()`.
+function token() { return (cfg().token || '').trim(); }
 
 function configured() { return !!(cfg().enabled && token()); }
 
@@ -318,7 +329,6 @@ function adminView() {
     enabled: !!c.enabled,
     temToken: !!token(),
     tokenProprio: proprio,
-    herdaDoSms: !proprio && !!token(),
     base: c.base || '',
     baseEfetiva: baseUrl(),
     logs: (c.logs || []).slice(0, 30)

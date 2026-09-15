@@ -274,12 +274,13 @@ function featuresOf(acc) {
   return db.normFeatures(cheapest.modules, cheapest.modules);
 }
 
-// O SMS não é cobrado pelo plano: cada disparo é debitado da carteira, e sem
-// saldo ele não sai de qualquer jeito. Trancá-lo por plano cobrava duas vezes
-// pela mesma coisa — quem paga o envio pode enviar, esteja em que plano
-// estiver. O interruptor continua no cadastro do plano por compatibilidade,
-// mas não decide mais nada.
-const SEMPRE_LIBERADOS = ['sms'];
+// NADA É "SEMPRE LIBERADO" HOJE.
+//
+// Esta lista existia por causa do SMS: ele era pago por crédito na carteira, e
+// trancá-lo por plano cobrava duas vezes pela mesma coisa. O SMS saiu do
+// produto, e a lista ficou vazia — mas não some, porque a regra continua certa
+// para o próximo recurso pago à parte que aparecer.
+const SEMPRE_LIBERADOS = [];
 
 // O INTERRUPTOR DA PLATAFORMA VEM ANTES DE TUDO — inclusive de superconta e
 // tester. Se o recurso está quebrado, ele está quebrado para todo mundo, e

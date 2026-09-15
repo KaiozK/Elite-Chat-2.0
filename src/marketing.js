@@ -9,10 +9,11 @@
 //                 {{vencimento}}), que é o que torna a mensagem útil.
 //   • AVISO     — novidade, manutenção, campanha, o que for.
 //
-// Três canais, com alcances diferentes:
+// Dois canais, com alcances diferentes:
 //   push      — chega a quem instalou o app e aceitou notificação
 //   whatsapp  — usa a conexão da PLATAFORMA (a conta do admin), não a do cliente
-//   sms       — usa o crédito da plataforma na Integra X
+//
+// Havia um terceiro, SMS pela Integra X. Saiu com o módulo.
 //
 // Um disparo nunca sai por engano para todo mundo: o público é sempre um filtro
 // explícito, e o resultado guarda quem recebeu, quem falhou e por quê.
@@ -91,7 +92,7 @@ function interpolar(texto, vars) {
 // TEMPLATES
 // ---------------------------------------------------------------------------
 const TIPOS = ['cobranca', 'aviso'];
-const CANAIS = ['push', 'whatsapp', 'sms'];
+const CANAIS = ['push', 'whatsapp'];
 
 function salvarTemplate(body) {
   const c = cfg();
@@ -175,8 +176,7 @@ async function disparar(body, { origin, broadcast } = {}) {
     const texto = interpolar(body.text || '', vars);
     try {
       if (canal === 'push') await porPush(acc, titulo, texto);
-      else if (canal === 'whatsapp') await porWhatsapp(acc, texto, body);
-      else await porSms(acc, texto);
+      else await porWhatsapp(acc, texto, body);
       registro.ok++;
     } catch (e) {
       registro.falhas++;
@@ -224,14 +224,6 @@ async function porWhatsapp(acc, texto, body) {
   }
 }
 
-async function porSms(acc, texto) {
-  const sms = require('./sms');
-  const destino = String(acc.profile && acc.profile.phone || '').replace(/\D/g, '');
-  if (!destino) throw erro('a conta não informou WhatsApp no cadastro');
-  // O crédito é da PLATAFORMA: o disparo é dela, não do cliente.
-  await sms.enviarPlataforma(destino, texto);
-}
-
 // Visão do painel.
 function adminView() {
   const c = cfg();
@@ -244,8 +236,7 @@ function adminView() {
     })),
     canais: {
       push: true,
-      whatsapp: !!((db.findAdminAccount().channels || [])[0] || {}).wa?.connected,
-      sms: require('./sms').configured()
+      whatsapp: !!((db.findAdminAccount().channels || [])[0] || {}).wa?.connected
     },
     variaveis: ['nome', 'email', 'plano', 'valor', 'vencimento', 'dias', 'saldo', 'link']
   };

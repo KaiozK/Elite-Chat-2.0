@@ -19,7 +19,6 @@ const agents = require('./agents');
 const schedule = require('./schedule');
 const push = require('./push');
 const pushNative = require('./pushnative');
-const sms = require('./sms');
 const numeros = require('./numeros');
 const topup = require('./topup');
 const marketing = require('./marketing');
@@ -239,7 +238,6 @@ module.exports = function (broadcast, clients) {
     [/^\/pixels/, 'pixels'],
     [/^\/tracking/, 'tracking'],
     [/^\/(integrations|webhooks|nuvemshop)/, 'integrations'],
-    [/^\/sms/, 'sms'],
     [/^\/(pagamentos|checkouts|produtos)/, 'pagamentos']
   ];
   router.use((req, res, next) => {
@@ -816,7 +814,6 @@ module.exports = function (broadcast, clients) {
       // ela aparecia na landing sem funcionar em lugar nenhum.
       nuvemshop: require('./nuvemshop').isAvailable() && emAlgumPlano('integrations'),
       webhooks: emAlgumPlano('integrations'),
-      sms: require('./sms').configured(),
       campanhas: emAlgumPlano('campaigns'),
       fluxos: emAlgumPlano('flows'),
       agenda: emAlgumPlano('schedule'),
@@ -896,7 +893,6 @@ module.exports = function (broadcast, clients) {
       // O SMS depende de DUAS chaves: o módulo no plano do cliente e o
       // provedor ligado na plataforma. Faltava a segunda aqui, e o menu
       // mostrava a aba de quem não tinha como enviar nada.
-      smsPlataforma: require('./sms').configured()
     });
   });
 
@@ -1739,9 +1735,6 @@ module.exports = function (broadcast, clients) {
     });
   });
 
-  // ============ SMS (Integra X) ============
-  // A funcionalidade só existe quando o admin liga na plataforma E o plano do
-  // cliente inclui o módulo. `feat('sms')` cuida da segunda parte.
   // ============ AGENTE DE IA ============
   // A chave da OpenAI é do cliente e nunca volta inteira para a tela: o painel
   // recebe só se existe e os últimos caracteres, como já é feito com os
@@ -1798,60 +1791,6 @@ module.exports = function (broadcast, clients) {
     const ligada = ia.alternarNaConversa(req.acc, contact, !!(req.body || {}).ligada);
     broadcast('message', { accountId: req.acc.id, waId: contact.waId });
     res.json({ ligada });
-  });
-
-  router.get('/sms', auth, can('sms'), (req, res) => {
-    res.json({
-      ...sms.publicView(req.acc),
-      log: sms.historico(req.acc).slice(0, 200)
-    });
-  });
-
-  router.post('/sms/send', auth, feat('sms'), can('sms', 'create'), h(async (req, res) => {
-    const b = req.body || {};
-    const r = await sms.enviar(req.acc, {
-      to: b.to, text: b.text, origem: 'manual', por: req.who && req.who.name
-    });
-    agents.log(req.acc, req.who, 'sms_send', `SMS para ${r.to}`);
-    broadcast('sms', { accountId: req.acc.id, id: r.id, status: r.status });
-    res.json({ sms: r, balance: req.acc.wallet.balance });
-  }));
-
-  // Disparo em massa: aceita a lista de números ou o mesmo filtro da tela de
-  // contatos, para o cliente não precisar copiar e colar telefone.
-  router.post('/sms/bulk', auth, feat('sms'), can('sms', 'create'), h(async (req, res) => {
-    const b = req.body || {};
-    let numeros = Array.isArray(b.numbers) ? b.numbers : [];
-    if (!numeros.length) {
-      const padrao = store.defChId(req.acc);
-      const doCanal = c => !b.channelOnly || (c.chId || padrao) === req.chId;
-      const comTag = c => !b.tag || (c.tags || []).includes(b.tag);
-      const noEstagio = c => !b.stage || c.stage === b.stage;
-      numeros = (req.acc.contacts || []).filter(c => doCanal(c) && comTag(c) && noEstagio(c)).map(c => c.waId);
-    }
-    const r = await sms.enviarMassa(req.acc, { numeros, text: b.text, por: req.who && req.who.name });
-    agents.log(req.acc, req.who, 'sms_bulk', `Disparo de SMS: ${r.enviados} enviado(s)`);
-    broadcast('sms', { accountId: req.acc.id });
-    res.json({ ...r, balance: req.acc.wallet.balance });
-  }));
-
-  // Prévia do disparo em massa antes de gastar crédito.
-  router.post('/sms/bulk/preview', auth, feat('sms'), can('sms'), (req, res) => {
-    const b = req.body || {};
-    const padrao = store.defChId(req.acc);
-    const doCanal = c => !b.channelOnly || (c.chId || padrao) === req.chId;
-    const comTag = c => !b.tag || (c.tags || []).includes(b.tag);
-    const noEstagio = c => !b.stage || c.stage === b.stage;
-    const alvo = (req.acc.contacts || []).filter(c => doCanal(c) && comTag(c) && noEstagio(c));
-    const validos = alvo.filter(c => sms.valido(c.waId));
-    const seg = sms.segmentos(b.text || '');
-    res.json({
-      total: alvo.length, invalidos: alvo.length - validos.length,
-      enviaveis: validos.length, segmentos: seg, creditos: seg * validos.length,
-      // custo real do disparo: é isso que sai da carteira ao confirmar
-      custo: sms.precoDe(seg * validos.length), saldo: req.acc.wallet.balance,
-      amostra: validos.slice(0, 5).map(c => ({ name: c.name, waId: c.waId }))
-    });
   });
 
   // ============ USO x LIMITES DO PLANO ============
@@ -6328,33 +6267,6 @@ module.exports = function (broadcast, clients) {
     res.json({ security: sec });
   });
 
-  router.get('/admin/sms', auth, adminOnly, (req, res) => {
-    res.json({ sms: sms.adminView() });
-  });
-
-  router.put('/admin/sms', auth, adminOnly, (req, res) => {
-    const b = req.body || {};
-    const c = sms.cfg();
-    if (typeof b.enabled === 'boolean') c.enabled = b.enabled;
-    // token vazio = manter o que já está salvo (o painel nunca recebe o valor)
-    if (typeof b.token === 'string' && b.token.trim()) c.token = b.token.trim();
-    if (b.token === null) c.token = '';                    // limpar de propósito
-    if (typeof b.from === 'string') c.from = b.from.trim().slice(0, 20);
-    if (typeof b.base === 'string') c.base = b.base.trim();
-    if (typeof b.callbackUrl === 'string') c.callbackUrl = b.callbackUrl.trim();
-    if (b.maxLen !== undefined) c.maxLen = Math.max(70, Math.min(1600, Number(b.maxLen) || 160));
-    if (b.priceCents !== undefined) {
-      c.priceCents = Math.max(0, Math.round(Number(String(b.priceCents).replace(',', '.')) * 100) || 0);
-    }
-    db.save();
-    res.json({ sms: sms.adminView() });
-  });
-
-  // Testa a conexão e já traz o saldo de créditos.
-  router.post('/admin/sms/test', auth, adminOnly, h(async (req, res) => {
-    res.json(await sms.testar());
-  }));
-
   // ---- NÚMEROS VIRTUAIS (Integra X) ----
   //
   // Tudo aqui é adminOnly, e de propósito: comprar um número GASTA DINHEIRO da
@@ -6370,7 +6282,7 @@ module.exports = function (broadcast, clients) {
     if (typeof b.enabled === 'boolean') c.enabled = b.enabled;
     // token vazio = manter o que já está salvo (o painel nunca recebe o valor)
     if (typeof b.token === 'string' && b.token.trim()) c.token = b.token.trim();
-    if (b.token === null) c.token = '';                  // limpar e voltar a herdar do SMS
+    if (b.token === null) c.token = '';                  // limpar de propósito
     if (typeof b.base === 'string') c.base = b.base.trim();
     db.save();
     res.json({ numeros: numeros.adminView() });
