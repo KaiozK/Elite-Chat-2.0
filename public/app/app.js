@@ -15725,6 +15725,104 @@ function portPos(n, side, branch) {
 }
 function edgeD(a, b) { const dx = Math.max(46, Math.abs(b.x - a.x) / 2); return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`; }
 
+// ===================================================================
+// A BOLHA DO WHATSAPP DENTRO DO NÓ
+//
+// O card do nó mostrava uma LINHA DE TEXTO: "Olá {{nome}} · 3 botão(ões)".
+// Ela dizia o que o passo faz, e não dizia a única coisa que importa na hora
+// de montar um fluxo — COMO A MENSAGEM VAI CHEGAR. Quem monta precisa ver o
+// balão, o tamanho do texto, os botões um embaixo do outro; é isso que revela
+// que o título ficou comprido demais ou que são botões de mais.
+//
+// A prévia do Template já desenhava isso (`phonePreview`). O que faltava era
+// trazer o MESMO desenho para cá, em escala de card — e não inventar um
+// segundo jeito de mostrar a mesma coisa, que é como uma tela passa a parecer
+// montada por duas pessoas que não se falaram.
+//
+// SÓ OS NÓS QUE VIRAM MENSAGEM ganham balão. Um "Aguardar 30s" ou um
+// "Adicionar tag" não chega ao cliente: desenhar um balão ali seria mentir
+// sobre o que o passo faz.
+// ===================================================================
+const FB_COM_BOLHA = ['text', 'buttons', 'list', 'media', 'template', 'payment', 'ai'];
+
+function fbBolha(n) {
+  if (!FB_COM_BOLHA.includes(n.type)) return '';
+  const corpo = (n.text || n.body || '').trim();
+  const rodape = (n.footer || '').trim();
+  let topo = '', miolo = '', extra = '';
+
+  if (n.type === 'media') {
+    const k = n.kind || 'image';
+    topo = `<div class="fb-wa-mid ${k === 'video' ? 'esc' : ''}">${fbIconeMidia(k)}<span>${FB_MIDIA_LBL[k] || 'Mídia'}</span></div>`;
+    miolo = corpo || (n.caption || '').trim();
+  } else if (n.type === 'template') {
+    topo = `<div class="fb-wa-tpl">${ico('file', 11)} ${esc(n.templateName || 'sem modelo')}</div>`;
+    miolo = corpo;
+  } else if (n.type === 'payment') {
+    const v = String(n.value || '').trim();
+    extra = `<div class="fb-wa-pix">
+      <span class="fb-wa-pix-ic">${ico('pix', 14)}</span>
+      <span class="fb-wa-pix-tx"><b>Pagar com Pix</b><em>${v ? 'R$ ' + esc(v) : 'valor a definir'}</em></span>
+    </div>`;
+    miolo = corpo || (n.description || '').trim();
+  } else if (n.type === 'ai') {
+    miolo = (n.prompt || '').trim();
+    extra = `<div class="fb-wa-ia">${ico('sparkles', 11)} a IA escreve a resposta na hora</div>`;
+  } else {
+    miolo = corpo;
+  }
+
+  const texto = miolo
+    ? waFmt(miolo.slice(0, 160), { highlightVars: true }) + (miolo.length > 160 ? '…' : '')
+    : '<span class="fb-wa-vazio">sem mensagem</span>';
+
+  // BOTÃO DE LINK ANTES DOS DEMAIS, como o WhatsApp mostra: ele é de outro
+  // tipo (abre o navegador) e vem separado das respostas rápidas.
+  const linha = [];
+  if ((n.url || '').trim()) linha.push({ tipo: 'URL', txt: n.urlText || 'Abrir link' });
+  for (const o of fbNodeOptions(n)) linha.push({ tipo: n.type === 'list' ? 'LIST' : 'QUICK_REPLY', txt: o.title });
+
+  // Mais de três respostas rápidas a Meta entrega como LISTA, não como botões
+  // — e a lista abre numa folha, com um item só visível. Mostrar cinco botões
+  // aqui prometeria uma tela que o cliente não vai ver.
+  const rapidas = linha.filter(b => b.tipo === 'QUICK_REPLY');
+  const comoLista = n.type === 'list' || rapidas.length > 3;
+  let botoes = '';
+  if (comoLista && linha.length) {
+    const nome = rapidas.length ? `${linha.length} opções` : 'Ver opções';
+    botoes = `<div class="fb-wa-btns"><div class="fb-wa-btn">${waBtnIcon('LIST')}<span>${esc(nome)}</span></div></div>`;
+  } else if (linha.length) {
+    botoes = `<div class="fb-wa-btns">${linha.slice(0, 3).map(b =>
+      `<div class="fb-wa-btn">${waBtnIcon(b.tipo)}<span>${esc(String(b.txt).slice(0, 22))}</span></div>`).join('')}</div>`;
+  }
+
+  return `<div class="fb-wa">
+    <div class="fb-wa-bolha">
+      ${topo}
+      <div class="fb-wa-tx">${texto}</div>
+      ${extra}
+      ${rodape ? `<div class="fb-wa-ft">${esc(rodape.slice(0, 40))}</div>` : ''}
+      ${botoes}
+    </div>
+  </div>`;
+}
+
+const FB_MIDIA_LBL = { image: 'Imagem', video: 'Vídeo', audio: 'Áudio', document: 'Documento', sticker: 'Figurinha' };
+
+// Ícones próprios para cada tipo de mídia. Antes o nó usava um só, de imagem,
+// para os cinco — e "enviar áudio" com desenho de foto é o tipo de detalhe que
+// faz a pessoa conferir duas vezes se escolheu certo.
+const FB_MIDIA_IC = {
+  image: '<rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="8.5" cy="10" r="1.7"/><path d="m4 17 5-4.5 3.5 3.5 3-2.5L20 17"/>',
+  video: '<rect x="2.5" y="5.5" width="13" height="13" rx="2.5"/><path d="m16.5 10.5 5-3v9l-5-3z"/>',
+  audio: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/>',
+  document: '<path d="M6 2.5h8l4 4v15H6z"/><path d="M14 2.5v4h4"/><path d="M9 12.5h6M9 16h6"/>',
+  sticker: '<path d="M14.5 3H7a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h6l7-7V9z"/><path d="M13 21v-4a3 3 0 0 1 3-3h4"/>'
+};
+function fbIconeMidia(k) {
+  return `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${FB_MIDIA_IC[k] || FB_MIDIA_IC.image}</svg>`;
+}
+
 function renderNodes() {
   const world = $('#fb-world');
   world.querySelectorAll('.fb-n').forEach(el => el.remove());
@@ -15733,7 +15831,11 @@ function renderNodes() {
   for (const n of flowDraft.graph.nodes) {
     const M = nodeMeta(n);
     const el = document.createElement('div');
-    el.className = 'fb-n type-' + n.type + (fbSel === n.id ? ' sel' : '') + (n.type === 'trigger' ? ' trig' : '');
+    // `com-opts` avisa o CSS de que este card tem rótulos de saída na borda
+    // direita — o balão precisa recuar para não ficar por baixo deles.
+    el.className = 'fb-n type-' + n.type + (fbSel === n.id ? ' sel' : '')
+      + (n.type === 'trigger' ? ' trig' : '')
+      + (fbNodeOptions(n).length ? ' com-opts' : '');
     el.dataset.id = n.id;
     el.style.left = n.x + 'px'; el.style.top = n.y + 'px'; el.style.width = NODE_W + 'px';
     // O card cresce para caber as saídas das opções sem que elas vazem.
@@ -15752,7 +15854,7 @@ function renderNodes() {
       ${n.type !== 'trigger' ? `<span class="fb-port in" data-id="${n.id}" data-side="in"></span>` : ''}
       ${ports}
       <div class="fb-n-hd">${iconChip(M.icon, M.color, 15)}<div class="fb-n-tt"><b>${M.label}</b><span>${M.sub}</span></div><span class="fb-n-gear">${ico('gear', 14)}</span></div>
-      <div class="fb-n-prev">${esc(nodeSummary(n))}</div>`;
+      ${fbBolha(n) || `<div class="fb-n-prev">${esc(nodeSummary(n))}</div>`}`;
     world.appendChild(el);
   }
   renderMini();
@@ -16127,7 +16229,16 @@ function nodeInspector(n) {
 }
 
 // ---------- setters ----------
-function refreshPreview(id) { const el = $(`.fb-n[data-id="${id}"] .fb-n-prev`); if (el) el.textContent = nodeSummary(nodeById(id)); }
+// Repintar UM nó. Trocava só o texto do resumo; agora o nó pode ter um balão
+// inteiro, então o que se troca é o bloco — senão editar o texto de uma
+// mensagem não mexeria nos botões desenhados ao lado dele.
+function refreshPreview(id) {
+  const card = $(`.fb-n[data-id="${id}"]`); if (!card) return;
+  const n = nodeById(id); if (!n) return;
+  const alvo = card.querySelector('.fb-wa, .fb-n-prev'); if (!alvo) return;
+  const novo = fbBolha(n) || `<div class="fb-n-prev">${esc(nodeSummary(n))}</div>`;
+  alvo.outerHTML = novo;
+}
 function fbSetNode(id, k, v) { nodeById(id)[k] = v; refreshPreview(id); if (k === 'field' || k === 'op' || k === 'kind') renderInspector(); scheduleSave(); }
 function fbSetBtn(id, i, v) { nodeById(id).buttons[i].title = v; renderNodes(); renderEdges(); refreshPreview(id); scheduleSave(); }
 function fbBtnMode(id, mode) {

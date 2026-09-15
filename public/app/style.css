@@ -1154,6 +1154,76 @@ details.adv[open] summary::after { content: '–'; }
   flex-shrink: 0;
 }
 .fb-n-prev { font-size: 11.5px; color: var(--muted); font-weight: 500; margin-top: 8px; line-height: 1.4; max-height: 32px; overflow: hidden; }
+
+/* ---------- A BOLHA DO WHATSAPP DENTRO DO NÓ ----------
+   O mesmo desenho da prévia do Template, em escala de card. As cores são as do
+   WhatsApp e NÃO seguem o tema do painel: um balão verde-claro no modo escuro
+   continua sendo o que o cliente vai ver, e é essa a pergunta que o card
+   responde. Por isso os valores aqui são fixos, e não var(--algo). */
+.fb-wa { margin-top: 9px; }
+/* COM SAÍDA POR OPÇÃO, os rótulos das portas ficam na borda direita do card.
+   Sem este recuo o balão passa por baixo deles e as duas coisas viram uma
+   mancha só — justamente no nó mais cheio, que é onde ler importa mais. */
+.fb-n.com-opts .fb-wa { margin-right: 72px; }
+.fb-wa-bolha {
+  background: #d9fdd3; border-radius: 8px 8px 8px 2px; padding: 7px 8px 6px;
+  font-size: 11.5px; line-height: 1.42; color: #0b141a;
+  box-shadow: 0 1px 1px rgba(11, 20, 26, .13);
+}
+.fb-wa-tx { white-space: pre-wrap; word-break: break-word; max-height: 46px; overflow: hidden; }
+.fb-wa-vazio { color: #7d8a91; font-style: italic; }
+.fb-wa-ft { color: #667781; font-size: 10px; margin-top: 4px; }
+/* o mesmo realce de variável da prévia grande */
+.fb-wa .wa-var { background: #c3f0cf; color: #056b3e; border-radius: 3px; padding: 0 2px; font-weight: 600; }
+
+/* BOTÕES: hairline e azul iOS, como no aparelho de verdade. O balão é o
+   contexto — o botão precisa parecer o botão do WhatsApp, não o do painel. */
+.fb-wa-btns { margin: 6px -8px -6px; border-top: .5px solid rgba(11, 20, 26, .14); }
+.fb-wa-btn {
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 6px 6px; color: #027eb5; font-weight: 500; font-size: 11px;
+  white-space: nowrap; overflow: hidden;
+}
+.fb-wa-btn + .fb-wa-btn { border-top: .5px solid rgba(11, 20, 26, .14); }
+.fb-wa-btn svg { width: 12px; height: 12px; flex: none; }
+.fb-wa-btn span { overflow: hidden; text-overflow: ellipsis; }
+
+/* MÍDIA: a moldura que o WhatsApp põe antes da legenda. */
+.fb-wa-mid {
+  height: 54px; margin: -2px -3px 6px; border-radius: 6px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  background: linear-gradient(160deg, #e9edf0, #d6dde1); color: #8895a0;
+  font-size: 9.5px; font-weight: 600; letter-spacing: .01em;
+}
+.fb-wa-mid.esc { background: linear-gradient(160deg, #3b444c, #232a30); color: #cfd8dd; }
+
+/* TEMPLATE: o nome do modelo é o que decide se a mensagem sai, então ele
+   aparece como etiqueta, e não perdido no meio do texto. */
+.fb-wa-tpl {
+  display: inline-flex; align-items: center; gap: 4px; margin-bottom: 5px;
+  background: rgba(11, 20, 26, .07); border-radius: 4px; padding: 2px 6px;
+  font-size: 9.5px; font-weight: 600; color: #3b4a54; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fb-wa-tpl svg { flex: none; }
+
+/* PIX: o cartão de pagamento que chega na conversa. */
+.fb-wa-pix {
+  display: flex; align-items: center; gap: 7px; margin-top: 6px;
+  background: rgba(11, 20, 26, .05); border-radius: 6px; padding: 6px 7px;
+}
+.fb-wa-pix-ic { color: #0b8f5a; display: flex; flex: none; }
+.fb-wa-pix-tx { min-width: 0; line-height: 1.25; }
+.fb-wa-pix-tx b { display: block; font-size: 10.5px; font-weight: 600; color: #0b141a; }
+.fb-wa-pix-tx em { font-style: normal; font-size: 9.5px; color: #667781; }
+
+/* IA: o texto do balão é o PROMPT, não a resposta. Sem dizer isso, quem monta
+   o fluxo acha que o cliente vai receber as instruções do agente. */
+.fb-wa-ia {
+  margin-top: 6px; font-size: 9.5px; color: #667781; font-style: italic;
+  display: flex; align-items: center; gap: 4px;
+}
+.fb-wa-ia svg { flex: none; }
 .fb-port {
   position: absolute; width: 13px; height: 13px; border-radius: 50%; background: var(--card);
   border: 2.5px solid var(--verde-esc); z-index: 2; cursor: crosshair; transition: transform .12s;
