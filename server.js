@@ -425,9 +425,6 @@ app.post('/simplify-webhook', require('./src/simplify').webhookHandler(broadcast
 // estorno e aprovação do recebedor. Autenticado + reconferido na API.
 app.post('/card-webhook', require('./src/pagamentos').cardWebhookHandler(broadcast));
 
-// Status de entrega dos SMS (DLR da Integra X). Informe esta URL no campo
-// "callback" do Admin SaaS → SMS: <SEU_DOMINIO>/sms-webhook
-app.post('/sms-webhook', require('./src/sms').webhookHandler(broadcast));
 
 // Eventos da loja Nuvemshop (pedido criado/pago/cancelado, cliente novo).
 // Assinado com HMAC-SHA256 — a validação usa req.rawBody.
