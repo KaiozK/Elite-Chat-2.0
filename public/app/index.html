@@ -279,6 +279,14 @@
       <button class="nav-toggle" id="nav-toggle" onclick="toggleNav()" aria-label="Abrir menu" title="Menu">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
       </button>
+      <!-- NO CELULAR, A MARCA NO LUGAR DO NOME DA TELA.
+           Na gaveta fechada a barra lateral some inteira, e com ela a única
+           Koonfy da tela — o painel ficava sem assinatura nenhuma. O nome da
+           página já está escrito no destino aceso da barra de baixo, então
+           repeti-lo aqui gastava o melhor espaço do topo com o que a pessoa
+           acabou de tocar. No computador vale o contrário: a marca está na
+           lateral, e aqui volta o nome da tela. -->
+      <i class="tb-marca" id="tb-marca" role="img" aria-label="Koonfy"></i>
       <h2 id="tb-title">Dashboard</h2>
       <div class="tb-search">
         <svg class="ic" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
@@ -296,8 +304,9 @@
           </button>
           <div class="notif-panel hidden" id="notif-panel"></div>
         </div>
-        <!-- CARTEIRA NO CELULAR. Só aparece aqui: no computador ela mora na
-             barra lateral, abaixo da marca. Duas caixas, um dado só. -->
+        <!-- CARTEIRA NO TOPO, EM QUALQUER TELA. A caixa verde da barra
+             lateral continua existindo no computador; esta aqui é o atalho que
+             acompanha a pessoa em toda página, e é dela que sai o saque. -->
         <div class="tb-wallet hidden" id="tb-wallet">
           <a class="tb-wallet-val" id="tb-wallet-val" href="#/billing" title="Ver carteira">R$ 0,00</a>
           <button class="tb-wallet-add" onclick="saqueModal()" title="Sacar" aria-label="Sacar da carteira">
@@ -323,7 +332,6 @@
           </button>
           <div class="ch-menu hidden" id="ch-menu"></div>
         </div>
-        <button class="btn small" onclick="logout()">Sair</button>
       </div>
     </header>
     <main id="view"></main>

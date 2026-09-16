@@ -169,6 +169,71 @@ const DRIVERS = {
       const d = await woovi.call('POST', '/api/v1/subaccount/' + encodeURIComponent(pixKey) + '/withdraw', {});
       return d.transaction || d;
     },
+
+    // ---- SAQUE DE VALOR EXATO (Pix Out) ----
+    //
+    // O `withdraw` acima esvazia a subconta e não aceita valor. Por isso ele
+    // sozinho obrigava o saque automático a ser sempre "tudo". O caminho de
+    // valor exato existe e é outro: duas chamadas documentadas, nesta ordem.
+    //
+    //   1. `POST /api/v1/subaccount/transfer` move um VALOR entre subcontas da
+    //      mesma empresa. É com ele que o dinheiro sai da subconta do lojista e
+    //      chega à subconta da plataforma (a chave do split).
+    //   2. `POST /api/v1/payment` manda um Pix para uma chave QUALQUER, de
+    //      fora. Antes é preciso verificar a chave em
+    //      `GET /api/v1/pix-keys/{chave}/check`, que devolve o
+    //      `pixKeyEndToEndId` exigido no pagamento; depois
+    //      `POST /api/v1/payment/approve` é o que solta o dinheiro.
+    //
+    // A conta fecha assim: sai `amount` da subconta do lojista, entram `net` na
+    // conta dele e a `fee` fica na subconta da plataforma. Ninguém paga do
+    // próprio bolso e nada fica no ar.
+    //
+    // O Pix Out precisa estar LIBERADO na conta Woovi e a chave da API precisa
+    // ser MASTER. Sem isso estas chamadas falham, e falhar aqui é seguro: o
+    // pedido continua pendente para o admin, como sempre foi.
+    async verificarChavePix(pixKey) {
+      const d = await woovi.call('GET', '/api/v1/pix-keys/' + encodeURIComponent(pixKey) + '/check');
+      const k = d.pixKey || d.key || d;
+      return {
+        endToEndId: d.pixKeyEndToEndId || k.pixKeyEndToEndId || k.endToEndId || '',
+        tipo: k.type || k.keyType || '',
+        dono: k.name || (k.owner && k.owner.name) || ''
+      };
+    },
+
+    async transferirEntreSubcontas({ fromPixKey, fromPixKeyType, toPixKey, toPixKeyType, valueCents, correlationID }) {
+      return woovi.call('POST', '/api/v1/subaccount/transfer', {
+        value: valueCents,
+        fromPixKey, fromPixKeyType, toPixKey, toPixKeyType,
+        correlationID
+      });
+    },
+
+    async pixOut({ pixKey, pixKeyType, endToEndId, valueCents, correlationID, comment }) {
+      await woovi.call('POST', '/api/v1/payment', {
+        value: valueCents,
+        destinationAlias: pixKey,
+        destinationAliasType: pixKeyType,
+        pixKeyEndToEndId: endToEndId,
+        correlationID,
+        comment: String(comment || '').slice(0, 140)
+      });
+      // A criação deixa o pagamento em CREDO/CREATED; é a aprovação que manda o
+      // dinheiro. Uma conta configurada para aprovar sozinha recusa esta
+      // segunda chamada dizendo que já está aprovado — e isso é sucesso, não
+      // erro: tratar como falha marcaria como pendente um saque já pago.
+      try {
+        const ap = await woovi.call('POST', '/api/v1/payment/approve', { correlationID });
+        const pay = ap.payment || ap;
+        return { status: pay.status || 'APPROVED', endToEndId: pay.endToEndId || '', raw: undefined };
+      } catch (e) {
+        if (/already|já\s+(foi\s+)?aprovad|APPROVED|CONFIRMED/i.test(e.message || '')) {
+          return { status: 'APPROVED', endToEndId: '', jaAprovado: true };
+        }
+        throw e;
+      }
+    },
     async createCharge({ correlationID, value, comment, customer, expiresIn, subPixKey, splits }) {
       const body = { correlationID, value, comment: comment || '', expiresIn: expiresIn || 86400 };
       if (customer && (customer.name || customer.phone)) body.customer = customer;
@@ -207,9 +272,41 @@ const DRIVERS = {
 // É o mesmo laço de migração que os outros módulos deste projeto já usam.
 const PLATAFORMA_PADRAO = {
   gateway: 'woovi', onboardingMode: 'subaccount',
-  feeInPercent: 0, feeOutPercent: 0, splitPixKey: '',
+  feeInPercent: 0, feeOutPercent: 0, splitPixKey: '', splitPixKeyType: '',
+  // SAQUE DE VALOR EXATO, desligado por padrão.
+  //
+  // Desligado não por capricho: ligado, o Koonfy passa a MANDAR DINHEIRO para
+  // fora sozinho, por duas chamadas novas na Woovi (ver `pixOut` no driver).
+  // Um interruptor que nasce ligado estrearia isso na primeira venda de quem
+  // atualizar, sem ninguém ter decidido. Quem liga confere antes se o Pix Out
+  // está liberado na conta Woovi e se a chave da API é MASTER.
+  pixOut: false,
   requireApproval: false, logs: []
 };
+
+// A Woovi nomeia os tipos de chave em inglês e em caixa alta; o cadastro do
+// Koonfy guarda em português e minúsculo. A tradução mora aqui, num lugar só —
+// espalhada, vira um `toUpperCase()` esquecido que manda "TELEFONE" e toma 400.
+const PIX_TIPO_WOOVI = {
+  cpf: 'CPF', cnpj: 'CNPJ', email: 'EMAIL', telefone: 'PHONE', aleatoria: 'RANDOM'
+};
+
+// Quando o tipo não foi gravado (chave antiga, ou a do split que o admin só
+// digitou), ele sai do próprio formato da chave. É o mesmo julgamento que o
+// banco faz ao colar uma chave no aplicativo.
+function tipoDaChavePix(chave, tipoGravado) {
+  const t = PIX_TIPO_WOOVI[String(tipoGravado || '').toLowerCase()];
+  if (t) return t;
+  const c = String(chave || '').trim();
+  if (c.includes('@')) return 'EMAIL';
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c)) return 'RANDOM';
+  const d = c.replace(/\D/g, '');
+  if (d.length === 11 && /^\+?55/.test(c)) return 'PHONE';
+  if (d.length === 11) return 'CPF';
+  if (d.length === 14) return 'CNPJ';
+  if (d.length === 12 || d.length === 13) return 'PHONE';
+  return '';
+}
 
 function platformCfg() {
   const p = db.get().platform;
@@ -868,14 +965,41 @@ function refundWithdraw(acc, wd) {
 // é quem escreve a frase (a API traduz em `MOTIVO_SAQUE`).
 function podeSaqueAuto(acc, valorCents, f) {
   const cfg = platformCfg();
-  if (gateway().payout !== 'total') return { pode: false, motivo: 'gateway' };
+  const drv = gateway();
   const ep = ensure(acc);
   const sub = ep.subaccount;
+
+  // ---- CAMINHO DE VALOR EXATO (Pix Out), quando o admin ligou ----
+  //
+  // É o caminho bom, e derruba duas das restrições do caminho antigo:
+  //
+  //   · não precisa ser o saldo inteiro — o valor vai na chamada;
+  //   · a TAXA DE SAQUE volta a caber. Sai `amount` da subconta do lojista,
+  //     entra `net` na conta dele e a diferença fica na subconta da
+  //     plataforma. Esvaziar não permitia isso, porque o esvaziamento não
+  //     sabe repartir.
+  //
+  // O que ele exige em troca é a chave do split: ela é a subconta da
+  // plataforma, o destino do primeiro passo. Sem ela o dinheiro não tem para
+  // onde ir antes de sair.
+  if (cfg.pixOut && drv.pixOut) {
+    if (!sub || !sub.pixKey || sub.status !== 'active') return { pode: false, motivo: 'subconta' };
+    if ((f.fromCard || 0) > 0) return { pode: false, motivo: 'cartao' };
+    if (!cfg.splitPixKey) return { pode: false, motivo: 'split' };
+    if (!tipoDaChavePix(sub.pixKey, sub.pixKeyType)) return { pode: false, motivo: 'tipo_chave' };
+    if (!tipoDaChavePix(cfg.splitPixKey, cfg.splitPixKeyType)) return { pode: false, motivo: 'tipo_split' };
+    return { pode: true, motivo: '', pixKey: sub.pixKey, parcial: true };
+  }
+
+  // ---- CAMINHO ANTIGO: esvaziar a subconta ----
+  // Continua valendo para quem não ligou o Pix Out. Aqui o saque é tudo ou
+  // nada, e por isso ele recusa taxa de saque e valor diferente do saldo.
+  if (drv.payout !== 'total') return { pode: false, motivo: 'gateway' };
   if (!sub || !sub.pixKey || sub.status !== 'active') return { pode: false, motivo: 'subconta' };
   if ((f.fromCard || 0) > 0) return { pode: false, motivo: 'cartao' };
   if ((f.fee || 0) > 0) return { pode: false, motivo: 'taxa' };
   if (!cfg.splitPixKey && (Number(cfg.feeInPercent) || 0) > 0) return { pode: false, motivo: 'split' };
-  return { pode: true, motivo: '', pixKey: sub.pixKey };
+  return { pode: true, motivo: '', pixKey: sub.pixKey, parcial: false };
 }
 
 // Parte de REDE: confere o saldo lá e, se bater com o pedido, manda pagar.
@@ -907,10 +1031,22 @@ async function pagarSaqueAuto(acc, wd) {
   try { saldo = await gateway().getSubBalance(chk.pixKey); }
   catch { saldo = null; }
   // `null` é "não sei", e não "zero": sem saber o saldo não dá para garantir
-  // que o esvaziamento corresponde ao pedido.
+  // que a saída corresponde ao pedido, nos dois caminhos.
   if (saldo === null || saldo === undefined) return { pago: false, motivo: 'saldo_desconhecido' };
-  if (Math.round(Number(saldo)) !== Math.round(Number(wd.amount))) {
-    return { pago: false, motivo: 'parcial', saldoGateway: Math.round(Number(saldo)) };
+  saldo = Math.round(Number(saldo));
+
+  if (chk.parcial) {
+    // No valor exato basta CABER. Pedir mais do que está lá na Woovi só
+    // descobriria o problema no meio da transferência, com o dinheiro já
+    // debitado da carteira daqui.
+    if (saldo < Math.round(Number(wd.amount))) {
+      return { pago: false, motivo: 'saldo_gateway', saldoGateway: saldo };
+    }
+    return pagarSaqueParcial(acc, wd, chk);
+  }
+
+  if (saldo !== Math.round(Number(wd.amount))) {
+    return { pago: false, motivo: 'parcial', saldoGateway: saldo };
   }
 
   let tx;
@@ -923,6 +1059,79 @@ async function pagarSaqueAuto(acc, wd) {
   wd.gatewayTx = (tx && (tx.transactionID || tx.id || tx.endToEndId)) || '';
   db.save();
   return { pago: true, tx: wd.gatewayTx };
+}
+
+// ---------------------------------------------------------------------------
+// SAQUE DE VALOR EXATO — dois passos, e a ordem importa
+//
+//   1. a subconta do lojista transfere `amount` para a subconta da plataforma;
+//   2. a plataforma manda `net` por Pix Out para a chave do lojista.
+//
+// A diferença (`fee`) fica na plataforma, que é onde a taxa de saque deve
+// ficar. Fazer na ordem inversa — pagar antes de recolher — significaria pagar
+// do próprio bolso e torcer para o passo 2 dar certo.
+//
+// CADA PASSO GRAVA ASSIM QUE TERMINA. Se o Pix Out falhar depois de a
+// transferência ter passado, o dinheiro está na plataforma e o pedido fica
+// pendente com `transferido` marcado — o admin vê exatamente onde parou, em vez
+// de precisar adivinhar se o valor saiu ou não. Uma nova tentativa não repete o
+// passo 1, justamente por causa dessa marca.
+// ---------------------------------------------------------------------------
+async function pagarSaqueParcial(acc, wd, chk) {
+  const cfg = platformCfg();
+  const ep = ensure(acc);
+  const sub = ep.subaccount;
+  const drv = gateway();
+  const amount = Math.round(Number(wd.amount) || 0);
+  const net = Math.max(0, Math.round(Number(wd.net != null ? wd.net : amount)));
+  if (net <= 0) return { pago: false, motivo: 'valor' };
+
+  const corr = wd.correlationID || ('wd-' + wd.id + '-' + crypto.randomBytes(4).toString('hex'));
+  if (!wd.correlationID) { wd.correlationID = corr; db.save(); }
+
+  // ---- passo 1: recolher da subconta do lojista ----
+  if (!wd.transferido) {
+    try {
+      await drv.transferirEntreSubcontas({
+        fromPixKey: sub.pixKey, fromPixKeyType: tipoDaChavePix(sub.pixKey, sub.pixKeyType),
+        toPixKey: cfg.splitPixKey, toPixKeyType: tipoDaChavePix(cfg.splitPixKey, cfg.splitPixKeyType),
+        valueCents: amount, correlationID: corr + '-in'
+      });
+    } catch (e) {
+      return { pago: false, motivo: 'falhou', etapa: 'transferencia', erro: e.message || String(e) };
+    }
+    wd.transferido = Date.now();
+    db.save();
+  }
+
+  // ---- passo 2: mandar para a conta do lojista ----
+  // A verificação da chave é exigida pela Woovi (ela devolve o
+  // `pixKeyEndToEndId` sem o qual o pagamento não é aceito) e, de quebra, é a
+  // última chance de descobrir que a chave foi desativada no banco — antes de
+  // mandar, e não depois.
+  let e2e = '';
+  try { e2e = (await drv.verificarChavePix(sub.pixKey)).endToEndId; }
+  catch (e) { return { pago: false, motivo: 'falhou', etapa: 'chave', erro: e.message || String(e) }; }
+  if (!e2e) return { pago: false, motivo: 'falhou', etapa: 'chave', erro: 'A Woovi não devolveu o identificador da chave Pix' };
+
+  let r;
+  try {
+    r = await drv.pixOut({
+      pixKey: sub.pixKey, pixKeyType: tipoDaChavePix(sub.pixKey, sub.pixKeyType),
+      endToEndId: e2e, valueCents: net, correlationID: corr,
+      comment: 'Koonfy: saque'
+    });
+  } catch (e) {
+    return { pago: false, motivo: 'falhou', etapa: 'pagamento', erro: e.message || String(e) };
+  }
+
+  wd.status = 'paid';
+  wd.paidAt = Date.now();
+  wd.auto = true;
+  wd.parcial = true;
+  wd.gatewayTx = (r && r.endToEndId) || '';
+  db.save();
+  return { pago: true, tx: wd.gatewayTx, parcial: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -2653,7 +2862,7 @@ function adminOverview() {
   const todas = accounts.flatMap(a => (a.pagamentos.charges || []));
   const cartaoPagas = todas.filter(c => c.status === 'paid' && c.method === 'card');
   return {
-    config: { gateway: cfg.gateway, onboardingMode: cfg.onboardingMode, feeInPercent: cfg.feeInPercent, feeOutPercent: cfg.feeOutPercent, splitPixKey: cfg.splitPixKey, requireApproval: cfg.requireApproval, configured: configured() },
+    config: { gateway: cfg.gateway, onboardingMode: cfg.onboardingMode, feeInPercent: cfg.feeInPercent, feeOutPercent: cfg.feeOutPercent, splitPixKey: cfg.splitPixKey, splitPixKeyType: cfg.splitPixKeyType, pixOut: !!cfg.pixOut, requireApproval: cfg.requireApproval, configured: configured() },
     card: cards.adminCard(cardConfig()),
     totals: {
       pixIn: rows.reduce((s, r) => s + r.pixIn, 0),
@@ -2735,7 +2944,7 @@ module.exports = {
   cardAccount, cardAccountView, cardCapability, cardReady, registerCardAccount, syncCardAccount,
   creditCardSale, creditPixSale, reverterVenda,
   releaseFor, releaseReceivables, spendWallet, computeSplit, computeWithdrawFee, debitWithdraw, refundWithdraw,
-  podeSaqueAuto, pagarSaqueAuto,
+  podeSaqueAuto, pagarSaqueAuto, tipoDaChavePix,
   // Os drivers em si, para o teste do dinheiro poder trocar a Woovi por uma de
   // mentira e PROVAR o comportamento do saque automático — em vez de ler o
   // código e torcer. Nada no app usa isto: quem precisa de um driver chama

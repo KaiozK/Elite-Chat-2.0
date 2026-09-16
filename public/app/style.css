@@ -289,6 +289,16 @@ main#view { flex: 1; min-height: 0; }
   position: relative; z-index: 100;   /* acima do #view p/ o dropdown de notificações ficar na frente */
 }
 .topbar h2 { margin: 0; font-size: 15px; font-weight: 500; flex: 1; letter-spacing: -.02em; }
+/* Mesma máscara da marca da barra lateral, e por isso a mesma imagem: dois
+   desenhos diferentes da mesma palavra apareceriam como duas marcas. Menor,
+   porque aqui ela divide a linha com a busca e os botões. Nasce escondida — só
+   o `@media` do celular a mostra. */
+.tb-marca {
+  display: none; flex: none; width: 82px; height: 21px; background: currentColor;
+  color: var(--text);
+  -webkit-mask: url(/assets/koonfy-marca.webp) left center/contain no-repeat;
+  mask: url(/assets/koonfy-marca.webp) left center/contain no-repeat;
+}
 .tb-right { display: flex; align-items: center; gap: 12px; }
 
 /* ---- Seletor da conta do WhatsApp (canais) ---- */
@@ -313,6 +323,11 @@ main#view { flex: 1; min-height: 0; }
   font: inherit; font-weight: 500; font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
 }
 .ch-menu-sep { height: 1px; margin: 5px 4px; background: var(--border); }
+/* Sair encerra a sessão: vermelho, como todo destrutivo do painel. O ícone
+   acompanha, senão só o texto muda de cor e a linha fica desalinhada do resto. */
+.ch-item.ch-sair b { color: var(--red); }
+.ch-item.ch-sair svg { color: var(--red); }
+.ch-item.ch-sair:hover { background: var(--red-bg); }
 .ch-item {
   display: flex; align-items: center; gap: 9px; width: 100%;
   padding: 8px 10px; border: 0; border-radius: 9px;
@@ -3216,7 +3231,10 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
    ============================================================ */
 @media (max-width: 900px) {
   .topbar { gap: 10px; padding: 0 14px; }
-  .topbar h2 { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* A MARCA ENTRA E O NOME DA TELA SAI. Ver o comentário no index.html: com a
+     gaveta fechada, esta é a única Koonfy visível no celular. */
+  .tb-marca { display: block; }
+  .topbar h2 { display: none; }
   .tb-right { gap: 7px; min-width: 0; }
   .tb-user #who { display: none; }              /* mantém só o avatar */
   .status-chip { padding: 6px 9px; font-size: 0; gap: 0; }   /* vira só o pontinho de status */
@@ -3980,11 +3998,12 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
   transition: transform .14s var(--ease, ease), box-shadow .14s;
 }
 .tb-wallet-add:active { transform: scale(.9); box-shadow: none; }
-/* Espelho da regra da `.sb-wallet`: acima de 960px a barra lateral está aberta
-   e o saldo mora LÁ, com o fundo brilhante. Aqui ele sai, senão o mesmo número
-   apareceria duas vezes na mesma tela. Os dois números (960/961) andam juntos
-   com o `@media (max-width: 960px)` da sidebar — mexeu num, mexe nos três. */
-@media (min-width: 961px) { .tb-wallet, .tb-wallet:not(.hidden) { display: none; } }
+/* A CARTEIRA DO TOPO VALE EM TODA TELA, e não só no celular.
+   Ela chegou a sair no computador para não repetir o número da caixa verde da
+   lateral, mas as duas não fazem a mesma coisa: a da lateral é a vitrine do
+   saldo, esta é o atalho que segue a pessoa em qualquer página — e é daqui que
+   ela saca sem voltar para o Dashboard. O que saiu do topo foi o botão "Sair",
+   que virou item do menu do perfil; é esse espaço que dá lugar a saldo grande. */
 
 /* ---------------------------------------------------------------------------
    CARTEIRA NA BARRA LATERAL (computador)

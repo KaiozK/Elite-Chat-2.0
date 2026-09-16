@@ -78,8 +78,39 @@ const fs = require('fs');
 
   const escondeSb = new RegExp('@media \\(max-width:\\s*' + P + 'px\\)\\s*\\{\\s*\\.sb-wallet').test(css);
   ok(escondeSb, `a carteira do computador some no MESMO ponto (${P}px)`);
-  const escondeTb = new RegExp('@media \\(min-width:\\s*' + (P + 1) + 'px\\)\\s*\\{\\s*\\.tb-wallet').test(css);
-  ok(escondeTb, `e a do celular some a partir de ${P + 1}px — nunca as duas juntas`);
+  // A DO TOPO NÃO SOME MAIS NO COMPUTADOR, e isso mudou de propósito: as duas
+  // não fazem a mesma coisa. A da lateral é a vitrine do saldo; a do topo é o
+  // atalho que acompanha a pessoa em qualquer página, e é dela que sai o saque.
+  // O espaço para isso veio do "Sair", que saiu do topo e virou item do menu do
+  // perfil — testado logo abaixo, porque foi a troca que permitiu as duas.
+  ok(!/@media \(min-width:[^)]*\)\s*\{\s*\.tb-wallet/.test(css),
+     'a carteira do topo vale em toda largura, e não só no celular');
+
+  console.log('\n=== 4b. O "Sair" mora no menu do perfil ===');
+  // Ele era um botão solto no topo, de largura fixa, encostado no saldo — e
+  // saldo de seis dígitos não cabia junto. Sem esta troca a carteira do topo
+  // não teria onde crescer no computador.
+  ok(!/<button class="btn small" onclick="logout\(\)">/.test(html),
+     'não há mais botão de sair solto no cabeçalho');
+  ok(/onclick="closeChannelMenu\(\);logout\(\)"/.test(js),
+     'sair é um item do menu que abre no perfil');
+  ok(/\.ch-item\.ch-sair b \{ color: var\(--red\)/.test(css),
+     'em vermelho, como todo destrutivo do painel');
+
+  console.log('\n=== 4c. No celular, a marca no lugar do nome da tela ===');
+  // Com a gaveta fechada a barra lateral some inteira, e com ela a única
+  // Koonfy da tela. O nome da página já está aceso na barra de baixo.
+  ok(/id="tb-marca"/.test(html), 'a marca está no cabeçalho');
+  ok(/\.tb-marca \{[^}]*display: none/.test(css), 'escondida por padrão');
+  ok(/koonfy-marca\.webp/.test(css.slice(css.indexOf('.tb-marca'), css.indexOf('.tb-marca') + 400)),
+     'e usa a MESMA imagem da marca da lateral — dois desenhos seriam duas marcas');
+  // `indexOf` não serve aqui: existem VÁRIOS `@media (max-width: 900px)` no
+  // arquivo, e o primeiro deles é de outra coisa. O bloco certo é o que trata
+  // da `.topbar`, então é por ele que se procura.
+  const iMob = css.indexOf('@media (max-width: 900px)', css.indexOf('RESPONSIVO — TABLET / MOBILE'));
+  const mob = css.slice(iMob, css.indexOf('@media', iMob + 10));
+  ok(/\.tb-marca \{ display: block; \}/.test(mob), 'no celular ela aparece');
+  ok(/\.topbar h2 \{ display: none; \}/.test(mob), 'e o nome da tela sai');
 
   console.log('\n=== 5. O mesmo saldo pinta nos dois ===');
   ok(/function pintaCarteira\(\)/.test(js), 'existe uma função só que pinta os dois');

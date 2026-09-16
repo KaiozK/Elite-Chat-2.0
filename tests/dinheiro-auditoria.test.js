@@ -207,7 +207,91 @@ const brl = c => 'R$ ' + (c / 100).toFixed(2).replace('.', ',');
      'e o valor NÃO volta sozinho para a carteira — o POST pode ter passado do outro lado');
 
   drv.getSubBalance = gwReal.getSubBalance; drv.withdraw = gwReal.withdraw;
-  p.feeInPercent = 5;
+
+  console.log('\n=== 5c. SAQUE DE VALOR EXATO: sai o pedido, fica a taxa ===');
+  // O esvaziamento da subconta não aceita valor, e era ele que obrigava o saque
+  // automático a ser sempre "tudo". O caminho de valor exato são DUAS chamadas:
+  // a subconta do lojista transfere o pedido para a subconta da plataforma, e a
+  // plataforma manda o líquido por Pix Out para a chave dele. A diferença é a
+  // taxa de saque, e ela tem de FICAR — é para isso que a ordem importa.
+  const gw2 = {
+    transferirEntreSubcontas: drv.transferirEntreSubcontas,
+    verificarChavePix: drv.verificarChavePix,
+    pixOut: drv.pixOut,
+    getSubBalance: drv.getSubBalance
+  };
+  const passos = [];
+  drv.getSubBalance = async () => 100000;                       // R$ 1.000 na subconta
+  drv.transferirEntreSubcontas = async a => { passos.push(['transfer', a.valueCents, a.fromPixKey, a.toPixKey]); return { ok: true }; };
+  drv.verificarChavePix = async k => { passos.push(['check', k]); return { endToEndId: 'E2E-FALSO' }; };
+  drv.pixOut = async a => { passos.push(['pixout', a.valueCents, a.pixKey, a.pixKeyType]); return { status: 'APPROVED', endToEndId: 'E2E-PAGO' }; };
+
+  p.gateway = 'woovi';
+  p.splitPixKey = 'financeiro@koonfy.com';
+  p.splitPixKeyType = '';
+  p.feeOutPercent = 2;                       // 2% de taxa de saque
+  p.pixOut = true;                           // o interruptor do admin
+
+  const fx = pagamentos.computeWithdrawFee(loja, 30000);
+  ok(fx.fee === 600, 'a taxa de 2% sobre R$ 300 é R$ 6,00', brl(fx.fee));
+  ok(pagamentos.podeSaqueAuto(loja, 30000, fx).pode === true,
+     'com o Pix Out ligado, um saque COM taxa passa a poder ser automático');
+  ok(pagamentos.podeSaqueAuto(loja, 30000, fx).parcial === true, 'e pelo caminho de valor exato');
+
+  const wdP = { id: 'wdP', accountId: loja.id, amount: 30000, fee: fx.fee, net: fx.net, fromCard: 0, status: 'pending', pixKey: 'loja@ex.com' };
+  const rP = await mod.pagarSaqueAuto(loja, wdP);
+  ok(rP.pago === true && rP.parcial === true, 'pagou sozinho, sem esvaziar nada');
+  ok(passos.length === 3, 'em três chamadas: transferir, conferir a chave, pagar', passos.map(x => x[0]).join(' → '));
+  ok(passos[0][0] === 'transfer' && passos[0][1] === 30000,
+     'a transferência recolhe o VALOR PEDIDO, não o saldo', brl(passos[0][1]));
+  ok(passos[0][2] === 'loja@ex.com' && passos[0][3] === 'financeiro@koonfy.com',
+     'da subconta do lojista para a da plataforma');
+  ok(passos[2][0] === 'pixout' && passos[2][1] === fx.net,
+     'e o Pix Out manda o LÍQUIDO, não o bruto', brl(passos[2][1]));
+  ok(passos[0][1] - passos[2][1] === fx.fee,
+     'a diferença entre o que entrou e o que saiu é exatamente a taxa', brl(passos[0][1] - passos[2][1]));
+  ok(passos[2][3] === 'EMAIL', 'o tipo da chave vai no vocabulário da Woovi', passos[2][3]);
+
+  console.log('\n=== 5d. Falha no meio: o admin sabe onde parou ===');
+  // Se o Pix Out falha DEPOIS da transferência, o dinheiro está na plataforma.
+  // Marcar a etapa é o que evita o admin ter de abrir a Woovi para descobrir se
+  // o valor saiu — e é o que impede a tentativa seguinte de transferir de novo.
+  passos.length = 0;
+  drv.pixOut = async () => { throw new Error('Pix Out não habilitado'); };
+  const wdF = { id: 'wdF', accountId: loja.id, amount: 30000, fee: fx.fee, net: fx.net, fromCard: 0, status: 'pending', pixKey: 'loja@ex.com' };
+  const rF = await mod.pagarSaqueAuto(loja, wdF);
+  ok(rF.pago === false && rF.etapa === 'pagamento', 'o pedido fica pendente, dizendo em que etapa parou', rF.etapa);
+  ok(!!wdF.transferido, 'e registra que o valor JÁ saiu da subconta do lojista');
+
+  // A segunda tentativa não pode recolher de novo: seria cobrar duas vezes.
+  passos.length = 0;
+  drv.pixOut = async a => { passos.push(['pixout', a.valueCents]); return { status: 'APPROVED', endToEndId: 'E2E-2' }; };
+  const rF2 = await mod.pagarSaqueAuto(loja, wdF);
+  ok(rF2.pago === true, 'tentar de novo conclui o saque');
+  ok(!passos.some(x => x[0] === 'transfer'), 'SEM transferir outra vez — o dinheiro já estava lá');
+
+  console.log('\n=== 5e. O que ainda barra o valor exato ===');
+  drv.getSubBalance = async () => 10000;     // só R$ 100 na Woovi
+  const wdG = { id: 'wdG', accountId: loja.id, amount: 30000, fee: 0, net: 30000, fromCard: 0, status: 'pending', pixKey: 'loja@ex.com' };
+  const rG = await mod.pagarSaqueAuto(loja, wdG);
+  ok(rG.pago === false && rG.motivo === 'saldo_gateway',
+     'pedido maior do que o que está na Woovi não sai', rG.motivo);
+  drv.getSubBalance = async () => 100000;
+
+  p.splitPixKey = '';
+  ok(pagamentos.podeSaqueAuto(loja, 30000, fx).motivo === 'split',
+     'sem a chave da plataforma não há para onde recolher antes de mandar');
+  p.splitPixKey = 'financeiro@koonfy.com';
+
+  ok(pagamentos.podeSaqueAuto(loja, 30000, { fromCard: 1000, fee: 0 }).motivo === 'cartao',
+     'dinheiro de cartão continua de fora: ele não está na subconta Pix');
+
+  p.pixOut = false;
+  ok(pagamentos.podeSaqueAuto(loja, 30000, fx).motivo === 'taxa',
+     'e com o interruptor desligado tudo volta a ser como era: taxa barra o automático');
+
+  Object.assign(drv, gw2);
+  p.feeOutPercent = 0; p.splitPixKey = ''; p.feeInPercent = 5;
 
   console.log('\n=== 6. O saque respeita o saldo, e o recusado devolve ===');
   loja.wallet.balance = 50000;

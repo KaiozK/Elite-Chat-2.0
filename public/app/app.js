@@ -682,6 +682,8 @@ const ICONS = {
   power: '<path d="M18.4 6.6a9 9 0 1 1-12.8 0M12 2v10"/>',
   webhook: '<path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2"/><path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06"/><path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8"/>',
   chat2: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><circle cx="9" cy="10" r="1"/><circle cx="13" cy="10" r="1"/><circle cx="17" cy="10" r="1"/>',
+  /* Porta com a seta saindo: é o desenho que todo mundo já lê como "sair". */
+  logout: '<path d="M15 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
   clock2: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
@@ -1759,6 +1761,18 @@ function paintChannelPicker() {
       ${ico('gear', 14)}
       <span class="ch-item-txt"><b>Gerenciar contas</b>
         <em>Renomear, trocar de número ou remover</em></span>
+    </button>
+    <!-- SAIR MORA AQUI AGORA.
+         Ele era um botão solto no topo, ocupando largura fixa ao lado do saldo
+         — e saldo de seis dígitos não cabia junto. O lugar natural dele é este
+         menu: é o menu da PESSOA, e sair é a última coisa que ela faz na
+         sessão. Em vermelho porque encerra, e separado do resto para não ser
+         clicado por engano no caminho de "Gerenciar contas". -->
+    <div class="ch-menu-sep"></div>
+    <button class="ch-item ch-sair" onclick="closeChannelMenu();logout()">
+      ${ico('logout', 14)}
+      <span class="ch-item-txt"><b>Sair</b>
+        <em>Encerrar a sessão neste aparelho</em></span>
     </button>`;
 }
 
@@ -12695,6 +12709,11 @@ function admFeesSection(cfg, c, t) {
     <div class="row" style="margin-top:16px;align-items:flex-end">
       ${simp ? '' : `<label style="flex:1.6">Chave Pix da plataforma (recebe o split do Pix)
         <input id="adm-ep-splitkey" value="${esc(cfg.splitPixKey || '')}" placeholder="chave Pix que recebe a comissão"></label>`}
+      ${simp ? '' : `<label style="max-width:180px">Tipo da chave
+        ${ecSelect('adm-ep-splittipo', [
+          { value: '', label: 'Detectar pelo formato' }, { value: 'cpf', label: 'CPF' }, { value: 'cnpj', label: 'CNPJ' },
+          { value: 'email', label: 'E-mail' }, { value: 'telefone', label: 'Telefone' }, { value: 'aleatoria', label: 'Aleatória' }
+        ], cfg.splitPixKeyType || '', 'admEpSaveCfg')}</label>`}
       <label style="max-width:190px">Nome na fatura do cartão<input id="adm-card-sd" value="${esc(c.softDescriptor || '')}" maxlength="13" placeholder="KOONFY"></label>
       <label style="max-width:140px">Parcelas máx.<input id="adm-card-inst" value="${esc(String(c.maxInstallments || 1))}" inputmode="numeric"></label>
     </div>
@@ -12722,6 +12741,25 @@ function admFeesSection(cfg, c, t) {
 
     <div class="fee-sep"></div>
     <label class="chk"><input type="checkbox" id="adm-ep-approval" ${cfg.requireApproval ? 'checked' : ''} onchange="admEpSaveCfg()"> Exigir aprovação manual das subcontas novas</label>
+
+    ${simp ? '' : `
+    <!-- O INTERRUPTOR QUE FAZ O KOONFY MANDAR DINHEIRO PARA FORA.
+         Nasce desligado, e a explicação embaixo não é enfeite: ligado, o saque
+         do cliente deixa de esperar você e sai pela API da Woovi. Se o Pix Out
+         não estiver liberado lá, ou se a chave da API não for MASTER, cada
+         saque falha e vira pedido pendente — o cliente não perde nada, mas você
+         vai procurar o motivo em Logs de Webhook. -->
+    <label class="chk" style="margin-top:10px"><input type="checkbox" id="adm-ep-pixout" ${cfg.pixOut ? 'checked' : ''} ${cfg.splitPixKey ? '' : 'disabled'} onchange="admEpSaveCfg()">
+      Pagar os saques automaticamente, no valor pedido (Pix Out da Woovi)</label>
+    <p class="hint" style="text-align:left;margin:4px 0 0">
+      ${cfg.splitPixKey
+        ? `Sem isto, o saque automático só acontece quando o cliente saca <b>o saldo inteiro</b> — o
+           esvaziamento de subconta da Woovi não aceita valor. Ligado, o valor sai exato: o Koonfy
+           recolhe o pedido para a chave da plataforma e manda o líquido para a chave do cliente,
+           retendo a taxa de saque. <b>Exige o Pix Out liberado na sua conta Woovi e chave de API MASTER.</b>
+           Comece testando com um valor pequeno.`
+        : 'Informe antes a chave Pix da plataforma, acima: é para ela que o valor é recolhido antes de sair.'}
+    </p>`}
 
     <div class="wh-meta" style="margin-top:16px">
       <span class="pill ${t.fees ? 'done' : ''}">${fmtBRL(t.fees || 0)} em taxas de Pix</span>
@@ -13199,6 +13237,8 @@ async function admEpSaveCfg() {
     if ($('#adm-ep-fee-in')) body.feeInPercent = $('#adm-ep-fee-in').value;
     if ($('#adm-ep-fee-out')) body.feeOutPercent = $('#adm-ep-fee-out').value;
     if ($('#adm-ep-splitkey')) body.splitPixKey = $('#adm-ep-splitkey').value;
+    if ($('#adm-ep-splittipo')) body.splitPixKeyType = ecVal('adm-ep-splittipo') || '';
+    if ($('#adm-ep-pixout')) body.pixOut = $('#adm-ep-pixout').checked;
     if ($('#adm-ep-approval')) body.requireApproval = $('#adm-ep-approval').checked;
     await api('/admin/pagamentos/config', { method: 'PUT', body });
     toast('Configuração do Pagamentos salva');

@@ -5152,6 +5152,10 @@ module.exports = function (broadcast, clients) {
     saldo_desconhecido: 'não foi possível confirmar o saldo no adquirente',
     parcial:  'o adquirente só permite sacar o saldo inteiro de uma vez',
     chave:    'a chave informada não é a da sua conta de recebimento',
+    saldo_gateway: 'o valor ainda não está disponível no adquirente',
+    tipo_chave: 'não foi possível identificar o tipo da sua chave Pix',
+    tipo_split: 'a chave de repasse da plataforma está incompleta',
+    valor:    'valor inválido',
     falhou:   'o adquirente recusou a transferência'
   };
 
@@ -5192,6 +5196,10 @@ module.exports = function (broadcast, clients) {
     const r = await pagamentos.pagarSaqueAuto(req.acc, wd2);
     if (!r.pago && r.motivo) {
       wd2.motivoManual = r.motivo;
+      // `etapa` só existe no caminho de valor exato, e é o que diz se o
+      // dinheiro já saiu da subconta do lojista (`transferido`) ou se nem
+      // chegou a sair. Sem isso o admin abriria a Woovi para descobrir.
+      if (r.etapa) wd2.etapaFalha = r.etapa;
       if (r.erro) wd2.erroGateway = String(r.erro).slice(0, 300);
       db.save();
     }
@@ -7555,10 +7563,22 @@ module.exports = function (broadcast, clients) {
     if (b.feeInPercent !== undefined) cfg.feeInPercent = pct(b.feeInPercent);
     if (b.feeOutPercent !== undefined) cfg.feeOutPercent = pct(b.feeOutPercent);
     if (typeof b.splitPixKey === 'string') cfg.splitPixKey = b.splitPixKey.trim().slice(0, 140);
+    if (typeof b.splitPixKeyType === 'string') cfg.splitPixKeyType = b.splitPixKeyType.trim().toLowerCase().slice(0, 20);
+    // SAQUE DE VALOR EXATO. Ligar isto faz o Koonfy mandar dinheiro para fora
+    // sozinho, então só liga com a chave do split preenchida: ela é a subconta
+    // da plataforma, para onde o valor é recolhido antes de sair. Aceitar sem
+    // ela deixaria o interruptor ligado e o saque falhando toda vez, com o
+    // dono procurando o motivo no lugar errado.
+    if (typeof b.pixOut === 'boolean') {
+      if (b.pixOut && !cfg.splitPixKey) {
+        return res.status(400).json({ error: 'Para ligar o saque automático, informe antes a chave Pix de repasse da plataforma.' });
+      }
+      cfg.pixOut = b.pixOut;
+    }
     if (typeof b.requireApproval === 'boolean') cfg.requireApproval = b.requireApproval;
     if (b.onboardingMode === 'kyc' || b.onboardingMode === 'subaccount') cfg.onboardingMode = b.onboardingMode;
     db.save();
-    pagamentos.plog({ type: 'config_updated', detail: `Modo ${cfg.onboardingMode} · PIX In ${cfg.feeInPercent}% · PIX Out ${cfg.feeOutPercent}% · aprovação ${cfg.requireApproval ? 'manual' : 'automática'}` });
+    pagamentos.plog({ type: 'config_updated', detail: `Modo ${cfg.onboardingMode} · PIX In ${cfg.feeInPercent}% · PIX Out ${cfg.feeOutPercent}% · aprovação ${cfg.requireApproval ? 'manual' : 'automática'} · saque automático ${cfg.pixOut ? 'ligado' : 'desligado'}` });
     res.json({ ok: true, config: cfg });
   });
 
