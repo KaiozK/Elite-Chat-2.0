@@ -426,12 +426,16 @@ function defaultCheckout() {
     supportText: '',     // rodapé: contato/suporte do vendedor
     // ---- blocos opcionais, reordenáveis por arrastar e soltar ----
     blocks: defaultBlocks(),
-    timer: { on: false, minutes: 15, text: 'Oferta por tempo limitado!', color: '' },   // color vazia = usa o acento do checkout
-    benefits: { on: false, title: 'O que você recebe', items: [] },
-    testimonial: { on: false, name: '', text: '', role: '' },
-    guarantee: { on: false, days: 7, text: 'Garantia incondicional de {dias} dias, devolvemos 100% do valor.' },
-    faq: { on: false, items: [] },
-    notice: { on: false, text: '' },
+    // `color` vazia em todos: vazio quer dizer "usa o padrão deste widget", que
+    // não é o mesmo para todos — o acento do lojista no cronômetro, nas
+    // vantagens, no depoimento, na garantia e no FAQ; âmbar no aviso; dourado
+    // nas estrelas. Ver o fallback do `var(--w, …)` em pay.html.
+    timer: { on: false, minutes: 15, text: 'Oferta por tempo limitado!', color: '' },
+    benefits: { on: false, title: 'O que você recebe', items: [], color: '' },
+    testimonial: { on: false, name: '', text: '', role: '', color: '' },
+    guarantee: { on: false, days: 7, text: 'Garantia incondicional de {dias} dias, devolvemos 100% do valor.', color: '' },
+    faq: { on: false, items: [], color: '' },
+    notice: { on: false, text: '', color: '' },
     badges: { on: true },       // selos de segurança no rodapé
     // formas de pagamento aceitas NESTE checkout. Cartão só surte efeito se o
     // admin ligou o adquirente E o lojista concluiu a conta de cartão (KYC).

@@ -204,17 +204,21 @@
   /* ---------- blocos opcionais ---------- */
   .blk { padding: 24px 30px; }
   .blk-t { font-size: 13px; font-weight: 600; letter-spacing: -.01em; color: var(--ink); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .blk-t svg { color: var(--w, var(--ac)); flex: none; }
   /* ---------------------------------------------------------------------
-     CRONÔMETRO DA OFERTA
-     `--tmr` é a cor do bloco. Ela cai no acento do lojista quando ele não
-     escolhe nenhuma, então quem não mexe continua vendo o que via.
+     COR POR WIDGET — `--w`
+     Cada bloco opcional do checkout aceita uma cor própria, escolhida no
+     Checkout Builder. Ela chega como `style="--w:#xxxxxx"` no próprio bloco.
+     O truque está no FALLBACK DO `var()`: quando o lojista não escolhe nada,
+     `--w` simplesmente não existe, e cada propriedade cai no padrão que ela
+     já tinha — o acento do lojista aqui, o âmbar do aviso ali, o dourado das
+     estrelas acolá. Um valor padrão único estragaria dois deles.
      --------------------------------------------------------------------- */
   .timer {
-    --tmr: var(--ac);
     display: flex; align-items: center; justify-content: center; gap: 16px;
     padding: 15px 20px; border-radius: var(--rc); flex-wrap: wrap;
-    background: color-mix(in srgb, var(--tmr) 9%, transparent);
-    border: 1px solid color-mix(in srgb, var(--tmr) 28%, transparent);
+    background: color-mix(in srgb, var(--w, var(--ac)) 9%, transparent);
+    border: 1px solid color-mix(in srgb, var(--w, var(--ac)) 28%, transparent);
   }
   /* O RELÓGIO ESTAVA DESALINHADO porque um `<svg>` solto dentro de texto se
      apoia na LINHA DE BASE, e não no meio da letra — ele descia uns 2px e a
@@ -223,7 +227,7 @@
     display: inline-flex; align-items: center; gap: 8px;
     font-size: 14px; font-weight: 400; color: var(--ink); line-height: 1.3;
   }
-  .timer-txt svg { flex: none; color: var(--tmr); }
+  .timer-txt svg { flex: none; color: var(--w, var(--ac)); }
 
   /* Antes eram dois retângulos colados, sem separador e sem rótulo: lia-se
      como dois números soltos, e não dava para saber se "05 32" era hora e
@@ -235,11 +239,11 @@
   }
   .timer-casa b {
     display: block; width: 100%; text-align: center;
-    background: var(--tmr); color: #fff;
+    background: var(--w, var(--ac)); color: #fff;
     font-weight: 600; font-size: 19px; letter-spacing: .5px;
     padding: 7px 8px; border-radius: var(--r);
     font-variant-numeric: tabular-nums;
-    box-shadow: 0 1px 2px color-mix(in srgb, var(--tmr) 40%, transparent);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--w, var(--ac)) 40%, transparent);
   }
   /* MINÚSCULA, e não caixa alta. Caixa alta é o padrão em cronômetro de
      oferta, mas esta página inteira tirou a caixa alta de propósito quando foi
@@ -256,7 +260,7 @@
      outro. Um `padding-top` chutado desalinhava de novo a cada mudança de
      fonte; mexeu no número, mexe aqui. */
   .timer-sep {
-    font-size: 19px; font-weight: 600; color: var(--tmr);
+    font-size: 19px; font-weight: 600; color: var(--w, var(--ac));
     line-height: 1.5; padding: 7px 0;
   }
   /* Último minuto: o cronômetro pulsa. É o único movimento da página, e só
@@ -265,25 +269,33 @@
   .timer.acabando .timer-casa b { animation: tmrPulso 1s ease-in-out infinite; }
   @keyframes tmrPulso { 50% { opacity: .55; } }
   @media (prefers-reduced-motion: reduce) { .timer.acabando .timer-casa b { animation: none; } }
-  .notice { padding: 13px 16px; border-radius: var(--r); background: #1d1a11; border: 1px solid #4a3f1e; color: #e3c46a; font-size: 14px; display: flex; gap: 10px; align-items: flex-start; }
+  /* O âmbar É o padrão do aviso, e não o acento do lojista: aviso é aviso. Por
+     isso o fallback aqui é a cor antiga, e não `var(--ac)`. */
+  .notice { padding: 13px 16px; border-radius: var(--r); font-size: 14px; display: flex; gap: 10px; align-items: flex-start;
+    color: var(--w, #e3c46a);
+    background: color-mix(in srgb, var(--w, #e3c46a) 11%, transparent);
+    border: 1px solid color-mix(in srgb, var(--w, #e3c46a) 32%, transparent); }
   .notice svg { flex: none; margin-top: 2px; }
   .benef li { list-style: none; display: flex; gap: 11px; align-items: flex-start; font-size: 14px; color: var(--mut); line-height: 1.55; margin-bottom: 10px; }
-  .benef li svg { flex: none; margin-top: 2px; color: var(--ac); }
+  .benef li svg { flex: none; margin-top: 2px; color: var(--w, var(--ac)); }
   .testi { display: flex; gap: 14px; }
-  .testi-av { width: 44px; height: 44px; border-radius: 50%; flex: none; background: var(--ac-fraco); color: var(--ac); display: flex; align-items: center; justify-content: center; font-weight: 500; font-size: 17px; }
+  .testi-av { width: 44px; height: 44px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; font-weight: 500; font-size: 17px;
+    color: var(--w, var(--ac)); background: color-mix(in srgb, var(--w, var(--ac)) 13%, transparent); }
   .testi p { font-size: 14px; color: var(--mut); line-height: 1.6; }
   .testi b { display: block; font-size: 13px; font-weight: 500; margin-top: 9px; color: var(--ink); }
   .testi small { color: var(--mut); font-size: 12px; }
-  .stars { color: #e3c46a; letter-spacing: 1px; font-size: 13px; margin-bottom: 7px; }
+  /* Estrela dourada é convenção; só sai do dourado se o lojista mandar. */
+  .stars { color: var(--w, #e3c46a); letter-spacing: 1px; font-size: 13px; margin-bottom: 7px; }
   .guar { display: flex; gap: 15px; align-items: center; }
-  .guar-seal { width: 54px; height: 54px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; background: var(--ac-fraco); color: var(--ac); }
+  .guar-seal { width: 54px; height: 54px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center;
+    color: var(--w, var(--ac)); background: color-mix(in srgb, var(--w, var(--ac)) 13%, transparent); }
   .guar b { display: block; font-size: 15px; font-weight: 500; }
   .guar p { font-size: 13px; color: var(--mut); line-height: 1.55; margin-top: 4px; }
   .faq details { border-bottom: 1px solid var(--line); }
   .faq details:last-child { border-bottom: 0; }
   .faq summary { cursor: pointer; padding: 14px 0; font-size: 15px; font-weight: 400; list-style: none; display: flex; justify-content: space-between; gap: 10px; align-items: center; }
   .faq summary::-webkit-details-marker { display: none; }
-  .faq summary::after { content: '+'; color: var(--ac); font-size: 19px; font-weight: 400; flex: none; }
+  .faq summary::after { content: '+'; color: var(--w, var(--ac)); font-size: 19px; font-weight: 400; flex: none; }
   .faq details[open] summary::after { content: '−'; }
   .faq p { font-size: 14px; color: var(--mut); line-height: 1.6; padding: 0 0 15px; }
 
@@ -336,7 +348,6 @@
   .qrside li { counter-increment: s; position: relative; padding-left: 28px; font-size: 13px; color: var(--mut); line-height: 1.5; margin-bottom: 8px; }
   .qrside li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 19px; height: 19px; border-radius: var(--r); background: var(--fio); color: var(--mut); font-size: 11px; font-weight: 500; display: flex; align-items: center; justify-content: center; }
   .qrside li b { color: var(--ink); font-weight: 500; }
-  .expiry { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; color: #e3c46a; margin-top: 6px; }
   .orlbl { display: flex; align-items: center; gap: 14px; font-size: 12px; font-weight: 500; letter-spacing: 0; color: var(--mut); margin: 24px 0 13px; }
   .orlbl::before, .orlbl::after { content: ''; flex: 1; height: 1px; background: var(--line); }
   .copywrap { position: relative; }
@@ -443,7 +454,7 @@
   var apelidoProduto = partes[0] === 'c' ? decodeURIComponent(partes[1] || '') : '';
   var id = apelidoProduto ? '' : (partes[partes.length - 1] || '');
   var root = document.getElementById('root');
-  var data = null, timer = null, cdTimer = null, offerTimer = null;
+  var data = null, timer = null, offerTimer = null;
 
   // De onde vem a primeira carga. As duas respostas têm o mesmo formato: a do
   // produto é a mesma tela sem cobrança, esperando os dados.
@@ -565,11 +576,16 @@
   }
 
   // ---------- blocos opcionais ----------
+  // A COR ESCOLHIDA ENTRA COMO VARIÁVEL DO PRÓPRIO BLOCO.
+  //
+  // Sem escolha, o atributo não sai — e é isso que faz cada widget cair no
+  // padrão dele (o acento do lojista, o âmbar do aviso, o dourado das
+  // estrelas). Mandar uma cor "padrão" aqui atropelaria os três.
+  function corDo(w) { return corValida(w && w.color) ? ' style="--w:' + w.color + '"' : ''; }
+
   function blkTimer(ck) {
     var t = ck.timer || {}; if (!t.on) return '';
-    // A cor escolhida entra como variável do bloco. Sem escolha, `--tmr` cai no
-    // acento do lojista pelo próprio CSS, e nada muda para quem não mexeu.
-    var cor = corValida(t.color) ? ' style="--tmr:' + t.color + '"' : '';
+    var cor = corDo(t);
     return '<div class="card"><div class="blk"><div class="timer" id="offer-box"' + cor + '>' +
       '<span class="timer-txt">' + ico('clock', 15) + '<span>' + esc(t.text || 'Oferta por tempo limitado!') + '</span></span>' +
       '<span class="timer-clock" id="offer-clock"></span>' +
@@ -581,17 +597,17 @@
   function corValida(c) { return typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c); }
   function blkNotice(ck) {
     var n = ck.notice || {}; if (!n.on || !n.text) return '';
-    return '<div class="card"><div class="blk"><div class="notice">' + ico('alert', 15) + '<span>' + esc(n.text) + '</span></div></div></div>';
+    return '<div class="card"><div class="blk"><div class="notice"' + corDo(n) + '>' + ico('alert', 15) + '<span>' + esc(n.text) + '</span></div></div></div>';
   }
   function blkBenefits(ck) {
     var b = ck.benefits || {}; if (!b.on || !(b.items || []).length) return '';
-    return '<div class="card"><div class="blk"><div class="blk-t">' + ico('bolt', 16) + ' ' + esc(b.title || 'O que você recebe') + '</div><ul class="benef">' +
+    return '<div class="card"><div class="blk"' + corDo(b) + '><div class="blk-t">' + ico('bolt', 16) + ' ' + esc(b.title || 'O que você recebe') + '</div><ul class="benef">' +
       b.items.map(function (i) { return '<li>' + ico('check', 15) + '<span>' + esc(i) + '</span></li>'; }).join('') + '</ul></div></div>';
   }
   function blkTestimonial(ck) {
     var t = ck.testimonial || {}; if (!t.on || !t.text) return '';
     var ini = (t.name || 'C').trim().charAt(0).toUpperCase();
-    return '<div class="card"><div class="blk"><div class="testi">' +
+    return '<div class="card"><div class="blk"><div class="testi"' + corDo(t) + '>' +
       '<div class="testi-av">' + esc(ini) + '</div>' +
       '<div><div class="stars">★★★★★</div><p>“' + esc(t.text) + '”</p>' +
       (t.name ? '<b>' + esc(t.name) + (t.role ? ' <small>· ' + esc(t.role) + '</small>' : '') + '</b>' : '') +
@@ -600,14 +616,14 @@
   function blkGuarantee(ck) {
     var g = ck.guarantee || {}; if (!g.on) return '';
     var txt = (g.text || 'Garantia incondicional de {dias} dias, devolvemos 100% do valor.').replace('{dias}', g.days || 7);
-    return '<div class="card"><div class="blk"><div class="guar">' +
+    return '<div class="card"><div class="blk"><div class="guar"' + corDo(g) + '>' +
       '<div class="guar-seal">' + ico('shield', 26) + '</div>' +
       '<div><b>Garantia de ' + (g.days || 7) + ' dias</b><p>' + esc(txt) + '</p></div>' +
     '</div></div></div>';
   }
   function blkFaq(ck) {
     var f = ck.faq || {}; if (!f.on || !(f.items || []).length) return '';
-    return '<div class="card"><div class="blk"><div class="blk-t">Perguntas frequentes</div><div class="faq">' +
+    return '<div class="card"><div class="blk"' + corDo(f) + '><div class="blk-t">Perguntas frequentes</div><div class="faq">' +
       f.items.map(function (i) { return '<details><summary>' + esc(i.q) + '</summary><p>' + esc(i.a) + '</p></details>'; }).join('') +
     '</div></div></div>';
   }
@@ -676,17 +692,17 @@
     return '<div class="steps">' + st(1, 'Identificação') + '<div class="stpsep' + (cur > 1 ? ' done' : '') + '"></div>' + st(2, 'Pagamento') + '</div>';
   }
 
-  function countdown(exp) {
-    var el = document.getElementById('cd'); if (!el || !exp) return;
-    function tick() {
-      var s = Math.floor((exp - Date.now()) / 1000);
-      if (s <= 0) { el.textContent = 'Cobrança expirada'; load(); return; }
-      var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60;
-      el.textContent = 'Expira em ' + (h > 0 ? h + 'h ' : '') + m + 'min' + (h <= 0 ? ' ' + ss + 's' : '');
-      cdTimer = setTimeout(tick, 1000);
-    }
-    clearTimeout(cdTimer); tick();
-  }
+  // A CONTAGEM "EXPIRA EM…" SAIU DAQUI.
+  //
+  // Ela ficava dentro do painel do Pix, ao lado do QR, e brigava com o
+  // cronômetro da oferta logo acima: duas contagens regressivas na mesma tela,
+  // medindo coisas diferentes, e a pessoa não tem como saber qual é qual. A que
+  // vende é a da oferta; esta só media a validade técnica do código.
+  //
+  // Nada se perde com a saída: a página já recarrega sozinha a cada 4s enquanto
+  // a cobrança está aberta (ver o `setInterval` no fim do arquivo), então a
+  // expiração continua sendo percebida e a tela de "Cobrança expirada" aparece
+  // do mesmo jeito. Era só isso que o `load()` do fim da contagem fazia.
   // cronômetro de escassez (bloco opcional), persiste por cobrança
   function startOffer(ck) {
     var t = ck.timer || {}; if (!t.on) return;
@@ -914,7 +930,7 @@
         // No CARTÃO e no BOLETO vem `view` junto: o primeiro ciclo é uma
         // cobrança de verdade, e o caminho é o de sempre.
         if (res.j.assinatura && !res.j.view) {
-          clearInterval(timer); clearTimeout(cdTimer); clearTimeout(offerTimer);
+          clearInterval(timer); clearTimeout(offerTimer);
           var ckA = (data && data.checkout) || {};
           root.innerHTML = siteHead(ckA) + '<div class="wrap"><div class="grid">' +
             mainColumn(ckA, assinaturaMain(ckA, res.j.assinatura)) + summary(ckA, '') +
@@ -1080,7 +1096,7 @@
           '<li>Abra o app do seu banco e escolha <b>Pix</b></li>' +
           '<li>Aponte a câmera para o <b>QR Code</b></li>' +
           '<li>Confirme, aprovação <b>imediata</b></li>' +
-        '</ol>' + (data.expiresAt ? '<div class="expiry">' + ico('clock', 13) + ' <span id="cd"></span></div>' : '') + '</div>' +
+        '</ol></div>' +
       '</div>' +
       '<div class="orlbl">ou Pix copia e cola</div>' +
       '<div class="copywrap"><input readonly id="brcode" value="' + esc(data.brCode || '') + '" onclick="this.select()"><button class="cbtn" id="copy2">Copiar</button></div>';
@@ -1171,7 +1187,6 @@
         .then(function () { toast('Código Pix copiado! Cole no app do seu banco'); })
         .catch(function () { document.execCommand('copy'); toast('Código Pix copiado!'); });
     };
-    countdown(data.expiresAt);
   }
 
   function bindCard() {
@@ -1316,7 +1331,7 @@
             '<div><span>Método</span><b>' + metodoPago() + '</b></div>' +
           '</div>' +
         '</div></div>' + summary(ck, '') + '</div></div>';
-      clearInterval(timer); clearTimeout(cdTimer); clearTimeout(offerTimer);
+      clearInterval(timer); clearTimeout(offerTimer);
       return;
     }
     if (data.status === 'cancelled' || data.status === 'expired') {
@@ -1326,7 +1341,7 @@
           '<h2>' + (data.status === 'expired' ? 'Cobrança expirada' : 'Cobrança cancelada') + '</h2>' +
           '<p>Esta cobrança não está mais disponível para pagamento.' + (ck.supportText ? '\n\n' + esc(ck.supportText) : '\nFale com o vendedor para gerar uma nova.') + '</p>' +
         '</div></div>' + summary(ck, '') + '</div></div>';
-      clearInterval(timer); clearTimeout(cdTimer); clearTimeout(offerTimer);
+      clearInterval(timer); clearTimeout(offerTimer);
       return;
     }
 

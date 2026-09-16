@@ -7301,33 +7301,33 @@ module.exports = function (broadcast, clients) {
     }
     // blocos opcionais
     const str = (v, n) => typeof v === 'string' ? v.slice(0, n) : undefined;
+    // COR DE WIDGET. Ela vai parar dentro de um atributo `style` do checkout
+    // público, então só hexadecimal de 6 dígitos entra. Qualquer outra coisa
+    // vira VAZIO — e vazio não quer dizer "preto", quer dizer "usa o padrão
+    // deste widget", que difere de um para o outro (acento do lojista na
+    // maioria, âmbar no aviso, dourado nas estrelas do depoimento).
+    const cor = v => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.trim()) ? v.trim().toLowerCase() : '';
     if (b.timer && typeof b.timer === 'object') {
-      // A COR VAI PARAR NUM ATRIBUTO `style` do checkout público. Só hexadecimal
-      // de 6 dígitos entra; qualquer outra coisa vira vazio, e vazio quer dizer
-      // "usa o acento do checkout" — que é o que todo mundo via antes de o
-      // campo existir.
-      const cor = typeof b.timer.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(b.timer.color.trim())
-        ? b.timer.color.trim().toLowerCase() : '';
       ck.timer = {
         on: !!b.timer.on,
         minutes: Math.max(1, Math.min(1440, +b.timer.minutes || 15)),
         text: str(b.timer.text, 120) || ck.timer.text || '',
-        color: cor
+        color: cor(b.timer.color)
       };
     }
     if (b.benefits && typeof b.benefits === 'object') {
-      ck.benefits = { on: !!b.benefits.on, title: str(b.benefits.title, 80) || '', items: (Array.isArray(b.benefits.items) ? b.benefits.items : []).slice(0, 10).map(x => String(x).slice(0, 120)) };
+      ck.benefits = { on: !!b.benefits.on, title: str(b.benefits.title, 80) || '', items: (Array.isArray(b.benefits.items) ? b.benefits.items : []).slice(0, 10).map(x => String(x).slice(0, 120)), color: cor(b.benefits.color) };
     }
     if (b.testimonial && typeof b.testimonial === 'object') {
-      ck.testimonial = { on: !!b.testimonial.on, name: str(b.testimonial.name, 60) || '', role: str(b.testimonial.role, 60) || '', text: str(b.testimonial.text, 400) || '' };
+      ck.testimonial = { on: !!b.testimonial.on, name: str(b.testimonial.name, 60) || '', role: str(b.testimonial.role, 60) || '', text: str(b.testimonial.text, 400) || '', color: cor(b.testimonial.color) };
     }
     if (b.guarantee && typeof b.guarantee === 'object') {
-      ck.guarantee = { on: !!b.guarantee.on, days: Math.max(1, Math.min(365, +b.guarantee.days || 7)), text: str(b.guarantee.text, 240) || '' };
+      ck.guarantee = { on: !!b.guarantee.on, days: Math.max(1, Math.min(365, +b.guarantee.days || 7)), text: str(b.guarantee.text, 240) || '', color: cor(b.guarantee.color) };
     }
     if (b.faq && typeof b.faq === 'object') {
-      ck.faq = { on: !!b.faq.on, items: (Array.isArray(b.faq.items) ? b.faq.items : []).slice(0, 8).map(i => ({ q: String(i.q || '').slice(0, 140), a: String(i.a || '').slice(0, 500) })) };
+      ck.faq = { on: !!b.faq.on, items: (Array.isArray(b.faq.items) ? b.faq.items : []).slice(0, 8).map(i => ({ q: String(i.q || '').slice(0, 140), a: String(i.a || '').slice(0, 500) })), color: cor(b.faq.color) };
     }
-    if (b.notice && typeof b.notice === 'object') ck.notice = { on: !!b.notice.on, text: str(b.notice.text, 200) || '' };
+    if (b.notice && typeof b.notice === 'object') ck.notice = { on: !!b.notice.on, text: str(b.notice.text, 200) || '', color: cor(b.notice.color) };
     if (b.badges && typeof b.badges === 'object') ck.badges = { on: !!b.badges.on };
     // O BOTÃO: brilhante (uma faixa de luz atravessa) ou chapado. Sem cores
     // próprias a faixa é derivada do acento do checkout, então quem não

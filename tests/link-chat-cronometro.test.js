@@ -1,5 +1,5 @@
 // ============================================================================
-// LINK CLICÁVEL NO BALÃO, E O CRONÔMETRO DA OFERTA
+// LINK CLICÁVEL NO BALÃO, E A COR DOS WIDGETS DO CHECKOUT
 //
 // Duas coisas sem parentesco, num arquivo só porque as duas são a mesma
 // pergunta: o que o painel FAZ com texto que veio de fora.
@@ -95,29 +95,64 @@ const fs = require('fs');
   ok(/line-height: 1\.5; padding: 7px 0/.test(sep),
      'o ":" repete a entrelinha e o recuo do número, para cair no meio das casas');
 
-  console.log('\n=== 6. A cor é do lojista, e só hexadecimal passa ===');
-  const rota = api.slice(api.indexOf('if (b.timer && '), api.indexOf('if (b.benefits && '));
+  console.log('\n=== 6. CADA WIDGET tem cor própria, e só hexadecimal passa ===');
+  const rota = api.slice(api.indexOf('const cor = v => typeof v'), api.indexOf("if (b.badges && "));
   ok(/\/\^#\[0-9a-fA-F\]\{6\}\$\/\.test/.test(rota),
      'o servidor só aceita #rrggbb — a cor vai parar num atributo style');
   ok(/: ''/.test(rota), 'qualquer outra coisa vira vazio');
-  ok(/color: cor/.test(rota), 'e o valor conferido é o que fica gravado');
+  for (const w of ['timer', 'benefits', 'testimonial', 'guarantee', 'faq', 'notice']) {
+    ok(new RegExp('color: cor\\(b\\.' + w + '\\.color\\)').test(rota), `${w} guarda a cor conferida`);
+  }
 
   ok(/function corValida\(c\) \{ return typeof c === 'string' && \/\^#\[0-9a-f\]\{6\}\$\/i\.test\(c\); \}/.test(pay),
      'o checkout confere de novo antes de escrever no style — não confia no que está gravado');
-  ok(/--tmr: var\(--ac\)/.test(pay),
-     'sem cor escolhida, o cronômetro cai no acento do lojista: quem não mexeu não vê diferença');
+  ok(/function corDo\(w\) \{ return corValida\(w && w\.color\)/.test(pay),
+     'e é um helper só que põe `--w` em todos os blocos');
+  ok((pay.match(/corDo\(/g) || []).length >= 7, 'usado nos seis widgets');
+
+  console.log('\n=== 6b. SEM COR ESCOLHIDA, NADA MUDA ===');
+  // Aqui mora o risco desta mudança: um padrão único (`--w: var(--ac)`) teria
+  // deixado o aviso verde e as estrelas verdes da noite para o dia, em todo
+  // checkout que já existe. O padrão vive no FALLBACK do `var()`, um por
+  // propriedade, e é isso que estes casos guardam.
+  ok(!/--w:\s*var\(--ac\)/.test(pay),
+     'nenhum bloco recebe uma cor padrão: sem escolha, a variável nem existe');
+  ok(/color: var\(--w, #e3c46a\)/.test(pay), 'o aviso continua âmbar por padrão');
+  ok(/\.stars \{ color: var\(--w, #e3c46a\)/.test(pay), 'as estrelas continuam douradas');
+  for (const alvo of ['.benef li svg', '.faq summary::after']) {
+    const i = pay.indexOf(alvo);
+    ok(i > 0 && /var\(--w, var\(--ac\)\)/.test(pay.slice(i, i + 200)),
+       `${alvo} continua no acento do lojista`);
+  }
 
   console.log('\n=== 7. A prévia do builder mostra o mesmo que o checkout ===');
-  ok(/EPK_TIMER_CORES/.test(js), 'há uma paleta própria para o cronômetro');
-  ok(/function epkTimerCor\(c\)/.test(js), 'e escolher uma cor é um clique');
+  ok(/EPK_WID_CORES/.test(js), 'há uma paleta para os widgets');
+  ok(/function epkCorWidget\(bloco\)/.test(js) && /function epkWidCor\(bloco, c\)/.test(js),
+     'e um seletor só, usado por todos os blocos');
+  ok((js.match(/epkCorWidget\('/g) || []).length === 6, 'nas seis seções', (js.match(/epkCorWidget\('/g) || []).length + '');
   ok(/epk-swatch-auto/.test(js) && /\.epk-swatch-auto \{/.test(css),
-     'com uma opção para VOLTAR à cor de destaque — senão não há como desfazer');
-  const prev = js.slice(js.indexOf('const bTimer = () =>'), js.indexOf('const bNotice ='));
+     'com uma opção para VOLTAR ao padrão — senão não há como desfazer');
+  // O nome do padrão difere por bloco; dizer "cor de destaque" no aviso seria
+  // mentir sobre o que o botão faz.
+  ok(/notice:\s*\{ nome: 'o âmbar de aviso'/.test(js), 'o aviso diz que volta para o âmbar');
+  ok(/testimonial: \{ nome: 'o dourado'/.test(js), 'o depoimento, para o dourado');
+
+  const prev = js.slice(js.indexOf('const bTimer = () =>'), js.indexOf('const BLK ='));
   ok(/h > 0 \? casa\(h, 'horas'\)/.test(prev),
      'a prévia converte 75 minutos em 01:15, como o checkout faria');
-  ok(/--tmr:\$\{s\.timer\.color\}/.test(prev), 'e usa a cor escolhida');
-  ok(/\.epk2-timer \{ --tmr: var\(--epkc/.test(css),
-     'caindo no acento quando não há cor, igual ao checkout');
+  ok(/const cw = k =>/.test(js) && (prev.match(/cw\('/g) || []).length >= 5,
+     'e cada bloco da prévia recebe a cor escolhida');
+  ok(/\.epk2-notice \{[\s\S]{0,200}var\(--w, #8a6412\)/.test(css),
+     'a prévia repete o MESMO encadeamento de padrão, inclusive o âmbar do aviso');
+
+  console.log('\n=== 8. A contagem "Expira em…" saiu do painel do Pix ===');
+  // Duas contagens regressivas na mesma tela, medindo coisas diferentes, e sem
+  // como saber qual é qual. A que vende é a da oferta.
+  ok(!/id="cd"/.test(pay) && !/function countdown\(/.test(pay),
+     'não há mais contagem de validade dentro do painel do Pix');
+  ok(!/\.expiry \{/.test(pay), 'nem o estilo dela sobrando');
+  ok(/setInterval\(function \(\) \{ if \(data && data\.status === 'active'/.test(pay),
+     'e a expiração continua sendo percebida: a página já recarrega sozinha enquanto a cobrança está aberta');
 
   await encerrar(null, falhas);
 })();

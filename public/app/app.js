@@ -17774,13 +17774,51 @@ async function epSaveCfg() {
 // ---- CHECKOUT BUILDER: página dedicada (#/pagamentos/checkout) ----
 let epkState = null;
 let epkPrevStep = 1;   // etapa exibida na prévia: 1 dados · 2 pix
-// Cores que funcionam num cronômetro: quentes e de alerta, que é o que o bloco
-// quer dizer. Verde e azul vão junto porque nem toda oferta é urgência gritada —
-// há quem só queira que o número combine com a marca.
-const EPK_TIMER_CORES = ['#ef4444', '#f97316', '#f59e0b', '#e11d48', '#8b5cf6', '#0ea5e9', '#10b981', '#1a2233'];
+// ---------------------------------------------------------------------------
+// COR POR WIDGET, NO BUILDER
+//
+// Um seseletor só, usado pelos seis blocos. Ele existe como função e não como
+// trecho copiado em cada seção porque a parte que importa — o botão que VOLTA
+// para a cor padrão — é a que primeiro se esquece de copiar, e sem ela quem
+// experimenta uma cor não tem como desfazer a não ser acertando o hexadecimal
+// da marca no olho.
+//
+// O texto do padrão muda por bloco: o aviso volta para o âmbar, o depoimento
+// para o dourado das estrelas, e o resto para a cor de destaque do checkout.
+// Dizer "cor de destaque" no aviso seria mentir sobre o que o botão faz.
+// ---------------------------------------------------------------------------
+const EPK_WID_CORES = ['#ef4444', '#f97316', '#f59e0b', '#e11d48', '#8b5cf6', '#0ea5e9', '#10b981', '#1a2233'];
 
-function epkTimerCor(c) {
-  epkState.timer.color = /^#[0-9a-f]{6}$/i.test(c) ? c.toLowerCase() : '';
+// O ARTIGO VAI JUNTO DO NOME ("a cor", "o âmbar"). Fixá-lo na frase dava
+// "segue o cor de destaque" — e a concordância errada aparece logo abaixo do
+// seletor, que é justamente onde a pessoa está lendo com atenção.
+const EPK_WID_PADRAO = {
+  timer:       { nome: 'a cor de destaque', dica: 'Vale para os números, o relógio e a moldura do bloco.' },
+  notice:      { nome: 'o âmbar de aviso',  dica: 'Vale para o texto, o ícone, o fundo e a borda do aviso.' },
+  benefits:    { nome: 'a cor de destaque', dica: 'Vale para os vistos da lista e o ícone do título.' },
+  testimonial: { nome: 'o dourado',         dica: 'Vale para as estrelas e o círculo com a inicial.' },
+  guarantee:   { nome: 'a cor de destaque', dica: 'Vale para o selo redondo do bloco.' },
+  faq:         { nome: 'a cor de destaque', dica: 'Vale para o "+" que abre cada pergunta.' }
+};
+
+function epkCorWidget(bloco) {
+  const atual = (epkState[bloco] && epkState[bloco].color) || '';
+  const p = EPK_WID_PADRAO[bloco] || { nome: 'a cor de destaque', dica: '' };
+  return `
+    <span class="fb-sub" style="margin-top:18px;display:block">Cor do bloco</span>
+    <p class="muted" style="font-size:13px;margin:0 0 10px">${p.dica}
+      Sem escolher, ele segue <b>${p.nome}</b>.</p>
+    <div class="epk-colors">
+      <button class="epk-swatch epk-swatch-auto${atual ? '' : ' on'}" title="Voltar para ${esc(p.nome)}"
+              onclick="epkWidCor('${bloco}','')">${ico('slash', 13)}</button>
+      ${EPK_WID_CORES.map(c => `<button class="epk-swatch${c === atual ? ' on' : ''}" style="background:${c}" onclick="epkWidCor('${bloco}','${c}')"></button>`).join('')}
+      <input type="color" value="${esc(atual || epkState.color || '#10b981')}" title="Cor personalizada" oninput="epkWidCor('${bloco}',this.value)">
+    </div>`;
+}
+
+function epkWidCor(bloco, c) {
+  if (!epkState[bloco]) return;
+  epkState[bloco].color = /^#[0-9a-f]{6}$/i.test(c) ? c.toLowerCase() : '';
   epkPaintSide();      // repinta os swatches para o marcado acompanhar
   epkPrev();
 }
@@ -17815,11 +17853,11 @@ async function renderCheckoutBuilder() {
     tema: ck.tema === 'claro' ? 'claro' : 'escuro',
     blocks: (ck.blocks && ck.blocks.length) ? ck.blocks.slice() : EPK_BLOCK_KEYS.slice(),
     timer: Object.assign({ on: false, minutes: 15, text: 'Oferta por tempo limitado!', color: '' }, ck.timer || {}),
-    benefits: Object.assign({ on: false, title: 'O que você recebe', items: [] }, ck.benefits || {}),
-    testimonial: Object.assign({ on: false, name: '', role: '', text: '' }, ck.testimonial || {}),
-    guarantee: Object.assign({ on: false, days: 7, text: 'Garantia incondicional de {dias} dias, devolvemos 100% do valor.' }, ck.guarantee || {}),
-    faq: Object.assign({ on: false, items: [] }, ck.faq || {}),
-    notice: Object.assign({ on: false, text: '' }, ck.notice || {}),
+    benefits: Object.assign({ on: false, title: 'O que você recebe', items: [], color: '' }, ck.benefits || {}),
+    testimonial: Object.assign({ on: false, name: '', role: '', text: '', color: '' }, ck.testimonial || {}),
+    guarantee: Object.assign({ on: false, days: 7, text: 'Garantia incondicional de {dias} dias, devolvemos 100% do valor.', color: '' }, ck.guarantee || {}),
+    faq: Object.assign({ on: false, items: [], color: '' }, ck.faq || {}),
+    notice: Object.assign({ on: false, text: '', color: '' }, ck.notice || {}),
     badges: Object.assign({ on: true }, ck.badges || {}),
     methods: Object.assign({ pix: true, credit: true, boleto: false }, ck.methods || {})
   };
@@ -17982,18 +18020,7 @@ function epkPaintForm() {
       <label style="margin-top:10px;display:block">Duração (minutos)
         <input type="number" min="1" max="1440" value="${ck.timer.minutes}" oninput="epkState.timer.minutes=+this.value||15;epkPrev()"></label>
 
-      <span class="fb-sub" style="margin-top:18px;display:block">Cor do cronômetro</span>
-      <p class="muted" style="font-size:13px;margin:0 0 10px">Vale para os números, o relógio e a moldura do bloco.
-        Sem escolher, ele segue a <b>cor de destaque</b> do checkout.</p>
-      <div class="epk-colors">
-        <!-- "Usar a cor de destaque" é uma opção de verdade, e não a ausência
-             de escolha: sem ela, quem experimentasse uma cor não teria como
-             voltar atrás a não ser acertando o mesmo hexadecimal no olho. -->
-        <button class="epk-swatch epk-swatch-auto${ck.timer.color ? '' : ' on'}" title="Usar a cor de destaque"
-                onclick="epkTimerCor('')">${ico('slash', 13)}</button>
-        ${EPK_TIMER_CORES.map(c => `<button class="epk-swatch${c === ck.timer.color ? ' on' : ''}" data-c="${c}" style="background:${c}" onclick="epkTimerCor('${c}')"></button>`).join('')}
-        <input type="color" value="${esc(ck.timer.color || ck.color || '#10b981')}" title="Cor personalizada" oninput="epkTimerCor(this.value)">
-      </div>
+      ${epkCorWidget('timer')}
 
       <p class="hint" style="margin-top:14px">A contagem começa quando o cliente abre a página e continua se ele recarregar.
         No último minuto os números pulsam.</p>`;
@@ -18004,7 +18031,8 @@ function epkPaintForm() {
         <input maxlength="80" value="${esc(ck.benefits.title)}" placeholder="O que você recebe" oninput="epkState.benefits.title=this.value;epkPrev()"></label>
       <span class="fb-sub" style="margin-top:14px">Itens</span>
       <div id="epk-benef-list">${epkListRows('benefits')}</div>
-      <button class="btn small" style="margin-top:8px" onclick="epkAddItem('benefits')">${ico('plus', 12)} Adicionar vantagem</button>`;
+      <button class="btn small" style="margin-top:8px" onclick="epkAddItem('benefits')">${ico('plus', 12)} Adicionar vantagem</button>
+      ${epkCorWidget('benefits')}`;
   } else if (epkSection === 'testimonial') {
     body = `
       <label class="chk"><input type="checkbox" ${ck.testimonial.on ? 'checked' : ''} onchange="epkState.testimonial.on=this.checked;epkPrev()"> Exibir depoimento</label>
@@ -18013,25 +18041,29 @@ function epkPaintForm() {
       <div class="row" style="margin-top:10px">
         <label style="flex:1">Nome<input maxlength="60" value="${esc(ck.testimonial.name)}" placeholder="Maria S." oninput="epkState.testimonial.name=this.value;epkPrev()"></label>
         <label style="flex:1">Cargo<input maxlength="60" value="${esc(ck.testimonial.role)}" placeholder="Empreendedora" oninput="epkState.testimonial.role=this.value;epkPrev()"></label>
-      </div>`;
+      </div>
+      ${epkCorWidget('testimonial')}`;
   } else if (epkSection === 'guarantee') {
     body = `
       <label class="chk"><input type="checkbox" ${ck.guarantee.on ? 'checked' : ''} onchange="epkState.guarantee.on=this.checked;epkPrev()"> Exibir selo de garantia</label>
       <label style="margin-top:12px;display:block">Dias de garantia
         <input type="number" min="1" max="365" value="${ck.guarantee.days}" oninput="epkState.guarantee.days=+this.value||7;epkPrev()"></label>
       <label style="margin-top:10px;display:block">Texto <span class="muted">(use {dias})</span>
-        <textarea rows="3" maxlength="240" oninput="epkState.guarantee.text=this.value;epkPrev()">${esc(ck.guarantee.text)}</textarea></label>`;
+        <textarea rows="3" maxlength="240" oninput="epkState.guarantee.text=this.value;epkPrev()">${esc(ck.guarantee.text)}</textarea></label>
+      ${epkCorWidget('guarantee')}`;
   } else if (epkSection === 'faq') {
     body = `
       <label class="chk"><input type="checkbox" ${ck.faq.on ? 'checked' : ''} onchange="epkState.faq.on=this.checked;epkPrev()"> Exibir perguntas frequentes</label>
       <div id="epk-faq-list" style="margin-top:12px">${epkFaqRows()}</div>
-      <button class="btn small" style="margin-top:8px" onclick="epkAddFaq()">${ico('plus', 12)} Adicionar pergunta</button>`;
+      <button class="btn small" style="margin-top:8px" onclick="epkAddFaq()">${ico('plus', 12)} Adicionar pergunta</button>
+      ${epkCorWidget('faq')}`;
   } else if (epkSection === 'notice') {
     body = `
       <label class="chk"><input type="checkbox" ${ck.notice.on ? 'checked' : ''} onchange="epkState.notice.on=this.checked;epkPrev()"> Exibir faixa de aviso</label>
       <label style="margin-top:12px;display:block">Mensagem
         <textarea rows="3" maxlength="200" placeholder="Ex.: O acesso é liberado em até 5 minutos após o pagamento." oninput="epkState.notice.text=this.value;epkPrev()">${esc(ck.notice.text)}</textarea></label>
-      <label class="chk" style="margin-top:14px"><input type="checkbox" ${ck.badges.on ? 'checked' : ''} onchange="epkState.badges.on=this.checked;epkPrev()"> Exibir selos de segurança no rodapé</label>`;
+      ${epkCorWidget('notice')}
+      <label class="chk" style="margin-top:18px"><input type="checkbox" ${ck.badges.on ? 'checked' : ''} onchange="epkState.badges.on=this.checked;epkPrev()"> Exibir selos de segurança no rodapé</label>`;
   } else if (epkSection === 'pagamento') {
     const cap = (state.epInfo && state.epInfo.card) || { ready: false, credit: false, boleto: false };
     const m = ck.methods;
@@ -18402,7 +18434,7 @@ function epkPrev() {
   // a pessoa escolhe achando que vai sair diferente.
   const bTimer = () => {
     if (!s.timer.on) return '';
-    const cor = /^#[0-9a-f]{6}$/i.test(s.timer.color || '') ? ` style="--tmr:${s.timer.color}"` : '';
+    const cor = cw('timer');
     const casa = (v, r) => `<i><b>${String(v).padStart(2, '0')}</b><em>${r}</em></i>`;
     // A DURAÇÃO VIRA HORA QUANDO PASSA DE 60, igual ao checkout. Mostrar
     // "75 MIN" aqui e "01:14:56" lá faria a pessoa achar que configurou errado.
@@ -18412,18 +18444,22 @@ function epkPrev() {
     return `<div class="epk2-blk epk2-timer"${cor}>${ico('clock', 11)} ${esc(s.timer.text || 'Oferta por tempo limitado!')}
       <span class="epk2-clock">${h > 0 ? casa(h, 'horas') + sep : ''}${casa(m, 'min')}${sep}${casa(0, 'seg')}</span></div>`;
   };
-  const bNotice = () => (s.notice.on && s.notice.text) ? `<div class="epk2-blk epk2-notice">${ico('help', 11)} ${esc(s.notice.text)}</div>` : '';
+  // A PRÉVIA TEM DE MENTIR ZERO. Mesma variável, mesmo encadeamento de padrão
+  // que o checkout público: quem escolhe uma cor aqui vê exatamente o que o
+  // cliente vai ver. Uma prévia que aproxima é pior que prévia nenhuma.
+  const cw = k => /^#[0-9a-f]{6}$/i.test((s[k] || {}).color || '') ? ` style="--w:${s[k].color}"` : '';
+  const bNotice = () => (s.notice.on && s.notice.text) ? `<div class="epk2-blk epk2-notice"${cw('notice')}>${ico('help', 11)} ${esc(s.notice.text)}</div>` : '';
   const bBenef = () => (s.benefits.on && s.benefits.items.filter(Boolean).length)
-    ? `<div class="epk2-blk"><b class="epk2-blkt">${esc(s.benefits.title || 'O que você recebe')}</b>
+    ? `<div class="epk2-blk"${cw('benefits')}><b class="epk2-blkt">${esc(s.benefits.title || 'O que você recebe')}</b>
        ${s.benefits.items.filter(Boolean).map(i => `<div class="epk2-bitem">${ico('check', 11)} ${esc(i)}</div>`).join('')}</div>` : '';
   const bTesti = () => (s.testimonial.on && s.testimonial.text)
-    ? `<div class="epk2-blk epk2-testi"><span class="av">${esc((s.testimonial.name || 'C').charAt(0).toUpperCase())}</span>
+    ? `<div class="epk2-blk epk2-testi"${cw('testimonial')}><span class="av">${esc((s.testimonial.name || 'C').charAt(0).toUpperCase())}</span>
        <div><div class="st">★★★★★</div><p>“${esc(s.testimonial.text)}”</p>${s.testimonial.name ? `<b>${esc(s.testimonial.name)}</b>` : ''}</div></div>` : '';
   const bGuar = () => s.guarantee.on
-    ? `<div class="epk2-blk epk2-guar">${ico('shield', 18)}<div><b>Garantia de ${s.guarantee.days || 7} dias</b>
+    ? `<div class="epk2-blk epk2-guar"${cw('guarantee')}>${ico('shield', 18)}<div><b>Garantia de ${s.guarantee.days || 7} dias</b>
        <span>${esc((s.guarantee.text || '').replace('{dias}', s.guarantee.days || 7))}</span></div></div>` : '';
   const bFaq = () => (s.faq.on && s.faq.items.filter(i => i.q).length)
-    ? `<div class="epk2-blk"><b class="epk2-blkt">Perguntas frequentes</b>
+    ? `<div class="epk2-blk"${cw('faq')}><b class="epk2-blkt">Perguntas frequentes</b>
        ${s.faq.items.filter(i => i.q).map(i => `<div class="epk2-faq">${esc(i.q)} <em>+</em></div>`).join('')}</div>` : '';
   const BLK = { timer: bTimer, notice: bNotice, benefits: bBenef, testimonial: bTesti, guarantee: bGuar, faq: bFaq };
 

@@ -3518,15 +3518,15 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 /* `--tmr` cai em `--epkc` (a cor de destaque do checkout) quando o lojista não
    escolheu cor para o cronômetro — o mesmo encadeamento do checkout público,
    para a prévia não mentir. */
-.epk2-timer { --tmr: var(--epkc, #2ed378);
+.epk2-timer {
   display: flex; align-items: center; justify-content: center; gap: 7px; font-weight: 600; color: #33405c;
-  background: color-mix(in srgb, var(--tmr) 8%, #fff); border-color: color-mix(in srgb, var(--tmr) 25%, #fff); }
-.epk2-timer svg { color: var(--tmr); flex: none; }
+  background: color-mix(in srgb, var(--w, var(--epkc, #2ed378)) 8%, #fff); border-color: color-mix(in srgb, var(--w, var(--epkc, #2ed378)) 25%, #fff); }
+.epk2-timer svg { color: var(--w, var(--epkc, #2ed378)); flex: none; }
 .epk2-clock { display: flex; align-items: flex-start; gap: 2px; }
 .epk2-clock i { display: flex; flex-direction: column; align-items: center; gap: 1px; font-style: normal; }
-.epk2-clock i b { background: var(--tmr); color: #fff; font-weight: 600; padding: 2px 5px; border-radius: 4px; font-size: 9px; min-width: 20px; text-align: center; }
+.epk2-clock i b { background: var(--w, var(--epkc, #2ed378)); color: #fff; font-weight: 600; padding: 2px 5px; border-radius: 4px; font-size: 9px; min-width: 20px; text-align: center; }
 .epk2-clock i em { font-style: normal; font-size: 6px; letter-spacing: .05em; color: #8b93a3; }
-.epk2-clock s { text-decoration: none; color: var(--tmr); font-weight: 600; font-size: 9px; padding-top: 2px; }
+.epk2-clock s { text-decoration: none; color: var(--w, var(--epkc, #2ed378)); font-weight: 600; font-size: 9px; padding-top: 2px; }
 
 /* O swatch "usar a cor de destaque": xadrez claro para dizer "nenhuma cor
    própria", com o ícone por cima. Sem ele a única forma de desfazer uma cor
@@ -3535,22 +3535,29 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   display: inline-flex; align-items: center; justify-content: center; color: #6b7280;
   background: repeating-conic-gradient(#e9edf2 0% 25%, #fff 0% 50%) 50% / 9px 9px;
 }
-.epk2-notice { background: #fff8e6; border-color: #f5e2b0; color: #8a6412; display: flex; gap: 6px; align-items: flex-start; }
+/* Âmbar é o padrão do AVISO, e não a cor de destaque — o mesmo encadeamento de
+   `pay.html`. Por isso o fallback aqui é a cor antiga do bloco. */
+.epk2-notice { display: flex; gap: 6px; align-items: flex-start;
+  color: var(--w, #8a6412);
+  background: color-mix(in srgb, var(--w, #d9a520) 11%, #fff);
+  border-color: color-mix(in srgb, var(--w, #d9a520) 32%, #fff); }
+.epk2-notice svg { color: var(--w, #b8860b); flex: none; }
 .epk2-bitem { display: flex; gap: 6px; align-items: flex-start; margin-bottom: 4px; }
-.epk2-bitem svg { color: var(--epkc, #2ed378); flex: none; margin-top: 1px; }
+.epk2-bitem svg { color: var(--w, var(--epkc, #2ed378)); flex: none; margin-top: 1px; }
 .epk2-testi { display: flex; gap: 8px; }
 .epk2-testi .av { width: 24px; height: 24px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center;
-  background: color-mix(in srgb, var(--epkc, #2ed378) 13%, #fff); color: var(--epkc, #2ed378); font-weight: 500; font-size: 11px; }
-.epk2-testi .st { color: #f5a524; font-size: 8px; letter-spacing: .5px; }
+  background: color-mix(in srgb, var(--w, var(--epkc, #2ed378)) 13%, #fff); color: var(--w, var(--epkc, #2ed378)); font-weight: 500; font-size: 11px; }
+/* Estrela dourada é convenção; só sai do dourado se o lojista mandar. */
+.epk2-testi .st { color: var(--w, #f5a524); font-size: 8px; letter-spacing: .5px; }
 .epk2-testi p { font-style: italic; margin: 2px 0 3px; }
 .epk2-testi b { font-size: 9px; }
 .epk2-guar { display: flex; gap: 9px; align-items: center; }
-.epk2-guar svg { color: var(--epkc, #2ed378); flex: none; }
+.epk2-guar svg { color: var(--w, var(--epkc, #2ed378)); flex: none; }
 .epk2-guar b { display: block; font-size: 10px; color: #1a2233; }
 .epk2-guar span { display: block; }
 .epk2-faq { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; border-bottom: 1px solid #eef1f6; font-weight: 600; color: #33405c; }
 .epk2-faq:last-child { border-bottom: 0; }
-.epk2-faq em { color: var(--epkc, #2ed378); font-style: normal; font-weight: 500; }
+.epk2-faq em { color: var(--w, var(--epkc, #2ed378)); font-style: normal; font-weight: 500; }
 .epk2-badges { display: flex; gap: 6px; justify-content: center; margin-top: 9px; flex-wrap: wrap; }
 .epk2-badges span { display: inline-flex; align-items: center; gap: 4px; font-size: 8px; font-weight: 600; color: #55607a;
   background: #fff; border: 1px solid #e7eaf0; padding: 4px 7px; border-radius: 6px; }
