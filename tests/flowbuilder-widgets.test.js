@@ -57,16 +57,28 @@ const fs = require('fs');
        `${k} tem desenho próprio`);
   }
 
-  console.log('\n=== 4. O balão é o do WhatsApp, e não o do painel ===');
-  // Um balão que seguisse o tema do painel ficaria escuro no modo escuro — e a
-  // pergunta que o card responde é "como o CLIENTE vai ver", que não muda com
-  // o tema de quem monta.
-  ok(/\.fb-wa-bolha \{[^}]*background: #d9fdd3/.test(css), 'o verde do WhatsApp, fixo');
-  ok(/\.fb-wa-bolha \{[^}]*border-radius: 8px 8px 8px 2px/.test(css),
-     'com o canto vivo embaixo à esquerda, que é a ponta da bolha');
-  ok(/\.fb-wa-btn \{[^}]*color: #027eb5/.test(css), 'e o azul do botão do WhatsApp');
-  ok(/\.fb-wa-btn \+ \.fb-wa-btn \{ border-top: \.5px/.test(css),
-     'separados por hairline, um por linha');
+  console.log('\n=== 4. O balão segue a paleta do painel, não a do WhatsApp ===');
+  // O verde-claro do WhatsApp brigava com o resto do Flow Builder. O balão
+  // agora é a superfície do painel: claro com texto escuro, e no escuro o
+  // mesmo gradiente preto dos widgets da dashboard, com texto branco.
+  ok(/\.fb-wa-bolha \{[^}]*background: var\(--card\)/.test(css), 'fundo claro do painel');
+  ok(/\.fb-wa-bolha \{[^}]*color: var\(--text\)/.test(css), 'com o texto escuro padrão');
+  ok(/\.fb-wa-bolha \{[^}]*border-radius: 10px 10px 10px 3px/.test(css),
+     'mantendo o canto vivo embaixo à esquerda, que é a ponta da bolha');
+  ok(!/#d9fdd3/.test(css), 'nada do verde-claro do WhatsApp sobrou');
+  ok(!/#027eb5/.test(css), 'nem do azul do botão dele');
+
+  console.log('   -- botão: verde da marca, texto branco --');
+  ok(/\.fb-wa-btn \{[^}]*background: var\(--brand\)/.test(css), 'preenchido com o verde do produto');
+  ok(/\.fb-wa-btn \{[^}]*color: #fff/.test(css), 'e o texto branco em cima dele');
+  ok(/\.fb-wa-btn \+ \.fb-wa-btn \{ border-top: 1px solid rgba\(255, 255, 255/.test(css),
+     'separados por uma linha clara, um por linha');
+
+  console.log('   -- modo escuro: o gradiente dos widgets da dashboard --');
+  ok(/:root\[data-theme="dark"\] \.fb-wa-bolha \{[^}]*background: var\(--card-grad\)/.test(css),
+     'o mesmo --card-grad que todo widget do painel usa');
+  ok(/:root\[data-theme="dark"\] \.fb-wa-bolha \{[^}]*color: #fff/.test(css),
+     'com o texto branco por cima');
 
   console.log('\n=== 5. O rótulo de saída não existe mais, e nem o recuo dele ===');
   // Havia um rótulo repetindo o texto da opção na borda direita, e o balão

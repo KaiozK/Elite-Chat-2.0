@@ -1204,26 +1204,42 @@ details.adv[open] summary::after { content: '–'; }
    mancha só — justamente no nó mais cheio, que é onde ler importa mais. */
 /* O balão não recua mais 72px: aquele espaço existia para os rótulos das
    saídas, que sumiram quando a bolinha passou a sair do próprio botão. */
+/* ---------------------------------------------------------------------------
+   O BALÃO É DO PAINEL, e não uma cópia do WhatsApp
+   Ele era verde-claro com botão azul iOS — as cores do aparelho. Dentro de um
+   canvas branco de cards claros, aquilo lia como um adesivo colado: a única
+   coisa da tela que não seguia a paleta do produto.
+   Agora ele é uma mensagem do painel: fundo do cartão, texto do texto. Só a
+   FORMA continua do WhatsApp (o canto vivo embaixo à esquerda, os botões em
+   linha cheia embaixo), que é o que faz reconhecer o que vai ser enviado.
+   --------------------------------------------------------------------------- */
 .fb-wa-bolha {
-  background: #d9fdd3; border-radius: 8px 8px 8px 2px; padding: 7px 8px 6px;
-  font-size: 11.5px; line-height: 1.42; color: #0b141a;
-  box-shadow: 0 1px 1px rgba(11, 20, 26, .13);
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px 10px 10px 3px; padding: 8px 9px 7px;
+  font-size: 11.5px; line-height: 1.42; color: var(--text);
+  box-shadow: var(--shadow-xs);
+  /* Os botões sangram até a borda por margem negativa; sem recorte eles
+     passariam por cima do canto arredondado. */
+  overflow: hidden;
 }
 .fb-wa-tx { white-space: pre-wrap; word-break: break-word; max-height: 46px; overflow: hidden; }
-.fb-wa-vazio { color: #7d8a91; font-style: italic; }
-.fb-wa-ft { color: #667781; font-size: 10px; margin-top: 4px; }
+.fb-wa-vazio { color: var(--muted); font-style: italic; }
+.fb-wa-ft { color: var(--muted); font-size: 10px; margin-top: 4px; }
 /* o mesmo realce de variável da prévia grande */
-.fb-wa .wa-var { background: #c3f0cf; color: #056b3e; border-radius: 3px; padding: 0 2px; font-weight: 600; }
+.fb-wa .wa-var { background: var(--brand-bg); color: var(--verde-deep); border-radius: 3px; padding: 0 2px; font-weight: 600; }
 
-/* BOTÕES: hairline e azul iOS, como no aparelho de verdade. O balão é o
-   contexto — o botão precisa parecer o botão do WhatsApp, não o do painel. */
-.fb-wa-btns { margin: 6px -8px -6px; border-top: .5px solid rgba(11, 20, 26, .14); }
+/* BOTÕES CHEIOS, TEXTO BRANCO. O contorno azul do WhatsApp só se lia porque
+   lá o balão é verde; sobre o cartão claro do painel ele sumia. Cheio, o botão
+   vira o elemento mais forte do card — que é o que ele é: o ponto de onde sai
+   o caminho. */
+.fb-wa-btns { margin: 8px -9px -7px; }
 .fb-wa-btn {
   display: flex; align-items: center; justify-content: center; gap: 5px;
-  padding: 6px 6px; color: #027eb5; font-weight: 500; font-size: 11px;
+  padding: 7px 6px; font-weight: 600; font-size: 11px;
+  background: var(--brand); color: #fff;
   white-space: nowrap; overflow: hidden;
 }
-.fb-wa-btn + .fb-wa-btn { border-top: .5px solid rgba(11, 20, 26, .14); }
+.fb-wa-btn + .fb-wa-btn { border-top: 1px solid rgba(255, 255, 255, .26); }
 .fb-wa-btn svg { width: 12px; height: 12px; flex: none; }
 .fb-wa-btn span { overflow: hidden; text-overflow: ellipsis; }
 
@@ -1231,17 +1247,19 @@ details.adv[open] summary::after { content: '–'; }
    A bolinha agora nasce dele, e não de uma coluna ao lado. O respiro à direita
    é o lugar dela: sem isso ela cairia sobre o texto do próprio botão. */
 .fb-wa-btn[data-branch] { padding-right: 16px; cursor: crosshair; }
-.fb-wa-btn[data-branch]:hover { background: rgba(2, 126, 181, .07); }
+.fb-wa-btn[data-branch]:hover { background: var(--verde-deep); }
 /* O card inteiro é arrastável; o botão precisa ganhar o gesto de volta para
    dar para puxar o fio a partir dele. */
 .fb-wa-btn[data-branch] { position: relative; }
 
 /* O BOTÃO DE LINK NÃO TEM SAÍDA, e o desenho diz isso: ele abre o navegador e
    a conversa acaba ali. Sem a marca, a pessoa procuraria a bolinha dele. */
-.fb-wa-btn.sem-saida { color: #667781; }
+/* O de link é apagado de propósito: ele não é um caminho, é uma saída da
+   conversa. Cheio e verde como os outros, competiria pela mesma atenção. */
+.fb-wa-btn.sem-saida { background: var(--bg2); color: var(--muted); font-weight: 500; }
 .fb-wa-btn.sem-saida::after {
   content: 'sem retorno'; margin-left: 4px; font-size: 8.5px; font-weight: 500;
-  color: #8f9da8; letter-spacing: .02em;
+  color: var(--faint, var(--muted)); letter-spacing: .02em;
 }
 
 /* MÍDIA: a moldura que o WhatsApp põe antes da legenda. */
@@ -3102,6 +3120,25 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   background: var(--card-grad);
   border-color: #2e3537;
 }
+/* O BALÃO DO FLOW BUILDER SEGUE OS WIDGETS DO DASHBOARD.
+   Mesmo `--card-grad` (o preto em degradê de 160°) e a mesma borda dos cards,
+   com o texto em branco. No claro é o inverso: fundo do cartão, texto escuro.
+   Fica no bloco geral logo acima porque é exatamente a mesma superfície — mas
+   escrito à parte porque o balão tem borda e sombra próprias, e entrar na
+   lista dali levaria só o fundo. */
+:root[data-theme="dark"] .fb-wa-bolha {
+  background: var(--card-grad); border-color: #2e3537; color: #fff;
+}
+/* O texto do balão é branco, e o que é secundário dentro dele precisa ficar
+   legível sem virar branco também. */
+:root[data-theme="dark"] .fb-wa-vazio,
+:root[data-theme="dark"] .fb-wa-ft { color: #8b969b; }
+/* O botão apagado não pode virar um buraco claro no meio do preto. */
+:root[data-theme="dark"] .fb-wa-btn.sem-saida { background: #1b2122; color: #97a2a6; }
+:root[data-theme="dark"] .fb-wa-btn.sem-saida::after { color: #6d7a7e; }
+/* A moldura de mídia era feita para fundo claro. */
+:root[data-theme="dark"] .fb-wa-mid { background: linear-gradient(160deg, #222a2c, #171d1e); color: #8b969b; }
+
 /* cards de aviso mantêm o tom semântico (âmbar/vermelho) */
 :root[data-theme="dark"] .card[style*="amber"],
 :root[data-theme="dark"] .card.err { background: var(--amber-bg); }
