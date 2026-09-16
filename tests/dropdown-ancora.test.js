@@ -81,10 +81,52 @@ const fs = require('fs');
      'a pilha deixa de ser uma caixa: seus cartões viram itens da mesma grade do resumo');
   ok(/\.summary \{ order: 2; \}/.test(mob) && /\.blk-opt \{ order: 3; \}/.test(mob),
      'o resumo com o botão sobe, e os componentes descem');
-  ok((pay.match(/class="card blk-opt"/g) || []).length === 6,
-     'os seis componentes estão marcados', (pay.match(/class="card blk-opt"/g) || []).length + '');
+  // CINCO, e não seis: o cronômetro virou faixa presa no topo e deixou de ser
+  // um cartão na coluna — ele não tem mais ordem para trocar, então também não
+  // precisa da marca que manda os componentes para depois do botão.
+  ok((pay.match(/class="card blk-opt"/g) || []).length === 5,
+     'os cinco componentes em cartão estão marcados', (pay.match(/class="card blk-opt"/g) || []).length + '');
+  ok(/\.timer-bar \{[\s\S]{0,120}position: fixed/.test(pay),
+     'e o sexto, o cronômetro, está fixo no topo — acima de tudo, inclusive do botão');
   ok(!/\.stack \{ display: contents; \}/.test(pay.slice(0, pay.indexOf('@media (max-width: 860px)'))),
      'e no computador nada muda: lá são duas colunas, tudo à vista ao mesmo tempo');
+
+  console.log('\n=== 7. O CANVAS DO BUILDER é a página, e não um catálogo ===');
+  // Ele listava TODOS os componentes, e os desligados apareciam como fantasmas
+  // transparentes: a tela ficava cheia de coisa que o cliente não vê, e não
+  // dava para saber batendo o olho o que o checkout tem de verdade.
+  ok(!/epk2-ghost/.test(js) && !/epk2-ghost/.test(css),
+     'os fantasmas dos componentes desligados sumiram');
+  ok(/if \(!ligado\(k\)\) continue;/.test(js), 'só entra no canvas o que está ligado');
+  ok(/const ligado = k => k === 'product' \|\| \(s\[k\] && s\[k\]\.on\)/.test(js),
+     'e o cartão de pagamento nunca sai');
+
+  console.log('\n=== 8. Dá para TIRAR um componente ===');
+  ok(/function epkRemoverBloco\(k\)/.test(js), 'existe a ação de tirar');
+  const rm = js.slice(js.indexOf('function epkRemoverBloco'), js.indexOf('function epkCanvasEnd'));
+  ok(/if \(k === 'product'\) return;/.test(rm), 'menos o pagamento');
+  ok(/\.on = false/.test(rm) && /blocks = epkState\.blocks\.filter/.test(rm),
+     'desliga E tira da ordem: só desligar deixaria um invisível ocupando posição');
+  ok(/epk2-x/.test(js) && /\.epk2-x \{/.test(css), 'com botão no próprio bloco');
+  ok(/@media \(hover: none\) \{ \.epk2-x \{ opacity: \.85; \} \}/.test(css),
+     'sempre à vista no toque, onde não existe passar o mouse');
+
+  console.log('\n=== 9. E COLOCAR de volta, arrastando da paleta ===');
+  ok(/function epkPalDrag\(e, key\)/.test(js), 'a paleta é arrastável');
+  const drop = js.slice(js.indexOf('function epkCanvasDrop'), js.indexOf('function epkRemoverBloco'));
+  ok(/epkState\[key\]\.on = true/.test(drop), 'soltar no canvas LIGA o componente');
+  ok(/arr\.splice\(at, 0, key\)/.test(drop), 'na posição onde foi solto');
+  ok(/epk2-solta/.test(js) && /\.epk2-solta \{/.test(css),
+     'e com o canvas vazio há uma faixa dizendo o que fazer, que também recebe a solta');
+
+  console.log('\n=== 10. A prévia do builder deixou de mentir no celular ===');
+  // Trocar de dispositivo só estreitava a moldura: o conteúdo continuava o de
+  // computador, com o banner de desktop em 3:1. Medido depois da correção:
+  // 16:9 e 80% da largura, os mesmos do checkout.
+  const dev = js.slice(js.indexOf('function epkSetDevice'), js.indexOf('function epkSetDevice') + 900);
+  ok(/epkPrev\(\);/.test(dev), 'trocar de dispositivo repinta a prévia');
+  ok(/\.epk2-bannerwrap \{ margin: 0 -12px 9px; padding: 0 2\.4%; \}/.test(css),
+     'o banner sai do recuo da moldura e refaz a folga em porcentagem, como o checkout');
 
   await encerrar(null, falhas);
 })();

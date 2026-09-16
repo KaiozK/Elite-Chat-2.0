@@ -3527,7 +3527,14 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
    16:9 no celular) e, no celular, a mesma folga de 10% de cada lado. Um
    `max-height` aqui mostraria um recorte que a página real não faz, e o
    lojista só descobriria depois de publicar. */
-.epk2-bannerwrap { margin-bottom: 9px; }
+/* A MOLDURA DA PRÉVIA TEM RECUO PRÓPRIO (12px na `.epk-page`), e a tela do
+   cliente não tem. Medindo o banner dentro dele, a folga saía proporcionalmente
+   maior do que a de verdade: 74% da largura na prévia contra 80% no checkout.
+   O banner sai do recuo com margem negativa e refaz a folga em PORCENTAGEM,
+   que é como o checkout calcula — aí a relação entre banner e tela é a mesma
+   nos dois lugares. Os números: 2,4% no computador (24px de 1000) e 10% no
+   celular, os mesmos do pay.html. */
+.epk2-bannerwrap { margin: 0 -12px 9px; padding: 0 2.4%; }
 .epk2-bannerwrap.mob { padding: 0 10%; }
 .epk2-headbanner { width: 100%; display: block; aspect-ratio: 3 / 1; object-fit: cover; border-radius: 9px; }
 .epk2-bannerwrap.mob .epk2-headbanner { aspect-ratio: 16 / 9; }
@@ -3612,13 +3619,45 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .epk2-drop:hover .epk2-handle { opacity: 1; }
 /* widget desligado: "fantasma" mostrando onde ele ficaria */
 .epk2-drop.off { opacity: .85; }
-.epk2-ghost {
-  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  border: 1.5px dashed #cfd6e4; border-radius: 10px; background: #fbfcfe;
-  padding: 9px 11px; font-size: 9px; font-weight: 500; color: #8892a4;
+/* BOTÃO DE TIRAR DO CHECKOUT. Aparece ao passar o mouse pelo bloco: sempre
+   visível viraria um "x" em cada cartão, e o canvas é para olhar o checkout,
+   não os controles. No toque não há hover, então ali ele fica sempre à vista. */
+.epk2-drop { position: relative; }
+.epk2-x {
+  position: absolute; top: 6px; right: 6px; z-index: 3;
+  width: 22px; height: 22px; padding: 0; border-radius: 7px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid #f1c9c9; background: #fff; color: #d64545;
+  opacity: 0; transition: opacity .13s, background .13s;
 }
-.epk2-ghost em { font-style: normal; font-weight: 500; font-size: 8px; color: #aab2c2; width: 100%; }
-.epk2-drop.off:hover .epk2-ghost { border-color: var(--epkc, #2ed378); color: #55607a; }
+.epk2-drop:hover > .epk2-x, .epk2-timerbar:hover > .epk2-x { opacity: 1; }
+.epk2-x:hover { background: #fdeaea; }
+@media (hover: none) { .epk2-x { opacity: .85; } }
+
+/* Canvas vazio: a faixa diz o que fazer e é alvo de solta, para quem arrasta
+   não precisar acertar a lista. */
+.epk2-solta {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 18px 12px; border-radius: 10px; margin-top: 8px;
+  border: 1.5px dashed #cdd5e0; color: #7b8698; font-size: 9.5px; font-weight: 600;
+}
+#epk-canvas.dropping .epk2-solta { border-color: var(--epkc, #2ed378); color: var(--epkc, #2ed378); }
+
+/* A faixa do cronômetro na prévia — o mesmo lugar que ela ocupa no checkout. */
+.epk2-timerbar {
+  position: relative; display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 7px 10px; font-size: 9px; font-weight: 600; color: #33405c;
+  background: color-mix(in srgb, var(--w, var(--epkc, #2ed378)) 13%, #fff);
+  border-bottom: 1px solid color-mix(in srgb, var(--w, var(--epkc, #2ed378)) 32%, #fff);
+}
+.epk2-timerbar svg { color: var(--w, var(--epkc, #2ed378)); flex: none; }
+.epk2-timerbar > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.epk2-timerbar b {
+  background: var(--w, var(--epkc, #2ed378)); color: #fff; font-weight: 600;
+  padding: 2px 5px; border-radius: 4px; font-size: 9px; flex: none;
+}
+.epk2-timerbar s { text-decoration: none; color: var(--w, var(--epkc, #2ed378)); font-weight: 600; flex: none; }
+
 /* canvas em modo "recebendo" */
 .epk2-col.dropping { outline: 2px dashed color-mix(in srgb, var(--epkc, #2ed378) 45%, transparent); outline-offset: 4px; border-radius: 12px; }
 /* item da paleta arrastável */

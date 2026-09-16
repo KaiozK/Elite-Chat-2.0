@@ -229,34 +229,44 @@
      já tinha — o acento do lojista aqui, o âmbar do aviso ali, o dourado das
      estrelas acolá. Um valor padrão único estragaria dois deles.
      --------------------------------------------------------------------- */
-  .timer {
-    display: flex; align-items: center; justify-content: center; gap: 16px;
-    padding: 15px 20px; border-radius: var(--rc); flex-wrap: wrap;
-    background: color-mix(in srgb, var(--w, var(--ac)) 9%, transparent);
-    border: 1px solid color-mix(in srgb, var(--w, var(--ac)) 28%, transparent);
+  /* FAIXA PRESA NO TOPO, de ponta a ponta. Ela acompanha a rolagem porque
+     escassez que sai da tela deixa de ser escassez — e era o que acontecia no
+     celular, onde o bloco ficava acima de tudo e sumia no primeiro gesto. */
+  .timer-bar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 60;
+    background: color-mix(in srgb, var(--w, var(--ac)) 13%, var(--bg));
+    border-bottom: 1px solid color-mix(in srgb, var(--w, var(--ac)) 32%, transparent);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  }
+  /* UMA LINHA SÓ: sem `flex-wrap`. Com ele, o relógio caía para baixo da frase
+     assim que a tela apertava — e aí a faixa dobrava de altura justamente onde
+     há menos espaço. `min-width: 0` no texto é o que permite ele encolher em
+     vez de empurrar o relógio para fora. */
+  .timer-in {
+    max-width: 1000px; margin: 0 auto; padding: 9px 20px;
+    display: flex; align-items: center; justify-content: center; gap: 14px;
+    flex-wrap: nowrap;
   }
   /* O RELÓGIO ESTAVA DESALINHADO porque um `<svg>` solto dentro de texto se
      apoia na LINHA DE BASE, e não no meio da letra — ele descia uns 2px e a
      linha ficava torta. Com flex, ícone e texto se centram um pelo outro. */
   .timer-txt {
-    display: inline-flex; align-items: center; gap: 8px;
+    display: inline-flex; align-items: center; gap: 8px; min-width: 0;
     font-size: 14px; font-weight: 400; color: var(--ink); line-height: 1.3;
   }
+  .timer-txt > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .timer-txt svg { flex: none; color: var(--w, var(--ac)); }
 
   /* Antes eram dois retângulos colados, sem separador e sem rótulo: lia-se
      como dois números soltos, e não dava para saber se "05 32" era hora e
      minuto ou minuto e segundo. Agora cada casa diz o que é. */
-  .timer-clock { display: flex; align-items: flex-start; gap: 4px; }
-  .timer-casa {
-    display: flex; flex-direction: column; align-items: center; gap: 3px;
-    min-width: 46px;
-  }
+  .timer-clock { display: flex; align-items: center; gap: 3px; flex: none; }
+  .timer-casa { display: flex; align-items: baseline; gap: 3px; }
   .timer-casa b {
-    display: block; width: 100%; text-align: center;
+    display: block; text-align: center; min-width: 34px;
     background: var(--w, var(--ac)); color: #fff;
-    font-weight: 600; font-size: 19px; letter-spacing: .5px;
-    padding: 7px 8px; border-radius: var(--r);
+    font-weight: 600; font-size: 16px; letter-spacing: .5px;
+    padding: 4px 7px; border-radius: var(--r);
     font-variant-numeric: tabular-nums;
     box-shadow: 0 1px 2px color-mix(in srgb, var(--w, var(--ac)) 40%, transparent);
   }
@@ -265,6 +275,9 @@
      aproximada da Stripe — deixar uma ilha dela aqui embaixo destoaria da
      única página que o cliente lê com atenção. O espaçamento entre letras faz
      o trabalho que a caixa alta faria: separar a unidade do número. */
+  /* O rótulo fica ao LADO do número, e não embaixo: na faixa, empilhar
+     dobraria a altura. Numa tela estreita ele sai — os dois-pontos já dizem
+     que aquilo é um relógio. */
   .timer-casa i {
     font-style: normal; font-size: 10px; font-weight: 500;
     letter-spacing: .06em; color: var(--mut);
@@ -274,16 +287,13 @@
      assim os dois montam a mesma caixa de linha e ficam centrados um pelo
      outro. Um `padding-top` chutado desalinhava de novo a cada mudança de
      fonte; mexeu no número, mexe aqui. */
-  .timer-sep {
-    font-size: 19px; font-weight: 600; color: var(--w, var(--ac));
-    line-height: 1.5; padding: 7px 0;
-  }
+  .timer-sep { font-size: 16px; font-weight: 600; color: var(--w, var(--ac)); line-height: 1; }
   /* Último minuto: o cronômetro pulsa. É o único movimento da página, e só
      acontece quando resta pouco — piscar o tempo todo vira ruído e a pessoa
      para de ver. */
-  .timer.acabando .timer-casa b { animation: tmrPulso 1s ease-in-out infinite; }
+  .timer-bar.acabando .timer-casa b { animation: tmrPulso 1s ease-in-out infinite; }
   @keyframes tmrPulso { 50% { opacity: .55; } }
-  @media (prefers-reduced-motion: reduce) { .timer.acabando .timer-casa b { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .timer-bar.acabando .timer-casa b { animation: none; } }
   /* O âmbar É o padrão do aviso, e não o acento do lojista: aviso é aviso. Por
      isso o fallback aqui é a cor antiga, e não `var(--ac)`. */
   .notice { padding: 13px 16px; border-radius: var(--r); font-size: 14px; display: flex; gap: 10px; align-items: flex-start;
@@ -474,6 +484,10 @@
        aparelho e o resto da página, que respira 16px, parecia desalinhado.
        A proporção também muda: 3:1 numa tela de 390px dá 130px de altura, alto
        demais para ser uma arte e baixo demais para ser um banner. */
+    .timer-in { padding: 8px 14px; gap: 10px; }
+    .timer-txt { font-size: 13px; }
+    .timer-casa i { display: none; }   /* os dois-pontos já dizem que é relógio */
+    .timer-casa b { font-size: 15px; min-width: 30px; padding: 3px 6px; }
     .head-bannerwrap { padding: 2px 10% 16px; }
     .head-banner { aspect-ratio: 16 / 9; }
     .wrap { padding: 0 16px 40px; }
@@ -654,13 +668,21 @@
   // estrelas). Mandar uma cor "padrão" aqui atropelaria os três.
   function corDo(w) { return corValida(w && w.color) ? ' style="--w:' + w.color + '"' : ''; }
 
-  function blkTimer(ck) {
+  // O CRONÔMETRO NÃO É MAIS UM CARTÃO NO MEIO DA PÁGINA: é uma faixa presa no
+  // topo, de ponta a ponta, que acompanha a rolagem. Escassez que sai da tela
+  // quando a pessoa desce não é escassez — e era o que acontecia, ainda mais
+  // no celular, onde o bloco ficava acima de tudo e sumia no primeiro gesto.
+  //
+  // Por morar fora da grade, ele não entra mais na ordem dos blocos: uma faixa
+  // presa no topo não tem posição para arrastar.
+  function barraTimer(ck) {
     var t = ck.timer || {}; if (!t.on) return '';
-    var cor = corDo(t);
-    return '<div class="card blk-opt"><div class="blk"><div class="timer" id="offer-box"' + cor + '>' +
-      '<span class="timer-txt">' + ico('clock', 15) + '<span>' + esc(t.text || 'Oferta por tempo limitado!') + '</span></span>' +
-      '<span class="timer-clock" id="offer-clock"></span>' +
-    '</div></div></div>';
+    return '<div class="timer-bar" id="offer-box"' + corDo(t) + '>' +
+      '<div class="timer-in">' +
+        '<span class="timer-txt">' + ico('clock', 15) + '<span>' + esc(t.text || 'Oferta por tempo limitado!') + '</span></span>' +
+        '<span class="timer-clock" id="offer-clock"></span>' +
+      '</div>' +
+    '</div>';
   }
   // Só cor hexadecimal, e conferida aqui porque ela vai para dentro de um
   // atributo `style`. É o cadastro do lojista, mas um valor que atravessa sem
@@ -698,7 +720,7 @@
       f.items.map(function (i) { return '<details><summary>' + esc(i.q) + '</summary><p>' + esc(i.a) + '</p></details>'; }).join('') +
     '</div></div></div>';
   }
-  var BLK = { timer: blkTimer, notice: blkNotice, benefits: blkBenefits, testimonial: blkTestimonial, guarantee: blkGuarantee, faq: blkFaq };
+  var BLK = { notice: blkNotice, benefits: blkBenefits, testimonial: blkTestimonial, guarantee: blkGuarantee, faq: blkFaq };
 
   // monta os blocos na ORDEM definida no builder ('product' = o card principal)
   function mainColumn(ck, mainHtml) {
@@ -708,6 +730,7 @@
       var k = order[i];
       if (k === 'product') out += mainHtml;
       else if (k === 'banner') continue;              // banner vive no header do site
+      else if (k === 'timer') continue;               // cronômetro é faixa fixa no topo
       else if (BLK[k]) out += BLK[k](ck);
     }
     if (order.indexOf('product') < 0) out += mainHtml;
@@ -798,6 +821,16 @@
     }
     clearTimeout(offerTimer); tick();
   }
+
+  // A FAIXA É FIXA, então ela não ocupa espaço no fluxo: sem compensar, ela
+  // cobriria a marca do lojista no topo. A altura é MEDIDA e não fixada porque
+  // muda com a tela e com a presença da casa das horas — um valor chutado
+  // deixaria uma fresta ou um vão conforme o caso.
+  function ajustarTopo() {
+    var bar = document.getElementById('offer-box');
+    document.body.style.paddingTop = bar ? bar.offsetHeight + 'px' : '';
+  }
+  window.addEventListener('resize', ajustarTopo);
 
   // ---------------------------------------------------------------------------
   // PLACEHOLDER ESCRITO LETRA A LETRA
@@ -1452,7 +1485,7 @@
     }
 
     if (data.status === 'paid') {
-      root.innerHTML = siteHead(ck) + '<div class="wrap"><div class="grid">' +
+      root.innerHTML = barraTimer(ck) + siteHead(ck) + '<div class="wrap"><div class="grid">' +
         '<div class="card fade-in"><div class="final ok">' +
           '<div class="fic"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="' + esc(ck.color || '#2ed378') + '" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>' +
           '<h2>Pagamento concluído</h2>' +
@@ -1469,7 +1502,7 @@
       return;
     }
     if (data.status === 'cancelled' || data.status === 'expired') {
-      root.innerHTML = siteHead(ck) + '<div class="wrap"><div class="grid">' +
+      root.innerHTML = barraTimer(ck) + siteHead(ck) + '<div class="wrap"><div class="grid">' +
         '<div class="card fade-in"><div class="final dead">' +
           '<div class="fic"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#e5484d" stroke-width="2.6" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>' +
           '<h2>' + (data.status === 'expired' ? 'Cobrança expirada' : 'Cobrança cancelada') + '</h2>' +
@@ -1485,11 +1518,12 @@
         '<div class="sum-note">' + ico('lock', 12) + (ehAssinatura() ? ' Pix Automático · cancele quando quiser' : ' Pagamento 100% seguro via Pix') + '</div>'
       : '<div class="waiting"><span class="pulse"></span> Aguardando pagamento</div><div class="sum-note">A confirmação é automática assim que você pagar.</div>';
 
-    root.innerHTML = siteHead(ck) + '<div class="wrap"><div class="grid">' +
+    root.innerHTML = barraTimer(ck) + siteHead(ck) + '<div class="wrap"><div class="grid">' +
       mainColumn(ck, stepOne ? identifyMain(ck) : payMain(ck)) + summary(ck, cta) +
     '</div></div>';
     if (stepOne) bindIdentify(); else bindPay();
     startOffer(ck);
+    ajustarTopo();
     escreverPlaceholders(root);
   }
 

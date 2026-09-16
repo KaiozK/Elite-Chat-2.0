@@ -18063,6 +18063,14 @@ function epkSetDevice(d) {
   epkDevice = d;
   $$('#epk-devseg button').forEach(b => b.classList.toggle('on', b.dataset.dv === d));
   const st = $('#epk-stage'); if (st) st.classList.toggle('mobile', d === 'mobile');
+  // REPINTAR É O QUE FALTAVA, e era por isso que a prévia mentia.
+  //
+  // Trocar de dispositivo só estreitava a moldura: o CONTEÚDO continuava o de
+  // computador. No modo celular a prévia seguia mostrando o banner de desktop,
+  // em 3:1 e quase colado nas bordas, enquanto o checkout de verdade mostra a
+  // imagem de celular, em 16:9 e com 10% de folga de cada lado. Quem desenhava
+  // olhando a prévia só descobria a diferença abrindo o link no telefone.
+  epkPrev();
 }
 
 // Campos do componente aberto (renderizados no painel direito)
@@ -18354,6 +18362,23 @@ function epkCanvasDrop(e) {
   epkPrev();
   if (epkSection === 'ordem') epkPaintForm();
 }
+// TIRAR UM COMPONENTE DO CHECKOUT.
+//
+// Desliga E tira da ordem. Só desligar deixaria um item invisível ocupando
+// posição na lista — e ao religar ele reapareceria num lugar que a pessoa não
+// escolheu. Tirando dos dois, voltar a arrastar da paleta é o mesmo gesto de
+// colocar pela primeira vez.
+function epkRemoverBloco(k) {
+  if (k === 'product') return;                       // o pagamento não sai
+  if (epkState[k] && typeof epkState[k] === 'object') epkState[k].on = false;
+  epkState.blocks = epkState.blocks.filter(x => x !== k);
+  if (epkSection === k) epkSection = null;           // fecha o painel do que saiu
+  epkPaintSide();
+  epkPrev();
+  const nome = (EPK_BLOCK_META[k] || {}).label || k;
+  toast(`"${nome}" saiu do checkout. Arraste de volta quando quiser.`);
+}
+
 function epkCanvasEnd() {
   _epkCanvasDrag = null;
   const c = $('#epk-canvas'); if (c) c.classList.remove('dropping');
@@ -18555,34 +18580,63 @@ function epkPrev() {
 
   const mainCard = epkPrevStep === 2 ? step2main : step1main;
 
-  // ---- CANVAS ARRASTA-E-SOLTA: cada bloco vira alvo posicionável ----
-  // Widgets desligados aparecem como "fantasma" para o usuário ver onde ficam
-  // e poder arrastá-los; arrastar da paleta para cá insere na posição do mouse.
-  const vazio = (k) => {
-    const m = EPK_BLOCK_META[k] || {};
-    return `<div class="epk2-ghost">${ico(m.icon || 'square', 12)} ${m.label || k}
-      <em>arraste para posicionar · clique para configurar</em></div>`;
-  };
-  const wrap = (k, html, fixo) => `<div class="epk2-drop${fixo ? ' fixed' : ''}${html ? '' : ' off'}" data-blk="${k}"
+  // ---- CANVAS: SÓ O QUE ESTÁ NA PÁGINA ----
+  //
+  // Antes o canvas listava TODOS os componentes, e os desligados apareciam como
+  // fantasmas transparentes. A tela ficava cheia de coisa que o cliente não vê,
+  // e não dava para saber, batendo o olho, o que o checkout tem de verdade —
+  // que é justamente o que um canvas existe para mostrar.
+  //
+  // Agora o canvas é a página: entra o que está ligado. O que não está mora na
+  // paleta da direita e vem de lá arrastado, para a posição onde for solto.
+  const wrap = (k, html, fixo) => `<div class="epk2-drop${fixo ? ' fixed' : ''}" data-blk="${k}"
       draggable="true" ondragstart="epkCanvasDragStart(event)" ondragover="epkCanvasOver(event)"
       ondrop="epkCanvasDrop(event)" ondragend="epkCanvasEnd(event)"
-      onclick="epkOpenBlock('${k}')" title="${fixo ? 'Checkout (fixo, mas pode mudar de posição)' : 'Arraste para reposicionar'}">
+      onclick="epkOpenBlock('${k}')" title="${fixo ? 'Checkout (fixo, mas pode mudar de posição)' : 'Arraste para reposicionar · clique para configurar'}">
       <span class="epk2-handle">${ico('menu', 11)}</span>
-      ${html || vazio(k)}
+      ${fixo ? '' : `<button type="button" class="epk2-x" title="Tirar do checkout"
+        onclick="event.stopPropagation();epkRemoverBloco('${k}')">${ico('x', 12)}</button>`}
+      ${html}
     </div>`;
 
+  const ligado = k => k === 'product' || (s[k] && s[k].on);
+
   let coluna = '';
+  let quantos = 0;
   for (const k of s.blocks) {
     if (k === 'banner') continue;                  // banner vive no header do site
-    if (k === 'product') coluna += wrap(k, mainCard, true);
-    else coluna += wrap(k, BLK[k] ? BLK[k]() : '');
+    if (k === 'timer') continue;                   // cronômetro é faixa fixa no topo
+    if (k === 'product') { coluna += wrap(k, mainCard, true); continue; }
+    if (!ligado(k)) continue;                      // desligado não ocupa espaço aqui
+    const html = BLK[k] ? BLK[k]() : '';
+    if (!html) continue;                           // ligado mas ainda sem conteúdo
+    coluna += wrap(k, html);
+    quantos++;
   }
   if (s.blocks.indexOf('product') < 0) coluna += wrap('product', mainCard, true);
+  // Sem nenhum componente, a página não diz o que fazer. Esta faixa diz — e é
+  // também um alvo de solta, para quem arrastar não precisar acertar a lista.
+  if (!quantos) {
+    coluna += `<div class="epk2-solta" ondragover="epkCanvasOver(event)" ondrop="epkCanvasDrop(event)">
+      ${ico('plus', 13)} Arraste um componente da direita para cá</div>`;
+  }
 
   const selos = s.badges.on ? `<div class="epk2-badges">
       <span>${ico('lock', 9)} Ambiente seguro</span><span>${ico('shield', 9)} Dados protegidos</span></div>` : '';
 
-  el.innerHTML = topbar + `<div class="epk2-grid">` +
+  // O CRONÔMETRO É FAIXA FIXA NO TOPO, como no checkout. Ele sai da coluna
+  // porque não tem mais posição para arrastar — uma faixa presa no topo está
+  // sempre no mesmo lugar.
+  const faixa = s.timer.on
+    ? `<div class="epk2-timerbar"${cw('timer')}>${ico('clock', 11)}
+        <span>${esc(s.timer.text || 'Oferta por tempo limitado!')}</span>
+        <b>${String(Math.floor((s.timer.minutes || 15) % 60)).padStart(2, '0')}</b><s>:</s><b>00</b>
+        <button type="button" class="epk2-x" title="Tirar do checkout"
+          onclick="event.stopPropagation();epkRemoverBloco('timer')">${ico('x', 11)}</button>
+       </div>`
+    : '';
+
+  el.innerHTML = faixa + topbar + `<div class="epk2-grid">` +
     `<div class="epk2-col" id="epk-canvas" ondragover="epkCanvasOver(event)" ondrop="epkCanvasDrop(event)">${coluna}</div>` +
     summary(epkPrevStep === 2 ? step2cta : step1cta) +
     `</div>` + selos + (s.supportText ? `<div class="epk2-support">${esc(s.supportText)}</div>` : '');

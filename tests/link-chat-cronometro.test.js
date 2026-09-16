@@ -91,9 +91,28 @@ const fs = require('fs');
      'minuto e segundo sempre aparecem');
   ok(/h > 0 \? casa\(h, 'horas'\) \+ sep : ''/.test(pay),
      'e a HORA só entra quando existe — "00" de hora numa oferta de 15min diz o contrário do que o bloco quer');
-  const sep = pay.slice(pay.indexOf('.timer-sep {'), pay.indexOf('.timer-sep {') + 260);
-  ok(/line-height: 1\.5; padding: 7px 0/.test(sep),
-     'o ":" repete a entrelinha e o recuo do número, para cair no meio das casas');
+
+  console.log('\n=== 5b. FAIXA FIXA NO TOPO, numa linha só ===');
+  // O cronômetro era um cartão no meio da página e saía da tela na primeira
+  // rolagem — escassez que some não é escassez. Virou faixa presa no topo.
+  ok(/\.timer-bar \{[\s\S]{0,120}position: fixed; top: 0; left: 0; right: 0/.test(pay),
+     'presa no topo e de ponta a ponta');
+  ok(/'<div class="timer-bar" id="offer-box"'/.test(pay), 'e é ela que o relógio pinta');
+  ok(/else if \(k === 'timer'\) continue;/.test(pay),
+     'saiu da coluna de blocos: faixa presa no topo não tem posição para arrastar');
+  ok(/function ajustarTopo\(\)/.test(pay) && /document\.body\.style\.paddingTop = bar \? bar\.offsetHeight/.test(pay),
+     'a altura é MEDIDA e devolvida como recuo do corpo — fixa, ela cobriria a marca do lojista');
+
+  // "o texto com o cronômetro deve ser na mesma linha": é o `nowrap` que garante.
+  const barra = pay.slice(pay.indexOf('.timer-in {'), pay.indexOf('.timer-in {') + 300);
+  ok(/flex-wrap: nowrap/.test(barra),
+     'texto e relógio na MESMA linha — com wrap o relógio caía embaixo da frase');
+  ok(/align-items: center/.test(barra), 'e centrados um pelo outro');
+  ok(/\.timer-txt > span \{ overflow: hidden; text-overflow: ellipsis/.test(pay),
+     'quem encolhe numa tela apertada é o texto, não o relógio');
+  const relogio = pay.slice(pay.indexOf('.timer-clock {'), pay.indexOf('.timer-clock {') + 200);
+  ok(/align-items: center/.test(relogio),
+     'o ":" e os rótulos centram pelo número — medido na página: desvio 0');
 
   console.log('\n=== 6. CADA WIDGET tem cor própria, e só hexadecimal passa ===');
   const rota = api.slice(api.indexOf('const cor = v => typeof v'), api.indexOf("if (b.badges && "));
