@@ -1084,8 +1084,14 @@ details.adv[open] summary::after { content: '–'; }
 }
 .flow-name { font-size: 15.5px; font-weight: 500; color: var(--text); }
 .flow-meta { font-size: 12px; color: var(--muted); font-weight: 600; margin-top: 10px; display: flex; align-items: center; gap: 6px; }
-.flow-actions { display: flex; gap: 6px; margin-top: 14px; }
-.flow-actions .btn { flex: 1; }
+/* A LIXEIRA SAÍA DO CARD. Os quatro botões somavam mais que a largura
+   disponível e nenhum encolhia: `flex: 1` cresce, mas sem `min-width: 0` o item
+   nunca fica menor que o próprio conteúdo, e a sobra vazava pela direita — a
+   lixeira, sendo a última, ficava do lado de fora da borda arredondada.
+   Agora eles encolhem até o rótulo cortar, e se ainda não couber a linha quebra
+   em vez de estourar. */
+.flow-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.flow-actions .btn { flex: 1 1 auto; min-width: 0; overflow: hidden; }
 .flow-actions .btn.danger { flex: 0 0 auto; }
 
 /* toggle switch */
@@ -4379,6 +4385,41 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
 /* Barra do CTR: a proporcao vista de relance, sem precisar ler o numero. */
 .ctr-bar { height: 7px; border-radius: 99px; background: var(--bg2); overflow: hidden; margin-top: 8px; }
 .ctr-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--verde), var(--verde-esc)); }
+
+/* ---------------------------------------------------------------------------
+   DESEMPENHO DOS BOTÕES
+   Três números no topo (quantos passaram, quantos clicaram, CTR) e uma linha
+   por botão com barra. A barra existe porque comparar dois números soltos numa
+   tabela obriga a fazer a conta de cabeça; a barra responde de relance qual
+   opção ganhou. O número exato fica no `title`, para quem precisa dele.
+   --------------------------------------------------------------------------- */
+.ctr-topo { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+.ctr-kpi {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 11px; padding: 10px 12px;
+}
+.ctr-kpi span { display: block; font-size: 19px; font-weight: 600; letter-spacing: -.02em; color: var(--text); }
+.ctr-kpi em { display: block; font-style: normal; font-size: 11px; color: var(--muted); line-height: 1.3; margin-top: 2px; }
+.ctr-kpi.forte { border-color: var(--brand-border); background: var(--brand-bg); }
+.ctr-kpi.forte span { color: var(--verde-deep); }
+
+.ctr-opt {
+  display: flex; align-items: center; gap: 10px; padding: 7px 0;
+  border-bottom: 1px solid var(--border); font-size: 13px; cursor: default;
+}
+.ctr-opt:last-child { border-bottom: 0; }
+.ctr-opt:hover { background: var(--bg2); }
+.ctr-opt-nm { flex: 0 0 34%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctr-opt-bar { flex: 1; height: 8px; border-radius: 99px; background: var(--bg2); overflow: hidden; min-width: 40px; }
+.ctr-opt-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--verde), var(--verde-esc)); }
+.ctr-opt-pct { flex: 0 0 46px; text-align: right; font-weight: 600; }
+.ctr-opt-qt { flex: 0 0 44px; text-align: right; font-size: 12px; color: var(--muted); }
+/* Quem recebeu e não tocou em nada é informação, não conquista: cinza. */
+.ctr-opt-sobra { color: var(--muted); }
+.ctr-opt-sobra .ctr-opt-bar i { background: var(--border2); }
+@media (max-width: 560px) {
+  .ctr-topo { grid-template-columns: 1fr; }
+  .ctr-opt-nm { flex: 0 0 40%; }
+}
 
 /* ===================== MENSAGEM DE VOZ =====================
    O <audio controls> do navegador é uma barra cinza de 300px que ignora o

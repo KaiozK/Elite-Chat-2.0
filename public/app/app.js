@@ -15623,30 +15623,56 @@ async function verCtrFluxo(id) {
   try { d = await api('/flows/' + id + '/ctr'); }
   catch (e) { return toast(e.message, 'error'); }
   const nos = d.nos || [];
+  const pessoa = q => fmtN(q) + ' ' + (q === 1 ? 'contato' : 'contatos');
   const barra = (pct) => `<div class="ctr-bar"><i style="width:${Math.min(100, pct)}%"></i></div>`;
+
+  // CADA BOTÃO COM A SUA BARRA, e a barra é a leitura rápida: comparar dois
+  // números soltos numa tabela obriga a fazer a conta de cabeça. A porcentagem
+  // é sobre QUEM PASSOU PELA ETAPA (não sobre quem clicou), porque é essa que
+  // responde "quantos dos que viram escolheram esta opção".
+  const linhaOpcao = (o, enviados) => `
+    <div class="ctr-opt" title="${esc(o.titulo)}: ${pessoa(o.cliques)} de ${fmtN(enviados)} que receberam · ${o.ctr}%">
+      <span class="ctr-opt-nm">${esc(o.titulo)}</span>
+      <span class="ctr-opt-bar"><i style="width:${Math.min(100, o.ctr)}%"></i></span>
+      <b class="ctr-opt-pct">${o.ctr}%</b>
+      <span class="ctr-opt-qt">${fmtN(o.cliques)}</span>
+    </div>`;
+
   openModal(`<h2>${ico('activity')} Desempenho dos botões</h2>
     ${nos.length ? nos.map(n => `
       <div class="card" style="margin-top:12px">
-        <div class="row" style="align-items:baseline">
-          <b style="flex:1">${esc(n.texto || 'Mensagem com opções')}</b>
-          <span class="muted" style="font-size:12px">${fmtN(n.enviados)} receberam</span>
-        </div>
-        <div class="row" style="align-items:baseline;margin-top:2px">
-          <span class="muted" style="flex:1;font-size:12.5px">${fmtN(n.cliques)} clicaram em alguma opção</span>
-          <b style="font-size:15px">${n.ctr}%</b>
+        <b style="display:block">${esc(n.texto || 'Mensagem com opções')}</b>
+
+        <div class="ctr-topo">
+          <div class="ctr-kpi">
+            <span>${fmtN(n.enviados)}</span>
+            <em>${n.enviados === 1 ? 'contato passou' : 'contatos passaram'} por esta etapa</em>
+          </div>
+          <div class="ctr-kpi">
+            <span>${fmtN(n.cliques)}</span>
+            <em>${n.cliques === 1 ? 'clicou' : 'clicaram'} em alguma opção</em>
+          </div>
+          <div class="ctr-kpi forte" title="CTR: ${fmtN(n.cliques)} de ${fmtN(n.enviados)} que receberam">
+            <span>${n.ctr}%</span>
+            <em>CTR da etapa</em>
+          </div>
         </div>
         ${barra(n.ctr)}
-        <table style="margin-top:12px"><thead><tr><th>Botão</th><th style="text-align:right">Cliques</th><th style="text-align:right">CTR</th></tr></thead><tbody>
-          ${n.opcoes.map(o => `<tr>
-            <td>${esc(o.titulo)}</td>
-            <td style="text-align:right">${fmtN(o.cliques)}</td>
-            <td style="text-align:right"><b>${o.ctr}%</b></td>
-          </tr>`).join('')}
-        </tbody></table>
+
+        <span class="fb-sub" style="margin-top:14px;display:block">Por botão</span>
+        ${n.opcoes.map(o => linhaOpcao(o, n.enviados)).join('')}
+        ${n.enviados > n.cliques ? `
+          <div class="ctr-opt ctr-opt-sobra" title="${pessoa(n.enviados - n.cliques)} receberam e não tocaram em nenhuma opção">
+            <span class="ctr-opt-nm">Não clicou em nada</span>
+            <span class="ctr-opt-bar"><i style="width:${Math.min(100, +(100 - n.ctr).toFixed(1))}%"></i></span>
+            <b class="ctr-opt-pct">${+(100 - n.ctr).toFixed(1)}%</b>
+            <span class="ctr-opt-qt">${fmtN(n.enviados - n.cliques)}</span>
+          </div>` : ''}
       </div>`).join('')
       : `<p class="muted" style="margin:10px 0 0;font-size:13px">Este fluxo ainda não enviou nenhuma mensagem com botões.
-         Assim que enviar, aparece aqui quantas pessoas receberam e quantas clicaram em cada opção.</p>`}
-    <p class="hint" style="margin-top:14px">${ico('info', 11)} Contagem por pessoa: quem toca duas vezes no mesmo botão conta uma vez só.</p>
+         Assim que enviar, aparece aqui quantos contatos passaram pela etapa e quantos clicaram em cada opção.</p>`}
+    <p class="hint" style="margin-top:14px">${ico('info', 11)} Contagem por pessoa: quem toca duas vezes no mesmo botão conta uma vez só.
+      Passe o mouse em qualquer linha para ver a quantidade exata.</p>
     <div class="row" style="margin-top:14px"><button class="btn no-grow" onclick="closeModal()">Fechar</button></div>`);
 }
 
@@ -16430,30 +16456,37 @@ function fbConflito(n) {
       tipo: 'link-com-botoes',
       titulo: 'A Meta não entrega esta mensagem',
       texto: `Um botão de link e ${respostas === 1 ? 'um botão de resposta' : respostas + ' botões de resposta'} na mesma mensagem: a Meta aceita um OU o outro, nunca os dois.`,
-      acoes: [
-        { rotulo: 'Tirar o link, manter os botões', fn: `fbResolver('${n.id}','link')` },
-        { rotulo: `Tirar ${respostas === 1 ? 'o botão' : 'os botões'}, manter o link`, fn: `fbResolver('${n.id}','botoes')` }
-      ]
+      acoes: [{ rotulo: 'Tirar o link agora', fn: `fbAutoResolver('${n.id}')` }]
     };
   }
   return null;
 }
 
-// AS DUAS SAÍDAS SÃO CONTEÚDO DA PESSOA, e por isso ela escolhe qual sai. Um
-// clique só, em vez de mandar limpar o campo à mão — mas sem decidir por ela
-// qual metade do trabalho vai embora.
-function fbResolver(id, qual) {
-  const n = nodeById(id); if (!n) return;
-  if (qual === 'link') { n.url = ''; n.urlText = ''; toast('Botão de link removido'); }
-  else {
-    // Tirar os botões leva junto os caminhos que saíam deles: uma aresta
-    // apontando para um botão que não existe mais é um fio solto no canvas.
-    const ramos = (n.buttons || []).map(b => fbOptBranch(b.id));
-    flowDraft.graph.edges = flowDraft.graph.edges.filter(e => !(e.from === id && ramos.includes(e.branch)));
-    n.buttons = [];
-    toast('Botões de resposta removidos');
-  }
+// O CONFLITO SE DESFAZ SOZINHO, E SEMPRE PARA O MESMO LADO: sai o link, ficam
+// os botões.
+//
+// Não é moeda ao ar. Os botões de resposta CONTINUAM o fluxo — cada um tem a
+// sua saída e os caminhos já desenhados a partir dela. O botão de link encerra
+// a conversa ali. Apagar os botões apagaria junto os ramos que saem deles e o
+// trabalho de quem desenhou o fluxo; apagar o link custa uma URL, que se cola
+// de volta em dois segundos. Entre as duas perdas possíveis, esta é a barata.
+function fbResolver(id) {
+  const n = nodeById(id); if (!n) return false;
+  if (!String(n.url || '').trim()) return false;
+  n.url = ''; n.urlText = '';
+  return true;
+}
+
+// Chamado depois de cada mexida nos botões ou na URL: se o conflito existir, ele
+// não chega a ficar gravado. O aviso é um toast porque a correção já aconteceu —
+// uma caixa de erro pedindo ação descreveria um problema que não existe mais.
+function fbAutoResolver(id) {
+  const n = nodeById(id);
+  if (!fbConflito(n)) return false;
+  fbResolver(id);
+  toast('O botão de link foi retirado: a Meta não aceita link e botões de resposta juntos', 'error');
   renderNodes(); renderEdges(); renderInspector(); refreshPreview(id); scheduleSave();
+  return true;
 }
 
 function fbErroHtml(c) {
@@ -16497,6 +16530,7 @@ function fbAddBtn(id) {
   if (n.buttons.length >= FB_BTN_MAX) return;
   const before = fbTextFormat(n);
   n.buttons.push({ id: fbNovoIdBotao(), title: '' });
+  if (fbAutoResolver(id)) return;
   // cruzar 3 opções troca o formato (botões → lista): repinta o inspetor inteiro
   if (fbTextFormat(n) !== before) renderInspector(); else $('#fb-btns').innerHTML = fbBtnRows(n, fbTextFormat(n) === 'list' ? 24 : 20);
   fbRepintarPortas(id);
@@ -16521,6 +16555,10 @@ function fbBtnTitle(id, i, v) {
   const max = fbTextFormat(n) === 'list' ? 24 : 20;
   const c = $$('.fb-btn-row')[i]?.querySelector('.sv-count');
   if (c) { c.textContent = `${v.length}/${max}`; c.classList.toggle('over', v.length > max); }
+  // Dar título a um botão num nó que tem link cria o conflito: desfaz na hora.
+  // Aqui o inspetor É repintado, e é aceitável — o campo do link sumiu, então
+  // a tela mudou de verdade e manter o foco seria manter o foco no nada.
+  if (fbAutoResolver(id)) return;
   // A porta só existe quando o botão tem título — é digitando que ela nasce.
   // Repintar só o canvas: o inspetor fica de pé e o campo não perde o foco.
   fbRepintarPortas(id);
@@ -16642,8 +16680,18 @@ function refreshPreview(id) {
   const novo = fbBolha(n) || `<div class="fb-n-prev">${esc(nodeSummary(n))}</div>`;
   alvo.outerHTML = novo;
 }
-function fbSetNode(id, k, v) { nodeById(id)[k] = v; refreshPreview(id); if (k === 'field' || k === 'op' || k === 'kind') renderInspector(); scheduleSave(); }
-function fbSetBtn(id, i, v) { nodeById(id).buttons[i].title = v; renderNodes(); renderEdges(); refreshPreview(id); scheduleSave(); }
+function fbSetNode(id, k, v) {
+  nodeById(id)[k] = v;
+  // Digitar uma URL num nó que já tem botões cria o conflito no ato; aqui ele
+  // se desfaz no ato também, antes de virar dado gravado.
+  if ((k === 'url' || k === 'urlText') && fbAutoResolver(id)) return;
+  refreshPreview(id); if (k === 'field' || k === 'op' || k === 'kind') renderInspector(); scheduleSave();
+}
+function fbSetBtn(id, i, v) {
+  nodeById(id).buttons[i].title = v;
+  if (fbAutoResolver(id)) return;
+  renderNodes(); renderEdges(); refreshPreview(id); scheduleSave();
+}
 function fbBtnMode(id, mode) {
   const n = nodeById(id);
   if (mode === 'url') { if (!n.url) n.url = 'https://'; if (!n.urlText) n.urlText = 'Abrir link'; }
@@ -16697,7 +16745,12 @@ function removeNode(id) {
 // O id é o que amarra o caminho ao botão. Sem ele o ramo virava "btn_2" pela
 // POSIÇÃO, e apagar o primeiro botão fazia o segundo herdar o caminho do que
 // foi apagado.
-function addButton(id) { const n = nodeById(id); if (n.buttons.length < 3) n.buttons.push({ id: fbNovoIdBotao(), title: '' }); renderInspector(); renderNodes(); renderEdges(); refreshPreview(id); scheduleSave(); }
+function addButton(id) {
+  const n = nodeById(id);
+  if (n.buttons.length < 3) n.buttons.push({ id: fbNovoIdBotao(), title: '' });
+  if (fbAutoResolver(id)) return;
+  renderInspector(); renderNodes(); renderEdges(); refreshPreview(id); scheduleSave();
+}
 function rmButton(id, i) {
   const n = nodeById(id);
   // A saída daquele botão perde o dono: sem limpar, sobraria uma aresta

@@ -3758,7 +3758,11 @@ module.exports = function (broadcast, clients) {
   router.get('/flows/:id/ctr', auth, can('flows', 'view'), (req, res) => {
     const f = (req.acc.flows || []).find(x => x.id === req.params.id);
     if (!f) return res.status(404).json({ error: 'Automação não encontrada' });
-    res.json({ nos: flows.relatorioCtr(f) });
+    // `flows` não existe neste escopo — o módulo é trazido por `require` onde é
+    // usado, como nas rotas vizinhas. Sem isto a rota estourava 500 em TODA
+    // chamada, e o botão "Desempenho" nunca mostrou número nenhum desde que
+    // foi criado: quem clicava só via "Erro interno".
+    res.json({ nos: require('./flows').relatorioCtr(f) });
   });
 
   router.post('/flows', auth, feat('flows'), can('flows','create'), (req, res) => {

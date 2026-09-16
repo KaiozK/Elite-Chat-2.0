@@ -32,14 +32,24 @@ const fs = require('fs');
   ok(/tipo: 'link-com-botoes'/.test(cf), 'e nomeia o caso');
   ok(/acoes: \[/.test(cf), 'oferecendo saída, e não só o diagnóstico');
 
-  console.log('\n=== 2. Quem escolhe o que sai é a pessoa ===');
-  // As duas metades são conteúdo dela. Um clique resolve, mas sem decidir
-  // sozinho qual metade do trabalho vai embora.
+  console.log('\n=== 2. O conflito se desfaz sozinho, e sempre para o mesmo lado ===');
+  // Sai o LINK, ficam os botões. Não é moeda ao ar: os botões continuam o fluxo
+  // e carregam os caminhos já desenhados a partir deles; o link encerra a
+  // conversa ali. Apagar os botões apagaria junto os ramos e o trabalho de quem
+  // desenhou; apagar o link custa uma URL. Entre as duas perdas, esta é a barata.
   const rs = js.slice(js.indexOf('function fbResolver'), js.indexOf('function fbErroHtml'));
-  ok(/if \(qual === 'link'\)/.test(rs) && /n\.url = ''/.test(rs), 'dá para tirar o link');
-  ok(/n\.buttons = \[\]/.test(rs), 'ou tirar os botões');
-  ok(/flowDraft\.graph\.edges = flowDraft\.graph\.edges\.filter/.test(rs),
-     'e tirar os botões leva junto os caminhos que saíam deles — senão sobra fio solto no canvas');
+  ok(/n\.url = ''; n\.urlText = '';/.test(rs), 'o link é o que sai');
+  ok(!/n\.buttons = \[\]/.test(rs), 'os botões nunca são apagados por esta via');
+  ok(/function fbAutoResolver\(id\)/.test(js), 'e há quem desfaça sem pedir confirmação');
+  const ar = js.slice(js.indexOf('function fbAutoResolver'), js.indexOf('function fbErroHtml'));
+  ok(/if \(!fbConflito\(n\)\) return false;/.test(ar), 'só age quando o conflito existe');
+  ok(/toast\(/.test(ar), 'e avisa por toast — a correção já aconteceu, não há o que pedir');
+
+  // Os quatro caminhos por onde o conflito pode nascer desfazem na hora.
+  for (const fn of ['fbSetNode', 'fbSetBtn', 'addButton', 'fbAddBtn', 'fbBtnTitle']) {
+    const corpo = js.slice(js.indexOf('function ' + fn + '('), js.indexOf('function ' + fn + '(') + 700);
+    ok(/fbAutoResolver\(id\)/.test(corpo), `${fn} desfaz o conflito no ato`);
+  }
 
   console.log('\n=== 3. A borda acusa; o componente fica como está ===');
   const er = css.slice(css.indexOf('.fb-erro {'), css.indexOf('.fb-erro-msg {'));
@@ -89,6 +99,37 @@ const fs = require('fs');
      'e as bolinhas de saída também');
   ok(/\.fb-edge \{ fill: none; stroke: var\(--verde-esc\)/.test(css),
      'a linha já traçada continua no mesmo verde — que é o mesmo valor');
+
+  console.log('\n=== 7. A lixeira cabe dentro do card ===');
+  // Os quatro botões somavam mais que a largura e nenhum encolhia: `flex: 1`
+  // cresce, mas sem `min-width: 0` o item nunca fica menor que o conteúdo, e a
+  // sobra vazava — a lixeira, sendo a última, ficava fora da borda arredondada.
+  ok(/\.flow-actions \{ display: flex; flex-wrap: wrap;/.test(css),
+     'a linha de botões quebra em vez de estourar');
+  ok(/\.flow-actions \.btn \{ flex: 1 1 auto; min-width: 0; overflow: hidden; \}/.test(css),
+     'e os botões encolhem até o rótulo cortar');
+
+  console.log('\n=== 8. O botão Desempenho voltou a responder ===');
+  // A rota chamava `flows.relatorioCtr` com `flows` fora de escopo: 500 em TODA
+  // chamada. O botão existia e nunca mostrou número nenhum.
+  const api = fs.readFileSync(R + 'src/api.js', 'utf8');
+  const rota = api.slice(api.indexOf("router.get('/flows/:id/ctr'"), api.indexOf("router.get('/flows/:id/ctr'") + 700);
+  ok(/require\('\.\/flows'\)\.relatorioCtr\(f\)/.test(rota), 'o módulo é trazido onde é usado');
+  ok(!/res\.json\(\{ nos: flows\.relatorioCtr/.test(api), 'e a referência solta sumiu');
+
+  console.log('\n=== 9. As métricas dizem quantos e quanto por cento ===');
+  const perf = js.slice(js.indexOf('async function verCtrFluxo'), js.indexOf('async function editFlow'));
+  ok(/passou' : 'contatos passaram'\} por esta etapa/.test(perf),
+     'quantos contatos passaram pela etapa');
+  ok(/CTR da etapa/.test(perf), 'o CTR');
+  ok(/ctr-opt-bar/.test(perf) && /width:\$\{Math\.min\(100, o\.ctr\)\}%/.test(perf),
+     'e uma barra por botão — comparar dois números soltos obriga a fazer a conta de cabeça');
+  ok(/title="\$\{esc\(o\.titulo\)\}: \$\{pessoa\(o\.cliques\)\} de \$\{fmtN\(enviados\)\} que receberam · \$\{o\.ctr\}%"/.test(perf),
+     'com a quantidade exata e a porcentagem ao passar o mouse');
+  ok(/Não clicou em nada/.test(perf),
+     'e a sobra aparece: sem ela as porcentagens não fecham 100 e a leitura engana');
+  ok(/\.ctr-opt-sobra \.ctr-opt-bar i \{ background: var\(--border2\); \}/.test(css),
+     'em cinza, porque quem não clicou é informação e não conquista');
 
   await encerrar(null, falhas);
 })();
