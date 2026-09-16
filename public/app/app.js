@@ -795,25 +795,79 @@ function temAncestralQueCorta(el) {
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// ONDE UM `position: fixed` REALMENTE ANCORA
+//
+// A suposição de que `fixed` se mede pela JANELA é falsa, e foi ela que deixou
+// TODO seletor do painel abrindo no lugar errado. Qualquer ancestral com
+// `transform`, `filter`, `perspective`, `backdrop-filter`, `will-change` ou
+// `contain` vira o bloco de contenção do `fixed` — as coordenadas passam a
+// contar a partir DELE.
+//
+// E no painel isso vale sempre: `#view > .page` entra com
+// `animation: fadeUp .3s both`, e o `both` deixa o `transform` do último
+// quadro grudado para sempre (`matrix(1,0,0,1,0,0)`, que NÃO é `none`). Como
+// `.page` também rola, o menu aparecia a centenas de pixels do campo — e, com
+// a página rolada, fora da tela. Da bancada era "o select não abre".
+//
+// A correção é medir tudo em coordenadas de janela, como antes, e no fim
+// traduzir para o espaço do bloco de contenção. Sem bloco, a tradução é zero e
+// nada muda.
+// ---------------------------------------------------------------------------
+function blocoDeContencao(el) {
+  for (let n = el.parentElement; n && n !== document.documentElement; n = n.parentElement) {
+    const s = getComputedStyle(n);
+    if (s.transform !== 'none' || s.perspective !== 'none' ||
+        s.filter !== 'none' || s.backdropFilter !== 'none' ||
+        s.willChange === 'transform' || s.willChange === 'filter' ||
+        /paint|layout|strict|content/.test(s.contain || '')) return n;
+  }
+  return null;
+}
+
 function ecSelSoltar(el) {
   const menu = el.querySelector('.ecsel-menu'); if (!menu) return;
   if (!temAncestralQueCorta(el)) return;
   const r = el.getBoundingClientRect();
-  const alturaMenu = Math.min(menu.scrollHeight + 12, 280);
-  // Abre para CIMA quando não há espaço embaixo — a barra do chat fica no pé
-  // da tela, então esse é o caso normal aqui.
-  const cabeEmbaixo = r.bottom + alturaMenu + 8 <= window.innerHeight;
+  // `offsetHeight` é a altura DE VERDADE — o menu já está com a classe `open`
+  // quando chegamos aqui, então dá para medir em vez de estimar. O
+  // `scrollHeight + 12` era o palpite antigo e errava por esses 12px, o
+  // bastante para o menu que abre para cima ficar boiando longe do campo.
+  const alturaMenu = Math.min(menu.offsetHeight || menu.scrollHeight + 12, 280);
   // `min-width: 100%` do CSS passa a valer contra a JANELA quando o menu vira
   // fixed — ele saía com a largura da tela inteira e vazava pela direita. Some
   // aqui, e a largura passa a ser a do botão (com um mínimo para caber o texto).
   const largura = Math.min(Math.max(r.width, 168), window.innerWidth - 16);
+
+  // Abre para CIMA quando não há espaço embaixo — a barra do chat fica no pé da
+  // tela, então esse é o caso normal lá. Sempre por `top`, nunca por `bottom`:
+  // com um bloco de contenção no caminho, `bottom` contaria da borda DELE.
+  let topo = (r.bottom + alturaMenu + 8 <= window.innerHeight) ? r.bottom + 5 : r.top - alturaMenu - 5;
+  topo = Math.max(8, Math.min(topo, window.innerHeight - alturaMenu - 8));
+  let esq = Math.max(8, Math.min(r.left, window.innerWidth - largura - 8));
+
+  // A TRADUÇÃO PRECISA DA ROLAGEM DO BLOCO, e não só da posição dele.
+  //
+  // Quando o bloco de contenção também rola — que é o caso da `.page` —, o
+  // `fixed` filho é posicionado no espaço do CONTEÚDO ROLADO, e não na caixa
+  // visível. Sem somar o `scrollTop` de volta, o menu nasce deslocado
+  // exatamente pelo tanto que a pessoa já rolou: com a página no começo parecia
+  // certo, e ia ficando pior conforme ela descia. Medido: campo em 770,
+  // `.page` em 62 com 856 rolados — sem esta linha o menu ia parar em -45.
+  const cb = blocoDeContencao(el);
+  if (cb) {
+    const rc = cb.getBoundingClientRect();
+    topo += cb.scrollTop - rc.top;
+    esq += cb.scrollLeft - rc.left;
+  }
+
   menu.style.position = 'fixed';
   menu.style.minWidth = '0';
   menu.style.width = largura + 'px';
-  menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - largura - 8)) + 'px';
+  menu.style.left = esq + 'px';
+  menu.style.top = topo + 'px';
   menu.style.right = 'auto';
-  if (cabeEmbaixo) { menu.style.top = (r.bottom + 5) + 'px'; menu.style.bottom = 'auto'; }
-  else { menu.style.bottom = (window.innerHeight - r.top + 5) + 'px'; menu.style.top = 'auto'; }
+  menu.style.bottom = 'auto';
   el.dataset.solto = '1';
 }
 
@@ -854,6 +908,14 @@ function ecSelPick(id, val, ev) {
 }
 function ecSelVal(id) { const el = document.getElementById(id); return el ? el.dataset.val : ''; }
 document.addEventListener('click', e => { if (!e.target.closest('.ecsel')) document.querySelectorAll('.ecsel.open').forEach(x => { x.classList.remove('open'); ecSelPrender(x); }); });
+// ROLAR COM O MENU ABERTO O DEIXARIA PARA TRÁS. Ele foi posicionado a partir de
+// onde o campo estava naquele instante; a partir daí, campo e menu andam por
+// caminhos diferentes. Fechar é mais honesto do que reposicionar a cada quadro.
+// Em captura, porque quem rola aqui é a `.page`, e não a janela — evento de
+// scroll de container não sobe por bolha.
+document.addEventListener('scroll', () => {
+  document.querySelectorAll('.ecsel.open').forEach(x => { x.classList.remove('open'); ecSelPrender(x); });
+}, true);
 
 function fmtTime(ts) {
   if (!ts) return '';
@@ -3046,38 +3108,41 @@ function admTstPaint() {
       ${cheio ? `<div class="card warn-card" style="margin-bottom:10px">
         ${ico('alert', 14)} <b>Sem vagas.</b> Aumente o limite acima ou remova um tester existente.</div>` : ''}
 
-      <div class="row">
-        <label style="flex:1.2">Nome completo de quem vai testar
-          <input id="tst-nome" placeholder="Como no documento"></label>
-        <label style="flex:1.2">E-mail de acesso
-          <input id="tst-email" placeholder="pessoa@email.com"></label>
-      </div>
-      <div class="row" style="margin-top:9px">
-        <label style="flex:1">WhatsApp
-          <input id="tst-tel" placeholder="(11) 91234-5678" inputmode="tel"></label>
-        <label style="flex:1">CPF ou CNPJ
-          <input id="tst-doc" placeholder="000.000.000-00" inputmode="numeric"></label>
-      </div>
-      <div class="row" style="margin-top:9px">
-        <label style="flex:1.2">Nome da empresa
-          <input id="tst-empresa" placeholder="Como o cliente conhece"></label>
-        <label style="flex:1">Senha
-          <input id="tst-senha" type="password" placeholder="mínimo 6 caracteres"></label>
-      </div>
-      <div class="row" style="margin-top:9px">
-        <label style="flex:1">Quantas pessoas vão atender
+      <!-- DUAS COLUNAS IGUAIS, E A MESMA DIVISÃO EM TODAS AS LINHAS.
+           Os pesos iam variando de linha para linha (1.2/1.2, depois 1/1,
+           depois 1.2/1), então cada linha quebrava num ponto diferente: "Senha"
+           começava num x e "CPF ou CNPJ" logo acima em outro. Num formulário
+           em grade, o olho lê pelas colunas — e colunas que não se alinham
+           fazem a pessoa reler o rótulo de cada campo. -->
+      <div class="tst-form">
+        <label>Nome completo de quem vai testar
+          <input id="tst-nome" placeholder="Como no documento" autocomplete="off"></label>
+        <label>E-mail de acesso
+          <input id="tst-email" type="email" placeholder="pessoa@email.com" autocomplete="off" inputmode="email"></label>
+
+        <label>WhatsApp
+          <input id="tst-tel" placeholder="(11) 91234-5678" inputmode="tel" autocomplete="off"></label>
+        <label>CPF ou CNPJ
+          <input id="tst-doc" placeholder="000.000.000-00" inputmode="numeric" autocomplete="off"></label>
+
+        <label>Nome da empresa
+          <input id="tst-empresa" placeholder="Como o cliente conhece" autocomplete="off"></label>
+        <label>Senha
+          <input id="tst-senha" type="password" placeholder="mínimo 6 caracteres" autocomplete="new-password"></label>
+
+        <label>Quantas pessoas vão atender
           ${ecSelect('tst-size', [{ value: '', label: 'Prefiro não dizer' },
             { value: 'Só eu', label: 'Só eu' }, { value: '2 a 5', label: '2 a 5' },
             { value: '6 a 20', label: '6 a 20' }, { value: 'Mais de 20', label: 'Mais de 20' }], '')}</label>
-        <label style="flex:1">O que vende
+        <label>O que vende
           ${ecSelect('tst-seg', [{ value: '', label: 'Prefiro não dizer' }].concat(
             (TST_SEGS || []).map(x => ({ value: x.id, label: x.nome }))), '', 'admTstSegMudou()')}</label>
       </div>
       <!-- SÓ APARECE para o segmento que exige (hoje, iGaming). É a mesma regra
            do cadastro público, e quem decide é o servidor: a lista vem de lá com
            a marca pedeSite. -->
-      <label id="tst-campo-site" style="margin-top:9px;display:none">Site da plataforma
-        <input id="tst-site" placeholder="minhaplataforma.com"></label>
+      <label id="tst-campo-site" style="margin-top:12px;display:none">Site da plataforma
+        <input id="tst-site" placeholder="minhaplataforma.com" autocomplete="off"></label>
       <div class="row" style="margin-top:12px">
         <button class="btn primary no-grow" ${cheio ? 'disabled' : ''} onclick="admTstCriar(this)">${ico('plus', 14)} Criar tester</button>
       </div>

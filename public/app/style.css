@@ -1369,6 +1369,18 @@ details.adv[open] summary::after { content: '–'; }
 .node-opt b { font-size: 13.5px; }
 @media (max-width: 720px) { .fb2-palette { display: none; } .fb2-inspector { width: 100%; } }
 
+/* ---------------------------------------------------------------------------
+   FORMULÁRIO EM DUAS COLUNAS (cadastro de tester)
+   Grade de verdade, e não `flex` por linha: com `flex` cada linha decidia
+   sozinha onde quebrar, e as colunas não se alinhavam entre si. A grade é uma
+   régua só para o formulário inteiro.
+   Numa tela estreita vira uma coluna — dois campos lado a lado em 360px
+   deixam o rótulo "Quantas pessoas vão atender" em três linhas.
+   --------------------------------------------------------------------------- */
+.tst-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+.tst-form > label { margin: 0; min-width: 0; }
+@media (max-width: 760px) { .tst-form { grid-template-columns: 1fr; } }
+
 /* ---------- dropdown customizado (substitui todo <select>) ---------- */
 .ecsel { position: relative; }
 .ecsel-btn {
