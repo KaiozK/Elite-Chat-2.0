@@ -1160,7 +1160,11 @@ details.adv[open] summary::after { content: '–'; }
 .fb-edge.no { stroke: #d0d5dd; }
 .fb-edge-hit { fill: none; stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; }
 .fb-edge-hit:hover + .fb-edge { stroke: var(--red); stroke-dasharray: 5 4; }
-.fb-edge-temp { fill: none; stroke: var(--verde); stroke-width: 2.4; stroke-dasharray: 5 5; }
+/* O VERDE AQUI É O DA MARCA, e não o `--verde` cru. `--verde` (#50ea5f) é um
+   lima usado em realce e degradê; o verde do produto é `--brand` (#2ed378), o
+   mesmo da `.fb-edge` já traçada. Com os dois no mesmo canvas, a linha que
+   você está arrastando tinha uma cor e a que acabou de soltar tinha outra. */
+.fb-edge-temp { fill: none; stroke: var(--brand); stroke-width: 2.4; stroke-dasharray: 5 5; }
 
 .fb-n {
   position: absolute; background: var(--card); border: 1px solid var(--border2); border-radius: 16px;
@@ -1192,7 +1196,8 @@ details.adv[open] summary::after { content: '–'; }
 /* COM SAÍDA POR OPÇÃO, os rótulos das portas ficam na borda direita do card.
    Sem este recuo o balão passa por baixo deles e as duas coisas viram uma
    mancha só — justamente no nó mais cheio, que é onde ler importa mais. */
-.fb-n.com-opts .fb-wa { margin-right: 72px; }
+/* O balão não recua mais 72px: aquele espaço existia para os rótulos das
+   saídas, que sumiram quando a bolinha passou a sair do próprio botão. */
 .fb-wa-bolha {
   background: #d9fdd3; border-radius: 8px 8px 8px 2px; padding: 7px 8px 6px;
   font-size: 11.5px; line-height: 1.42; color: #0b141a;
@@ -1215,6 +1220,23 @@ details.adv[open] summary::after { content: '–'; }
 .fb-wa-btn + .fb-wa-btn { border-top: .5px solid rgba(11, 20, 26, .14); }
 .fb-wa-btn svg { width: 12px; height: 12px; flex: none; }
 .fb-wa-btn span { overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- O BOTÃO É O PONTO DE PARTIDA DO CAMINHO ----
+   A bolinha agora nasce dele, e não de uma coluna ao lado. O respiro à direita
+   é o lugar dela: sem isso ela cairia sobre o texto do próprio botão. */
+.fb-wa-btn[data-branch] { padding-right: 16px; cursor: crosshair; }
+.fb-wa-btn[data-branch]:hover { background: rgba(2, 126, 181, .07); }
+/* O card inteiro é arrastável; o botão precisa ganhar o gesto de volta para
+   dar para puxar o fio a partir dele. */
+.fb-wa-btn[data-branch] { position: relative; }
+
+/* O BOTÃO DE LINK NÃO TEM SAÍDA, e o desenho diz isso: ele abre o navegador e
+   a conversa acaba ali. Sem a marca, a pessoa procuraria a bolinha dele. */
+.fb-wa-btn.sem-saida { color: #667781; }
+.fb-wa-btn.sem-saida::after {
+  content: 'sem retorno'; margin-left: 4px; font-size: 8.5px; font-weight: 500;
+  color: #8f9da8; letter-spacing: .02em;
+}
 
 /* MÍDIA: a moldura que o WhatsApp põe antes da legenda. */
 .fb-wa-mid {
@@ -1265,11 +1287,11 @@ details.adv[open] summary::after { content: '–'; }
 
 /* Saída de cada botão/item: um caminho por opção. O `top` de cada uma vem
    inline do renderNodes(), calculado pela posição da opção na lista. */
-.fb-port.out.opt { border-color: var(--verde); background: var(--verde); }
+.fb-port.out.opt { border-color: var(--brand); background: var(--brand); }
 .fb-port.out.opt em {
   right: 17px; top: -4px; max-width: 96px; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; color: var(--verde-deep); font-size: 9px;
-  border: 1px solid color-mix(in srgb, var(--verde) 35%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand) 35%, transparent);
 }
 
 .fb2-zoom {
@@ -5164,6 +5186,47 @@ body.has-tabbar .ckb { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
   background: linear-gradient(45deg, #1c834a, #1c834a, #2ed378, #1c834a, #1c834a);
   background-size: 200% 200%; animation: brilhoPassar 5s ease-in-out infinite;
 }
+/* ---------------------------------------------------------------------------
+   ERRO NO FLOW BUILDER — A BORDA ACUSA, O COMPONENTE FICA COMO ESTÁ
+   Mesma faixa de luz do botão brilhante verde, em vermelho. É BORDA e só: o
+   balão continua com a cor dele, e os botões com a cor deles. Pintar o
+   componente inteiro de vermelho esconderia justamente o que a pessoa precisa
+   olhar para entender o erro.
+   O truque é um degradê no FUNDO do elemento externo, com o miolo por cima
+   opaco — assim a moldura anima e o conteúdo não.
+   --------------------------------------------------------------------------- */
+.fb-erro {
+  position: relative; border-radius: 14px; padding: 2px;
+  background: linear-gradient(45deg, #b42318, #b42318, #ff6b5e, #b42318, #b42318);
+  background-size: 200% 200%; animation: brilhoPassar 3.2s ease-in-out infinite;
+}
+/* UM FILHO SÓ. Aplicado direto num `<details>`, o `> *` pegava o resumo, cada
+   rótulo e o parágrafo, e cada um ganhava fundo próprio — a moldura saía
+   listrada em vez de contínua. Por isso quem recebe a classe é sempre um
+   invólucro com um único filho dentro. */
+.fb-erro > * { position: relative; border-radius: 12px; background: var(--card); display: block; }
+.fb-erro > .utm-box { padding: 10px 12px; }
+@media (prefers-reduced-motion: reduce) { .fb-erro { animation: none; } }
+
+/* A mensagem fica colada no que está errado, e diz o que fazer. */
+.fb-erro-msg {
+  display: flex; align-items: flex-start; gap: 7px;
+  margin-top: 7px; padding: 8px 10px; border-radius: 9px;
+  background: var(--red-bg); border: 1px solid var(--red-border);
+  font-size: 11.5px; line-height: 1.45; color: var(--red);
+}
+.fb-erro-msg svg { flex: none; margin-top: 1px; }
+.fb-erro-msg b { font-weight: 600; }
+.fb-erro-msg button {
+  margin-top: 5px; padding: 5px 9px; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--red-border); background: var(--card); color: var(--red);
+  font-size: 11px; font-weight: 600;
+}
+.fb-erro-msg button:hover { background: var(--red-bg); }
+
+/* O card do nó com problema ganha a mesma moldura, no canvas. */
+.fb-n.tem-erro { box-shadow: 0 0 0 2px #b42318, 0 8px 22px -12px rgba(180, 35, 24, .5); }
+
 @keyframes brilhoPassar {
   0% { background-position: 0% 50% } 50% { background-position: 100% 50% } 100% { background-position: 0% 50% }
 }

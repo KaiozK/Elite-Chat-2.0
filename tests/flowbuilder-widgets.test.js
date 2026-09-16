@@ -68,13 +68,15 @@ const fs = require('fs');
   ok(/\.fb-wa-btn \+ \.fb-wa-btn \{ border-top: \.5px/.test(css),
      'separados por hairline, um por linha');
 
-  console.log('\n=== 5. Balão e rótulo de saída não se sobrepõem ===');
-  // Com saída por opção, os rótulos das portas ficam na borda direita. Sem
-  // recuo o balão passa por baixo deles e as duas coisas viram uma mancha só —
-  // justamente no nó mais cheio, que é onde ler importa mais.
-  ok(/fbNodeOptions\(n\)\.length \? ' com-opts' : ''/.test(app),
-     'o card avisa o CSS quando tem rótulo na borda');
-  ok(/\.fb-n\.com-opts \.fb-wa \{ margin-right: 72px; \}/.test(css), 'e o balão recua');
+  console.log('\n=== 5. O rótulo de saída não existe mais, e nem o recuo dele ===');
+  // Havia um rótulo repetindo o texto da opção na borda direita, e o balão
+  // recuava 72px para não passar por baixo dele. Com a bolinha saindo do
+  // PRÓPRIO botão, o texto já está ao lado dela: o rótulo virou repetição e o
+  // recuo, espaço vazio no nó mais cheio — justamente onde ele faltava.
+  ok(!/com-opts/.test(app), 'o card não precisa mais avisar o CSS');
+  ok(!/\.fb-n\.com-opts/.test(css), 'e o recuo de 72px saiu junto');
+  ok(/b\.offsetTop \+ b\.offsetHeight \/ 2 - FB_PORT_HALF/.test(app),
+     'quem diz onde a bolinha fica agora é a posição medida do botão');
 
   console.log('\n=== 6. Editar um nó repinta o balão inteiro ===');
   // `refreshPreview` trocava só o texto do resumo. Com o balão, trocar texto

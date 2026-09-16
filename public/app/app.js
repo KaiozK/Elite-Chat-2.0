@@ -16012,10 +16012,42 @@ const FB_OPT_TOP = 62, FB_OPT_STEP = 26;   // 1ª saída de opção e o passo en
 
 function fbOptTop(i) { return FB_OPT_TOP + Math.max(0, i) * FB_OPT_STEP; }
 
+// ---------------------------------------------------------------------------
+// A BOLINHA SAI DO BOTÃO, e não de uma coluna ao lado
+//
+// Antes as saídas eram empilhadas na borda direita por uma fórmula
+// (`FB_OPT_TOP + i * FB_OPT_STEP`), com o texto da opção repetido num rótulo.
+// O desenho não dizia de qual botão cada linha partia: era preciso contar de
+// cima para baixo e torcer para a ordem bater. Agora a porta é colocada na
+// altura REAL do botão dentro do balão, medida depois de pintar.
+//
+// A medida vive neste mapa porque quem desenha o fio (`portY`) roda depois e
+// precisa do mesmo número; a fórmula fica como reserva para o instante entre
+// criar o nó e medi-lo, e para os tipos que não têm balão.
+// ---------------------------------------------------------------------------
+let FB_PORT_Y = {};
+const fbChaveporta = (id, branch) => id + '|' + branch;
+
+function fbMedirPortas(el, n) {
+  const btns = el.querySelectorAll('.fb-wa-btn[data-branch]');
+  let mexeu = false;
+  btns.forEach(b => {
+    const topo = b.offsetTop + b.offsetHeight / 2 - FB_PORT_HALF;
+    FB_PORT_Y[fbChaveporta(n.id, b.dataset.branch)] = topo;
+    const porta = el.querySelector(`.fb-port.out[data-branch="${CSS.escape(b.dataset.branch)}"]`);
+    if (porta) { porta.style.top = topo + 'px'; mexeu = true; }
+  });
+  return mexeu;
+}
+
 // Topo (CSS) da porta — usado para desenhar a bolinha.
 function portTop(n, branch) {
   if (n.type === 'condition') return branch === 'no' ? FB_COND_TOP.no : FB_COND_TOP.yes;
-  if (fbIsOptBranch(branch)) return fbOptTop(fbNodeOptions(n).findIndex(o => fbOptBranch(o.id) === branch));
+  if (fbIsOptBranch(branch)) {
+    const medido = FB_PORT_Y[fbChaveporta(n.id, branch)];
+    if (medido != null) return medido;
+    return fbOptTop(fbNodeOptions(n).findIndex(o => fbOptBranch(o.id) === branch));
+  }
   return FB_PORT_TOP;
 }
 // Centro da porta — é daqui que a linha sai/chega.
@@ -16081,8 +16113,13 @@ function fbBolha(n) {
   // BOTÃO DE LINK ANTES DOS DEMAIS, como o WhatsApp mostra: ele é de outro
   // tipo (abre o navegador) e vem separado das respostas rápidas.
   const linha = [];
-  if ((n.url || '').trim()) linha.push({ tipo: 'URL', txt: n.urlText || 'Abrir link' });
-  for (const o of fbNodeOptions(n)) linha.push({ tipo: n.type === 'list' ? 'LIST' : 'QUICK_REPLY', txt: o.title });
+  // O BOTÃO DE LINK NÃO TEM RAMO, e é isso que o `branch: ''` diz. Ele abre o
+  // navegador e a conversa acaba ali: não existe "o que acontece depois que a
+  // pessoa tocou", porque a Meta não devolve nada para o fluxo continuar.
+  if ((n.url || '').trim()) linha.push({ tipo: 'URL', txt: n.urlText || 'Abrir link', branch: '' });
+  for (const o of fbNodeOptions(n)) {
+    linha.push({ tipo: n.type === 'list' ? 'LIST' : 'QUICK_REPLY', txt: o.title, branch: fbOptBranch(o.id) });
+  }
 
   // Mais de três respostas rápidas a Meta entrega como LISTA, não como botões
   // — e a lista abre numa folha, com um item só visível. Mostrar cinco botões
@@ -16095,7 +16132,7 @@ function fbBolha(n) {
     botoes = `<div class="fb-wa-btns"><div class="fb-wa-btn">${waBtnIcon('LIST')}<span>${esc(nome)}</span></div></div>`;
   } else if (linha.length) {
     botoes = `<div class="fb-wa-btns">${linha.slice(0, 3).map(b =>
-      `<div class="fb-wa-btn">${waBtnIcon(b.tipo)}<span>${esc(String(b.txt).slice(0, 22))}</span></div>`).join('')}</div>`;
+      `<div class="fb-wa-btn${b.branch ? '' : ' sem-saida'}"${b.branch ? ` data-branch="${esc(b.branch)}"` : ''}>${waBtnIcon(b.tipo)}<span>${esc(String(b.txt).slice(0, 22))}</span></div>`).join('')}</div>`;
   }
 
   return `<div class="fb-wa">
@@ -16133,24 +16170,26 @@ function renderNodes() {
   for (const n of flowDraft.graph.nodes) {
     const M = nodeMeta(n);
     const el = document.createElement('div');
-    // `com-opts` avisa o CSS de que este card tem rótulos de saída na borda
-    // direita — o balão precisa recuar para não ficar por baixo deles.
     el.className = 'fb-n type-' + n.type + (fbSel === n.id ? ' sel' : '')
       + (n.type === 'trigger' ? ' trig' : '')
-      + (fbNodeOptions(n).length ? ' com-opts' : '');
+      // Quem olha o canvas precisa ver ONDE está o problema sem abrir cada nó.
+      + (fbConflito(n) ? ' tem-erro' : '');
     el.dataset.id = n.id;
     el.style.left = n.x + 'px'; el.style.top = n.y + 'px'; el.style.width = NODE_W + 'px';
-    // O card cresce para caber as saídas das opções sem que elas vazem.
-    const nOpts = fbNodeOptions(n).length;
-    if (nOpts) el.style.minHeight = (fbOptTop(nOpts - 1) + FB_PORT_HALF * 2 + 10) + 'px';
     const opcoes = fbNodeOptions(n);
+    // O ROTULO SAIU DA PORTA. Ele repetia o texto do botão que agora fica logo
+    // ao lado dela — e era ele que obrigava o card a crescer (`minHeight`) e a
+    // recuar o balão, para os rótulos não ficarem por cima. Com a bolinha
+    // colada no botão, o card volta a ter a altura do próprio conteúdo.
     const ports = n.type === 'condition'
       ? `<span class="fb-port out yes" data-id="${n.id}" data-side="out" data-branch="yes"><em>Sim</em></span>
          <span class="fb-port out no" data-id="${n.id}" data-side="out" data-branch="no"><em>Não</em></span>`
       : n.type === 'end' ? ''
       : opcoes.length
         // Uma saída por botão: o fluxo espera o toque e segue o caminho da opção.
-        ? opcoes.map((o, i) => `<span class="fb-port out opt" data-id="${n.id}" data-side="out" data-branch="${esc(fbOptBranch(o.id))}" style="top:${fbOptTop(i)}px"><em>${esc(o.title.slice(0, 14))}</em></span>`).join('')
+        // O `top` provisório vem da fórmula e é corrigido por `fbMedirPortas`
+        // assim que o balão existe na tela e dá para medir onde o botão caiu.
+        ? opcoes.map((o, i) => `<span class="fb-port out opt" data-id="${n.id}" data-side="out" data-branch="${esc(fbOptBranch(o.id))}" style="top:${fbOptTop(i)}px"></span>`).join('')
         : `<span class="fb-port out" data-id="${n.id}" data-side="out"></span>`;
     el.innerHTML = `
       ${n.type !== 'trigger' ? `<span class="fb-port in" data-id="${n.id}" data-side="in"></span>` : ''}
@@ -16158,6 +16197,8 @@ function renderNodes() {
       <div class="fb-n-hd">${iconChip(M.icon, M.color, 15)}<div class="fb-n-tt"><b>${M.label}</b><span>${M.sub}</span></div><span class="fb-n-gear">${ico('gear', 14)}</span></div>
       ${fbBolha(n) || `<div class="fb-n-prev">${esc(nodeSummary(n))}</div>`}`;
     world.appendChild(el);
+    // Medir exige estar na árvore: `offsetTop` de um nó solto é zero.
+    fbMedirPortas(el, n);
   }
   renderMini();
 }
@@ -16334,6 +16375,7 @@ function fbTextInspector(n, set) {
     cta: ['Botão de link (CTA)', 'pending']
   }[fmt];
 
+  const conflito = fbConflito(n);
   return `
     <label>Texto da mensagem<textarea rows="4" ${set('text')} placeholder="Use {{nome}} para personalizar">${esc(n.text || '')}</textarea></label>
 
@@ -16346,10 +16388,9 @@ function fbTextInspector(n, set) {
         Sem botões vira <b>texto simples</b>. Até <b>3</b> a Meta envia como <b>botões</b>; a partir de <b>4</b> vira <b>lista</b> (máx. ${FB_BTN_MAX}). Limite: ${max} caracteres por opção.
       </p>
 
-      ${n.url && n.url.trim() ? `<p class="muted" style="font-size:11.5px;margin:0 0 8px">
-        <b>Com link (CTA), a Meta não permite botões de resposta</b>, limpe a URL abaixo para usar botões.</p>` : ''}
+      ${conflito ? fbErroHtml(conflito) : ''}
 
-      <div id="fb-btns">${fbBtnRows(n, max)}</div>
+      ${conflito ? '<div class="fb-erro">' : ''}<div id="fb-btns">${fbBtnRows(n, max)}</div>${conflito ? '</div>' : ''}
 
       <div class="row" style="gap:7px;margin-top:8px">
         <button class="btn small no-grow" ${btns.length >= FB_BTN_MAX || (n.url || '').trim() ? 'disabled' : ''} onclick="fbAddBtn('${n.id}')">${ico('plus', 12)} Adicionar opção</button>
@@ -16359,12 +16400,68 @@ function fbTextInspector(n, set) {
       ${fmt === 'list' ? `<label style="margin-top:11px">Texto do botão que abre a lista<input value="${esc(n.listButton || 'Ver opções')}" maxlength="20" ${set('listButton')} placeholder="Ver opções"></label>` : ''}
     </div>
 
+    ${conflito ? '<div class="fb-erro">' : ''}
     <details class="utm-box" ${(n.url || '').trim() ? 'open' : ''}>
       <summary>${ico('link', 13)} Botão de link (CTA), opcional</summary>
       <label style="margin-top:8px">URL<input value="${esc(n.url || '')}" ${set('url')} placeholder="https://..."></label>
       <label style="margin-top:8px">Texto do botão<input value="${esc(n.urlText || '')}" maxlength="20" ${set('urlText')} placeholder="Abrir link"></label>
       <p class="muted" style="font-size:11px;margin:8px 0 0">A Meta permite <b>1 botão de link</b> por mensagem e ele <b>não pode ser combinado</b> com botões de resposta.</p>
-    </details>`;
+    </details>
+    ${conflito ? '</div>' : ''}`;
+}
+
+// ---------------------------------------------------------------------------
+// A REGRA DA META, COBRADA EM VEZ DE APENAS AVISADA
+//
+// `interactive.type` é `button` (respostas rápidas) OU `cta_url` (um botão de
+// link). Não existe um terceiro que junte os dois: a Meta recusa a mensagem.
+// A tela já dizia isso num parágrafo cinza — e um aviso que não impede nada é
+// um aviso que só aparece depois, no disparo, com a mensagem não entregue.
+//
+// Devolve `null` quando está tudo certo. Quando não está, diz o que é, para o
+// desenho poder cercar o lugar exato.
+// ---------------------------------------------------------------------------
+function fbConflito(n) {
+  if (!n) return null;
+  const temLink = !!String(n.url || '').trim();
+  const respostas = (n.buttons || []).filter(b => String(b.title || '').trim()).length;
+  if (temLink && respostas) {
+    return {
+      tipo: 'link-com-botoes',
+      titulo: 'A Meta não entrega esta mensagem',
+      texto: `Um botão de link e ${respostas === 1 ? 'um botão de resposta' : respostas + ' botões de resposta'} na mesma mensagem: a Meta aceita um OU o outro, nunca os dois.`,
+      acoes: [
+        { rotulo: 'Tirar o link, manter os botões', fn: `fbResolver('${n.id}','link')` },
+        { rotulo: `Tirar ${respostas === 1 ? 'o botão' : 'os botões'}, manter o link`, fn: `fbResolver('${n.id}','botoes')` }
+      ]
+    };
+  }
+  return null;
+}
+
+// AS DUAS SAÍDAS SÃO CONTEÚDO DA PESSOA, e por isso ela escolhe qual sai. Um
+// clique só, em vez de mandar limpar o campo à mão — mas sem decidir por ela
+// qual metade do trabalho vai embora.
+function fbResolver(id, qual) {
+  const n = nodeById(id); if (!n) return;
+  if (qual === 'link') { n.url = ''; n.urlText = ''; toast('Botão de link removido'); }
+  else {
+    // Tirar os botões leva junto os caminhos que saíam deles: uma aresta
+    // apontando para um botão que não existe mais é um fio solto no canvas.
+    const ramos = (n.buttons || []).map(b => fbOptBranch(b.id));
+    flowDraft.graph.edges = flowDraft.graph.edges.filter(e => !(e.from === id && ramos.includes(e.branch)));
+    n.buttons = [];
+    toast('Botões de resposta removidos');
+  }
+  renderNodes(); renderEdges(); renderInspector(); refreshPreview(id); scheduleSave();
+}
+
+function fbErroHtml(c) {
+  if (!c) return '';
+  return `<div class="fb-erro-msg">${ico('alert', 13)}
+    <span><b>${esc(c.titulo)}</b><br>${esc(c.texto)}
+      <br>${c.acoes.map(a => `<button type="button" onclick="${a.fn}">${esc(a.rotulo)}</button>`).join(' ')}
+    </span></div>`;
 }
 
 function fbBtnRows(n, max) {
@@ -16450,7 +16547,11 @@ function nodeInspector(n) {
   else if (n.type === 'buttons') {
     n.buttons = n.buttons || [{ title: 'Sim' }];
     const hasUrl = !!(n.url && n.url.trim());
-    body = `<label>Texto<textarea rows="3" ${set('body')} placeholder="Pergunta ou mensagem">${esc(n.body || '')}</textarea></label>
+    // Aqui o seletor de modo já separa os dois, então o conflito não nasce pela
+    // tela — mas nasce por dado que veio de fora (fluxo importado, duplicado,
+    // ou gravado antes de o seletor existir). Se existir, aparece igual.
+    body = `${fbErroHtml(fbConflito(n))}
+      <label>Texto<textarea rows="3" ${set('body')} placeholder="Pergunta ou mensagem">${esc(n.body || '')}</textarea></label>
       <div class="fb-btnmode">
         <button class="${!hasUrl ? 'on' : ''}" onclick="fbBtnMode('${n.id}','reply')">Respostas rápidas</button>
         <button class="${hasUrl ? 'on' : ''}" onclick="fbBtnMode('${n.id}','url')">Botão de link</button>
