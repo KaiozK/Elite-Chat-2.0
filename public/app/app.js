@@ -18005,13 +18005,25 @@ function epkPaintForm() {
 
   if (epkSection === 'marca') {
     body = `
+      <!-- OS NÚMEROS SAEM DA CAIXA DE VERDADE, e não de um palpite.
+           No computador o checkout tem 1000px com 24px de recuo de cada lado,
+           então o banner ocupa 952px; em 3:1 isso dá 317px de altura, e o dobro
+           disso (tela retina) é 1920×640. No celular ele deixa 10% de folga de
+           cada lado: numa tela de 430px sobram 344px, e em 16:9 são 194px de
+           altura — 1200×675 cobre com sobra.
+           A PROPORÇÃO é o que evita o erro, mais do que o tamanho: enviando
+           fora dela, o recorte come as pontas, e é sempre a parte que o lojista
+           mais queria mostrar. Se mudar a proporção no pay.html, muda aqui. -->
       <div class="ckb-devgrp">${ico('monitor', 13)} Computador</div>
-      ${up('logo', 'Logo do produto', 'quadrada · 512×512 px', 'Marca no topo e miniatura no resumo')}
-      ${up('banner', 'Banner / capa', 'larga · 1200×360 px', 'Aparece no header do site, abaixo da marca')}
+      ${up('logo', 'Logo do produto', 'quadrada · 1:1 · 256×256 px', 'Aparece em 40px, no topo e no resumo')}
+      ${up('banner', 'Banner / capa', 'deitada · 3:1 · 1920×640 px', 'Ocupa a mesma largura do checkout, com cantos arredondados')}
       <div class="ckb-devgrp" style="margin-top:18px">${ico('smartphone', 13)} Celular</div>
-      ${up('logoMobile', 'Logo do produto', 'quadrada · 256×256 px', 'Opcional, sem ela usamos a de computador')}
-      ${up('bannerMobile', 'Banner / capa', 'vertical · 800×500 px', 'Opcional, enquadramento próprio p/ telas estreitas')}
-      <p class="hint" style="margin-top:16px">${ico('shield', 12)} Envie PNG, JPG ou WebP. As imagens são <b>redimensionadas e comprimidas automaticamente</b> para o tamanho ideal, você só precisa mandar a maior versão que tiver.</p>`;
+      ${up('logoMobile', 'Logo do produto', 'quadrada · 1:1 · 256×256 px', 'Opcional, sem ela usamos a de computador')}
+      ${up('bannerMobile', 'Banner / capa', 'deitada · 16:9 · 1200×675 px', 'Opcional, sem ela usamos a de computador')}
+      <p class="hint" style="margin-top:16px">${ico('alert', 12)} <b>A proporção importa mais que o tamanho.</b>
+        O banner é recortado para caber na altura certa: fora de 3:1 (computador) ou 16:9 (celular),
+        o corte tira as pontas da arte. Mandar maior que o sugerido não atrapalha, mandar menor deixa borrado.</p>
+      <p class="hint" style="margin-top:8px">${ico('shield', 12)} Envie PNG, JPG ou WebP. As imagens são <b>redimensionadas e comprimidas automaticamente</b>, você só precisa mandar a maior versão que tiver.</p>`;
   } else if (epkSection === 'timer') {
     body = `
       <label class="chk"><input type="checkbox" ${ck.timer.on ? 'checked' : ''} onchange="epkState.timer.on=this.checked;epkPrev()"> Exibir cronômetro de oferta</label>
@@ -18383,7 +18395,7 @@ function epkPrev() {
       </div>
       <span class="epk2-secure">${ico('lock', 10)} Compra segura</span>
     </div>
-    ${showBanner ? `<img class="epk2-headbanner" src="${esc(bannerU)}">` : ''}`;
+    ${showBanner ? `<div class="epk2-bannerwrap${mob ? ' mob' : ''}"><img class="epk2-headbanner" src="${esc(bannerU)}"></div>` : ''}`;
 
   const steps = cur => `<div class="epk2-steps">
     <span class="epk2-stp ${cur > 1 ? 'done' : 'cur'}"><i>${cur > 1 ? '✓' : '1'}</i>Identificação</span>

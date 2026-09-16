@@ -3511,7 +3511,14 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .epk-faqrow textarea { margin-top: 7px; width: 100%; }
 
 /* blocos na prévia */
-.epk2-headbanner { width: 100%; display: block; max-height: 84px; object-fit: cover; border-radius: 9px; margin-bottom: 9px; }
+/* A PRÉVIA REPETE A CAIXA DO CHECKOUT: mesma proporção (3:1 no computador,
+   16:9 no celular) e, no celular, a mesma folga de 10% de cada lado. Um
+   `max-height` aqui mostraria um recorte que a página real não faz, e o
+   lojista só descobriria depois de publicar. */
+.epk2-bannerwrap { margin-bottom: 9px; }
+.epk2-bannerwrap.mob { padding: 0 10%; }
+.epk2-headbanner { width: 100%; display: block; aspect-ratio: 3 / 1; object-fit: cover; border-radius: 9px; }
+.epk2-bannerwrap.mob .epk2-headbanner { aspect-ratio: 16 / 9; }
 .epk2-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .epk2-blk { background: #fff; border: 1px solid #e7eaf0; border-radius: 10px; padding: 9px 11px; font-size: 9px; color: #4a5468; line-height: 1.5; }
 .epk2-blkt { display: block; font-size: 10px; font-weight: 500; color: #1a2233; margin-bottom: 6px; }

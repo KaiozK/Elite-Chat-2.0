@@ -91,7 +91,22 @@
     background: transparent; border: 1px solid var(--line); padding: 8px 14px; border-radius: var(--r); white-space: nowrap;
   }
   .secure svg { color: var(--ac); flex: none; }
-  .head-banner { display: block; width: 100%; max-height: 320px; object-fit: cover; }
+  /* ---------------------------------------------------------------------
+     BANNER DENTRO DA ESTRUTURA, e não sangrando de ponta a ponta.
+     Ele era um `<img>` solto no cabeçalho, colado nas bordas da janela, e por
+     isso não pertencia a nada: a página inteira tem 1000px e cantos
+     arredondados, e ele passava por baixo de tudo isso. Agora divide a mesma
+     caixa e o mesmo raio dos cartões.
+     A PROPORÇÃO É FIXA, e é isso que torna o recorte previsível: o lojista
+     sabe de antemão o que vai aparecer, em vez de descobrir que o topo da arte
+     foi cortado. Os tamanhos sugeridos no Checkout Builder saem daqui —
+     mexeu numa proporção, mexe no texto de lá.
+     --------------------------------------------------------------------- */
+  .head-bannerwrap { max-width: 1000px; margin: 0 auto; padding: 4px 24px 20px; }
+  .head-banner {
+    display: block; width: 100%; aspect-ratio: 3 / 1; object-fit: cover;
+    border-radius: var(--rc); background: var(--painel);
+  }
 
   .grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; align-items: start; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--rc); }
@@ -399,12 +414,49 @@
     mask: url(/assets/koonfy-marca.webp) center/contain no-repeat;
   }
 
-  @media (prefers-reduced-motion: reduce) { .btn { animation: none; background-position: 0 50% } }
+  /* ---------------------------------------------------------------------
+     ENTRADA DA PÁGINA
+     Os blocos sobem e aparecem em sequência, de cima para baixo, na ordem em
+     que a pessoa vai lê-los. O escalonamento é curto de propósito: ele serve
+     para o olho acompanhar a leitura, não para virar espetáculo — o cliente
+     veio pagar, e cada décimo de segundo aqui é atrito.
+
+     `both` é necessário: sem ele o bloco pisca no lugar final antes de a
+     animação começar, que é pior do que não animar.
+     --------------------------------------------------------------------- */
+  @keyframes entraSobe { from { opacity: 0; transform: translateY(15px); } }
+  @keyframes entraSuave { from { opacity: 0; } }
+
+  .head-inner { animation: entraSuave .45s ease both; }
+  .head-bannerwrap { animation: entraSobe .55s cubic-bezier(.22, .9, .3, 1) both .05s; }
+  .wrap .card { animation: entraSobe .55s cubic-bezier(.22, .9, .3, 1) both; }
+  /* A coluna principal e a do resumo são irmãs no grid, então o `nth-child`
+     conta dentro de cada uma — as duas começam juntas, que é o que se quer:
+     o total à direita aparece junto do formulário à esquerda, e não depois de
+     toda a fila da esquerda ter terminado. */
+  .wrap .card:nth-child(1) { animation-delay: .10s; }
+  .wrap .card:nth-child(2) { animation-delay: .17s; }
+  .wrap .card:nth-child(3) { animation-delay: .24s; }
+  .wrap .card:nth-child(4) { animation-delay: .31s; }
+  .wrap .card:nth-child(5) { animation-delay: .38s; }
+  .wrap .card:nth-child(6) { animation-delay: .45s; }
+  .wrap .card:nth-child(n+7) { animation-delay: .52s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .btn { animation: none; background-position: 0 50% }
+    .head-inner, .head-bannerwrap, .wrap .card { animation: none; }
+  }
 
   @media (max-width: 860px) {
     .grid { grid-template-columns: 1fr; }
     .summary { position: static; }   /* mobile: formulário primeiro, resumo depois */
-    .head-banner { max-height: 210px; }
+    /* NO CELULAR ELE NÃO ENCOSTA NAS BORDAS: 10% de folga de cada lado, por
+       pedido — de ponta a ponta o banner virava uma faixa colada na moldura do
+       aparelho e o resto da página, que respira 16px, parecia desalinhado.
+       A proporção também muda: 3:1 numa tela de 390px dá 130px de altura, alto
+       demais para ser uma arte e baixo demais para ser um banner. */
+    .head-bannerwrap { padding: 2px 10% 16px; }
+    .head-banner { aspect-ratio: 16 / 9; }
     .wrap { padding: 0 16px 40px; }
     .head-inner { padding: 14px 16px; }
     .pad, .blk { padding: 22px 18px; }
@@ -571,7 +623,7 @@
         '</div>' +
         '<span class="secure">' + ico('lock', 12) + ' Compra segura</span>' +
       '</div>' +
-      (showBanner ? '<img class="head-banner" src="' + esc(banner) + '" alt="">' : '') +
+      (showBanner ? '<div class="head-bannerwrap"><img class="head-banner" src="' + esc(banner) + '" alt=""></div>' : '') +
     '</header>';
   }
 
@@ -726,6 +778,69 @@
       if (s > 0) offerTimer = setTimeout(tick, 1000);
     }
     clearTimeout(offerTimer); tick();
+  }
+
+  // ---------------------------------------------------------------------------
+  // PLACEHOLDER ESCRITO LETRA A LETRA
+  //
+  // Devagar de propósito. A graça não é a velocidade: é o campo parecer que
+  // está sendo preenchido por alguém, o que chama o olho para onde a pessoa
+  // precisa agir. Correndo, vira um piscar e não se lê nada.
+  //
+  // TRÊS COISAS QUE PARECEM DETALHE E NÃO SÃO:
+  //
+  //   · A PAUSA DEPOIS DO ESPAÇO E DA PONTUAÇÃO. Sem ela o texto sai num fluxo
+  //     mecânico, com todas as letras à mesma distância — parece contador, não
+  //     escrita. A pausa é o que dá o ritmo da mão.
+  //
+  //   · TERMINAR NO FOCO. Se a pessoa clicar no campo no meio da escrita, o
+  //     placeholder completa na hora. Meio texto num campo que ela acabou de
+  //     escolher seria a única coisa pior do que não animar.
+  //
+  //   · CANCELAR AO REPINTAR. `render()` troca o HTML inteiro; os temporizadores
+  //     da pintura anterior continuariam vivos, escrevendo em elementos que já
+  //     saíram da tela. Daí `pararEscrita()` no começo de cada pintura.
+  // ---------------------------------------------------------------------------
+  var escritaTimers = [];
+  function pararEscrita() {
+    for (var i = 0; i < escritaTimers.length; i++) clearTimeout(escritaTimers[i]);
+    escritaTimers = [];
+  }
+
+  function escreverPlaceholders(raiz) {
+    pararEscrita();
+    if (!raiz) return;
+    // Quem pediu menos movimento recebe o texto pronto, sem animação nenhuma.
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var campos = raiz.querySelectorAll('input[placeholder], textarea[placeholder]');
+
+    for (var i = 0; i < campos.length; i++) {
+      (function (el, ordem) {
+        var texto = el.getAttribute('placeholder') || '';
+        // Campo já preenchido (voltou da etapa 2, autocompletar do navegador)
+        // não tem placeholder à vista: animar seria animar o invisível.
+        if (!texto || el.value) return;
+        var n = 0;
+        function pronto() { el.setAttribute('placeholder', texto); n = texto.length; }
+        el.addEventListener('focus', pronto);
+        el.setAttribute('placeholder', '');
+
+        function passo() {
+          if (n >= texto.length) { pronto(); return; }
+          n++;
+          el.setAttribute('placeholder', texto.slice(0, n));
+          var c = texto.charAt(n - 1);
+          // 48ms por letra é a batida; espaço e pontuação respiram mais. O
+          // ruído de ±22ms tira a regularidade de metrônomo.
+          var espera = 48 + (/[ ,.;:!?@]/.test(c) ? 105 : 0) + Math.random() * 22;
+          escritaTimers.push(setTimeout(passo, espera));
+        }
+        // Os campos começam em fila, com pouca distância: todos escrevendo ao
+        // mesmo tempo viraria bagunça, e um esperando o outro terminar deixaria
+        // o último campo mudo por vários segundos.
+        escritaTimers.push(setTimeout(passo, 280 + ordem * 170));
+      })(campos[i], i);
+    }
   }
 
   // ---------- etapa 1: identificação ----------
@@ -1356,6 +1471,7 @@
     '</div></div>';
     if (stepOne) bindIdentify(); else bindPay();
     startOffer(ck);
+    escreverPlaceholders(root);
   }
 
   // Tags de navegador do lojista (Meta Pixel, GTM, LinkedIn, UET, Snapchat,
