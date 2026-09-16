@@ -12649,7 +12649,19 @@ function admSeoForm(seo) {
         <label style="flex:2">URL canônica<input id="seo-canonical" maxlength="400" value="${v('canonical')}" placeholder="${API.webOrigin}/"></label>
         <label style="flex:1">Robots<input id="seo-robots" maxlength="60" value="${v('robots')}" placeholder="index, follow"></label>
       </div>
-      <label style="margin-top:9px">Google Analytics ID (opcional)<input id="seo-ga" maxlength="40" value="${v('gaId')}" placeholder="G-XXXXXXXXXX"></label>
+      <h3 class="notif-sub">Pixels da vitrine</h3>
+      <p class="muted" style="font-size:12.5px;margin:0 0 10px">
+        Medem o <b>seu</b> tráfego, o que traz cliente para o Koonfy — não o de nenhum lojista.
+        Cole o ID e pronto: a tag entra sozinha no &lt;head&gt; da página inicial, sem script à mão.
+        O pixel de cada lojista continua na conta dele, em <b>Tracking</b>.</p>
+      <div class="row">
+        <label style="flex:1">Meta Pixel<input id="seo-fb" maxlength="40" value="${v('metaPixel')}" placeholder="1234567890123456" inputmode="numeric"></label>
+        <label style="flex:1">TikTok Pixel<input id="seo-tt" maxlength="40" value="${v('tiktokPixel')}" placeholder="C1A2B3C4D5E6F7G8"></label>
+      </div>
+      <div class="row" style="margin-top:9px">
+        <label style="flex:1">Google Analytics<input id="seo-ga" maxlength="40" value="${v('gaId')}" placeholder="G-XXXXXXXXXX"></label>
+        <label style="flex:1">Google Tag Manager<input id="seo-gtm" maxlength="40" value="${v('gtmId')}" placeholder="GTM-XXXXXXX"></label>
+      </div>
       <label style="margin-top:9px">HTML extra no &lt;head&gt; (opcional, verificação de domínio, scripts)<textarea id="seo-extra" rows="3" maxlength="4000" placeholder="<meta name=&quot;google-site-verification&quot; content=&quot;...&quot;>">${v('extraHead')}</textarea></label>
       <div class="row" style="margin-top:14px;justify-content:space-between;align-items:center">
         <a class="btn no-grow" href="/" target="_blank" rel="noopener">${ico('activity', 14)} Ver a página</a>
@@ -12663,6 +12675,7 @@ async function admSaveSeo() {
     author: $('#seo-author').value, themeColor: $('#seo-theme').value,
     ogTitle: $('#seo-ogtitle').value, ogDescription: $('#seo-ogdesc').value, ogImage: $('#seo-ogimage').value,
     canonical: $('#seo-canonical').value, robots: $('#seo-robots').value, gaId: $('#seo-ga').value,
+    metaPixel: $('#seo-fb').value, tiktokPixel: $('#seo-tt').value, gtmId: $('#seo-gtm').value,
     extraHead: $('#seo-extra').value
   };
   try { await api('/admin/seo', { method: 'PUT', body }); toast('SEO salvo, já vale na página inicial'); } catch (e) { toast(e.message, 'error'); }

@@ -32,13 +32,50 @@ const CONNECTIONS = [
 
 // Tags de navegador das conexões ligadas, prontas para injetar no <head> das
 // páginas públicas. Antes esses 7 destinos aceitavam o ID e não faziam nada.
+// ---------------------------------------------------------------------------
+// UM PIXEL SÓ, VALENDO EM TODO LUGAR
+//
+// O Koonfy tinha DOIS cadastros para a mesma coisa, e nenhum dos dois avisava
+// que não cobria o outro:
+//
+//   · a tela PIXELS (`acc.pixels`) disparava só no LINK RASTREÁVEL;
+//   · Tracking → Conexões (`acc.trk.connections`) disparava só no CHECKOUT.
+//
+// Quem cadastrava num lugar via o outro em silêncio, sem evento nenhum — e a
+// conclusão natural era "o tracking não funciona". Agora a leitura é uma só:
+// vale o que estiver em Conexões e, se lá não houver nada daquela rede, vale o
+// que estiver na tela Pixels. Cadastrar em qualquer um dos dois passa a
+// disparar nos dois lugares.
+//
+// `acc.pixels` guarda o tipo como 'meta' | 'gtag' | 'tiktok'; as conexões usam
+// chaves próprias. O mapa abaixo é a ponte.
+// ---------------------------------------------------------------------------
+const PIXEL_PARA_CONEXAO = { meta: 'meta_pixel', gtag: 'google_ads', tiktok: 'tiktok' };
+
+function idDaRede(acc, chave) {
+  const t = ensure(acc);
+  const limpo = v => String(v || '').replace(/[^\w.:-]/g, '').slice(0, 64);
+  const c = t.connections[chave];
+  if (c && c.enabled && c.id) return limpo(c.id);
+  // Nada em Conexões: procura na tela Pixels, onde muita gente cadastrou antes.
+  const px = (acc.pixels || []).find(p =>
+    PIXEL_PARA_CONEXAO[p.type] === chave && p.enabled !== false && p.active !== false && p.pixelId);
+  return px ? limpo(px.pixelId) : '';
+}
+
 function clientTags(acc, ctx) {
   const t = ensure(acc);
   // IDs de pixel são alfanuméricos. Filtrar aqui evita que um valor com
   // "</script>" feche a tag e injete HTML na página pública do lojista:
   // JSON.stringify escapa aspas, mas NÃO escapa </script>.
   const limpo = v => String(v || '').replace(/[^\w.:-]/g, '').slice(0, 64);
-  const on = k => { const c = t.connections[k]; return c && c.enabled && c.id ? limpo(c.id) : ''; };
+  // `exceto` existe por causa da página do LINK RASTREÁVEL: ela monta as tags
+  // de Meta, Google e TikTok por conta própria, com evento e parâmetros
+  // próprios (LinkClick, slug, valor). Agora que `clientTags` também enxerga a
+  // tela Pixels, sem esta exclusão as duas montagens se somariam e o mesmo
+  // PageView seria contado duas vezes na Meta.
+  const fora = new Set((ctx && ctx.exceto) || []);
+  const on = k => (fora.has(k) ? '' : idDaRede(acc, k));
   const j = v => JSON.stringify(String(v)).replace(/</g, '\\u003c');
   const ev = limpo((ctx && ctx.event) || 'PageView') || 'PageView';
   const out = [];
@@ -610,7 +647,7 @@ function overview(acc) {
 }
 
 module.exports = {
-  CONNECTIONS, clientTags, ensure, upsertSession, trackEvent, attribute, onPaid, sendConversions,
+  CONNECTIONS, clientTags, idDaRede, ensure, upsertSession, trackEvent, attribute, onPaid, sendConversions,
   adSpend,
   syncMetaAds, dashboard, campaignReport, funnel, compare, customerTimeline, alerts, overview
 };

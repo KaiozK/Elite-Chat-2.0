@@ -329,18 +329,43 @@ app.get('/l/:slug', (req, res) => {
   // Tags de navegador ligadas em Tracking (LinkedIn, UET, Snapchat, Pinterest,
   // GTM, Meta Pixel, Google Ads). Sem elas o clique não seria registrado nessas
   // plataformas, mesmo com o ID preenchido no painel.
+  // Meta, Google e TikTok saem FORA daqui: esta página monta as três logo
+  // abaixo com evento e parâmetros próprios (LinkClick, slug, valor). Pedi-las
+  // também a `clientTags` — que desde a unificação enxerga a tela Pixels —
+  // faria o mesmo PageView ser contado duas vezes.
   let tags = '';
-  try { tags = require('./src/tracking').clientTags(acc, { event: link.event || 'PageView' }); } catch {}
-  if (!pixels.length && !tags) return res.redirect(302, dest);
+  try {
+    tags = require('./src/tracking').clientTags(acc, {
+      event: link.event || 'PageView',
+      exceto: ['meta_pixel', 'google_ads', 'tiktok']
+    });
+  } catch {}
 
   // Mesmo cuidado das tags de Tracking: JSON.stringify NAO escapa "</script>",
   // entao um pixelId com HTML fecharia a tag e injetaria script nesta pagina
   // publica. Filtramos para alfanumerico e escapamos "<" no serializador.
   const idOk = v => String(v || '').replace(/[^\w.:-]/g, '').slice(0, 64);
   const js = v => JSON.stringify(v === undefined ? '' : v).replace(/</g, '\\u003c');
-  const metas = pixels.filter(p => p.type === 'meta');
-  const gtags = pixels.filter(p => p.type === 'gtag');
-  const ttks = pixels.filter(p => p.type === 'tiktok');
+  // AS TRÊS REDES VÊM DAS DUAS TELAS, sem repetir. Antes esta página lia só
+  // `acc.pixels`: quem tinha cadastrado o pixel em Tracking → Conexões via o
+  // link rastreável não disparar nada. Agora a lista é a união das duas, e o
+  // `Set` garante que o mesmo ID cadastrado nos dois lugares dispare uma vez.
+  const idsDe = (tipo, chave) => {
+    const lista = pixels.filter(p => p.type === tipo).map(p => idOk(p.pixelId));
+    let doTrk = '';
+    try { doTrk = require('./src/tracking').idDaRede(acc, chave); } catch {}
+    if (doTrk) lista.push(doTrk);
+    return [...new Set(lista.filter(Boolean))];
+  };
+  const metas = idsDe('meta', 'meta_pixel');
+  const gtags = idsDe('gtag', 'google_ads');
+  const ttks = idsDe('tiktok', 'tiktok');
+  // SEM PIXEL NENHUM, REDIRECIONA SECO. A página intersticial existe só para
+  // dar tempo de a tag disparar; sem tag ela seria meio segundo de espera em
+  // troca de nada. A conferência desceu para cá porque agora depende da união
+  // das duas telas, e não mais só de `acc.pixels`.
+  if (!metas.length && !gtags.length && !ttks.length && !tags) return res.redirect(302, dest);
+
   const ev = link.event || 'PageView';
   const val = link.value ? { value: Number(link.value), currency: link.currency || 'BRL' } : {};
   const evParams = { slug: link.slug, title: link.title || '', ...val };
@@ -353,9 +378,9 @@ app.get('/l/:slug', (req, res) => {
 <title>Redirecionando…</title>
 <meta http-equiv="refresh" content="2;url=${destAttr}">
 ${tags}
-${metas.length ? `<script>!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');${metas.map(p => `fbq('init',${js(idOk(p.pixelId))});`).join('')}fbq('track',${js(ev)},${JSON.stringify(val).replace(/</g,"\u003c")});fbq('trackCustom','LinkClick',${JSON.stringify(evParams).replace(/</g,"\u003c")});</script><noscript>${metas.map(p => `<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${encodeURIComponent(idOk(p.pixelId))}&ev=${encodeURIComponent(ev)}&noscript=1">`).join('')}</noscript>` : ''}
-${gtags.length ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(idOk(gtags[0].pixelId))}"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());${gtags.map(p => `gtag('config',${js(idOk(p.pixelId))});`).join('')}gtag('event',${js(ev.toLowerCase())},{link_slug:${js(link.slug)}${gaVal}});</script>` : ''}
-${ttks.length ? `<script>!function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie"];ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.load=function(e,n){var i="https://analytics.tiktok.com/i18n/pixel/events.js";ttq._i=ttq._i||{};ttq._i[e]=[];ttq._i[e]._u=i;ttq._t=ttq._t||{};ttq._t[e]=+new Date;ttq._o=ttq._o||{};ttq._o[e]=n||{};var o=document.createElement("script");o.type="text/javascript";o.async=!0;o.src=i+"?sdkid="+e+"&lib="+t;var a=document.getElementsByTagName("script")[0];a.parentNode.insertBefore(o,a)};${ttks.map(p => `ttq.load(${js(idOk(p.pixelId))});`).join('')}ttq.page();ttq.track(${js(ev)});}(window,document,'ttq');</script>` : ''}
+${metas.length ? `<script>!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');${metas.map(id => `fbq('init',${js(id)});`).join('')}fbq('track',${js(ev)},${JSON.stringify(val).replace(/</g,"\u003c")});fbq('trackCustom','LinkClick',${JSON.stringify(evParams).replace(/</g,"\u003c")});</script><noscript>${metas.map(id => `<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${encodeURIComponent(id)}&ev=${encodeURIComponent(ev)}&noscript=1">`).join('')}</noscript>` : ''}
+${gtags.length ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gtags[0])}"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());${gtags.map(id => `gtag('config',${js(id)});`).join('')}gtag('event',${js(ev.toLowerCase())},{link_slug:${js(link.slug)}${gaVal}});</script>` : ''}
+${ttks.length ? `<script>!function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie"];ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.load=function(e,n){var i="https://analytics.tiktok.com/i18n/pixel/events.js";ttq._i=ttq._i||{};ttq._i[e]=[];ttq._i[e]._u=i;ttq._t=ttq._t||{};ttq._t[e]=+new Date;ttq._o=ttq._o||{};ttq._o[e]=n||{};var o=document.createElement("script");o.type="text/javascript";o.async=!0;o.src=i+"?sdkid="+e+"&lib="+t;var a=document.getElementsByTagName("script")[0];a.parentNode.insertBefore(o,a)};${ttks.map(id => `ttq.load(${js(id)});`).join('')}ttq.page();ttq.track(${js(ev)});}(window,document,'ttq');</script>` : ''}
 <style>body{font-family:'Segoe UI',system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f7faf6;color:#0f1f15}div{text-align:center}.sp{width:34px;height:34px;border:3px solid #d7eee3;border-top-color:#10b981;border-radius:50%;margin:0 auto 14px;animation:r .8s linear infinite}@keyframes r{to{transform:rotate(360deg)}}</style>
 </head><body><div><div class="sp"></div><b>Redirecionando…</b></div>
 <script>setTimeout(function(){window.location.replace(${destJson})},700);</script>
@@ -513,6 +538,31 @@ function buildSeoHead(seo, origin) {
   t.push(`<meta name="twitter:description" content="${seoEsc(ogDesc)}">`);
   t.push(`<meta name="twitter:image" content="${seoEsc(ogImg)}">`);
   if (seo.gaId) t.push(`<script async src="https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(seo.gaId)}"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config',${JSON.stringify(seo.gaId)});</script>`);
+  // -------------------------------------------------------------------------
+  // PIXEL DA PLATAFORMA NA VITRINE
+  //
+  // Faltava justamente o que mede o tráfego que TRAZ cliente: a vitrine tinha
+  // SEO e `gaId`, e nada da Meta ou do TikTok. Quem anunciava o Koonfy não
+  // tinha como saber qual anúncio virou cadastro.
+  //
+  // Isto é da PLATAFORMA, e não de nenhuma conta: é o pixel do dono, na página
+  // pública. O pixel de cada lojista continua morando na conta dele e vale nos
+  // links e no checkout dele.
+  //
+  // O mesmo cuidado de sempre com o ID: ele entra dentro de um `<script>` numa
+  // página pública, e `JSON.stringify` não escapa `</script>`.
+  const idLimpo = v => String(v || '').replace(/[^\w.:-]/g, '').slice(0, 64);
+  const jsId = v => JSON.stringify(idLimpo(v)).replace(/</g, '\\u003c');
+
+  const fb = idLimpo(seo.metaPixel);
+  if (fb) t.push(`<script>!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init',${jsId(fb)});fbq('track','PageView');</script><noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${encodeURIComponent(fb)}&ev=PageView&noscript=1"></noscript>`);
+
+  const tt = idLimpo(seo.tiktokPixel);
+  if (tt) t.push(`<script>!function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie"];ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.load=function(e,n){var i="https://analytics.tiktok.com/i18n/pixel/events.js";ttq._i=ttq._i||{};ttq._i[e]=[];ttq._i[e]._u=i;ttq._t=ttq._t||{};ttq._t[e]=+new Date;ttq._o=ttq._o||{};ttq._o[e]=n||{};var o=d.createElement("script");o.type="text/javascript";o.async=!0;o.src=i+"?sdkid="+e+"&lib="+t;var a=d.getElementsByTagName("script")[0];a.parentNode.insertBefore(o,a)};ttq.load(${jsId(tt)});ttq.page();}(window,document,'ttq');</script>`);
+
+  const gtm = idLimpo(seo.gtmId);
+  if (gtm) t.push(`<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s);j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer',${jsId(gtm)});</script>`);
+
   if (seo.extraHead) t.push(seo.extraHead);
   return '\n<!-- SEO Koonfy -->\n' + t.join('\n') + '\n';
 }

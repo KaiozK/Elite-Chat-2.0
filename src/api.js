@@ -5802,6 +5802,13 @@ module.exports = function (broadcast, clients) {
       author: str('author', 120),
       robots: str('robots', 60),
       gaId: str('gaId', 40),
+      // PIXEL DA PLATAFORMA — o tráfego que traz CLIENTE para o Koonfy, e não
+      // o de nenhum lojista. Sem isto, só dava para medir a vitrine colando
+      // script cru em `extraHead`, que é onde um erro de digitação derruba a
+      // página inteira.
+      metaPixel: str('metaPixel', 40),
+      tiktokPixel: str('tiktokPixel', 40),
+      gtmId: str('gtmId', 40),
       extraHead: str('extraHead', 4000)
     };
     db.save();
