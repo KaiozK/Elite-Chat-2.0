@@ -16685,6 +16685,11 @@ function fbSetNode(id, k, v) {
   // Digitar uma URL num nó que já tem botões cria o conflito no ato; aqui ele
   // se desfaz no ato também, antes de virar dado gravado.
   if ((k === 'url' || k === 'urlText') && fbAutoResolver(id)) return;
+  // Apagar a URL à mão também desfaz o conflito, e aí o desfazer automático
+  // não tem o que fazer e devolve false. O card precisa ser redesenhado mesmo
+  // assim: é o render que decide a borda vermelha, e sem ele a marca fica na
+  // tela depois de o problema ter sido resolvido.
+  if (k === 'url' || k === 'urlText') renderNodes();
   refreshPreview(id); if (k === 'field' || k === 'op' || k === 'kind') renderInspector(); scheduleSave();
 }
 function fbSetBtn(id, i, v) {
@@ -16696,7 +16701,14 @@ function fbBtnMode(id, mode) {
   const n = nodeById(id);
   if (mode === 'url') { if (!n.url) n.url = 'https://'; if (!n.urlText) n.urlText = 'Abrir link'; }
   else { n.url = ''; n.urlText = ''; }
-  renderInspector(); refreshPreview(id); scheduleSave();
+  // Trocar de modo muda o conflito nos DOIS sentidos, e a borda vermelha do
+  // card é decidida na hora de desenhar. Sem redesenhar, quem volta para o
+  // modo botões limpa a URL — o conflito acaba — e continua vendo o card
+  // marcado em vermelho, como se o problema não tivesse sido resolvido.
+  // Ir para o modo link num nó que já tem botões cria o conflito no ato; o
+  // desfazer automático trata isso antes de virar dado gravado.
+  if (fbAutoResolver(id)) return;
+  renderInspector(); renderNodes(); renderEdges(); refreshPreview(id); scheduleSave();
 }
 function fbSetItem(id, i, v) { nodeById(id).items[i].title = v; renderNodes(); renderEdges(); refreshPreview(id); scheduleSave(); }
 function fbSetHdr(id, i, k, v) { nodeById(id).headers[i][k] = v; scheduleSave(); }
