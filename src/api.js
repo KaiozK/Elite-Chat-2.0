@@ -7302,7 +7302,18 @@ module.exports = function (broadcast, clients) {
     // blocos opcionais
     const str = (v, n) => typeof v === 'string' ? v.slice(0, n) : undefined;
     if (b.timer && typeof b.timer === 'object') {
-      ck.timer = { on: !!b.timer.on, minutes: Math.max(1, Math.min(1440, +b.timer.minutes || 15)), text: str(b.timer.text, 120) || ck.timer.text || '' };
+      // A COR VAI PARAR NUM ATRIBUTO `style` do checkout público. Só hexadecimal
+      // de 6 dígitos entra; qualquer outra coisa vira vazio, e vazio quer dizer
+      // "usa o acento do checkout" — que é o que todo mundo via antes de o
+      // campo existir.
+      const cor = typeof b.timer.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(b.timer.color.trim())
+        ? b.timer.color.trim().toLowerCase() : '';
+      ck.timer = {
+        on: !!b.timer.on,
+        minutes: Math.max(1, Math.min(1440, +b.timer.minutes || 15)),
+        text: str(b.timer.text, 120) || ck.timer.text || '',
+        color: cor
+      };
     }
     if (b.benefits && typeof b.benefits === 'object') {
       ck.benefits = { on: !!b.benefits.on, title: str(b.benefits.title, 80) || '', items: (Array.isArray(b.benefits.items) ? b.benefits.items : []).slice(0, 10).map(x => String(x).slice(0, 120)) };

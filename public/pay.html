@@ -204,10 +204,67 @@
   /* ---------- blocos opcionais ---------- */
   .blk { padding: 24px 30px; }
   .blk-t { font-size: 13px; font-weight: 600; letter-spacing: -.01em; color: var(--ink); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
-  .timer { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 16px 20px; border-radius: var(--rc); background: var(--ac-fraco); border: 1px solid color-mix(in srgb, var(--ac) 30%, transparent); flex-wrap: wrap; }
-  .timer-txt { font-size: 14px; font-weight: 400; color: var(--ink); }
-  .timer-clock { display: flex; gap: 6px; }
-  .timer-clock span { background: var(--ac); color: #06301b; font-weight: 500; font-size: 16px; padding: 6px 10px; border-radius: var(--r); font-variant-numeric: tabular-nums; }
+  /* ---------------------------------------------------------------------
+     CRONÔMETRO DA OFERTA
+     `--tmr` é a cor do bloco. Ela cai no acento do lojista quando ele não
+     escolhe nenhuma, então quem não mexe continua vendo o que via.
+     --------------------------------------------------------------------- */
+  .timer {
+    --tmr: var(--ac);
+    display: flex; align-items: center; justify-content: center; gap: 16px;
+    padding: 15px 20px; border-radius: var(--rc); flex-wrap: wrap;
+    background: color-mix(in srgb, var(--tmr) 9%, transparent);
+    border: 1px solid color-mix(in srgb, var(--tmr) 28%, transparent);
+  }
+  /* O RELÓGIO ESTAVA DESALINHADO porque um `<svg>` solto dentro de texto se
+     apoia na LINHA DE BASE, e não no meio da letra — ele descia uns 2px e a
+     linha ficava torta. Com flex, ícone e texto se centram um pelo outro. */
+  .timer-txt {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 14px; font-weight: 400; color: var(--ink); line-height: 1.3;
+  }
+  .timer-txt svg { flex: none; color: var(--tmr); }
+
+  /* Antes eram dois retângulos colados, sem separador e sem rótulo: lia-se
+     como dois números soltos, e não dava para saber se "05 32" era hora e
+     minuto ou minuto e segundo. Agora cada casa diz o que é. */
+  .timer-clock { display: flex; align-items: flex-start; gap: 4px; }
+  .timer-casa {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    min-width: 46px;
+  }
+  .timer-casa b {
+    display: block; width: 100%; text-align: center;
+    background: var(--tmr); color: #fff;
+    font-weight: 600; font-size: 19px; letter-spacing: .5px;
+    padding: 7px 8px; border-radius: var(--r);
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--tmr) 40%, transparent);
+  }
+  /* MINÚSCULA, e não caixa alta. Caixa alta é o padrão em cronômetro de
+     oferta, mas esta página inteira tirou a caixa alta de propósito quando foi
+     aproximada da Stripe — deixar uma ilha dela aqui embaixo destoaria da
+     única página que o cliente lê com atenção. O espaçamento entre letras faz
+     o trabalho que a caixa alta faria: separar a unidade do número. */
+  .timer-casa i {
+    font-style: normal; font-size: 10px; font-weight: 500;
+    letter-spacing: .06em; color: var(--mut);
+  }
+  /* O separador tem de cair no MEIO DAS CASAS, e não no topo. Ele repete o
+     tamanho, a entrelinha e o recuo vertical do número (`.timer-casa b`) —
+     assim os dois montam a mesma caixa de linha e ficam centrados um pelo
+     outro. Um `padding-top` chutado desalinhava de novo a cada mudança de
+     fonte; mexeu no número, mexe aqui. */
+  .timer-sep {
+    font-size: 19px; font-weight: 600; color: var(--tmr);
+    line-height: 1.5; padding: 7px 0;
+  }
+  /* Último minuto: o cronômetro pulsa. É o único movimento da página, e só
+     acontece quando resta pouco — piscar o tempo todo vira ruído e a pessoa
+     para de ver. */
+  .timer.acabando .timer-casa b { animation: tmrPulso 1s ease-in-out infinite; }
+  @keyframes tmrPulso { 50% { opacity: .55; } }
+  @media (prefers-reduced-motion: reduce) { .timer.acabando .timer-casa b { animation: none; } }
   .notice { padding: 13px 16px; border-radius: var(--r); background: #1d1a11; border: 1px solid #4a3f1e; color: #e3c46a; font-size: 14px; display: flex; gap: 10px; align-items: flex-start; }
   .notice svg { flex: none; margin-top: 2px; }
   .benef li { list-style: none; display: flex; gap: 11px; align-items: flex-start; font-size: 14px; color: var(--mut); line-height: 1.55; margin-bottom: 10px; }
@@ -510,11 +567,18 @@
   // ---------- blocos opcionais ----------
   function blkTimer(ck) {
     var t = ck.timer || {}; if (!t.on) return '';
-    return '<div class="card"><div class="blk"><div class="timer">' +
-      '<span class="timer-txt">' + ico('clock', 14) + ' ' + esc(t.text || 'Oferta por tempo limitado!') + '</span>' +
-      '<span class="timer-clock" id="offer-clock"><span>--</span><span>--</span></span>' +
+    // A cor escolhida entra como variável do bloco. Sem escolha, `--tmr` cai no
+    // acento do lojista pelo próprio CSS, e nada muda para quem não mexeu.
+    var cor = corValida(t.color) ? ' style="--tmr:' + t.color + '"' : '';
+    return '<div class="card"><div class="blk"><div class="timer" id="offer-box"' + cor + '>' +
+      '<span class="timer-txt">' + ico('clock', 15) + '<span>' + esc(t.text || 'Oferta por tempo limitado!') + '</span></span>' +
+      '<span class="timer-clock" id="offer-clock"></span>' +
     '</div></div></div>';
   }
+  // Só cor hexadecimal, e conferida aqui porque ela vai para dentro de um
+  // atributo `style`. É o cadastro do lojista, mas um valor que atravessa sem
+  // conferência é o tipo de coisa que um dia chega por outro caminho.
+  function corValida(c) { return typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c); }
   function blkNotice(ck) {
     var n = ck.notice || {}; if (!n.on || !n.text) return '';
     return '<div class="card"><div class="blk"><div class="notice">' + ico('alert', 15) + '<span>' + esc(n.text) + '</span></div></div></div>';
@@ -628,11 +692,21 @@
     var t = ck.timer || {}; if (!t.on) return;
     var key = 'ec_offer_' + id, end = +localStorage.getItem(key);
     if (!end || end < Date.now()) { end = Date.now() + (t.minutes || 15) * 60000; try { localStorage.setItem(key, end); } catch (e) {} }
+    function casa(valor, rotulo) {
+      return '<span class="timer-casa"><b>' + String(valor).padStart(2, '0') + '</b><i>' + rotulo + '</i></span>';
+    }
     function tick() {
       var el = document.getElementById('offer-clock'); if (!el) return;
       var s = Math.max(0, Math.floor((end - Date.now()) / 1000));
-      var m = Math.floor(s / 60), ss = s % 60;
-      el.innerHTML = '<span>' + String(m).padStart(2, '0') + '</span><span>' + String(ss).padStart(2, '0') + '</span>';
+      var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60;
+      var sep = '<span class="timer-sep">:</span>';
+      // A HORA SÓ APARECE QUANDO EXISTE. Uma oferta de 15 minutos mostrando
+      // "00" de hora dá a impressão de que ainda falta muito — é o contrário do
+      // que o bloco existe para dizer. Passando de uma hora, ela entra.
+      el.innerHTML = (h > 0 ? casa(h, 'horas') + sep : '') +
+        casa(m, 'min') + sep + casa(ss, 'seg');
+      var box = document.getElementById('offer-box');
+      if (box) box.classList.toggle('acabando', s > 0 && s <= 60);
       if (s > 0) offerTimer = setTimeout(tick, 1000);
     }
     clearTimeout(offerTimer); tick();

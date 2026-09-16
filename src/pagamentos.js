@@ -426,7 +426,7 @@ function defaultCheckout() {
     supportText: '',     // rodapé: contato/suporte do vendedor
     // ---- blocos opcionais, reordenáveis por arrastar e soltar ----
     blocks: defaultBlocks(),
-    timer: { on: false, minutes: 15, text: 'Oferta por tempo limitado!' },
+    timer: { on: false, minutes: 15, text: 'Oferta por tempo limitado!', color: '' },   // color vazia = usa o acento do checkout
     benefits: { on: false, title: 'O que você recebe', items: [] },
     testimonial: { on: false, name: '', text: '', role: '' },
     guarantee: { on: false, days: 7, text: 'Garantia incondicional de {dias} dias, devolvemos 100% do valor.' },

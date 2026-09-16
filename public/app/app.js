@@ -715,6 +715,45 @@ function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// ---------------------------------------------------------------------------
+// LINK CLICÁVEL DENTRO DO BALÃO
+//
+// O WhatsApp faz isso, então quem manda um link pelo painel espera que o
+// atendente consiga abrir — e antes ele tinha que selecionar, copiar e colar na
+// barra do navegador, no meio do atendimento.
+//
+// O PERIGO AQUI É REAL, e é por isso que o formato é este. O texto da mensagem
+// vem de FORA: quem escreve é o cliente do outro lado. Escapar depois de montar
+// o HTML seria escapar as tags que acabamos de criar; não escapar seria deixar
+// alguém injetar HTML na tela do atendente mandando uma mensagem. Então o texto
+// cru NUNCA é concatenado: a função caminha pelo texto, e cada pedaço — o que é
+// link e o que não é — passa por `esc` antes de entrar.
+//
+// `javascript:` não passa por construção: a expressão só reconhece o que começa
+// com `http://`, `https://` ou `www.`, e o `href` é montado a partir disso.
+// ---------------------------------------------------------------------------
+const RE_LINK = /((?:https?:\/\/|www\.)[^\s<>"']+)/gi;
+
+function autoLink(txt) {
+  const t = String(txt ?? '');
+  let out = '', fim = 0, m;
+  RE_LINK.lastIndex = 0;
+  while ((m = RE_LINK.exec(t))) {
+    out += esc(t.slice(fim, m.index));
+    let url = m[0], sobra = '';
+    // Pontuação encostada não faz parte do endereço: "veja em site.com." abre
+    // o link com o ponto final junto e dá 404. Parêntese fecha junto porque
+    // "(veja em site.com)" é como se escreve.
+    const corte = /[.,;:!?)\]}»…]+$/.exec(url);
+    if (corte) { sobra = corte[0]; url = url.slice(0, -sobra.length); }
+    if (!url) { out += esc(m[0]); fim = m.index + m[0].length; continue; }
+    const href = /^www\./i.test(url) ? 'https://' + url : url;
+    out += `<a class="msg-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a>${esc(sobra)}`;
+    fim = m.index + m[0].length;
+  }
+  return out + esc(t.slice(fim));
+}
+
 // ---------- dropdown customizado (substitui todo <select> nativo) ----------
 // ecSelect(id, [{value,label}], value, onpick?, cls?) → HTML; leia com ecSelVal(id).
 // onpick: trecho JS executado ao escolher (variáveis disponíveis: val, id).
@@ -4679,7 +4718,7 @@ function renderMsg(m, tail = true) {
   // tocar, onda e tempo — e o <audio> real fica escondido, tocando por trás.
   else if (m.type === 'audio' && mediaSrc) content += audioBubble(m, mediaSrc);
   else if (m.type === 'document' && mediaSrc) content += `<a class="doc" href="${mediaSrc}&dl=${encodeURIComponent(m.media.filename || 'documento')}" target="_blank">${ico('file', 14)} ${esc(m.media.filename || 'Documento')}</a>`;
-  if (m.text) content += (content ? '<div>' : '') + esc(m.text) + (content.includes('<img') || content.includes('<video') || content.includes('<audio') || content.includes('doc') ? '</div>' : '');
+  if (m.text) content += (content ? '<div>' : '') + autoLink(m.text) + (content.includes('<img') || content.includes('<video') || content.includes('<audio') || content.includes('doc') ? '</div>' : '');
   if (!content) content = `<span class="muted">[${esc(m.type)}]</span>`;
   // Sem quebras de linha entre as tags: o balão usa `white-space: pre-wrap`
   // para respeitar as quebras que o cliente digitou, e com isso a indentação
@@ -17735,6 +17774,17 @@ async function epSaveCfg() {
 // ---- CHECKOUT BUILDER: página dedicada (#/pagamentos/checkout) ----
 let epkState = null;
 let epkPrevStep = 1;   // etapa exibida na prévia: 1 dados · 2 pix
+// Cores que funcionam num cronômetro: quentes e de alerta, que é o que o bloco
+// quer dizer. Verde e azul vão junto porque nem toda oferta é urgência gritada —
+// há quem só queira que o número combine com a marca.
+const EPK_TIMER_CORES = ['#ef4444', '#f97316', '#f59e0b', '#e11d48', '#8b5cf6', '#0ea5e9', '#10b981', '#1a2233'];
+
+function epkTimerCor(c) {
+  epkState.timer.color = /^#[0-9a-f]{6}$/i.test(c) ? c.toLowerCase() : '';
+  epkPaintSide();      // repinta os swatches para o marcado acompanhar
+  epkPrev();
+}
+
 const EPK_COLORS = ['#2ed378', '#2563eb', '#7c3aed', '#db2777', '#ea580c', '#0891b2', '#111827'];
 
 async function renderCheckoutBuilder() {
@@ -17764,7 +17814,7 @@ async function renderCheckoutBuilder() {
     // vende: o escuro é bonito num infoproduto e péssimo numa loja infantil.
     tema: ck.tema === 'claro' ? 'claro' : 'escuro',
     blocks: (ck.blocks && ck.blocks.length) ? ck.blocks.slice() : EPK_BLOCK_KEYS.slice(),
-    timer: Object.assign({ on: false, minutes: 15, text: 'Oferta por tempo limitado!' }, ck.timer || {}),
+    timer: Object.assign({ on: false, minutes: 15, text: 'Oferta por tempo limitado!', color: '' }, ck.timer || {}),
     benefits: Object.assign({ on: false, title: 'O que você recebe', items: [] }, ck.benefits || {}),
     testimonial: Object.assign({ on: false, name: '', role: '', text: '' }, ck.testimonial || {}),
     guarantee: Object.assign({ on: false, days: 7, text: 'Garantia incondicional de {dias} dias, devolvemos 100% do valor.' }, ck.guarantee || {}),
@@ -17931,7 +17981,22 @@ function epkPaintForm() {
         <input maxlength="120" value="${esc(ck.timer.text)}" placeholder="Oferta por tempo limitado!" oninput="epkState.timer.text=this.value;epkPrev()"></label>
       <label style="margin-top:10px;display:block">Duração (minutos)
         <input type="number" min="1" max="1440" value="${ck.timer.minutes}" oninput="epkState.timer.minutes=+this.value||15;epkPrev()"></label>
-      <p class="hint" style="margin-top:12px">A contagem começa quando o cliente abre a página e continua se ele recarregar.</p>`;
+
+      <span class="fb-sub" style="margin-top:18px;display:block">Cor do cronômetro</span>
+      <p class="muted" style="font-size:13px;margin:0 0 10px">Vale para os números, o relógio e a moldura do bloco.
+        Sem escolher, ele segue a <b>cor de destaque</b> do checkout.</p>
+      <div class="epk-colors">
+        <!-- "Usar a cor de destaque" é uma opção de verdade, e não a ausência
+             de escolha: sem ela, quem experimentasse uma cor não teria como
+             voltar atrás a não ser acertando o mesmo hexadecimal no olho. -->
+        <button class="epk-swatch epk-swatch-auto${ck.timer.color ? '' : ' on'}" title="Usar a cor de destaque"
+                onclick="epkTimerCor('')">${ico('slash', 13)}</button>
+        ${EPK_TIMER_CORES.map(c => `<button class="epk-swatch${c === ck.timer.color ? ' on' : ''}" data-c="${c}" style="background:${c}" onclick="epkTimerCor('${c}')"></button>`).join('')}
+        <input type="color" value="${esc(ck.timer.color || ck.color || '#10b981')}" title="Cor personalizada" oninput="epkTimerCor(this.value)">
+      </div>
+
+      <p class="hint" style="margin-top:14px">A contagem começa quando o cliente abre a página e continua se ele recarregar.
+        No último minuto os números pulsam.</p>`;
   } else if (epkSection === 'benefits') {
     body = `
       <label class="chk"><input type="checkbox" ${ck.benefits.on ? 'checked' : ''} onchange="epkState.benefits.on=this.checked;epkPrev()"> Exibir lista de vantagens</label>
@@ -18332,8 +18397,21 @@ function epkPrev() {
   const step2cta = `<div class="epk2-wait"><i></i> Aguardando pagamento</div>`;
 
   // ---- blocos opcionais na prévia (mesma ordem/regras da página real) ----
-  const bTimer = () => s.timer.on ? `<div class="epk2-blk epk2-timer">${ico('clock', 11)} ${esc(s.timer.text || 'Oferta por tempo limitado!')}
-      <span class="epk2-clock"><i>${String(s.timer.minutes || 15).padStart(2, '0')}</i><i>00</i></span></div>` : '';
+  // A prévia mostra a MESMA coisa que o checkout: cor escolhida, separador e
+  // rótulos. Uma prévia que não parece o resultado é pior que prévia nenhuma —
+  // a pessoa escolhe achando que vai sair diferente.
+  const bTimer = () => {
+    if (!s.timer.on) return '';
+    const cor = /^#[0-9a-f]{6}$/i.test(s.timer.color || '') ? ` style="--tmr:${s.timer.color}"` : '';
+    const casa = (v, r) => `<i><b>${String(v).padStart(2, '0')}</b><em>${r}</em></i>`;
+    // A DURAÇÃO VIRA HORA QUANDO PASSA DE 60, igual ao checkout. Mostrar
+    // "75 MIN" aqui e "01:14:56" lá faria a pessoa achar que configurou errado.
+    const min = Math.max(1, s.timer.minutes || 15);
+    const h = Math.floor(min / 60), m = min % 60;
+    const sep = '<s>:</s>';
+    return `<div class="epk2-blk epk2-timer"${cor}>${ico('clock', 11)} ${esc(s.timer.text || 'Oferta por tempo limitado!')}
+      <span class="epk2-clock">${h > 0 ? casa(h, 'horas') + sep : ''}${casa(m, 'min')}${sep}${casa(0, 'seg')}</span></div>`;
+  };
   const bNotice = () => (s.notice.on && s.notice.text) ? `<div class="epk2-blk epk2-notice">${ico('help', 11)} ${esc(s.notice.text)}</div>` : '';
   const bBenef = () => (s.benefits.on && s.benefits.items.filter(Boolean).length)
     ? `<div class="epk2-blk"><b class="epk2-blkt">${esc(s.benefits.title || 'O que você recebe')}</b>

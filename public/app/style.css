@@ -704,6 +704,19 @@ tbody tr:last-child td { border-bottom: none; }
 .msg .doc { display: inline-flex; gap: 8px; align-items: center; font-weight: 500; }
 .msg.tail { margin-bottom: 7px; }
 .msg:not(.tail) .meta { display: none; }
+/* ---- LINK DENTRO DO BALÃO ----
+   Sublinhado, e não só colorido: no balão verde de saída a cor sozinha quase
+   não separa o link do texto, e quem enxerga pouca diferença de tom não veria
+   que ali tem algo para clicar. O `break-word` é o que impede um link longo de
+   esticar o balão até estourar a largura da conversa. */
+.msg-link {
+  color: var(--verde-deep); text-decoration: underline;
+  text-underline-offset: 2px; word-break: break-word;
+}
+.msg-link:hover { text-decoration-thickness: 2px; }
+.msg.out .msg-link { color: #065f46; }
+:root[data-theme="dark"] .msg-link { color: var(--verde-esc); }
+
 .msg.in:not(.tail) { border-bottom-left-radius: 14px; }
 .msg.out:not(.tail) { border-bottom-right-radius: 14px; }
 
@@ -3502,10 +3515,26 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .epk2-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .epk2-blk { background: #fff; border: 1px solid #e7eaf0; border-radius: 10px; padding: 9px 11px; font-size: 9px; color: #4a5468; line-height: 1.5; }
 .epk2-blkt { display: block; font-size: 10px; font-weight: 500; color: #1a2233; margin-bottom: 6px; }
-.epk2-timer { display: flex; align-items: center; justify-content: center; gap: 7px; font-weight: 600; color: #33405c;
-  background: color-mix(in srgb, var(--epkc, #2ed378) 8%, #fff); border-color: color-mix(in srgb, var(--epkc, #2ed378) 25%, #fff); }
-.epk2-clock { display: flex; gap: 3px; }
-.epk2-clock i { background: #1a2233; color: #fff; font-style: normal; font-weight: 500; padding: 2px 5px; border-radius: 4px; font-size: 9px; }
+/* `--tmr` cai em `--epkc` (a cor de destaque do checkout) quando o lojista não
+   escolheu cor para o cronômetro — o mesmo encadeamento do checkout público,
+   para a prévia não mentir. */
+.epk2-timer { --tmr: var(--epkc, #2ed378);
+  display: flex; align-items: center; justify-content: center; gap: 7px; font-weight: 600; color: #33405c;
+  background: color-mix(in srgb, var(--tmr) 8%, #fff); border-color: color-mix(in srgb, var(--tmr) 25%, #fff); }
+.epk2-timer svg { color: var(--tmr); flex: none; }
+.epk2-clock { display: flex; align-items: flex-start; gap: 2px; }
+.epk2-clock i { display: flex; flex-direction: column; align-items: center; gap: 1px; font-style: normal; }
+.epk2-clock i b { background: var(--tmr); color: #fff; font-weight: 600; padding: 2px 5px; border-radius: 4px; font-size: 9px; min-width: 20px; text-align: center; }
+.epk2-clock i em { font-style: normal; font-size: 6px; letter-spacing: .05em; color: #8b93a3; }
+.epk2-clock s { text-decoration: none; color: var(--tmr); font-weight: 600; font-size: 9px; padding-top: 2px; }
+
+/* O swatch "usar a cor de destaque": xadrez claro para dizer "nenhuma cor
+   própria", com o ícone por cima. Sem ele a única forma de desfazer uma cor
+   escolhida seria acertar o hexadecimal da marca no olho. */
+.epk-swatch-auto {
+  display: inline-flex; align-items: center; justify-content: center; color: #6b7280;
+  background: repeating-conic-gradient(#e9edf2 0% 25%, #fff 0% 50%) 50% / 9px 9px;
+}
 .epk2-notice { background: #fff8e6; border-color: #f5e2b0; color: #8a6412; display: flex; gap: 6px; align-items: flex-start; }
 .epk2-bitem { display: flex; gap: 6px; align-items: flex-start; margin-bottom: 4px; }
 .epk2-bitem svg { color: var(--epkc, #2ed378); flex: none; margin-top: 1px; }
