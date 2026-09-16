@@ -100,6 +100,17 @@ const fs = require('fs');
   ok(/\.fb-edge \{ fill: none; stroke: var\(--verde-esc\)/.test(css),
      'a linha já traçada continua no mesmo verde — que é o mesmo valor');
 
+  console.log('\n=== 6b. O anel de erro APAGA quando o erro acaba ===');
+  // Ele é posto em `renderNodes`, que repinta o nó inteiro. Mas apagar a URL à
+  // mão passa por `refreshPreview`, que troca só o balão: o botão de link sumia
+  // da bolha e a moldura vermelha continuava acesa num nó já correto. Quem
+  // repinta o conteúdo tem de repintar o diagnóstico junto, senão divergem.
+  const rp = js.slice(js.indexOf('function refreshPreview'), js.indexOf('function fbSetNode'));
+  ok(/card\.classList\.toggle\('tem-erro', !!fbConflito\(n\)\)/.test(rp),
+     'repintar o balão reavalia o anel');
+  ok(rp.indexOf("classList.toggle('tem-erro'") < rp.indexOf('alvo.outerHTML'),
+     'e faz isso ANTES de trocar o conteúdo — depois de `outerHTML` a referência ao card ainda vale, mas a ordem deixa claro que uma coisa não depende da outra');
+
   console.log('\n=== 7. A lixeira cabe dentro do card ===');
   // Os quatro botões somavam mais que a largura e nenhum encolhia: `flex: 1`
   // cresce, mas sem `min-width: 0` o item nunca fica menor que o conteúdo, e a

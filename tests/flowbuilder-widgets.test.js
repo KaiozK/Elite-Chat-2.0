@@ -81,7 +81,10 @@ const fs = require('fs');
   console.log('\n=== 6. Editar um nó repinta o balão inteiro ===');
   // `refreshPreview` trocava só o texto do resumo. Com o balão, trocar texto
   // sem trocar os botões deixaria o card mentindo até o próximo redesenho.
-  const rp = app.slice(app.indexOf('function refreshPreview('), app.indexOf('function refreshPreview(') + 700);
+  // Fatia até a PRÓXIMA função, e não por contagem de caracteres: um comentário
+  // novo dentro de `refreshPreview` empurrava a linha para fora da janela de
+  // 700 e o teste passava a falhar por causa do próprio comentário.
+  const rp = app.slice(app.indexOf('function refreshPreview('), app.indexOf('function fbSetNode('));
   ok(/alvo\.outerHTML = novo/.test(rp), 'o bloco inteiro é substituído, não só o texto');
   ok(/\.fb-wa, \.fb-n-prev/.test(rp), 'achando tanto o balão quanto o resumo');
 

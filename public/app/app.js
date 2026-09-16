@@ -16676,6 +16676,13 @@ function nodeInspector(n) {
 function refreshPreview(id) {
   const card = $(`.fb-n[data-id="${id}"]`); if (!card) return;
   const n = nodeById(id); if (!n) return;
+  // O ANEL DE ERRO ACOMPANHA O CONTEÚDO, e precisa ser reavaliado AQUI.
+  //
+  // Ele é posto em `renderNodes`, que repinta o nó inteiro. Mas apagar a URL à
+  // mão passa por este caminho, que troca só o balão: o botão de link sumia da
+  // bolha — e a moldura vermelha continuava acesa num nó que já estava correto.
+  // Quem repinta o conteúdo repinta o diagnóstico junto; senão eles divergem.
+  card.classList.toggle('tem-erro', !!fbConflito(n));
   const alvo = card.querySelector('.fb-wa, .fb-n-prev'); if (!alvo) return;
   const novo = fbBolha(n) || `<div class="fb-n-prev">${esc(nodeSummary(n))}</div>`;
   alvo.outerHTML = novo;
