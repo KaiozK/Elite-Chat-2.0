@@ -45,6 +45,10 @@ const DRIVERS = {
     // até o cliente se identificar no checkout, em vez de tentar gerar sem os
     // dados e falhar. Ver `criarCobrancaNoGateway` e `identifyPayer`.
     requiresPayer: true,
+    // PAGAMENTO DE SAQUE PELA API: a Simplify não tem. O dinheiro fica na conta
+    // da plataforma e o repasse é feito no painel dela, à mão. Por isso `''`:
+    // o saque aqui nasce sempre como pedido, para o admin pagar.
+    payout: '',
 
     async createSubaccount({ name, pixKey }) {
       return { gatewayId: pixKey || name, raw: { local: true } };
@@ -64,8 +68,11 @@ const DRIVERS = {
         external_id: correlationID,
         payer
       };
+      // A URL DE RETORNO VAI ASSINADA. O `?t=` é o que prova, quando o aviso
+      // voltar, que quem postou foi a Simplify e não alguém que descobriu o
+      // `external_id` — ver o comentário em `simplify.webhookToken`.
       const url = webhookUrlPublica('/simplify-webhook');
-      if (url) body.webhookURL = url;
+      if (url) body.webhookURL = url + '?t=' + encodeURIComponent(simplify.webhookToken());
 
       // -------------------------------------------------------------------
       // A TAXA DA PLATAFORMA **NÃO** SAI COMO SPLIT AQUI. Isto é importante.
@@ -123,6 +130,11 @@ const DRIVERS = {
   woovi: {
     id: 'woovi',
     label: 'Woovi (OpenPix)',
+    // 'total' e não `true` de propósito: o endpoint de saque da Woovi NÃO
+    // recebe valor — ele ESVAZIA a subconta inteira. Quem chama precisa saber
+    // disso, porque sacar "um pedaço" não existe: ou sai tudo, ou nada sai.
+    // Ver `podeSaqueAuto`, que é onde essa limitação vira regra.
+    payout: 'total',
     configured: () => woovi.configured(),
     async createSubaccount({ name, pixKey }) {
       const d = await woovi.call('POST', '/api/v1/subaccount', { name, pixKey });
@@ -816,6 +828,101 @@ function refundWithdraw(acc, wd) {
   });
   db.save();
   return { ok: true, valor, fromCard: Number(wd.fromCard) || 0 };
+}
+
+// ---------------------------------------------------------------------------
+// SAQUE AUTOMÁTICO — quando o Koonfy pode pagar sozinho, sem passar pelo admin
+//
+// A vontade é simples ("o saque deve ser automático"), mas o que o gateway
+// oferece não é. Vale a pena escrever aqui, porque cada condição abaixo é uma
+// forma concreta de mandar dinheiro errado para fora:
+//
+//  1. SÓ A WOOVI PAGA POR API. A Simplify não tem endpoint de repasse — o
+//     dinheiro dela cai na conta da plataforma e sai pelo painel dela.
+//
+//  2. O SAQUE DA WOOVI NÃO TEM VALOR. `POST /subaccount/{chave}/withdraw` vai
+//     com corpo VAZIO: ele esvazia a subconta inteira, e não existe "sacar
+//     R$ 50 dos R$ 300". Então automático só quando o pedido é exatamente o
+//     saldo que está lá — qualquer outro valor vira pedido para o admin.
+//
+//  3. SÓ SAI O QUE ESTÁ NA SUBCONTA. Dinheiro de CARTÃO não passa pela Woovi
+//     (vai pela Pagar.me/Asaas), e recarga e comissão de afiliado são crédito
+//     do nosso livro, não saldo lá. Por isso conferimos o saldo REAL na Woovi
+//     antes, em vez de confiar no nosso número.
+//
+//  4. TAXA DE SAQUE (PIX Out) NÃO CABE NUM SAQUE TOTAL. Se a plataforma retém
+//     3% do saque, esvaziar a subconta entrega 100% ao lojista e a taxa fica
+//     só no nosso livro — dinheiro que sai e não volta. Com taxa > 0, manual.
+//
+//  5. A TAXA DE VENDA (PIX In) PRECISA JÁ TER SAÍDO. Sem `splitPixKey`, o
+//     valor cheio da venda fica na subconta do lojista e a parte da plataforma
+//     é só um número nosso. Esvaziar ali entregaria a ele a comissão da casa.
+//     Com split configurado (ou taxa zero), a subconta só tem o que é dele.
+//
+// Nada disso bloqueia o saque: o que não puder ser automático nasce `pending`
+// e o admin paga em Admin SaaS, Saques — exatamente como era antes.
+// ---------------------------------------------------------------------------
+
+// Parte SÍNCRONA da decisão: o que dá para saber sem falar com o gateway.
+// Devolve `{ pode, motivo }`; `motivo` é uma chave curta, e quem mostra na tela
+// é quem escreve a frase (a API traduz em `MOTIVO_SAQUE`).
+function podeSaqueAuto(acc, valorCents, f) {
+  const cfg = platformCfg();
+  if (gateway().payout !== 'total') return { pode: false, motivo: 'gateway' };
+  const ep = ensure(acc);
+  const sub = ep.subaccount;
+  if (!sub || !sub.pixKey || sub.status !== 'active') return { pode: false, motivo: 'subconta' };
+  if ((f.fromCard || 0) > 0) return { pode: false, motivo: 'cartao' };
+  if ((f.fee || 0) > 0) return { pode: false, motivo: 'taxa' };
+  if (!cfg.splitPixKey && (Number(cfg.feeInPercent) || 0) > 0) return { pode: false, motivo: 'split' };
+  return { pode: true, motivo: '', pixKey: sub.pixKey };
+}
+
+// Parte de REDE: confere o saldo lá e, se bater com o pedido, manda pagar.
+//
+// Nunca devolve o dinheiro para a carteira em caso de erro — e isso é
+// deliberado. Um `POST` que estourou o tempo pode ter sido executado do outro
+// lado; recreditar por conta própria correria o risco de pagar duas vezes. O
+// pedido fica `pending`, visível para o admin, que confere e conclui.
+async function pagarSaqueAuto(acc, wd) {
+  if (wd.paidAt) return { pago: false, motivo: 'ja_pago' };        // idempotente
+  const f = { fromCard: wd.fromCard || 0, fee: wd.fee || 0 };
+  const chk = podeSaqueAuto(acc, wd.amount, f);
+  if (!chk.pode) return { pago: false, motivo: chk.motivo };
+
+  // O DESTINO É A CHAVE CADASTRADA, NUNCA A DIGITADA.
+  //
+  // O saque da Woovi manda para a chave da SUBCONTA — o que o usuário digitou
+  // no formulário não influencia para onde o dinheiro vai. Duas coisas ruins
+  // saem disso se não conferirmos: o recibo diria uma chave e o dinheiro teria
+  // ido para outra, e alguém pedindo saque para a chave de um terceiro (o caso
+  // da comissão de afiliado, onde digitar é permitido) receberia na própria
+  // conta sem entender por quê. Divergiu, vira pedido para o admin resolver.
+  const igual = a => String(a || '').trim().toLowerCase();
+  if (wd.pixKey && igual(wd.pixKey) !== igual(chk.pixKey)) {
+    return { pago: false, motivo: 'chave' };
+  }
+
+  let saldo = null;
+  try { saldo = await gateway().getSubBalance(chk.pixKey); }
+  catch { saldo = null; }
+  // `null` é "não sei", e não "zero": sem saber o saldo não dá para garantir
+  // que o esvaziamento corresponde ao pedido.
+  if (saldo === null || saldo === undefined) return { pago: false, motivo: 'saldo_desconhecido' };
+  if (Math.round(Number(saldo)) !== Math.round(Number(wd.amount))) {
+    return { pago: false, motivo: 'parcial', saldoGateway: Math.round(Number(saldo)) };
+  }
+
+  let tx;
+  try { tx = await gateway().withdraw(chk.pixKey); }
+  catch (e) { return { pago: false, motivo: 'falhou', erro: e.message || String(e) }; }
+
+  wd.status = 'paid';
+  wd.paidAt = Date.now();
+  wd.auto = true;
+  wd.gatewayTx = (tx && (tx.transactionID || tx.id || tx.endToEndId)) || '';
+  db.save();
+  return { pago: true, tx: wd.gatewayTx };
 }
 
 // ---------------------------------------------------------------------------
@@ -2628,6 +2735,12 @@ module.exports = {
   cardAccount, cardAccountView, cardCapability, cardReady, registerCardAccount, syncCardAccount,
   creditCardSale, creditPixSale, reverterVenda,
   releaseFor, releaseReceivables, spendWallet, computeSplit, computeWithdrawFee, debitWithdraw, refundWithdraw,
+  podeSaqueAuto, pagarSaqueAuto,
+  // Os drivers em si, para o teste do dinheiro poder trocar a Woovi por uma de
+  // mentira e PROVAR o comportamento do saque automático — em vez de ler o
+  // código e torcer. Nada no app usa isto: quem precisa de um driver chama
+  // `gateway()`, que respeita o adquirente escolhido pelo admin.
+  drivers: () => DRIVERS,
   cardWebhookHandler, cardWebhookToken,
   DRIVERS
 };

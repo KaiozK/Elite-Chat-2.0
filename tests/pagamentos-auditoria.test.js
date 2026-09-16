@@ -130,7 +130,12 @@ const conta = (nome, email) => { const a = db.newAccount({ name: nome, email, pa
                       "router.post('/wallet/withdraw', auth, ownerOnly",
                       "router.get('/wallet/summary', auth, ownerOnly",
                       "router.get('/wallet/withdraw/quote', auth, ownerOnly",
-                      "router.get('/pagamentos/saldo', auth, ownerOnly"]) {
+                      "router.get('/pagamentos/saldo', auth, ownerOnly",
+                      // Onde o dinheiro do CARTÃO cai é a mesma conversa: com
+                      // o cadastro ainda pendente, quem chamasse o POST podia
+                      // pôr o próprio banco no lugar do da empresa.
+                      "router.get('/pagamentos/card-account', auth, ownerOnly",
+                      "router.post('/pagamentos/card-account', auth, ownerOnly"]) {
     ok(api.includes(rota), rota.replace('router.', '').replace(', auth, ownerOnly', '') + ' exige ser o titular');
   }
 

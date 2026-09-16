@@ -93,7 +93,14 @@ global.fetch = async (u, o) => {
   ok(c.corpo.amount === 100.5, `valor convertido para reais: ${c.corpo.amount}`);
   ok(c.corpo.external_id === 'ep-abc123', 'external_id é o correlationID do Koonfy');
   ok(c.corpo.payer.document === '84748914009', 'CPF vai só com dígitos: ' + c.corpo.payer.document);
-  ok(c.corpo.webhookURL === 'https://koonfy.com/simplify-webhook', 'webhook vai na própria cobrança: ' + c.corpo.webhookURL);
+  // A URL VAI ASSINADA. A Simplify não tem consulta de transação: o aviso de
+  // pagamento é a única palavra sobre o dinheiro ter entrado, e corpo de POST
+  // qualquer um escreve. O `?t=` que volta junto com o aviso é o que prova que
+  // quem postou foi ela — ver `simplify.webhookToken`.
+  ok(c.corpo.webhookURL.startsWith('https://koonfy.com/simplify-webhook?t='),
+     'webhook vai na própria cobrança, e assinado: ' + c.corpo.webhookURL.replace(/t=.{12}.*/, 't=…'));
+  ok(c.corpo.webhookURL.slice('https://koonfy.com/simplify-webhook?t='.length).length > 40,
+     'com uma chave longa o bastante para não se adivinhar');
   // O TELEFONE vai NACIONAL, sem o 55. Mandando com o código do país, a
   // Simplify lê o "55" como DDD e mostra o telefone de outra pessoa no painel.
   ok(c.corpo.payer.phone === '82981440676', 'telefone sem o DDI: ' + c.corpo.payer.phone);
@@ -140,7 +147,16 @@ global.fetch = async (u, o) => {
   devolverErro = null;
   ok(e2 && /CPF do pagador inválido/.test(e2.message), `a mensagem do gateway é preservada: "${e2 && e2.message}"`);
 
-  console.log('\n=== 7. WEBHOOK: sem assinatura, o valor é a prova ===');
+  console.log('\n=== 7. WEBHOOK: o aviso precisa PROVAR que veio da Simplify ===');
+  // A Woovi e o cartão reconsultam a cobrança na API do adquirente antes de
+  // acreditar. A Simplify não tem consulta de transação, então durante um tempo
+  // o corpo do POST foi a única palavra sobre o dinheiro ter entrado — e o
+  // `external_id` de uma recarga é devolvido ao próprio dono da conta na
+  // resposta de `POST /billing/topup`. Dava para não pagar o Pix, postar
+  // "pago" com aquele id e a carteira era creditada.
+  //
+  // A prova é o token que o Koonfy embute na URL de retorno de cada cobrança.
+  // Estes casos existem para que ninguém o remova achando que é enfeite.
   const acc = { id: 'acc_sp', name: 'Loja do Teste', email: 'sp@teste.com', contacts: [], channels: [],
     messages: [], campaigns: [], billing: { status: 'trial', planId: '', periodEnd: 0 } };
   db.get().accounts.push(acc);
@@ -149,19 +165,60 @@ global.fetch = async (u, o) => {
     method: 'pix', platformCut: 250, contactName: 'João', waId: '5582981440676' };
   ep.charges.unshift(cobranca);
 
-  const chamar = (corpo) => new Promise(res => {
+  // A Simplify precisa ser o adquirente ATIVO: com a Woovi ligada esta rota
+  // não deve aceitar nada, e é o primeiro caso abaixo.
+  pagamentos.platformCfg().gateway = 'simplify';
+
+  // `req` de mentira com o que o handler usa de verdade.
+  const pedido = (corpo, { token, query } = {}) => ({
+    body: corpo,
+    query: query !== undefined ? query : (token === undefined ? { t: simplify.webhookToken() } : (token ? { t: token } : {})),
+    ip: '203.0.113.9',
+    get: () => ''
+  });
+  const chamar = (corpo, opts) => new Promise(res => {
     const h = simplify.webhookHandler(() => {});
-    h({ body: corpo }, { sendStatus: () => {} });
-    setTimeout(res, 60);
+    let codigo = 200;
+    h(pedido(corpo, opts), {
+      sendStatus: c => { codigo = c; },
+      status: c => { codigo = c; return { json: () => {} }; }
+    });
+    setTimeout(() => res(codigo), 60);
   });
 
-  // valor DIFERENTE do registrado: não confirma
+  const pago = { event: 'deposit.paid', external_id: 'epc_sp1', status: 'approved', amount: '100.50' };
+
+  // SEM TOKEN: é o ataque. Nada pode acontecer.
+  const semToken = await chamar(pago, { token: '' });
+  ok(semToken === 401, 'aviso SEM a chave é recusado com 401', 'status ' + semToken);
+  ok(cobranca.status === 'active', 'e a cobrança continua em aberto — ninguém credita nada');
+
+  // TOKEN ERRADO: idem.
+  await chamar(pago, { token: 'sm_' + 'f'.repeat(48) });
+  ok(cobranca.status === 'active', 'chave errada também não marca como paga');
+
+  // A recusa fica registrada, que é onde o dono vai procurar se um aviso
+  // legítimo começar a ser barrado.
+  ok((db.get().webhookLog || []).some(l => l.type === 'simplify_webhook_negado'),
+     'toda recusa aparece em Logs de Webhook');
+
+  // valor DIFERENTE do registrado: não confirma, mesmo com a chave certa
   await chamar({ event: 'deposit.paid', external_id: 'epc_sp1', status: 'approved', amount: '5.00' });
   ok(cobranca.status === 'active', 'valor divergente NÃO marca como paga');
 
-  // valor certo: confirma
-  await chamar({ event: 'deposit.paid', external_id: 'epc_sp1', status: 'approved', amount: '100.50' });
-  ok(cobranca.status === 'paid', 'valor conferido marca como paga');
+  // valor certo E chave certa: confirma
+  await chamar(pago);
+  ok(cobranca.status === 'paid', 'com a chave e o valor certos, marca como paga');
+
+  // COM OUTRO ADQUIRENTE ATIVO a rota nem existe: quem opera na Woovi não tem
+  // motivo nenhum para aceitar um aviso de pagamento da Simplify.
+  const naWoovi = { id: 'epc_sp9', correlationID: 'epc_sp9', value: 1000, status: 'active', method: 'pix', platformCut: 0 };
+  ep.charges.unshift(naWoovi);
+  pagamentos.platformCfg().gateway = 'woovi';
+  const comWoovi = await chamar({ event: 'deposit.paid', external_id: 'epc_sp9', status: 'approved', amount: '10.00' });
+  ok(comWoovi === 404, 'com a Woovi ativa, /simplify-webhook responde 404', 'status ' + comWoovi);
+  ok(naWoovi.status === 'active', 'e nada é marcado como pago');
+  pagamentos.platformCfg().gateway = 'simplify';
 
   console.log('\n=== 8. Evento que não é pagamento não faz nada ===');
   const outra = { id: 'epc_sp2', correlationID: 'epc_sp2', value: 1000, status: 'active', method: 'pix', platformCut: 25 };

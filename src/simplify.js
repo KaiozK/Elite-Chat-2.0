@@ -24,6 +24,7 @@
 // ============================================================================
 const db = require('./db');
 const store = require('./store');
+const crypto = require('crypto');
 
 const BASE = 'https://simplifybr.com/api/v1';
 
@@ -31,6 +32,51 @@ function cfg() {
   const p = db.get().platform;
   if (!p.simplify) p.simplify = { clientId: '', clientSecret: '' };
   return p.simplify;
+}
+
+// ---------------------------------------------------------------------------
+// O AVISO DE PAGAMENTO PRECISA PROVAR QUE É DELA
+//
+// A Woovi e o cartão confirmam de outro jeito: quando o aviso chega, o Koonfy
+// RECONSULTA a cobrança na API do adquirente e só acredita no que a própria API
+// responde. A Simplify não tem consulta de transação — a documentação só expõe
+// a criação do depósito —, então o corpo do aviso era a única palavra sobre o
+// dinheiro ter entrado. E corpo de POST qualquer um escreve.
+//
+// O que isso valia na prática: o `external_id` de uma recarga de carteira é
+// devolvido para o próprio dono da conta na resposta de `POST /billing/topup`.
+// Bastava pegar esse id, não pagar o Pix, e postar em `/simplify-webhook`
+// `{event:'paid', external_id:'<o id>', amount:'2000'}` para a carteira ser
+// creditada com R$ 2.000 que ninguém pagou — saldo que paga assinatura,
+// conexões e disparos, e que sai no saque.
+//
+// A prova agora é um TOKEN que só a Simplify recebe: ele vai embutido na
+// `webhookURL` que mandamos junto com CADA depósito, então volta sozinho no
+// aviso, sem ninguém precisar configurar nada. Ele também é aceito em cabeçalho
+// (`x-webhook-token` ou `Authorization: Bearer`) para o caso de a URL de
+// retorno ser a fixa do painel dela — é só colar a mesma URL com `?t=` lá.
+// ---------------------------------------------------------------------------
+function webhookToken() {
+  const c = cfg();
+  if (!c.webhookToken) { c.webhookToken = 'sm_' + crypto.randomBytes(24).toString('hex'); db.save(); }
+  return c.webhookToken;
+}
+
+// Comparação de tempo constante: comparar com `===` vaza, pelo tempo de
+// resposta, quantos caracteres do começo estavam certos.
+function tokenConfere(a) {
+  const A = Buffer.from(String(a || '')), B = Buffer.from(webhookToken());
+  if (A.length !== B.length) return false;
+  return crypto.timingSafeEqual(A, B);
+}
+
+function tokenDoPedido(req) {
+  const q = (req.query && (req.query.t || req.query.token)) || '';
+  if (q) return q;
+  const h = String(req.get('x-webhook-token') || '');
+  if (h) return h;
+  const a = String(req.get('authorization') || '');
+  return /^bearer /i.test(a) ? a.slice(7).trim() : '';
 }
 
 function configured() {
@@ -133,6 +179,23 @@ function telefoneNacional(valor) {
 // ---------------------------------------------------------------------------
 function webhookHandler(broadcast) {
   return (req, res) => {
+    // A ROTA SÓ EXISTE DE VERDADE QUANDO A SIMPLIFY ESTÁ EM USO.
+    //
+    // Ela é montada sempre, em server.js, mas quem opera com a Woovi não tem
+    // nenhum motivo para aceitar um aviso de pagamento da Simplify. Fechar aqui
+    // apaga a superfície inteira para a maioria das instalações, sem depender
+    // de mais nada estar certo.
+    const ativo = (db.get().platform.pagamentos || {}).gateway === 'simplify';
+    if (!ativo || !configured()) {
+      return res.status(404).json({ error: 'não encontrado' });
+    }
+    if (!tokenConfere(tokenDoPedido(req))) {
+      // Fica registrado em Logs de Webhook: se um aviso legítimo começar a ser
+      // recusado, é aqui que aparece — e a saída é colar de novo, no painel da
+      // Simplify, a URL de retorno que o Admin mostra (ela já vem com o `?t=`).
+      store.logEvent({ type: 'simplify_webhook_negado', ip: req.ip, external_id: (req.body || {}).external_id || null });
+      return res.status(401).json({ error: 'não autorizado' });
+    }
     res.sendStatus(200);            // responde rápido; a Simplify reenvia se demorar
     try {
       const b = req.body || {};
@@ -191,4 +254,4 @@ function webhookHandler(broadcast) {
   };
 }
 
-module.exports = { BASE, cfg, configured, call, dadosDoPagador, telefoneNacional, webhookHandler };
+module.exports = { BASE, cfg, configured, call, dadosDoPagador, telefoneNacional, webhookHandler, webhookToken };

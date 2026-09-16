@@ -5006,7 +5006,13 @@ module.exports = function (broadcast, clients) {
     const acc = req.acc;
 
     const customer = { name: acc.name, email: acc.email };
-    const cid = `sub-${acc.id}-${plan.id}-${Date.now().toString(36)}`;
+    // O SUFIXO ALEATÓRIO no fim é de propósito, e segue o que `xtr-` já fazia.
+    // Sem ele o identificador era inteiramente dedutível — conta, plano e o
+    // relógio —, e um identificador de cobrança que se adivinha é um convite a
+    // testar avisos de pagamento de contas alheias. A leitura posicional em
+    // `woovi.applyPayment` conta do começo (parts[1] = conta, parts[2] = plano),
+    // então acrescentar no fim não muda nada para ela.
+    const cid = `sub-${acc.id}-${plan.id}-${Date.now().toString(36)}-${crypto.randomBytes(5).toString('hex')}`;
     // Plano + unidades extras já contratadas. Cobrar só `plan.price` faria a
     // recorrência nascer menor que a conta real e os extras nunca mais seriam
     // cobrados — o cartão sempre usou este mesmo total.
@@ -5066,7 +5072,7 @@ module.exports = function (broadcast, clients) {
     if (dep.max > 0 && amount > dep.max) {
       return res.status(400).json({ error: `Depósito máximo: ${pagamentos.fmtBRL(dep.max)}` });
     }
-    const cid = `topup-${req.acc.id}-${Date.now().toString(36)}`;
+    const cid = `topup-${req.acc.id}-${Date.now().toString(36)}-${crypto.randomBytes(5).toString('hex')}`;
     // Pelo adquirente ATIVO (Admin → Gateways), e não fixo na Woovi: com a
     // Simplify selecionada, a recarga precisa passar por ela.
     const charge = await require('./saaspix').criarCobranca(req.acc, {
@@ -5125,8 +5131,31 @@ module.exports = function (broadcast, clients) {
     res.json({ billing: billingPublic(req.acc) });
   }));
 
-  // Saque do saldo da carteira (comissões de afiliado) — admin aprova e paga
-  router.post('/wallet/withdraw', auth, ownerOnly, (req, res) => {
+  // ---- SAQUE DA CARTEIRA ----
+  //
+  // Tenta PAGAR SOZINHO. Quando o gateway permite e não há risco de mandar
+  // dinheiro a mais (as condições estão em `pagamentos.podeSaqueAuto`, com o
+  // porquê de cada uma), o valor sai na hora para a chave Pix do lojista. Fora
+  // disso o pedido nasce `pending` e o admin conclui em Admin SaaS, Saques —
+  // que é como sempre funcionou.
+  //
+  // A ORDEM AQUI É DE PROPÓSITO: conferência de saldo e débito acontecem no
+  // mesmo trecho síncrono, ANTES de qualquer `await`. Se o débito viesse
+  // depois da chamada ao gateway, dois cliques no botão passariam os dois pela
+  // mesma conferência e sacariam duas vezes o mesmo saldo.
+  const MOTIVO_SAQUE = {
+    gateway:  'o adquirente ativo não paga saque por API',
+    subconta: 'a sua conta de recebimento ainda não está ativa',
+    cartao:   'parte do valor veio de venda no cartão',
+    taxa:     'este saque tem taxa retida',
+    split:    'a taxa da plataforma ainda não é separada na venda',
+    saldo_desconhecido: 'não foi possível confirmar o saldo no adquirente',
+    parcial:  'o adquirente só permite sacar o saldo inteiro de uma vez',
+    chave:    'a chave informada não é a da sua conta de recebimento',
+    falhou:   'o adquirente recusou a transferência'
+  };
+
+  router.post('/wallet/withdraw', auth, ownerOnly, h(async (req, res) => {
     const amount = Math.round(Number(String((req.body || {}).amount || '0').replace(',', '.')) * 100);
     const pixKey = String((req.body || {}).pixKey || '').trim();
     if (!pixKey) return res.status(400).json({ error: 'Informe sua chave Pix' });
@@ -5150,14 +5179,37 @@ module.exports = function (broadcast, clients) {
       id: db.genId('tx'), ts: Date.now(), amount: -amount, type: 'withdraw',
       label: `Saque para ${pixKey}${detalhe}`
     });
-    db.get().withdrawals.push({
+    const wd2 = {
       id: db.genId('wd'), accountId: req.acc.id, accountName: req.acc.name,
       amount, fee: f.fee, net: f.net, fromCard: f.fromCard, fromPix: f.fromPix,
       pixKey, status: 'pending', ts: Date.now()
-    });
+    };
+    db.get().withdrawals.push(wd2);
     db.save();
-    res.json({ ok: true, balance: req.acc.wallet.balance, fee: f.fee, net: f.net });
-  });
+
+    // A partir daqui o dinheiro JÁ SAIU da carteira. O que vem agora decide
+    // apenas quem paga: o gateway agora, ou o admin depois.
+    const r = await pagamentos.pagarSaqueAuto(req.acc, wd2);
+    if (!r.pago && r.motivo) {
+      wd2.motivoManual = r.motivo;
+      if (r.erro) wd2.erroGateway = String(r.erro).slice(0, 300);
+      db.save();
+    }
+    store.logEvent({
+      type: r.pago ? 'withdraw_auto' : 'withdraw_pending',
+      accountId: req.acc.id,
+      detail: r.pago ? `Saque automático de ${pagamentos.fmtBRL(amount)}` :
+        `Saque de ${pagamentos.fmtBRL(amount)} para o admin: ${MOTIVO_SAQUE[r.motivo] || r.motivo || '-'}`
+    });
+    broadcast('wallet', { accountId: req.acc.id });
+    res.json({
+      ok: true, balance: req.acc.wallet.balance, fee: f.fee, net: f.net,
+      automatico: !!r.pago,
+      // A tela precisa saber POR QUE não foi automático para dizer o que vem a
+      // seguir; o texto vive aqui e não no front para não sair dos dois lados.
+      motivo: r.pago ? '' : (MOTIVO_SAQUE[r.motivo] || '')
+    });
+  }));
 
   // Resumo da carteira para o cabeçalho: saldo e a faixa de depósito.
   // É de propósito muito mais leve que GET /billing — o topo recarrega isto a
@@ -5184,11 +5236,21 @@ module.exports = function (broadcast, clients) {
     });
   });
 
-  // Prévia da taxa antes de confirmar o saque (a UI mostra o líquido ao digitar).
+  // Prévia antes de confirmar: a taxa (que muda com a origem do dinheiro) e se
+  // o saque cai na hora ou vira pedido. A pessoa precisa saber disso ANTES de
+  // clicar — "sacar" e descobrir depois que vai demorar um dia é o pior jeito
+  // de contar. Aqui só a parte que não precisa de rede: perguntar o saldo ao
+  // adquirente a cada tecla digitada seria uma chamada por caractere.
   router.get('/wallet/withdraw/quote', auth, ownerOnly, (req, res) => {
     const amount = Math.round(Number(String(req.query.amount || '0').replace(',', '.')) * 100);
-    if (!amount || amount < 0) return res.json({ amount: 0, fee: 0, net: 0 });
-    res.json({ amount, ...pagamentos.computeWithdrawFee(req.acc, amount) });
+    if (!amount || amount < 0) return res.json({ amount: 0, fee: 0, net: 0, automatico: false, motivo: '' });
+    const f = pagamentos.computeWithdrawFee(req.acc, amount);
+    const chk = pagamentos.podeSaqueAuto(req.acc, amount, f);
+    res.json({
+      amount, ...f,
+      automatico: chk.pode,
+      motivo: chk.pode ? '' : (MOTIVO_SAQUE[chk.motivo] || '')
+    });
   });
 
   // ============ PAINEL DA PLATAFORMA — a operação de todas as contas ============
@@ -5680,8 +5742,15 @@ module.exports = function (broadcast, clients) {
         // As credenciais nunca voltam inteiras — só o suficiente para o admin
         // reconhecer qual está gravada.
         simplify: (() => { const sp = require('./simplify'); const c = sp.cfg();
+          const origin = `${req.protocol}://${req.get('host')}`;
           return { clientId: c.clientId ? '••••' + c.clientId.slice(-6) : '', configured: sp.configured(),
-                   base: sp.BASE }; })(),
+                   base: sp.BASE,
+                   // A URL DE RETORNO JÁ VEM ASSINADA. O Koonfy manda esta mesma
+                   // URL junto de cada depósito, então normalmente não há nada a
+                   // fazer; ela aparece aqui para o caso de a Simplify usar a URL
+                   // fixa do painel dela — sem o `?t=`, o aviso é recusado, e a
+                   // recusa fica registrada em Logs de Webhook.
+                   webhookUrl: `${origin}/simplify-webhook?t=${encodeURIComponent(sp.webhookToken())}` }; })(),
         billing: data.platform.billing, affiliate: data.platform.affiliate, landing: data.platform.landing,
         suporte: data.platform.suporte || { whatsapp: '' } },
       // Credenciais do app da Meta (Tech Provider). Rota já é adminOnly, então
@@ -7047,7 +7116,14 @@ module.exports = function (broadcast, clients) {
   });
 
   // Onboarding — cria a subconta do cliente (via API do gateway, sem sair do Koonfy)
-  router.post('/pagamentos/subaccount', auth, can('pagamentos', 'create'), h(async (req, res) => {
+  //
+  // `ownerOnly` junto do `can`, e não no lugar dele. "Criar em Pagamentos" é a
+  // permissão de emitir cobrança; isto aqui é outra coisa: define A CHAVE PIX
+  // que passa a receber TODAS as vendas da empresa. `registerSubaccount` só
+  // recusa quando já existe uma — então, antes de o titular cadastrar a dele,
+  // um atendente com permissão de criar podia pôr a própria chave e receber no
+  // lugar da empresa. Quem escolhe onde o dinheiro cai é o titular.
+  router.post('/pagamentos/subaccount', auth, ownerOnly, can('pagamentos', 'create'), h(async (req, res) => {
     // redirectUrl: para onde a Woovi devolve o cliente após concluir o KYC hospedado
     const redirectUrl = `${req.protocol}://${req.get('host')}/app/#/pagamentos`;
     const sub = await pagamentos.registerSubaccount(req.acc, { ...(req.body || {}), redirectUrl });
@@ -7487,13 +7563,25 @@ module.exports = function (broadcast, clients) {
   });
 
   // ---- Conta de recebimento no cartão (recebedor/subconta do CLIENTE) ----
-  router.get('/pagamentos/card-account', auth, h(async (req, res) => {
+  // ---- CONTA DE RECEBIMENTO DO CARTÃO (onde o dinheiro do cartão cai) ----
+  //
+  // `ownerOnly`, pela mesma razão da carteira e do saque: isto define PARA QUAL
+  // CONTA BANCÁRIA vão as vendas no cartão, e essa é uma decisão do titular.
+  //
+  // As duas rotas estavam só com `auth`, e o buraco era concreto: enquanto o
+  // cadastro não está `active`, `registerCardAccount` aceita um novo — um
+  // atendente autenticado podia cadastrar o PRÓPRIO banco e passar a receber as
+  // vendas da empresa. O GET vazava junto o CPF/CNPJ e o banco do titular.
+  //
+  // Para quem não é titular a tela não quebra: a aba "Cartão" só aparece se
+  // esta consulta responder, e o `catch` dela já esconde a aba.
+  router.get('/pagamentos/card-account', auth, ownerOnly, h(async (req, res) => {
     // reconsulta o adquirente quando ainda está em análise
     if (pagamentos.cardAccount(req.acc).status === 'pending') await pagamentos.syncCardAccount(req.acc);
     res.json({ account: pagamentos.cardAccountView(req.acc) });
   }));
 
-  router.post('/pagamentos/card-account', auth, h(async (req, res) => {
+  router.post('/pagamentos/card-account', auth, ownerOnly, h(async (req, res) => {
     await pagamentos.registerCardAccount(req.acc, req.body || {});
     res.json({ account: pagamentos.cardAccountView(req.acc) });
   }));

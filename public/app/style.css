@@ -3992,6 +3992,55 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
   transition: transform .14s var(--ease, ease), box-shadow .14s;
 }
 .tb-wallet-add:active { transform: scale(.9); box-shadow: none; }
+/* Espelho da regra da `.sb-wallet`: acima de 960px a barra lateral está aberta
+   e o saldo mora LÁ, com o fundo brilhante. Aqui ele sai, senão o mesmo número
+   apareceria duas vezes na mesma tela. Os dois números (960/961) andam juntos
+   com o `@media (max-width: 960px)` da sidebar — mexeu num, mexe nos três. */
+@media (min-width: 961px) { .tb-wallet, .tb-wallet:not(.hidden) { display: none; } }
+
+/* ---------------------------------------------------------------------------
+   CARTEIRA NA BARRA LATERAL (computador)
+   Fica logo abaixo da marca, com o fundo do BOTÃO BRILHANTE — a mesma faixa de
+   luz que atravessa o "Começar agora" da vitrine. O saldo sozinho é consulta e
+   não mereceria esse destaque; o que o justifica é o SAQUE ao lado, que é
+   ação, e é a ação que o lojista mais procura depois de vender.
+   No celular esta caixa não existe: lá a carteira mora na barra de cima.
+   --------------------------------------------------------------------------- */
+.sb-wallet {
+  display: none; align-items: center; gap: 8px; margin: 0 14px 4px;
+  padding: 9px 9px 9px 13px; border-radius: 10px; color: #fff;
+  background: linear-gradient(45deg, #1c834a, #1c834a, #2ed378, #1c834a, #1c834a);
+  background-size: 200% 200%; animation: brilhoPassar 5s ease-in-out infinite;
+  box-shadow: 0 3px 12px rgba(28, 131, 74, .28);
+}
+.sb-wallet:not(.hidden) { display: flex; }
+.sb-wallet-val { flex: 1; min-width: 0; text-decoration: none; color: inherit; line-height: 1.15; }
+.sb-wallet-lbl { display: block; font-size: 10px; font-weight: 500; opacity: .82; letter-spacing: .02em; }
+.sb-wallet-num, .sb-wallet-val b {
+  display: block; font-size: 15px; font-weight: 600; letter-spacing: -.02em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* O botão precisa se destacar SOBRE o gradiente — por isso vidro, e não outra
+   cor: qualquer cor chapada brigaria com a faixa de luz passando por baixo. */
+.sb-wallet-btn {
+  width: 32px; height: 32px; flex: none; cursor: pointer; color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid rgba(255, 255, 255, .34); border-radius: 9px;
+  background: rgba(255, 255, 255, .16);
+  -webkit-tap-highlight-color: transparent;
+  transition: background .15s, transform .14s;
+}
+.sb-wallet-btn:hover { background: rgba(255, 255, 255, .28); }
+.sb-wallet-btn:active { transform: scale(.92); }
+/* Quem pediu menos movimento não precisa de uma faixa de luz atravessando o
+   saldo o dia inteiro — o fundo fica, a animação sai. */
+@media (prefers-reduced-motion: reduce) { .sb-wallet { animation: none; } }
+/* A partir de 960px a barra lateral encolhe para 64px e só mostra ícones — é o
+   mesmo ponto em que `.brand-text` some. A caixa de saldo não cabe nessa faixa,
+   e nem precisa: dali para baixo a carteira mora na barra de cima. Este número
+   TEM de acompanhar o `@media (max-width: 960px)` da sidebar; se um mudar sem o
+   outro, sobra uma caixa verde espremida ao lado dos ícones. */
+@media (max-width: 960px) { .sb-wallet, .sb-wallet:not(.hidden) { display: none; } }
 
 /* Numa tela bem estreita o cabeçalho não comporta tudo: o chip de status do
    WhatsApp sai (a mesma informação está no Dashboard e em Configurações) para
@@ -4399,6 +4448,19 @@ body.has-tabbar .sidebar, body.has-tabbar .nav-backdrop { display: none; }
 .sq-card.ok .sq-val { color: var(--verde-deep); }
 .sq-card.neg .sq-val { color: var(--red); }
 .sq-hint { font-size: 12px; color: var(--muted); }
+
+/* ---------------------------------------------------------------------------
+   POP-UP DE SAQUE (botão de carteira)
+   O conteúdo mora dentro de um `#sq-modal` porque ele é trocado inteiro quando
+   o saldo chega — e um wrapper não herda o `gap` do `.modal`, então ele repete
+   o mesmo espaçamento aqui. Os cartões de saldo entram menores: num pop-up de
+   500px, os 27px da tela de Pagamentos brigariam com os campos logo abaixo.
+   --------------------------------------------------------------------------- */
+.modal-sq #sq-modal { display: flex; flex-direction: column; gap: 13px; }
+.modal-sq .sq-cards { gap: 10px; margin-bottom: 0; }
+.modal-sq .sq-card { padding: 12px 14px; gap: 3px; }
+.modal-sq .sq-val { font-size: 21px; }
+.modal-sq label { margin: 0; }
 
 @media (max-width: 760px) {
   .sq-cards { grid-template-columns: 1fr; gap: 10px; }

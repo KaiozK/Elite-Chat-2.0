@@ -113,8 +113,15 @@ const saas = require(R + 'src/saasbilling');
   const simplify = require(R + 'src/simplify');
   const cidTopup = 'topup-' + acc.id + '-xyz';
   const antes = acc.wallet.balance;
+  // O aviso vai com a CHAVE que o Koonfy embute na URL de retorno de cada
+  // cobrança. Sem ela o handler responde 401 e não credita nada — é o que
+  // impede alguém de pegar o `external_id` da própria recarga (ele volta na
+  // resposta de `POST /billing/topup`) e creditar a carteira sem pagar.
   const chamar = (corpo) => new Promise(res => {
-    simplify.webhookHandler(() => {})({ body: corpo }, { sendStatus: () => {} });
+    simplify.webhookHandler(() => {})(
+      { body: corpo, query: { t: simplify.webhookToken() }, ip: '203.0.113.7', get: () => '' },
+      { sendStatus: () => {}, status: () => ({ json: () => {} }) }
+    );
     setTimeout(res, 60);
   });
   await chamar({ event: 'deposit.paid', external_id: cidTopup, status: 'approved', amount: '50.00' });

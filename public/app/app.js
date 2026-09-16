@@ -1444,7 +1444,7 @@ async function enterApp() {
   if (window.ECNotify) { ECNotify.setHooks({ onOpen: notifOpenFromData, onResync: notifResync, onChange: paintNotifBell, onCallEnd: chamadaEncerradaEmOutroAparelho }); paintNotifBell(); }
   setTheme(currentTheme());   // sincroniza o ícone de tema do topbar
   askNotifPermission();    // permissão + push do WebApp
-  refreshWallet();         // dados que o pop-up de depósito usa
+  refreshWallet();         // saldo dos dois widgets + dados dos pop-ups
   initSearch();
   await loadChannels();    // canais (conexões WhatsApp) antes de qualquer listagem
   try { const st = await api('/settings'); state.settings = st.settings; state.wa = st.wa; pintarSuporte(st.suporte); } catch {}
@@ -2215,8 +2215,138 @@ let WALLET = { balance: 0, deposito: { min: 100, max: 0 } };
 
 async function refreshWallet() {
   // Atendente não tem carteira própria: a da empresa não é assunto dele.
-  if (state.agent) return;
+  if (state.agent) { pintaCarteira(); return; }
   try { WALLET = await api('/wallet/summary'); } catch { /* o pop-up cai nos padrões */ }
+  pintaCarteira();
+}
+
+// O MESMO NÚMERO EM DOIS LUGARES, UM DE CADA VEZ.
+//
+// No computador o saldo mora na barra lateral, abaixo da marca, com o fundo
+// brilhante; no celular, onde a barra lateral vira gaveta, ele volta para a
+// barra de cima — que é onde sempre esteve. Quem esconde um ou outro é o CSS
+// (`@media` de 960px, nos dois sentidos): aqui os dois são preenchidos e
+// revelados juntos, e a tela decide qual aparece. Fazer isso no JavaScript
+// exigiria ouvir o redimensionamento da janela para nada.
+function pintaCarteira() {
+  const valor = fmtBRL(WALLET.balance || 0);
+  const num = $('#sb-wallet-num'); if (num) num.textContent = valor;
+  const tb = $('#tb-wallet-val'); if (tb) tb.textContent = valor;
+  // Atendente não vê carteira: o dinheiro da empresa não é assunto dele.
+  const mostra = !state.agent;
+  for (const id of ['#sb-wallet', '#tb-wallet']) {
+    const el = $(id); if (el) el.classList.toggle('hidden', !mostra);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// POP-UP DE SAQUE
+//
+// Aberto pelo botão de carteira, dos dois lados. Existe para tirar o saque de
+// dentro de Pagamentos → Saque: quem acabou de ver o saldo quer sacar dali
+// mesmo, e não navegar até outra tela para repetir o que já está na frente.
+//
+// A frase "cai na hora" NÃO é decoração: ela vem do servidor
+// (`/wallet/withdraw/quote`), que sabe se o adquirente ativo paga por API e se
+// aquele valor específico pode sair sozinho. Quando não pode, dizemos o motivo
+// ANTES do clique — descobrir depois de confirmar que vai demorar um dia é o
+// pior jeito de contar.
+// ---------------------------------------------------------------------------
+let SAQUE = null;
+
+async function saqueModal() {
+  if (state.agent) return toast('A carteira é do titular da conta', 'error');
+  openModal(`<h2>${ico('download-circle')} Sacar da carteira</h2>
+    <div id="sq-modal">${skel(3)}</div>`, 'modal-sq');
+  let d;
+  try { d = SAQUE = await api('/pagamentos/saldo'); }
+  catch (e) {
+    const b = $('#sq-modal');
+    if (b) b.innerHTML = `<p class="muted" style="margin:0">${esc(e.message)}</p>`;
+    return;
+  }
+  // A pessoa pode ter fechado o pop-up enquanto o saldo carregava.
+  const box = $('#sq-modal'); if (!box) return;
+
+  const podeMin = d.disponivel >= d.limites.min;
+  box.innerHTML = `
+    <div class="sq-cards" style="margin:2px 0 4px">
+      <div class="sq-card ${d.disponivel < 0 ? 'neg' : 'ok'}">
+        <span class="sq-lbl">${ico('zap', 13)} Disponível</span>
+        <b class="sq-val">${fmtBRL(d.disponivel)}</b>
+      </div>
+      <div class="sq-card">
+        <span class="sq-lbl">${ico('clock', 13)} Pendente</span>
+        <b class="sq-val">${fmtBRL(d.pendente)}</b>
+      </div>
+    </div>
+
+    ${d.chavePix
+      ? `<p class="muted" style="margin:0;font-size:12.5px">Cai na sua chave Pix <b>${esc(d.chavePix)}</b>.</p>`
+      : `<label>Sua chave Pix<input id="sqm-key" placeholder="CPF, e-mail, telefone ou aleatória" autocomplete="off"></label>`}
+
+    <div class="row" style="align-items:flex-end;gap:8px">
+      <label style="flex:1;margin:0">Valor (R$)
+        <input id="sqm-val" inputmode="decimal" placeholder="0,00" autocomplete="off" oninput="saqueQuote()"></label>
+      <button type="button" class="btn small no-grow" onclick="saqueTudo()">Sacar tudo</button>
+    </div>
+    <p class="muted" id="sqm-quote" style="margin:0;font-size:12.5px;min-height:17px"></p>
+    ${podeMin ? '' : `<p class="muted" style="margin:0;font-size:12.5px">
+      O saque mínimo é ${fmtBRL(d.limites.min)} e o seu disponível ainda não chegou lá.</p>`}
+
+    <div class="row" style="margin-top:4px">
+      <button class="btn no-grow" onclick="closeModal()">Cancelar</button>
+      <button class="btn primary no-grow" id="sqm-go" onclick="saqueConfirma(this)" ${podeMin ? '' : 'disabled'}>
+        ${ico('zap', 14)} Sacar</button>
+    </div>
+    <div id="sqm-out"></div>`;
+  saqueTudo();   // já vem preenchido com o disponível: é o que quase todo mundo quer
+}
+
+function saqueTudo() {
+  const el = $('#sqm-val'); if (!el || !SAQUE) return;
+  el.value = (Math.max(0, SAQUE.disponivel) / 100).toFixed(2).replace('.', ',');
+  saqueQuote();
+}
+
+// Uma consulta por tecla seria uma chamada por caractere digitado; o atraso
+// junta as teclas de uma digitação só num pedido.
+let sqmTimer = null;
+function saqueQuote() {
+  clearTimeout(sqmTimer);
+  sqmTimer = setTimeout(saqueQuoteJa, 260);
+}
+
+async function saqueQuoteJa() {
+  const el = $('#sqm-quote'); if (!el) return;
+  const cents = epParseReais(($('#sqm-val') || {}).value);
+  if (!cents) { el.textContent = ''; return; }
+  let q;
+  try { q = await api('/wallet/withdraw/quote?amount=' + cents); } catch { el.textContent = ''; return; }
+  if (!$('#sqm-quote')) return;
+  const taxa = q.fee ? `Taxa de ${fmtBRL(q.fee)} · você recebe <b>${fmtBRL(q.net)}</b>` : `Você recebe <b>${fmtBRL(cents)}</b>`;
+  const quando = q.automatico
+    ? `<span style="color:var(--verde-deep)">${ico('zap', 12)} cai na hora</span>`
+    : `o pedido vai para o suporte${q.motivo ? ` (${esc(q.motivo)})` : ''} e é pago em seguida`;
+  $('#sqm-quote').innerHTML = `${taxa} · ${quando}`;
+}
+
+async function saqueConfirma(btn) {
+  const cents = epParseReais(($('#sqm-val') || {}).value);
+  if (!cents) return toast('Informe o valor do saque', 'error');
+  const chave = SAQUE.chavePix || String(($('#sqm-key') || {}).value || '').trim();
+  if (!chave) return toast('Informe a sua chave Pix', 'error');
+  if (cents > SAQUE.disponivel) return toast('Valor maior que o disponível', 'error');
+  btn.disabled = true;
+  try {
+    const r = await api('/wallet/withdraw', { body: { amount: (cents / 100).toFixed(2), pixKey: chave } });
+    closeModal();
+    if (r.automatico) toast(`Saque pago! ${fmtBRL(r.net)} na chave ${chave}`);
+    else toast(`Saque de ${fmtBRL(cents)} solicitado${r.motivo ? ' · ' + r.motivo : ''}`);
+    await refreshWallet();
+    if (state.view === 'billing') paintBilling();
+    if (state.view === 'pagamentos' && epState.tab === 'saque') epPaintSaque($('#ep-box'));
+  } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
 }
 
 // Pop-up de depósito. A faixa vem do Admin SaaS; validamos aqui só para dar
@@ -9101,9 +9231,15 @@ function walletCard(d) {
         <div class="tx"><span class="tx-lbl">${{ debit: 'Débito', boleto: 'Boleto' }[r.kind] || 'Crédito'}${r.installments > 1 ? ` · parcela ${r.installment}/${r.installments}` : ''} · libera ${new Date(r.at).toLocaleDateString('pt-BR')}</span>
         <b class="tx-in">${fmtBRL(r.amount)}</b></div>`).join('')}</div>` : ''}
 
+    <!-- O DEPÓSITO ABRE O POP-UP, e não um campo solto aqui.
+         Quando a carteira saiu do cabeçalho, o "+" que abria esse pop-up foi
+         junto — e com ele sumiu o único caminho para a RECARGA AUTOMÁTICA, que
+         mora lá dentro. O campo que ficou no lugar gerava Pix, mas não tinha
+         os valores prontos nem a recarga automática, então metade da tela
+         tinha virado código inalcançável. -->
     <div class="row" style="margin-top:14px">
-      <label style="flex:1">Adicionar saldo via Pix (R$)<input id="wal-amount" placeholder="ex.: 50,00" inputmode="decimal"></label>
-      <button class="btn primary no-grow" ${d.wooviReady ? '' : 'disabled'} onclick="topupWallet()">${ico('plus', 14)} Gerar Pix</button>
+      <button class="btn primary no-grow" ${d.wooviReady ? '' : 'disabled'} onclick="depositModal()">${ico('plus', 14)} Depositar na carteira</button>
+      <button class="btn no-grow" onclick="saqueModal()">${ico('download-circle', 14)} Sacar</button>
     </div>
 
     ${d.wallet.transactions.length ? `<span class="fb-sub" style="margin-top:14px">Extrato</span>
@@ -9658,14 +9794,6 @@ async function subscribeBoleto(planId) {
   } catch (e) { toast(e.message, 'error'); }
 }
 
-async function topupWallet() {
-  try {
-    await api('/billing/topup', { body: { amount: $('#wal-amount').value } });
-    toast('Pix de recarga gerado');
-    paintBilling();
-    setTimeout(() => $('#pay-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
-  } catch (e) { toast(e.message, 'error'); }
-}
 async function cancelPending() {
   try { await api('/billing/pending/cancel', { body: {} }); clearInterval(payPoll); paintBilling(); } catch (e) { toast(e.message, 'error'); }
 }
@@ -9675,8 +9803,13 @@ async function cancelSub() {
 }
 async function withdrawWallet() {
   try {
-    await api('/wallet/withdraw', { body: { pixKey: $('#wd-key').value, amount: $('#wd-amount').value } });
-    toast('Saque solicitado! Cai na análise do admin.');
+    // A resposta diz se o adquirente PAGOU agora ou se o pedido ficou para o
+    // suporte concluir — a frase antiga prometia análise mesmo quando o
+    // dinheiro já tinha caído.
+    const r = await api('/wallet/withdraw', { body: { pixKey: $('#wd-key').value, amount: $('#wd-amount').value } });
+    toast(r.automatico ? `Saque pago! ${fmtBRL(r.net)} na sua chave Pix`
+      : `Saque solicitado${r.motivo ? ' · ' + r.motivo : ''}`);
+    refreshWallet();
     paintBilling();
   } catch (e) { toast(e.message, 'error'); }
 }
@@ -10270,7 +10403,19 @@ async function paintAdmin() {
           <h2>${ico('shield')} Simplify. Credenciais</h2>
           <p class="muted" style="margin:0 0 12px;font-size:13px">
             Pegue em <b>simplifybr.com</b> → API. O webhook <b>não precisa ser cadastrado lá</b>: o Koonfy manda o
-            endereço em cada cobrança.
+            endereço em cada cobrança, já com a chave que prova que o aviso veio da Simplify.
+          </p>
+          <!-- A URL fica à vista porque ela é o plano B. A Simplify não tem
+               consulta de transação, então o aviso de pagamento é a única
+               palavra sobre o dinheiro ter entrado — e sem a chave do "?t="
+               qualquer um poderia postar "pago" e creditar uma carteira. Se a
+               Simplify um dia ignorar o endereço que mandamos por cobrança e
+               usar o do painel dela, é esta URL inteira que tem de estar lá. -->
+          <label>URL de retorno (só se a Simplify exigir cadastrar no painel dela)
+            <input readonly value="${esc(d.config.simplify.webhookUrl || '')}" onclick="this.select()"></label>
+          <p class="hint" style="text-align:left;margin:-2px 0 12px">
+            Avisos sem essa chave são recusados e ficam registrados em <b>Logs de Webhook</b> como
+            <code>simplify_webhook_negado</code>.
           </p>
           <div class="row">
             <label style="flex:1">Client ID ${d.config.simplify.clientId ? `<span class="pill done" style="margin-left:6px">${esc(d.config.simplify.clientId)}</span>` : ''}
@@ -17173,7 +17318,9 @@ async function epSacar() {
   const btn = $('#sq-btn'); btn.disabled = true;
   try {
     const r = await api('/wallet/withdraw', { body: { amount: (cents / 100).toFixed(2), pixKey: epSaldo.chavePix } });
-    toast(`Saque de ${fmtBRL(cents)} solicitado! Você recebe ${fmtBRL(r.net)}`);
+    toast(r.automatico ? `Saque pago! ${fmtBRL(r.net)} na chave ${epSaldo.chavePix}`
+      : `Saque de ${fmtBRL(cents)} solicitado${r.motivo ? ' · ' + r.motivo : ''}`);
+    refreshWallet();
     epPaintSaque($('#ep-box'));
   } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
 }

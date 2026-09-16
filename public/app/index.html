@@ -142,6 +142,24 @@
         <i class="brand-name" role="img" aria-label="Koonfy"></i>
       </div>
     </div>
+    <!-- CARTEIRA NO COMPUTADOR: logo abaixo da marca, com o fundo do botão
+         brilhante. O saldo é consulta, e não ação — mas o SAQUE é ação, e é
+         ele que justifica o lugar de honra. O botão da direita abre o pop-up.
+         No celular esta caixa some: lá a carteira mora na barra de cima, que
+         é onde ela sempre esteve. -->
+    <div class="sb-wallet hidden" id="sb-wallet">
+      <a class="sb-wallet-val" href="#/billing" title="Ver carteira e extrato">
+        <span class="sb-wallet-lbl">Saldo</span>
+        <b id="sb-wallet-num">R$ 0,00</b>
+      </a>
+      <button class="sb-wallet-btn" id="sb-wallet-saque" onclick="saqueModal()" title="Sacar" aria-label="Sacar da carteira">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6H18a2 2 0 0 1 2 2v1"/>
+          <path d="M3 8.5v8A2.5 2.5 0 0 0 5.5 19H19a2 2 0 0 0 2-2v-1.5"/>
+          <path d="M21 9.5h-4a2.5 2.5 0 0 0 0 5h4z"/>
+        </svg>
+      </button>
+    </div>
     <nav>
       <span class="nav-label">Geral</span>
       <a class="nav-item" data-view="dashboard" href="#/dashboard">
@@ -284,6 +302,18 @@
             <b id="notif-dot" class="notif-dot hidden"></b>
           </button>
           <div class="notif-panel hidden" id="notif-panel"></div>
+        </div>
+        <!-- CARTEIRA NO CELULAR. Só aparece aqui: no computador ela mora na
+             barra lateral, abaixo da marca. Duas caixas, um dado só. -->
+        <div class="tb-wallet hidden" id="tb-wallet">
+          <a class="tb-wallet-val" id="tb-wallet-val" href="#/billing" title="Ver carteira">R$ 0,00</a>
+          <button class="tb-wallet-add" onclick="saqueModal()" title="Sacar" aria-label="Sacar da carteira">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6H18a2 2 0 0 1 2 2v1"/>
+              <path d="M3 8.5v8A2.5 2.5 0 0 0 5.5 19H19a2 2 0 0 0 2-2v-1.5"/>
+              <path d="M21 9.5h-4a2.5 2.5 0 0 0 0 5h4z"/>
+            </svg>
+          </button>
         </div>
         <span id="tb-status" class="status-chip"><i></i> Verificando…</span>
         <!-- Avatar = seletor da conta de WhatsApp em uso (dropdown de canais) -->
