@@ -98,6 +98,25 @@ const fs = require('fs');
   ok(/:root\[data-theme="dark"\] \.fb-wa-bolha \{[^}]*color: #fff/.test(css),
      'com o texto branco por cima');
 
+  console.log('   -- e a mesa embaixo dos cards vira junto --');
+  // O canvas era o único fundo do app escrito em hex e não em token: no escuro
+  // o painel inteiro escurecia e a mesa do Flow Builder continuava creme, com
+  // os cards pretos boiando num retângulo claro.
+  ok(/:root\[data-theme="dark"\] \.fb2-canvas \{[\s\S]{0,240}linear-gradient\(180deg, #0b0e0d, #070908\)/.test(css),
+     'o fundo desce para o preto do app (--bg é #070908)');
+  ok(/:root\[data-theme="dark"\] \.fb2-canvas \{[\s\S]{0,200}rgba\(255, 255, 255, \.06\) 1\.1px/.test(css),
+     'e a malha de pontos vira luz sobre ele, em vez de sombra');
+
+  console.log('   -- o miolo do balão acompanha --');
+  // A etiqueta do template e o cartão Pix são véus PRETOS sobre o balão claro.
+  // Sobre o gradiente preto viravam um chip invisível com texto sumido.
+  ok(/:root\[data-theme="dark"\] \.fb-wa-tpl \{ background: rgba\(255, 255, 255, \.09\)/.test(css),
+     'o véu da etiqueta inverte para branco');
+  ok(/:root\[data-theme="dark"\] \.fb-wa-pix \{ background: rgba\(255, 255, 255, \.07\)/.test(css),
+     'o do cartão Pix também');
+  ok(/:root\[data-theme="dark"\] \.fb-wa-pix-tx b \{ color: #fff/.test(css),
+     'e o título do Pix, que era quase preto, sobe para branco');
+
   console.log('\n=== 5. O rótulo de saída não existe mais, e nem o recuo dele ===');
   // Havia um rótulo repetindo o texto da opção na borda direita, e o balão
   // recuava 72px para não passar por baixo dele. Com a bolinha saindo do

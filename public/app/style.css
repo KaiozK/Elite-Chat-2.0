@@ -3146,6 +3146,29 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 /* O botão apagado fica cinza no traço e no texto, como no claro. */
 :root[data-theme="dark"] .fb-wa-btn.sem-saida { border-top-color: #2e3537; color: #97a2a6; }
 :root[data-theme="dark"] .fb-wa-btn.sem-saida::after { color: #6d7a7e; }
+/* O CANVAS TAMBÉM VIRA. Ele era o único fundo do app escrito em hex e não em
+   token: no modo escuro o painel inteiro escurecia e a mesa do Flow Builder
+   continuava creme, com os cards pretos boiando num retângulo claro. Mesma
+   receita do claro — uma base e a malha de pontos por cima —, só que a base
+   desce para o preto do app e o ponto passa a ser luz sobre ele, e não sombra. */
+:root[data-theme="dark"] .fb2-canvas {
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, .06) 1.1px, transparent 1.1px) 0 0 / 22px 22px,
+    linear-gradient(180deg, #0b0e0d, #070908);
+}
+
+/* O QUE MORA DENTRO DO BALÃO também era escrito para fundo claro: a etiqueta
+   do template e o cartão Pix são véus pretos (`rgba(11,20,26,...)`) e o texto
+   deles é quase preto. Sobre o balão claro isso é um realce de leve; sobre o
+   gradiente preto vira um chip invisível com texto que some. O véu inverte
+   para branco e os textos sobem de tom. */
+:root[data-theme="dark"] .fb-wa-tpl { background: rgba(255, 255, 255, .09); color: #b9c3c7; }
+:root[data-theme="dark"] .fb-wa-pix { background: rgba(255, 255, 255, .07); }
+:root[data-theme="dark"] .fb-wa-pix-ic { color: #35d68b; }
+:root[data-theme="dark"] .fb-wa-pix-tx b { color: #fff; }
+:root[data-theme="dark"] .fb-wa-pix-tx em,
+:root[data-theme="dark"] .fb-wa-ia { color: #8b969b; }
+
 /* A moldura de mídia era feita para fundo claro. */
 :root[data-theme="dark"] .fb-wa-mid { background: linear-gradient(160deg, #222a2c, #171d1e); color: #8b969b; }
 
