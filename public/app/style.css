@@ -1228,18 +1228,21 @@ details.adv[open] summary::after { content: '–'; }
 /* o mesmo realce de variável da prévia grande */
 .fb-wa .wa-var { background: var(--brand-bg); color: var(--verde-deep); border-radius: 3px; padding: 0 2px; font-weight: 600; }
 
-/* BOTÕES CHEIOS, TEXTO BRANCO. O contorno azul do WhatsApp só se lia porque
-   lá o balão é verde; sobre o cartão claro do painel ele sumia. Cheio, o botão
-   vira o elemento mais forte do card — que é o que ele é: o ponto de onde sai
-   o caminho. */
+/* BOTÕES DE CONTORNO. Preenchidos de verde, eles eram a mancha mais forte do
+   canvas inteiro: cada nó gritava mais que o fluxo. Agora o botão é do mesmo
+   fundo do balão (claro no claro, gradiente preto no escuro) e só o TRAÇO é
+   verde — que é o que o WhatsApp faz também. A cor volta a significar uma
+   coisa só: caminho. */
 .fb-wa-btns { margin: 8px -9px -7px; }
 .fb-wa-btn {
   display: flex; align-items: center; justify-content: center; gap: 5px;
   padding: 7px 6px; font-weight: 600; font-size: 11px;
-  background: var(--brand); color: #fff;
+  background: transparent; color: var(--text);
+  border-top: 1px solid var(--brand);
   white-space: nowrap; overflow: hidden;
 }
-.fb-wa-btn + .fb-wa-btn { border-top: 1px solid rgba(255, 255, 255, .26); }
+/* O traço verde do primeiro botão também separa o texto da mensagem: é a
+   mesma linha, não um contorno extra em volta do grupo. */
 .fb-wa-btn svg { width: 12px; height: 12px; flex: none; }
 .fb-wa-btn span { overflow: hidden; text-overflow: ellipsis; }
 
@@ -1247,7 +1250,7 @@ details.adv[open] summary::after { content: '–'; }
    A bolinha agora nasce dele, e não de uma coluna ao lado. O respiro à direita
    é o lugar dela: sem isso ela cairia sobre o texto do próprio botão. */
 .fb-wa-btn[data-branch] { padding-right: 16px; cursor: crosshair; }
-.fb-wa-btn[data-branch]:hover { background: var(--verde-deep); }
+.fb-wa-btn[data-branch]:hover { background: var(--brand-bg); color: var(--verde-deep); }
 /* O card inteiro é arrastável; o botão precisa ganhar o gesto de volta para
    dar para puxar o fio a partir dele. */
 .fb-wa-btn[data-branch] { position: relative; }
@@ -1255,8 +1258,9 @@ details.adv[open] summary::after { content: '–'; }
 /* O BOTÃO DE LINK NÃO TEM SAÍDA, e o desenho diz isso: ele abre o navegador e
    a conversa acaba ali. Sem a marca, a pessoa procuraria a bolinha dele. */
 /* O de link é apagado de propósito: ele não é um caminho, é uma saída da
-   conversa. Cheio e verde como os outros, competiria pela mesma atenção. */
-.fb-wa-btn.sem-saida { background: var(--bg2); color: var(--muted); font-weight: 500; }
+   conversa. Com o traço verde como os outros, prometeria uma bolinha que não
+   existe — então o traço dele é cinza. */
+.fb-wa-btn.sem-saida { border-top-color: var(--border); color: var(--muted); font-weight: 500; }
 .fb-wa-btn.sem-saida::after {
   content: 'sem retorno'; margin-left: 4px; font-size: 8.5px; font-weight: 500;
   color: var(--faint, var(--muted)); letter-spacing: .02em;
@@ -1311,7 +1315,9 @@ details.adv[open] summary::after { content: '–'; }
 
 /* Saída de cada botão/item: um caminho por opção. O `top` de cada uma vem
    inline do renderNodes(), calculado pela posição da opção na lista. */
-.fb-port.out.opt { border-color: var(--brand); background: var(--brand); }
+/* Encostada na borda da bolha (que recua 16px do card), e não na do nó: a
+   bolinha passa a ser a ponta do próprio botão. O 9,5 é 16 menos o raio. */
+.fb-port.out.opt { right: 9.5px; border-color: var(--brand); background: var(--brand); }
 .fb-port.out.opt em {
   right: 17px; top: -4px; max-width: 96px; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; color: var(--verde-deep); font-size: 9px;
@@ -3133,8 +3139,12 @@ label.chk input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
    legível sem virar branco também. */
 :root[data-theme="dark"] .fb-wa-vazio,
 :root[data-theme="dark"] .fb-wa-ft { color: #8b969b; }
-/* O botão apagado não pode virar um buraco claro no meio do preto. */
-:root[data-theme="dark"] .fb-wa-btn.sem-saida { background: #1b2122; color: #97a2a6; }
+/* De contorno, o botão herda o gradiente do balão — só o texto precisa virar
+   branco junto com o resto. */
+:root[data-theme="dark"] .fb-wa-btn { color: #fff; }
+:root[data-theme="dark"] .fb-wa-btn[data-branch]:hover { background: rgba(46, 211, 120, .14); color: #fff; }
+/* O botão apagado fica cinza no traço e no texto, como no claro. */
+:root[data-theme="dark"] .fb-wa-btn.sem-saida { border-top-color: #2e3537; color: #97a2a6; }
 :root[data-theme="dark"] .fb-wa-btn.sem-saida::after { color: #6d7a7e; }
 /* A moldura de mídia era feita para fundo claro. */
 :root[data-theme="dark"] .fb-wa-mid { background: linear-gradient(160deg, #222a2c, #171d1e); color: #8b969b; }

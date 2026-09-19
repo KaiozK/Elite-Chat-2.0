@@ -16031,7 +16031,14 @@ function fbIsOptBranch(b) { return String(b || '').startsWith('opt:'); }
 // Por isso o topo de cada porta é declarado uma vez aqui e o ponto de ancoragem
 // da linha é sempre `topo + FB_PORT_HALF`. Quem mexer na posição de uma porta
 // mexe nos dois ao mesmo tempo, e não há como um sair do lugar sem o outro.
-const FB_PORT_HALF = 7.5;          // do topo da bolinha até o centro dela
+// 13px é o tamanho real da bolinha no CSS (`.fb-port`), borda inclusa — a
+// metade tem que sair DELE. Com 7,5 aqui a linha nascia 1px acima do centro, e
+// a bolinha da opção ficava 1px acima do meio do botão que a gerou.
+const FB_PORT_HALF = 6.5;          // do topo da bolinha até o centro dela
+// Quanto a bolha recua da borda direita do nó. A bolinha de cada botão fica no
+// meio da LINHA LATERAL DA BOLHA, e não na borda do card: assim ela lê como
+// parte do botão de onde o caminho sai.
+const FB_BOLHA_DX = 16;
 const FB_PORT_TOP = 33;            // porta única (entrada e saída)
 const FB_COND_TOP = { yes: 29, no: 59 };
 const FB_OPT_TOP = 62, FB_OPT_STEP = 26;   // 1ª saída de opção e o passo entre elas
@@ -16081,7 +16088,9 @@ function portY(n, branch) { return portTop(n, branch) + FB_PORT_HALF; }
 function portPos(n, side, branch) {
   // A entrada tem posição fixa; a saída depende do ramo (condição ou opção).
   const dy = side === 'out' ? portY(n, branch) : FB_PORT_TOP + FB_PORT_HALF;
-  return { x: n.x + (side === 'out' ? NODE_W : 0), y: n.y + dy };
+  // A saída de opção nasce na borda da bolha; as demais, na borda do nó.
+  const dxOut = fbIsOptBranch(branch) ? NODE_W - FB_BOLHA_DX : NODE_W;
+  return { x: n.x + (side === 'out' ? dxOut : 0), y: n.y + dy };
 }
 function edgeD(a, b) { const dx = Math.max(46, Math.abs(b.x - a.x) / 2); return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`; }
 

@@ -68,11 +68,29 @@ const fs = require('fs');
   ok(!/#d9fdd3/.test(css), 'nada do verde-claro do WhatsApp sobrou');
   ok(!/#027eb5/.test(css), 'nem do azul do botão dele');
 
-  console.log('   -- botão: verde da marca, texto branco --');
-  ok(/\.fb-wa-btn \{[^}]*background: var\(--brand\)/.test(css), 'preenchido com o verde do produto');
-  ok(/\.fb-wa-btn \{[^}]*color: #fff/.test(css), 'e o texto branco em cima dele');
-  ok(/\.fb-wa-btn \+ \.fb-wa-btn \{ border-top: 1px solid rgba\(255, 255, 255/.test(css),
-     'separados por uma linha clara, um por linha');
+  console.log('   -- botão de contorno: só o traço é verde --');
+  // Preenchido, o botão era a mancha mais forte do canvas e cada nó competia
+  // com o fluxo. Contornado, o verde volta a significar uma coisa só: caminho.
+  ok(/\.fb-wa-btn \{[^}]*background: transparent/.test(css), 'o botão herda o fundo do balão');
+  ok(/\.fb-wa-btn \{[^}]*color: var\(--text\)/.test(css), 'com o texto na cor do tema');
+  ok(/\.fb-wa-btn \{[^}]*border-top: 1px solid var\(--brand\)/.test(css),
+     'e o traço verde, que também é o que separa um botão do outro');
+  ok(/:root\[data-theme="dark"\] \.fb-wa-btn \{ color: #fff; \}/.test(css),
+     'no escuro o texto vira branco junto com o balão');
+  ok(!/\.fb-wa-btn\[data-branch\]:hover \{ background: var\(--verde-deep\)/.test(css),
+     'e o hover não volta a preencher de verde');
+
+  console.log('   -- a bolinha fica no meio da linha lateral do balão --');
+  // Ela ficava na borda do CARD, 16px fora do balão: lia como um enfeite do nó
+  // e não como a ponta do botão de onde o caminho sai.
+  ok(/\.fb-port\.out\.opt \{ right: 9\.5px/.test(css), 'encostada na borda do balão');
+  ok(/const FB_BOLHA_DX = 16;/.test(app), 'o mesmo recuo do balão vira constante');
+  ok(/fbIsOptBranch\(branch\) \? NODE_W - FB_BOLHA_DX : NODE_W/.test(app),
+     'e a linha nasce daí, e não da borda do nó — senão ela descolaria da bolinha');
+  // 13px é o tamanho real da bolinha no CSS; com 7,5 de meio ela nascia 1px
+  // acima do centro do botão.
+  ok(/const FB_PORT_HALF = 6\.5;/.test(app), 'o meio da bolinha bate com o tamanho dela');
+  ok(/\.fb-port \{[^}]*height: 13px/.test(css), 'que é 13px — os dois números andam juntos');
 
   console.log('   -- modo escuro: o gradiente dos widgets da dashboard --');
   ok(/:root\[data-theme="dark"\] \.fb-wa-bolha \{[^}]*background: var\(--card-grad\)/.test(css),

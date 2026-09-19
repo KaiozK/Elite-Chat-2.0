@@ -95,7 +95,7 @@ const fs = require('fs');
   // recém-solta tinha outra.
   ok(/\.fb-edge-temp \{ fill: none; stroke: var\(--brand\)/.test(css),
      'a linha que está sendo arrastada usa o verde da marca');
-  ok(/\.fb-port\.out\.opt \{ border-color: var\(--brand\); background: var\(--brand\); \}/.test(css),
+  ok(/\.fb-port\.out\.opt \{[^}]*border-color: var\(--brand\); background: var\(--brand\)/.test(css),
      'e as bolinhas de saída também');
   ok(/\.fb-edge \{ fill: none; stroke: var\(--verde-esc\)/.test(css),
      'a linha já traçada continua no mesmo verde — que é o mesmo valor');
