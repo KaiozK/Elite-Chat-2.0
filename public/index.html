@@ -71,8 +71,14 @@
     </div>
   </noscript>
 
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/koonfy-32.png">
-<link rel="icon" type="image/png" sizes="192x192" href="/assets/koonfy-192.png">
+<!-- O MESMO ÍCONE DO APP, e não um PNG fixo.
+     Estas duas linhas eram o único lugar do produto que apontava para a arte
+     estática: o app, o /adm, a campanha, os termos e o próprio runtime desta
+     página usam /marca/logo, que serve a marca configurada no Admin (a joia).
+     O navegador lê o <link> do HTML antes de o runtime rodar, então era a arte
+     antiga que aparecia na aba — ao lado do app com a joia, na mesma janela. -->
+<link rel="icon" href="/marca/logo">
+<link rel="apple-touch-icon" href="/marca/logo">
 <script id="ec-boot">
 (function () {
   // O runtime DimensionCraft recria o documento ao renderizar, apagando <style>
@@ -861,7 +867,7 @@
     }
   }
 
-  // FAVICON. O runtime do bundle troca o <link rel="icon"> por um blob: com a
+  // FAVICON. O runtime do bundle troca a tag de ícone por um blob: com a
   // arte que veio embutida — a coroa antiga. Era ela na aba do navegador,
   // mesmo com a marca nova em todo o resto da página. Aqui o ícone é reposto e
   // o do bundle, removido; o observador garante que ele não volte.

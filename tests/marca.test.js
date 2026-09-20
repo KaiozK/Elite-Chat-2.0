@@ -151,5 +151,32 @@ const url = (r) => 'http://127.0.0.1:' + porta + r;
   mf = await manifesto();
   ok(mf.name === 'Koonfy', 'instalação nova funciona sem ninguém preencher nada: ' + mf.name);
 
+  console.log('\n=== 6. Nenhuma página fica de fora da troca de marca ===');
+  // A promessa do /marca/logo é "trocar a arte no Admin muda o produto inteiro
+  // de uma vez". A LANDING não cumpria: ela tinha o favicon preso num PNG
+  // estático. Na prática, a aba da vitrine mostrava a arte antiga ao lado da
+  // aba do painel com a marca nova — na mesma janela, lado a lado.
+  //
+  // Vale para a landing DE VERDADE: quem responde em `/` é public/nova.html
+  // (LANDING_FILE no server.js), e não public/index.html.
+  const fsx = require('fs');
+  const srvSrc = fsx.readFileSync(R + 'server.js', 'utf8');
+  ok(/const LANDING_FILE = path\.join\(__dirname, 'public', 'nova\.html'\)/.test(srvSrc),
+     'a landing servida em / é a public/nova.html');
+
+  for (const pag of ['public/nova.html', 'public/index.html', 'public/app/index.html']) {
+    // Só comentários HTML são removidos: um deles CITA `<link rel="icon">` ao
+    // explicar o bug, e citação não é tag. Cortar comentários `//` também
+    // estragaria os `https://` dos preconnect e faria o casamento atravessar
+    // linhas — o teste passaria por acidente, que é pior do que falhar.
+    const html = fsx.readFileSync(R + pag, 'utf8').replace(/<!--[\s\S]*?-->/g, '');
+    const tags = (html.match(/<link\b[^>]*>/gi) || [])
+      .filter(t => /rel="(icon|apple-touch-icon|shortcut icon)"/i.test(t));
+    ok(tags.length > 0, pag + ' declara favicon');
+    ok(tags.every(t => /href="\/marca\/logo"/.test(t)),
+       pag + ' aponta só para /marca/logo (' + tags.length + ' tag(s))');
+    ok(!/koonfy-(32|192)\.png/.test(tags.join(' ')), pag + ' não tem mais PNG fixo no favicon');
+  }
+
   await encerrar(srv, falhas);
 })().catch(e => { console.error(e); process.exit(1); });
