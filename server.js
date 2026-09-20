@@ -75,17 +75,15 @@ app.use(express.json({
 }));
 
 // Clientes SSE conectados: { res, accountId, isAdmin }
-// Eventos com accountId vão só para a conta dona (admin vê tudo).
+// QUEM recebe o quê mora em src/sse.js — é uma função pura, testável sem subir
+// o servidor. Ver o comentário de lá: o admin recebia o fluxo ao vivo de TODAS
+// as contas, e o app não filtra nada do que chega, ele age.
+const sse = require('./src/sse');
 const clients = new Set();
 function broadcast(event, data) {
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const c of clients) {
-    // ESPECTADOR DE LINK PÚBLICO: ouve só os eventos da campanha que o link
-    // dele abre. Sem esta regra ele cairia no filtro de conta abaixo e
-    // receberia tudo o que acontece na conta — mensagens, pagamentos,
-    // presença de atendente —, que não é o que o link concede.
-    if (c.campanha) { if (event !== 'campaign' || !data || data.id !== c.campanha) continue; }
-    else if (data && data.accountId && !c.isAdmin && c.accountId !== data.accountId) continue;
+    if (!sse.entrega(c, event, data)) continue;
     try { c.res.write(payload); } catch {}
   }
   // Push Notification (WebApp instalado, mesmo com o app fechado)

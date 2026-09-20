@@ -12,6 +12,15 @@ const consent = require('./consent');
 const wa = require('./whatsapp');
 const ia = require('./ia');
 
+// ---- LIGAÇÃO: o que conta como "acabou" e até quando um aviso ainda vale ----
+// A Meta reentrega webhook sempre que a resposta não sai a tempo, então o
+// MESMO `connect` chega de novo minutos depois. Sem estas duas medidas ele era
+// tratado como uma ligação nova e fazia todos os aparelhos da conta tocarem.
+const ESTADOS_FIM = ['ended', 'completed', 'failed', 'rejected', 'missed', 'canceled', 'cancelled', 'terminated', 'busy'];
+// A mesma janela que /calls/pending usa para decidir se ainda vale tocar: mais
+// que isso não é alguém esperando no telefone, é evento atrasado.
+const MAX_IDADE_CONNECT = 60000;
+
 // Persiste + transmite (SSE) uma mensagem enviada por automação.
 function makeDeliver(broadcast) {
   return (acc, to, content, apiResp) => {
@@ -430,6 +439,34 @@ function handleCalls(acc, canalDaConta, v, broadcast) {
       || (rec.direction === 'USER_INITIATED' ? 'offer' : 'answer');
 
     if (ev.event === 'connect') {
+      // ---- O `connect` SÓ TOCA UMA VEZ, E SÓ ENQUANTO A LIGAÇÃO EXISTE ----
+      //
+      // A Meta reentrega webhook: qualquer resposta que não seja 200 no prazo
+      // dela faz o MESMO evento chegar de novo, minutos depois. Aqui isso era
+      // processado como se fosse novo — `rec.status` voltava para 'ringing'
+      // numa chamada já encerrada e o `incoming` era reemitido, fazendo todos
+      // os aparelhos da conta tocarem por uma ligação que não existe. É o
+      // telefone tocando do nada, sem ninguém ligando.
+      //
+      // Três guardas, cada uma para um jeito de o evento chegar atrasado:
+      const tsEv = (Number(ev.timestamp) * 1000) || rec.startedAt || Date.now();
+      if (rec.endedAt || ESTADOS_FIM.includes(String(rec.status || '').toLowerCase())) {
+        store.logEvent({ type: 'call_connect_tarde', accountId: acc.id, waId, motivo: 'ja_encerrada', callId: rec.id });
+        continue;
+      }
+      if (rec.avisadoEm) {
+        store.logEvent({ type: 'call_connect_tarde', accountId: acc.id, waId, motivo: 'reentrega', callId: rec.id });
+        continue;
+      }
+      // Sem `terminate` (chamada perdida que a Meta não fecha), as duas de cima
+      // não pegam: sobra a idade do próprio evento. Um `connect` de mais de um
+      // minuto não pode ser alguém esperando no telefone — é a mesma janela que
+      // /calls/pending usa para decidir se ainda vale tocar.
+      if (Date.now() - tsEv > MAX_IDADE_CONNECT) {
+        store.logEvent({ type: 'call_connect_tarde', accountId: acc.id, waId, motivo: 'velho', callId: rec.id });
+        continue;
+      }
+      rec.avisadoEm = Date.now();
       rec.status = 'ringing';
       rec.sdpOffer = sdp;
       // Guardado no registro (e não só no aviso por SSE) para o aparelho que
