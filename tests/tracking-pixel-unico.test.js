@@ -119,5 +119,52 @@ const tracking = require(R + 'src/tracking');
   if (i >= 0) db.get().accounts.splice(i, 1);
   db.save();
   devolver();
+  console.log('\n=== O Facebook não é porta de entrada do Tracking ===');
+  // Pedido do cliente: "para o usuário não autenticar pelo Embbed do Facebook,
+  // só colocar os dados dos pixels e já era". O caminho só-pixel já existia,
+  // mas o cartão do OAuth abria a aba Conexões e um aviso amarelo o empurrava
+  // na Visão geral — na prática, a primeira coisa que a pessoa via era um
+  // botão de login do Facebook, dando a entender que sem ele nada funciona.
+  const appjs = require('fs').readFileSync(R + 'public/app/app.js', 'utf8');
+  const conn = appjs.slice(appjs.indexOf('async function trkPaintConn'), appjs.indexOf('async function trkConnSave'));
+  ok(conn.indexOf('É só colar o ID de cada pixel') < conn.indexOf('trkMetaCard(ov)'),
+     'a aba Conexões abre pelos pixels, e não pelo botão da Meta');
+  ok(/Não é preciso autorizar nada no Facebook/.test(conn),
+     'e diz isso com todas as letras, para ninguém procurar login que não precisa');
+
+  const card = appjs.slice(appjs.indexOf('function trkMetaCard'), appjs.indexOf('function metaTokenBar'));
+  ok(/>opcional</.test(card), 'o cartão do Meta Ads se declara opcional');
+  ok(/O rastreamento <b>não depende disto<\/b>/.test(card), 'e explica que o pixel já faz o trabalho');
+  // O botão continua em destaque: o cliente pediu de volta. O que muda não é a
+  // força dele, é o que a tela diz ANTES — que ele é opcional e que o pixel
+  // sozinho já resolve.
+  ok(/<button class="btn primary" onclick="trkMetaConnect\(\)">\$\{ico\('meta', 15\)\}/.test(card),
+     'e o botão segue em destaque, agora com o símbolo da Meta');
+  ok(!/ico\('sparkles'/.test(card), 'a estrelinha genérica saiu do cartão');
+
+  console.log('\n=== O símbolo da Meta não é o da Koonfy ===');
+  // Traçado como laço simétrico, o ícone saía igual ao ∞ da própria Koonfy — e
+  // um botão com a nossa logo não diz de quem é a janela que vai abrir, que é
+  // exatamente o defeito da estrelinha que ele substituiu.
+  const icone = appjs.slice(appjs.indexOf('  meta: '), appjs.indexOf('  meta: ') + 700);
+  ok(/fill="currentColor" stroke="none"/.test(icone), 'é marca, então é preenchido e não traçado');
+  ok(!/M12 12c-1\.8-3\.2-3\.3-5-5\.2-5/.test(appjs), 'e não é mais o infinito simétrico');
+
+  console.log('\n=== O guia do Tracking está no painel do admin ===');
+  // Junto do App Secret e do Verify Token, que é onde o suporte já vai procurar.
+  const plat = appjs.slice(appjs.indexOf('function admPlatformCard'), appjs.indexOf('function admPlatformCard') + 9000);
+  ok(/Como o cliente configura o Tracking/.test(plat), 'o cartão existe');
+  ok(/nada nesta aba é necessário para o Tracking funcionar/.test(plat),
+     'e começa dizendo que nada ali é obrigatório para o Tracking');
+  ok(/Verify Token/.test(plat), 'na mesma aba do Verify Token do webhook');
+
+  console.log('\n=== Os botões de salvar não têm mais ícone ===');
+  ok(!/ico\('save'/.test(appjs), 'nenhum "Salvar" carrega ícone');
+
+  const ovf = appjs.slice(appjs.indexOf('async function trkPaintOverview'), appjs.indexOf('// ---- Conexões ----'));
+  ok(!/💡 Conecte o Meta Ads/.test(ovf), 'o aviso que empurrava o OAuth saiu da Visão geral');
+  ok(/só os únicos números que dependem do <b>gasto<\/b>|únicos números que dependem do <b>gasto<\/b>/.test(ovf),
+     'no lugar dele, a explicação honesta do que exatamente depende do gasto');
+
   await encerrar(null, falhas);
 })();

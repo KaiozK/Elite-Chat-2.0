@@ -705,7 +705,15 @@ const ICONS = {
   moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
   hashtag: '<path d="M9 4 7 20M17 4l-2 16M5 9h15M4 15h15"/>',
   headset: '<path d="M4 13v-1a8 8 0 0 1 16 0v1"/><rect x="2.5" y="13" width="4" height="6" rx="1.5"/><rect x="17.5" y="13" width="4" height="6" rx="1.5"/><path d="M20 19a4 4 0 0 1-4 3.5h-2"/>',
-  at: '<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>'
+  at: '<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>',
+  // A MARCA DA META, e não uma estrelinha genérica. O botão que abre a
+  // autorização da Meta precisa parecer o que é: quem vê uma estrela não
+  // reconhece de quem é a janela que vai abrir. O símbolo é o laço duplo.
+  // Preenchido e com o meio em PICO, que é o que diferencia a marca da Meta de
+  // um infinito qualquer — traçado como laço simétrico ele saía igualzinho ao
+  // ∞ da própria Koonfy, e um botão com a nossa logo não diz de quem é a
+  // janela que vai abrir, que era justamente o problema da estrelinha.
+  meta: '<path fill="currentColor" stroke="none" d="M6.9 5.9C3.9 5.9 1.7 9.4 1.7 13.4c0 2.5 1.1 4.2 2.9 4.2 2.1 0 3.4-2.1 5.3-5.6 1.1-2.1 1.9-3.4 2.1-3.4s1 1.3 2.1 3.4c1.9 3.5 3.2 5.6 5.3 5.6 1.8 0 2.9-1.7 2.9-4.2 0-4-2.2-7.5-5.2-7.5-2 0-3.6 1.6-5.1 4.5C10.5 7.5 8.9 5.9 6.9 5.9zm0 2.4c1.2 0 2.3 1.2 3.6 3.6-1.5 2.8-2.5 4.4-3.7 4.4-.9 0-1.5-.9-1.5-2.5 0-3.1 1.2-5.5 1.6-5.5zm10.2 0c.4 0 1.6 2.4 1.6 5.5 0 1.6-.6 2.5-1.5 2.5-1.2 0-2.2-1.6-3.7-4.4 1.3-2.4 2.4-3.6 3.6-3.6z"/>'
 };
 function ico(name, size = 16) {
   return `<svg class="ic" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
@@ -1764,7 +1772,7 @@ function renameChannel(id) {
     <p id="ch-rename-err" class="err"></p>
     <div class="row" style="margin-top:14px">
       <button class="btn" onclick="closeModal()">Cancelar</button>
-      <button class="btn primary" onclick="renameChannelSave('${id}', this)">${ico('save', 14)} Salvar</button>
+      <button class="btn primary" onclick="renameChannelSave('${id}', this)">Salvar</button>
     </div>`);
   setTimeout(() => { const i = $('#ch-rename'); if (i) { i.focus(); i.select(); } }, 40);
   const inp = $('#ch-rename');
@@ -1785,7 +1793,7 @@ async function renameChannelSave(id, btn) {
     toast('Conta renomeada');
   } catch (e) {
     if (err) err.textContent = e.message;
-    if (btn) { btn.disabled = false; btn.innerHTML = `${ico('save', 14)} Salvar`; }
+    if (btn) { btn.disabled = false; btn.innerHTML = `Salvar`; }
   }
 }
 
@@ -2572,7 +2580,7 @@ function autoBoxHtml(auto, min) {
         </div>
         ${auto.lastError ? `<p class="hint" style="color:var(--red);text-align:left;margin-top:8px">${esc(auto.lastError)}</p>` : ''}
         <div class="row" style="margin-top:10px">
-          <button class="btn small no-grow" onclick="autoSave(this)">${ico('save', 13)} Salvar recarga automática</button>
+          <button class="btn small no-grow" onclick="autoSave(this)">Salvar recarga automática</button>
         </div>
         <div id="auto-out"></div>
       </div>
@@ -3506,7 +3514,7 @@ async function nsCarrinhos() {
           <span><b>Recuperar carrinhos</b><em>Precisa de uma automação com esse gatilho, senão não há o que enviar.</em></span></label>
         <label style="max-width:200px">Esperar (minutos)
           <input id="ns-min" inputmode="numeric" value="${esc(String(c.minutos || 60))}"></label>
-        <button class="btn no-grow" onclick="nsCarrinhoSalvar({minutos: ($('#ns-min')||{}).value})">${ico('save', 14)} Salvar</button>
+        <button class="btn no-grow" onclick="nsCarrinhoSalvar({minutos: ($('#ns-min')||{}).value})">Salvar</button>
         <button class="btn no-grow" onclick="nsVarrer(this)">${ico('refresh', 14)} Varrer agora</button>
       </div>
       <p class="hint" style="margin-top:10px">${d.ultimaVarredura ? 'Última varredura ' + timeAgo(d.ultimaVarredura) + '.' : 'Ainda não varreu.'}</p>
@@ -5351,7 +5359,7 @@ function paintPipeCfg() {
         <button class="btn no-grow" onclick="pipeAdd()">${ico('plus', 14)} Adicionar etapa</button>
         <div style="flex:1"></div>
         <button class="btn no-grow" onclick="togglePipeCfg()">Cancelar</button>
-        <button class="btn primary no-grow" onclick="pipeSave()">${ico('save', 14)} Salvar etapas</button>
+        <button class="btn primary no-grow" onclick="pipeSave()">Salvar etapas</button>
       </div>
     </div>`;
 }
@@ -6378,7 +6386,7 @@ async function renderSettings() {
           <label>Phone Number ID<input id="st-phoneid" value="${esc((state.manual || {}).phoneNumberId || '')}" placeholder="123456789012345"></label>
         </div>
         <div class="row" style="margin-top:12px">
-          <button class="btn primary no-grow" onclick="saveManual()">${ico('save', 14)} Salvar e conectar</button>
+          <button class="btn primary no-grow" onclick="saveManual()">Salvar e conectar</button>
           <button class="btn no-grow" onclick="subscribeWaba()">${ico('radio', 14)} Assinar app na WABA</button>
           <button class="btn no-grow" onclick="registrarNumero()">${ico('check-circle', 14)} Registrar número na Cloud API</button>
           <button class="btn no-grow" onclick="metaDiag(this)">${ico('activity', 14)} Diagnosticar app da Meta</button>
@@ -6418,7 +6426,7 @@ async function renderSettings() {
           <label style="grid-column:1/-1">Descrição<textarea id="pf-desc" rows="2"></textarea></label>
           <label style="grid-column:1/-1">Sites (um por linha, máx. 2)<textarea id="pf-sites" rows="2"></textarea></label>
         </div>
-        <div class="row" style="margin-top:12px"><button class="btn primary no-grow" onclick="saveProfile()">${ico('save', 14)} Salvar perfil</button></div>
+        <div class="row" style="margin-top:12px"><button class="btn primary no-grow" onclick="saveProfile()">Salvar perfil</button></div>
       </div>
 
       <div class="card">
@@ -6569,7 +6577,7 @@ function paintSurvey() {
         </div>
 
         <div class="row" style="justify-content:flex-end">
-          <button class="btn primary no-grow" onclick="saveSurvey()">${ico('save', 14)} Salvar pesquisa</button>
+          <button class="btn primary no-grow" onclick="saveSurvey()">Salvar pesquisa</button>
         </div>
 
         ${m.answered ? `<div class="card">
@@ -6825,7 +6833,7 @@ async function openPixelForm(id, silent) {
     <div class="row" style="margin-top:8px;justify-content:flex-end">
       ${id ? `<button class="btn no-grow" onclick="closePixelForm()">Cancelar</button>
       <button class="btn no-grow" id="px-test-btn" onclick="testPixel('${id}')">${ico('activity', 14)} Testar evento</button>` : ''}
-      <button class="btn primary no-grow" onclick="savePixel(${id ? `'${id}'` : 'null'})">${ico('save', 14)} Salvar</button>
+      <button class="btn primary no-grow" onclick="savePixel(${id ? `'${id}'` : 'null'})">Salvar</button>
     </div>`;
   if (!silent) { box.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => $('#px-id')?.focus(), 80); }
 }
@@ -7118,7 +7126,7 @@ function paintAccount() {
           ? `<span class="pill done">${ico('check', 12)} E-mail confirmado</span>`
           : `<span class="pill pending">E-mail não confirmado</span>`}
         <div style="flex:1"></div>
-        <button class="btn primary no-grow" onclick="saveAccount(this)">${ico('save', 14)} Salvar</button>
+        <button class="btn primary no-grow" onclick="saveAccount(this)">Salvar</button>
       </div>
       ${a.canVerifyEmail && !a.emailVerified ? `
       <div class="capi-box" style="margin-top:14px">
@@ -8715,7 +8723,7 @@ async function renderLinks() {
       <h2>${ico('link')} Domínio personalizado</h2>
       <div class="row">
         <label style="flex:1">Domínio dos links curtos<input id="tk-domain" value="${esc(cfg.linkDomain || '')}" placeholder="ex.: link.suaempresa.com.br"></label>
-        <button class="btn primary no-grow" onclick="saveLinkDomain()">${ico('save', 14)} Salvar domínio</button>
+        <button class="btn primary no-grow" onclick="saveLinkDomain()">Salvar domínio</button>
       </div>
       <p class="muted" style="font-size:12px;margin:8px 0 0">Aponte o DNS do seu domínio para este servidor, os links curtos passam a sair como <code>https://seu-dominio/l/apelido</code>.</p>
     </div>
@@ -9988,7 +9996,7 @@ async function renderAdmin() {
           <label>Versão da Graph API${ecSelect('pl-version', ['v26.0', 'v26.0', 'v24.0', 'v23.0', 'v22.0'].map(v => ({ value: v, label: v })), p.graphVersion || 'v26.0')}</label>
         </div>
         <div class="row" style="margin-top:14px">
-          <button class="btn primary no-grow" onclick="savePlatform()">${ico('save', 14)} Salvar plataforma</button>
+          <button class="btn primary no-grow" onclick="savePlatform()">Salvar plataforma</button>
         </div>
       </div>
 
@@ -10025,6 +10033,27 @@ async function renderAdmin() {
           <button class="btn small" onclick="copyText($('#wh-token').textContent)">Copiar</button>
           <button class="btn small" onclick="regenToken()">${ico('refresh', 13)} Gerar novo</button>
         </div>
+      </div>
+
+      <div class="card">
+        <h2>${ico('trend')} Como o cliente configura o Tracking</h2>
+        <p class="muted" style="margin:0 0 12px">Isto aqui é só referência para o suporte: <b>nada nesta aba é necessário para o Tracking funcionar</b>. O cliente resolve tudo sozinho em <b>Tracking → Conexões</b>.</p>
+
+        <div class="capi-box" style="margin-bottom:12px">
+          <div class="capi-head">${ico('check-circle', 14)} O caminho normal <span class="capi-tag">sem login nenhum</span></div>
+          <p class="muted" style="font-size:12px;margin:6px 0 0">1. O cliente abre <b>Tracking → Conexões</b>.
+          2. Cola o <b>ID do pixel</b> na plataforma que usa (Meta Pixel, Google Ads, GTM, TikTok, LinkedIn, Microsoft, Snapchat, Pinterest) e liga a chave.
+          3. Pronto. A tag passa a disparar no <b>link rastreável</b> e no <b>checkout</b>, e a venda confirmada vai sozinha para as APIs de conversão.
+          Nas conexões de <b>servidor</b> (Meta CAPI, GA4, TikTok Events) ele cola também o token da própria plataforma — que ele gera lá, não aqui.</p>
+        </div>
+
+        <div class="capi-box">
+          <div class="capi-head">${ico('meta', 14)} Só para o "Conectar Meta Ads" <span class="capi-tag">opcional</span></div>
+          <p class="muted" style="font-size:12px;margin:6px 0 0">Esse botão existe para UMA coisa: puxar o <b>gasto</b> das campanhas da Meta, que é o que falta para calcular <b>ROAS, ROI, CPA e CAC</b>. Todo o resto do Tracking — receita, pedidos, conversão, ticket, funil, eventos — sai do pixel, sem autorizar nada.
+          É o único ponto do Tracking que depende desta aba: ele usa o app da Meta configurado acima, e precisa dos quatro itens listados no cartão <b>Meta Ads</b>.</p>
+        </div>
+
+        <p class="hint" style="margin-top:12px;text-align:left">Se um cliente disser que "o tracking não funciona", a primeira pergunta é se o <b>ID do pixel está preenchido e a chave ligada</b> — e não se ele conectou o Facebook.</p>
       </div>
 
       ${''/* A conexão manual mora em Configurações → Conexão & API, junto do
@@ -10187,7 +10216,7 @@ function admBannersPaint() {
     <div class="row" style="align-items:center;margin-bottom:6px">
       <h2 style="margin:0;flex:1">${ico('megaphone')} Banners da dashboard</h2>
       <button class="btn no-grow" onclick="admBannerNovo()">${ico('plus', 14)} Novo banner</button>
-      <button class="btn primary no-grow" onclick="admBannersSalvar(this)">${ico('save', 14)} Salvar</button>
+      <button class="btn primary no-grow" onclick="admBannersSalvar(this)">Salvar</button>
     </div>
     <p class="muted" style="margin:0 0 16px;font-size:13px">
       É a faixa que o cliente vê no topo da dashboard. Desligar um banner não o apaga —
@@ -10399,7 +10428,7 @@ async function paintAdmin() {
           ${planFeatureFields('new', null)}
           ${planLimitFields('new', null)}
           ${planCheckoutField('new', '')}
-          <div class="row" style="margin-top:10px;justify-content:flex-end"><button class="btn primary no-grow" onclick="admCreatePlan()">${ico('save', 14)} Criar plano</button></div>
+          <div class="row" style="margin-top:10px;justify-content:flex-end"><button class="btn primary no-grow" onclick="admCreatePlan()">Criar plano</button></div>
         </div>
 
         <div class="card">
@@ -10411,7 +10440,7 @@ async function paintAdmin() {
           <div class="row" style="align-items:flex-end">
             <label style="max-width:230px">WhatsApp adicional (R$/mês)<input id="ex-wa" value="${((d.config.billing.extras && d.config.billing.extras.whatsappPrice || 0) / 100).toFixed(2)}" inputmode="decimal" placeholder="0,00"></label>
             <label style="max-width:230px">Link rastreável adicional (R$/mês)<input id="ex-lk" value="${((d.config.billing.extras && d.config.billing.extras.linkPrice || 0) / 100).toFixed(2)}" inputmode="decimal" placeholder="0,00"></label>
-            <button class="btn primary no-grow" onclick="admSaveConfig({whatsappPrice:$('#ex-wa').value,linkPrice:$('#ex-lk').value})">${ico('save', 14)} Salvar preços</button>
+            <button class="btn primary no-grow" onclick="admSaveConfig({whatsappPrice:$('#ex-wa').value,linkPrice:$('#ex-lk').value})">Salvar preços</button>
           </div>
           <p class="hint" style="margin-top:10px">Com <b>R$ 0,00</b> o extra fica indisponível para compra, o cliente só consegue mais fazendo upgrade de plano.</p>
         </div>
@@ -10442,7 +10471,7 @@ async function paintAdmin() {
                 ${planLimitFields(p.id, p.limits || {})}
                 ${planCheckoutField(p.id, p.checkoutId || '')}
                 <div class="row" style="margin-top:10px;justify-content:flex-end">
-                  <button class="btn primary no-grow" onclick="admSavePlanLimits('${p.id}')">${ico('save', 14)} Salvar limites</button>
+                  <button class="btn primary no-grow" onclick="admSavePlanLimits('${p.id}')">Salvar limites</button>
                 </div>
               </div>
             </div>`;
@@ -10457,7 +10486,7 @@ async function paintAdmin() {
           <div class="row">
             <label>% na 1ª assinatura<input id="aff-first" value="${d.config.affiliate.percentFirst}" inputmode="numeric"></label>
             <label>% nas renovações<input id="aff-ren" value="${d.config.affiliate.percentRenewal}" inputmode="numeric"></label>
-            <button class="btn primary no-grow" onclick="admSaveConfig({percentFirst:$('#aff-first').value,percentRenewal:$('#aff-ren').value})">${ico('save', 14)} Salvar</button>
+            <button class="btn primary no-grow" onclick="admSaveConfig({percentFirst:$('#aff-first').value,percentRenewal:$('#aff-ren').value})">Salvar</button>
           </div>
         </div>
 
@@ -10470,7 +10499,7 @@ async function paintAdmin() {
           <div class="row" style="align-items:flex-end">
             <label>Saque mínimo (R$)<input id="wd-min" value="${(d.config.affiliate.withdraw.min / 100).toFixed(2)}" inputmode="decimal"></label>
             <label>Saque máximo (R$)<input id="wd-max" value="${d.config.affiliate.withdraw.max ? (d.config.affiliate.withdraw.max / 100).toFixed(2) : ''}" inputmode="decimal" placeholder="sem limite"></label>
-            <button class="btn primary no-grow" onclick="admSaveConfig({withdrawMin:$('#wd-min').value,withdrawMax:$('#wd-max').value||0})">${ico('save', 14)} Salvar</button>
+            <button class="btn primary no-grow" onclick="admSaveConfig({withdrawMin:$('#wd-min').value,withdrawMax:$('#wd-max').value||0})">Salvar</button>
           </div>
           <p class="muted" style="font-size:11.5px;margin:8px 0 0">Máximo vazio ou <b>0</b> = sem teto.</p>
         </div>
@@ -10546,7 +10575,7 @@ async function paintAdmin() {
                credenciais. Ficava logo abaixo do Client Secret e era lido como
                "a sua taxa" — que é outra coisa, e mora no card de taxas. -->
           <div class="row">
-            <button class="btn primary no-grow" onclick="admSalvarSimplify(this)">${ico('save', 14)} Salvar credenciais</button>
+            <button class="btn primary no-grow" onclick="admSalvarSimplify(this)">Salvar credenciais</button>
           </div>
           <p class="muted" style="margin:10px 0 0;font-size:12px">
             ${ico('help', 12)} A Simplify exige <b>nome, CPF/CNPJ, e-mail e telefone do pagador</b> para gerar o Pix.
@@ -10567,7 +10596,7 @@ async function paintAdmin() {
           </p>
           <div class="row">
             <label style="flex:2">AppID da Woovi ${d.config.woovi.configured ? `<span class="pill done" style="margin-left:6px">Configurado ${esc(d.config.woovi.appId)}</span>` : ''}<input id="wv-appid" type="password" placeholder="Q2xpZW50X0lkX…"></label>
-            <button class="btn primary no-grow" onclick="admSaveConfig({wooviAppId:$('#wv-appid').value})">${ico('save', 14)} Salvar</button>
+            <button class="btn primary no-grow" onclick="admSaveConfig({wooviAppId:$('#wv-appid').value})">Salvar</button>
             <button class="btn no-grow" onclick="admTestWoovi(this)">${ico('activity', 14)} Testar conexão</button>
           </div>
           <div id="wv-out"></div>
@@ -10594,7 +10623,7 @@ async function paintAdmin() {
           <label class="chk" style="margin-top:12px"><input type="checkbox" id="bl-enforce" ${d.config.billing.enforce ? 'checked' : ''} onchange="admSaveConfig({enforce:this.checked})"> Bloquear envios quando a assinatura expirar (senão, apenas avisa)</label>
           <div class="row" style="margin-top:16px;align-items:flex-end">
             <label style="flex:2">Texto do botão da landing (opcional)<input id="bl-cta" value="${esc(d.config.landing && d.config.landing.ctaText || '')}" placeholder="Começar agora (automático se vazio)"></label>
-            <button class="btn primary no-grow" onclick="admSaveConfig({ctaText:$('#bl-cta').value})">${ico('save', 14)} Salvar copy</button>
+            <button class="btn primary no-grow" onclick="admSaveConfig({ctaText:$('#bl-cta').value})">Salvar copy</button>
           </div>
           <p class="muted" style="font-size:11.5px;margin:8px 0 0">Vazio = <b>“Começar agora”</b>.</p>
           <!-- SUPORTE. Aparece no rodapé do checkout, que é a tela onde a
@@ -10602,7 +10631,7 @@ async function paintAdmin() {
                suporte do que um número que ninguém atende. -->
           <div class="row" style="margin-top:16px;align-items:flex-end">
             <label style="flex:2">WhatsApp do suporte<input id="bl-sup" value="${esc((d.config.suporte && d.config.suporte.whatsapp) || '')}" placeholder="(11) 99999-8888"></label>
-            <button class="btn primary no-grow" onclick="admSaveConfig({supportWhatsapp:$('#bl-sup').value})">${ico('save', 14)} Salvar suporte</button>
+            <button class="btn primary no-grow" onclick="admSaveConfig({supportWhatsapp:$('#bl-sup').value})">Salvar suporte</button>
           </div>
           <p class="muted" style="font-size:11.5px;margin:8px 0 0">Vai para o rodapé do checkout. Vazio = <b>sem link de suporte</b>.</p>
         </div>
@@ -10616,7 +10645,7 @@ async function paintAdmin() {
           <div class="row" style="align-items:flex-end">
             <label>Depósito mínimo (R$)<input id="dep-min" value="${(d.config.billing.deposit.min / 100).toFixed(2)}" inputmode="decimal"></label>
             <label>Depósito máximo (R$)<input id="dep-max" value="${d.config.billing.deposit.max ? (d.config.billing.deposit.max / 100).toFixed(2) : ''}" inputmode="decimal" placeholder="sem limite"></label>
-            <button class="btn primary no-grow" onclick="admSaveConfig({depositMin:$('#dep-min').value,depositMax:$('#dep-max').value||0})">${ico('save', 14)} Salvar</button>
+            <button class="btn primary no-grow" onclick="admSaveConfig({depositMin:$('#dep-min').value,depositMax:$('#dep-max').value||0})">Salvar</button>
           </div>
           <p class="muted" style="font-size:11.5px;margin:8px 0 0">Máximo vazio ou <b>0</b> = sem teto.</p>
         </div>
@@ -10914,7 +10943,7 @@ function admMktPaint() {
       <label style="margin-top:10px">Título (push)<input id="mk-title" value="${esc(t.title || '')}" placeholder="Sua assinatura vence em {{dias}} dias"></label>
       <label style="margin-top:10px">Mensagem<textarea id="mk-text" rows="4" placeholder="Olá {{nome}}, seu plano {{plano}} de {{valor}} vence em {{vencimento}}.">${esc(t.text || '')}</textarea></label>
       <div class="row" style="margin-top:12px">
-        <button class="btn primary no-grow" onclick="mktSave(this)">${ico('save', 14)} ${mktEdit && mktEdit.id ? 'Salvar alterações' : 'Criar template'}</button>
+        <button class="btn primary no-grow" onclick="mktSave(this)">${mktEdit && mktEdit.id ? 'Salvar alterações' : 'Criar template'}</button>
         ${mktEdit ? `<button class="btn no-grow" onclick="mktNovo()">Cancelar</button>` : ''}
       </div>
     </div>
@@ -11118,7 +11147,7 @@ function admSecPaint() {
         <label style="flex:1">Nome exibido<input id="ml-fromname" value="${esc(m.fromName)}"></label>
       </div>
       <div class="row" style="margin-top:12px">
-        <button class="btn primary no-grow" onclick="admMailSaveForm(this)">${ico('save', 14)} Salvar</button>
+        <button class="btn primary no-grow" onclick="admMailSaveForm(this)">Salvar</button>
         <button class="btn no-grow" onclick="admMailTest(this)">${ico('activity', 14)} Enviar teste</button>
       </div>
       <div id="ml-out">${m.lastError ? `<div class="danger-box" style="margin-top:10px">${esc(m.lastError)}</div>` : ''}</div>
@@ -12027,7 +12056,7 @@ function admNsPaint() {
         <input id="adm-ns-appid" value="${esc(n.appId || '')}" placeholder="Ex.: 12345"></label>
       <label style="flex:1">Client Secret ${n.hasSecret ? '<span class="pill done" style="margin-left:6px">Salvo</span>' : ''}
         <input id="adm-ns-secret" type="password" placeholder="${n.hasSecret ? '•••••••• (deixe vazio p/ manter)' : 'Cole o secret do app'}"></label>
-      <button class="btn primary no-grow" onclick="admNsSave({appId:$('#adm-ns-appid').value,appSecret:$('#adm-ns-secret').value})">${ico('save', 14)} Salvar</button>
+      <button class="btn primary no-grow" onclick="admNsSave({appId:$('#adm-ns-appid').value,appSecret:$('#adm-ns-secret').value})">Salvar</button>
     </div>
 
     <div class="capi-box" style="margin-top:16px">
@@ -12665,7 +12694,7 @@ function admSeoForm(seo) {
       <label style="margin-top:9px">HTML extra no &lt;head&gt; (opcional, verificação de domínio, scripts)<textarea id="seo-extra" rows="3" maxlength="4000" placeholder="<meta name=&quot;google-site-verification&quot; content=&quot;...&quot;>">${v('extraHead')}</textarea></label>
       <div class="row" style="margin-top:14px;justify-content:space-between;align-items:center">
         <a class="btn no-grow" href="/" target="_blank" rel="noopener">${ico('activity', 14)} Ver a página</a>
-        <button class="btn primary no-grow" onclick="admSaveSeo()">${ico('save', 14)} Salvar SEO</button>
+        <button class="btn primary no-grow" onclick="admSaveSeo()">Salvar SEO</button>
       </div>
     </div>`;
 }
@@ -12853,7 +12882,7 @@ function admFeesSection(cfg, c, t) {
         : 'Opcional: sem Wallet ID o split manda o líquido ao lojista e a <b>diferença fica na conta que emitiu a cobrança</b>, que já é a sua. Informe uma carteira só se quiser separar a taxa em outra conta Asaas. O ID fica em <b>Asaas → Minha conta → Integrações → Wallet ID</b>.'}</p>`}
 
     <div class="row" style="margin-top:16px;justify-content:flex-end">
-      <button class="btn primary no-grow" onclick="admSaveAllFees(this)">${ico('save', 14)} Salvar todas as taxas</button>
+      <button class="btn primary no-grow" onclick="admSaveAllFees(this)">Salvar todas as taxas</button>
     </div>
 
     <div class="fee-sep"></div>
@@ -12961,14 +12990,14 @@ function admCardSection(c, t) {
             <input id="adm-card-sk" type="password" placeholder="${c.pagarme.hasSecret ? '•••••••• (deixe vazio p/ manter)' : 'sk_...'}"></label>
           <label style="flex:1">Public Key
             <input id="adm-card-pk" value="${esc(c.pagarme.publicKey || '')}" placeholder="pk_..."></label>
-          <button class="btn primary no-grow" onclick="admCardSaveKeys()">${ico('save', 14)} Salvar</button>
+          <button class="btn primary no-grow" onclick="admCardSaveKeys()">Salvar</button>
         </div>
         <p class="hint" style="margin-top:8px">Chaves em <b>Dashboard Pagar.me → Configurações → Chaves</b>. As de teste começam com <code>sk_test_</code>.</p>`
       : `
         <div class="row" style="margin-top:10px;align-items:flex-end">
           <label style="flex:1">API Key ${c.asaas.hasKey ? '<span class="pill done" style="margin-left:6px">Salva</span>' : ''}
             <input id="adm-card-ak" type="password" placeholder="${c.asaas.hasKey ? '•••••••• (deixe vazio p/ manter)' : '$aact_...'}"></label>
-          <button class="btn primary no-grow" onclick="admCardSaveKeys()">${ico('save', 14)} Salvar</button>
+          <button class="btn primary no-grow" onclick="admCardSaveKeys()">Salvar</button>
         </div>
         <label class="chk" style="margin-top:12px"><input type="checkbox" ${c.asaas.sandbox ? 'checked' : ''} onchange="admCardSave({asaas:{sandbox:this.checked}})"> Usar ambiente <b>sandbox</b> (testes)</label>
         <p class="hint" style="margin-top:8px">API Key em <b>Asaas → Integrações → Gerar API Key</b>. Sandbox e produção têm chaves diferentes.</p>`}
@@ -13169,7 +13198,7 @@ async function admManLoad() {
           sozinho. Vazio esconde o botão em todos esses lugares.</p>
         <div class="row" style="align-items:flex-end">
           <label style="flex:2">Número com DDD<input id="man-sup" value="${esc(d.suporte || '')}" placeholder="(11) 99999-8888"></label>
-          <button class="btn primary no-grow" onclick="admManSalvarSuporte(this)">${ico('save', 14)} Salvar número</button>
+          <button class="btn primary no-grow" onclick="admManSalvarSuporte(this)">Salvar número</button>
         </div>
         ${d.suporte ? `<p class="muted" style="font-size:12px;margin:10px 0 0">
           Testar: <a href="https://wa.me/${esc(String(d.suporte).replace(/\\D/g, ''))}" target="_blank" rel="noopener">abrir conversa</a></p>` : ''}
@@ -13190,7 +13219,7 @@ async function admManLoad() {
             ? 'LIGADA' + (desde ? ' desde ' + esc(desde) : '') + ' — os clientes não conseguem entrar'
             : 'Desligada — tudo funcionando normalmente'}</em></span>
         </label>
-        <button class="btn no-grow" style="margin-top:12px" onclick="admManSalvarMsg(this)">${ico('save', 14)} Salvar mensagem</button>
+        <button class="btn no-grow" style="margin-top:12px" onclick="admManSalvarMsg(this)">Salvar mensagem</button>
       </div>`;
     const c = $('#adm-man-box .chk'); if (c) c.parentElement.classList.add('mod-lista');
   } catch (e) { box.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
@@ -13989,7 +14018,7 @@ function agFormHtml(isEdit) {
     <div id="ag-perms" class="ag-perm-grid"></div>
     <div class="row" style="justify-content:flex-end;margin-top:14px">
       <button class="btn" onclick="closeModal()">Cancelar</button>
-      <button class="btn primary" onclick="agSave('${isEdit ? a.id : ''}')">${ico('save', 14)} Salvar</button>
+      <button class="btn primary" onclick="agSave('${isEdit ? a.id : ''}')">Salvar</button>
     </div>
   </div>`;
 }
@@ -14401,7 +14430,7 @@ function scFormHtml(isEdit) {
       <div>${isEdit && can('schedule', 'create') ? `<button class="btn small" onclick="scDuplicate('${e.id}')">${ico('copy', 12)} Duplicar</button>` : ''}
         ${isEdit && can('schedule', 'delete') ? `<button class="btn small danger" onclick="scDelete('${e.id}')">${ico('trash', 12)} Excluir</button>` : ''}</div>
       <div class="row" style="gap:8px"><button class="btn" onclick="closeModal()">Cancelar</button>
-        <button class="btn primary" onclick="scSave('${isEdit ? e.id : ''}')">${ico('save', 14)} Salvar</button></div>
+        <button class="btn primary" onclick="scSave('${isEdit ? e.id : ''}')">Salvar</button></div>
     </div>
   </div>`;
 }
@@ -14545,7 +14574,7 @@ async function paintIA() {
       <div class="row">
         <label style="flex:2">Chave da API ${c.temChave ? `<span class="pill done" style="margin-left:6px">Salva ••••${esc(c.chaveFim)}</span>` : ''}
           <input id="ia-key" type="password" placeholder="sk-..."></label>
-        <button class="btn primary no-grow" onclick="salvarIA({apiKey:$('#ia-key').value})">${ico('save', 14)} Salvar chave</button>
+        <button class="btn primary no-grow" onclick="salvarIA({apiKey:$('#ia-key').value})">Salvar chave</button>
       </div>
       <div class="row" style="margin-top:12px">
         <label style="flex:1;max-width:340px">Modelo${ecSelect('ia-model',
@@ -14561,7 +14590,7 @@ async function paintIA() {
       </p>
       <textarea id="ia-prompt" rows="12" placeholder="Você é o atendente da Loja X, que vende...">${esc(c.prompt || '')}</textarea>
       <div class="row" style="margin-top:12px">
-        <button class="btn primary no-grow" onclick="salvarIA({prompt:$('#ia-prompt').value})">${ico('save', 14)} Salvar instruções</button>
+        <button class="btn primary no-grow" onclick="salvarIA({prompt:$('#ia-prompt').value})">Salvar instruções</button>
         <button class="btn no-grow" onclick="testarIA(this)">${ico('activity', 14)} Testar resposta</button>
       </div>
       <div id="ia-teste"></div>
@@ -14585,7 +14614,7 @@ async function paintIA() {
       </div>
       <label style="margin-top:12px">Assinatura no fim da mensagem (opcional)
         <input id="ia-assin" value="${esc(c.assinatura || '')}" placeholder="atendimento automático"></label>
-      <button class="btn primary no-grow" style="margin-top:12px" onclick="salvarIA({historico:$('#ia-hist').value,maxSaida:$('#ia-max').value,assinatura:$('#ia-assin').value})">${ico('save', 14)} Salvar ajustes</button>
+      <button class="btn primary no-grow" style="margin-top:12px" onclick="salvarIA({historico:$('#ia-hist').value,maxSaida:$('#ia-max').value,assinatura:$('#ia-assin').value})">Salvar ajustes</button>
     </div>
 
     ${(d.logs || []).length ? `<div class="card">
@@ -14715,7 +14744,7 @@ function paintConsentCfg() {
         </div>
 
         <div class="row" style="justify-content:flex-end">
-          <button class="btn primary no-grow" onclick="saveConsentCfg()">${ico('save', 14)} Salvar configurações</button>
+          <button class="btn primary no-grow" onclick="saveConsentCfg()">Salvar configurações</button>
         </div>
 
         ${(coCfg.history || []).length ? `<div class="card">
@@ -15150,7 +15179,7 @@ function paintWhMapping() {
     </div>
     ${nFields ? `<div class="wm-actions">
       <button class="btn no-grow" onclick="closeWhMapping()">Cancelar</button>
-      <button class="btn primary no-grow" onclick="saveWhMapping()">${ico('save', 14)} Salvar mapeamento</button>
+      <button class="btn primary no-grow" onclick="saveWhMapping()">Salvar mapeamento</button>
     </div>` : ''}`;
 }
 
@@ -15792,7 +15821,7 @@ function openBuilder() {
       <span class="fb2-save" id="fb-savestate">Auto-save ativo</span>
       <div class="fb-tb-spacer"></div>
       <button class="btn no-grow" onclick="flowStatsModal()">${ico('activity', 14)} Métricas</button>
-      <button class="btn no-grow" onclick="saveFlow()">${ico('save', 14)} Salvar</button>
+      <button class="btn no-grow" onclick="saveFlow()">Salvar</button>
       <button class="btn primary no-grow" id="fb-activate" onclick="fbToggleEnabled()">${ico('power', 14)} ${en ? 'Desativar' : 'Ativar'}</button>
     </header>
     <div class="fb2-body">
@@ -17917,7 +17946,7 @@ async function epPaintCfg(box) {
         <label style="max-width:220px">Etiqueta na compra
           <input id="ep-cfg-tag" value="${esc(s.paidTag === undefined ? 'Cliente' : s.paidTag)}" maxlength="40" placeholder="deixe vazio para nenhuma"></label>
       </div>
-      <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn primary no-grow" onclick="epSaveCfg()">${ico('save', 14)} Salvar</button></div>
+      <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn primary no-grow" onclick="epSaveCfg()">Salvar</button></div>
     </div>
     <div class="card">
       <h2>${ico('shield')} Sua conta de recebimento</h2>
@@ -18130,7 +18159,7 @@ async function renderCheckoutBuilder() {
       </div>
       <span class="ckb-status" id="epk-saved"><i></i> Tudo certo!</span>
       <div style="flex:1"></div>
-      <button class="btn primary no-grow" id="epk-save" onclick="epkSave()">${ico('save', 14)} Salvar</button>
+      <button class="btn primary no-grow" id="epk-save" onclick="epkSave()">Salvar</button>
       <a class="btn no-grow" href="/pay/demo-${esc(state.accountId || '')}:${esc(epkCheckoutId)}" target="_blank" rel="noopener">${ico('globe', 14)} Ver página</a>
     </header>
     <div class="ckb-body">
@@ -18924,7 +18953,7 @@ function epProdForm(id, recEscolhido) {
     </div>
     <p class="hint" style="margin-top:8px">Logo 512×512 · Logo celular 256×256 · Banner 1200×360 · Banner celular 800×500. Sem imagem aqui, o checkout usa a dele.</p>
     <div class="row" style="margin-top:10px;justify-content:flex-end">
-      <button class="btn primary no-grow" onclick="epProdSave()">${ico('save', 14)} Salvar produto</button>
+      <button class="btn primary no-grow" onclick="epProdSave()">Salvar produto</button>
     </div>
     <input type="file" id="epp-file" accept="image/png,image/jpeg,image/webp" style="display:none">
   </div>`;
@@ -19505,7 +19534,7 @@ async function trkPaintOverview(box) {
   const periods = [['Hoje', c.hoje], ['Ontem', c.ontem], ['7 dias', c.d7], ['30 dias', c.d30], ['90 dias', c.d90], ['Ano', c.ano]];
   const maxRev = Math.max(1, ...periods.map(([, p]) => p.receita));
   box.innerHTML = `
-    ${!spendOk ? `<div class="card" style="border-color:var(--amber-border);background:var(--amber-bg)"><b>💡 Conecte o Meta Ads</b><p class="muted" style="margin:4px 0 0;font-size:13px">ROAS, ROI, CPA e CAC dependem do gasto das campanhas. Vá em <b>Conexões → Meta Ads</b> e sincronize, o resto é automático.</p></div>` : ''}
+    ${!spendOk ? `<div class="card"><b class="muted" style="font-size:13px">Sobre ROAS, ROI, CPA e CAC</b><p class="muted" style="margin:4px 0 0;font-size:13px">Estes quatro são os únicos números que dependem do <b>gasto</b> em anúncios, e o gasto vem da plataforma onde você anuncia. Todo o resto desta tela — receita, pedidos, conversão, ticket, funil, eventos — já sai do pixel, sem autorizar nada.</p></div>` : ''}
     <div class="metric-hero">
       <div class="mh-card hi"><span class="mh-ic">${ico('zap', 20)}</span><div class="mh-val">${trkBRL(d.receita.d30)}</div><div class="mh-lbl">Receita. 30 dias</div></div>
       <div class="mh-card"><span class="mh-ic">${ico('activity', 20)}</span><div class="mh-val">${d.roas === null ? '-' : d.roas + 'x'}</div><div class="mh-lbl">ROAS</div></div>
@@ -19551,12 +19580,18 @@ async function trkPaintOverview(box) {
 async function trkPaintConn(box) {
   const ov = trkState.data || await api('/tracking');
   trkState.data = ov;
+  // O PIXEL VEM PRIMEIRO, E SOZINHO JÁ BASTA.
+  //
+  // O cartão do Meta Ads ficava no topo, então a primeira coisa que aparecia
+  // era um botão de login do Facebook — e dava a entender que sem autorizar
+  // nada funcionava. Não é verdade: colar o ID do pixel liga o rastreamento
+  // inteiro, inclusive o envio de conversões pelo servidor. A autorização da
+  // Meta serve para UMA coisa só, o gasto das campanhas, e quem usa mais de
+  // uma plataforma de anúncio não precisa dela.
   box.innerHTML = `
-    <div class="card">
-      ${trkMetaCard(ov)}
-      <p class="muted" style="font-size:12px;margin:10px 0 0">
-        ${ov.meta.lastSync ? `Última sincronização: ${new Date(ov.meta.lastSync).toLocaleString('pt-BR')} · ${ov.meta.campaigns} campanha(s)` : 'Nunca sincronizado'}
-        ${ov.meta.error ? ` · <span style="color:#f87171">${esc(ov.meta.error)}</span>` : ''}</p>
+    <div class="card" style="border-color:var(--brand-border);background:var(--brand-bg)">
+      <b>${ico('check-circle', 15)} É só colar o ID de cada pixel abaixo</b>
+      <p class="muted" style="margin:4px 0 0;font-size:13px">Não é preciso autorizar nada no Facebook. Com o ID preenchido e a chave ligada, o rastreamento já funciona: a tag dispara no link rastreável e no checkout, e as conversões vão pelo servidor.</p>
     </div>
     <div class="trk-conns">${ov.connections.map(c => `
       <div class="card trk-conn">
@@ -19583,7 +19618,13 @@ async function trkPaintConn(box) {
         ${c.lastError ? `<p class="muted" style="font-size:11.5px;margin:6px 0 0;color:#f87171">${esc(c.lastError)}</p>` : ''}
       </div>`).join('')}</div>
     <div class="card"><h2>${ico('shield')} Envio automático de conversões</h2>
-      <p class="muted" style="font-size:13px;margin:0">Toda venda confirmada no Pagamentos é enviada sozinha para <b>Meta Conversions API</b>, <b>GA4 / Google Ads</b> e <b>TikTok Events API</b> (as que estiverem ativas acima), com e-mail/telefone/CPF criptografados (SHA-256) e o click ID da origem.</p></div>`;
+      <p class="muted" style="font-size:13px;margin:0">Toda venda confirmada no Pagamentos é enviada sozinha para <b>Meta Conversions API</b>, <b>GA4 / Google Ads</b> e <b>TikTok Events API</b> (as que estiverem ativas acima), com e-mail/telefone/CPF criptografados (SHA-256) e o click ID da origem.</p></div>
+    <div class="card">
+      ${trkMetaCard(ov)}
+      <p class="muted" style="font-size:12px;margin:10px 0 0">
+        ${ov.meta.lastSync ? `Última sincronização: ${new Date(ov.meta.lastSync).toLocaleString('pt-BR')} · ${ov.meta.campaigns} campanha(s)` : 'Nunca sincronizado'}
+        ${ov.meta.error ? ` · <span style="color:#f87171">${esc(ov.meta.error)}</span>` : ''}</p>
+    </div>`;
 }
 async function trkConnSave(key, enabled) {
   const body = {};
@@ -19599,11 +19640,11 @@ async function trkConnSave(key, enabled) {
 function trkMetaCard(ov) {
   const m = ov.meta || {};
   const h = [];
-  h.push(`<h2>${ico('sparkles')} Meta Ads, gasto automático das campanhas</h2>`);
-  h.push(`<p class="muted" style="margin:0 0 12px;font-size:13px">Conecte sua conta de anúncios e o gasto, cliques, CTR, CPM e CPC entram sozinhos no cálculo de ROAS, ROI, CPA e CAC. Nenhum token para gerar à mão.</p>`);
+  h.push(`<h2>${ico('meta')} Meta Ads, gasto automático das campanhas <span class="trk-mode">opcional</span></h2>`);
+  h.push(`<p class="muted" style="margin:0 0 12px;font-size:13px">O rastreamento <b>não depende disto</b> — o pixel acima já faz todo o trabalho. Esta autorização serve para uma coisa só: trazer o gasto das campanhas da Meta sozinho, que é o que falta para calcular ROAS, ROI, CPA e CAC. Quem anuncia em mais de uma plataforma pode ignorar.</p>`);
 
   if (!m.hasToken) {
-    h.push(`<button class="btn primary" onclick="trkMetaConnect()">${ico('sparkles', 15)} Conectar Meta Ads</button>`);
+    h.push(`<button class="btn primary" onclick="trkMetaConnect()">${ico('meta', 15)} Conectar Meta Ads</button>`);
     h.push(`<p class="hint" style="margin-top:10px;text-align:left">Abre a autorização da Meta. Você escolhe a conta de anúncios e pronto: a permissão pedida é só de <b>leitura</b> (ads_read). A autorização vale <b>60 dias</b>, quando estiver perto de vencer, avisamos aqui para você reconectar em um clique, sem perder nada.</p>`);
     return h.join('');
   }
@@ -19908,7 +19949,7 @@ async function trkPaintAlerts(box) {
       <div class="row" style="align-items:flex-end">
         <label style="max-width:200px">ROAS mínimo<input id="trk-al-roas" inputmode="decimal" value="${ov.alertsCfg.roasMin}"></label>
         <label style="max-width:220px">CPA máximo (R$, 0 = sem limite)<input id="trk-al-cpa" inputmode="decimal" value="${ov.alertsCfg.cpaMax}"></label>
-        <button class="btn primary no-grow" onclick="trkSaveAlerts()">${ico('save', 14)} Salvar</button>
+        <button class="btn primary no-grow" onclick="trkSaveAlerts()">Salvar</button>
       </div></div>
     ${ov.alerts.map(a => `<div class="card sug-card ${a.level}">
       <span class="sug-ic">${ico(a.icon || 'activity', 18)}</span>
